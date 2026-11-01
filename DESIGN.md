@@ -344,3 +344,7 @@ question without a grade. Edition detail is available once in selection/referenc
 not repeated as a wall of text on each phrase. Touch controls remain at least
 44px, long text wraps, and multiline challenges retain Enter for new lines.
 Transitions inherit the existing reduced-motion-safe review affordance.
+
+### Graded result evidence
+
+A small two-column strip joins the committed correction to Next: observed same-scope recall and the actual next review time. Recent marks carry text alternatives, not color alone. No mastery meter, extra panel, disclosure or self-rating. Guided results remain distinct; unknown evidence is not zero percent.

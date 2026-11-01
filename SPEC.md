@@ -32,6 +32,13 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 
 ## Scope and acceptance status
 
+### Automatic answer evidence (2026-11-01)
+
+- **RESULT-01:** After a native answer commits, show its same-scope unaided correct/answer count and recent outcomes automatically with the correction and next action. This is observed recall evidence, not a mastery probability. Guided answers and reveal-only events do not earn unaided credit.
+- **RESULT-02:** Show the actual persisted next review time for the answered item. Multi-unit answers show the earliest scheduled part, not an invented whole-text schedule; unscheduled or inactive work is labeled honestly. Phrase, joined and whole recall evidence remain separate by immutable version and exact scope.
+- **RESULT-03:** No summary appears before commit or on a still-unanswered prompt. Reload, retry and response reconciliation retain one committed answer and its evidence. Phone/no-JavaScript and desktop views show the summary without opening Progress; grading, scheduling and stored history are unchanged.
+
+
 ### Whole-app visual simplification (2026-11-01)
 
 The owner requests fewer components, less text, noise and friction throughout

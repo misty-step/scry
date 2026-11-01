@@ -12,6 +12,7 @@ pub mod nato_progress;
 pub mod owner_client;
 pub mod owner_token;
 pub mod persistence;
+pub mod result_progress;
 pub mod spend;
 pub mod study;
 pub mod web;

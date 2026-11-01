@@ -444,3 +444,13 @@ body:has(.nato-screen) main {margin-top:24px}
 .settings-section>summary::after {content:"⌄";margin-left:auto}
 .settings-section[open]>summary::after {content:"⌃"}
 .settings-section details>summary,.history-operations>summary {min-height:44px;cursor:pointer;padding:10px 0}
+
+/* Committed-answer evidence, not a mastery estimate. No extra interaction. */
+.result-progress {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin:18px 0 22px;padding:14px 0;border-top:1px solid var(--rule);color:var(--ink);text-align:left}
+.result-progress>div {min-width:0;display:flex;flex-direction:column;gap:4px}
+.result-progress strong {font:550 22px/1.25 var(--sans);letter-spacing:-.4px;overflow-wrap:anywhere}
+.result-progress-label,.result-progress-date {font:11px/1.45 var(--sans);color:var(--ink-2);overflow-wrap:anywhere}
+.result-progress-date {font-size:10px}
+.result-marks {list-style:none;display:flex;gap:5px;margin:4px 0 0;padding:0}
+.result-marks li {display:grid;place-items:center;width:19px;height:19px;border:1px solid currentColor;border-radius:50%;font:12px/1 var(--mono)}
+@media(prefers-reduced-motion:no-preference){.result-progress{animation:result-evidence-in 160ms ease-out}@keyframes result-evidence-in{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:none}}}
