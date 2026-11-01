@@ -41,6 +41,8 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 
 ## Features
 
+- [Visual practice chooser](../SPEC.md#visual-practice-chooser-2026-11-01): inline grouped NATO, Saint Michael editions and Rosary sets; current-session return preserves the draft. `tests/lessons.rs` covers current identity, supplied-content collisions and protected metadata; `qa/lessons.mjs` covers native/enhanced phone/desktop browsing, return and switch reconciliation. Source-bound journey proof belongs to #445 and its PR; authenticated learner acceptance is separate.
+
 - [NATO-focused review](../SPEC.md#nato-focused-review-2026-10-29): Home → Start practice → type → Check → Next. One atomic start, server grading, honest practiced-letter count and inline per-letter review/accuracy/due evidence (NATO-06–08). `qa/nato-focus.test.mjs` verifies the atomic local Worker journey; `qa/keyed-mapping.test.mjs` verifies native and enhanced phone/desktop flows and exports screenshots.
 
 - [Sign in with the QA account](sign-in.md): S09 QA sign-in and role, enrollment, signed-out, expired, wrong identity, alternate host, Doctor.

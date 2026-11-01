@@ -1213,6 +1213,8 @@ impl View<'_> {
     fn lesson_picker(&self, open: bool) -> String {
         let current = self.app.practice.current.as_ref();
         let held = current.is_some_and(|p| p.attempt_id.is_none());
+        let current_version =
+            current.and_then(|p| self.app.library.versions.get(&p.prompt.version_id));
         let after = current.map_or(String::new(), |p| {
             hidden(
                 if p.attempt_id.is_some() {
@@ -1223,82 +1225,162 @@ impl View<'_> {
                 &p.prompt.id,
             )
         });
+        let catalog = crate::lessons::catalog();
+        let current_starter = current_version.and_then(|v| {
+            if crate::library::is_nato(v) {
+                Some("nato")
+            } else {
+                catalog.iter().find(|l| l.matches(v)).map(|l| l.id.as_str())
+            }
+        });
         let mut out = format!(
-            "<details class=\"lesson-picker\" {}><summary>Choose what to practise <span aria-hidden=\"true\">↗</span></summary><div class=\"lesson-shelf\">",
+            "<details class=\"lesson-picker\" {}><summary><span>Choose what to practise</span><span class=\"picker-toggle\" aria-hidden=\"true\"><span class=\"picker-open-label\">Browse</span><span class=\"picker-close-label\">Close</span><span class=\"picker-chevron\">⌄</span></span></summary><div class=\"lesson-shelf\">",
             if open { "open" } else { "" }
         );
-        if held {
-            out.push_str("<p class=\"lesson-note\">Browsing keeps your typed answer. Switching lessons leaves this unanswered question without recording a grade.</p>");
+        if current.is_some() {
+            let state = match current_starter {
+                Some("nato") => "NATO alphabet",
+                Some("st-michael-en") => "Saint Michael · English",
+                Some("st-michael-la-traditional") => "Saint Michael · Latin",
+                Some("st-michael-en-lasance-1911") => "Saint Michael · Historical English",
+                Some("rosary-joyful") => "Joyful mysteries",
+                Some("rosary-luminous") => "Luminous mysteries",
+                Some("rosary-sorrowful") => "Sorrowful mysteries",
+                Some("rosary-glorious") => "Glorious mysteries",
+                _ => "Current practice",
+            };
+            out.push_str(&format!("<div class=\"lesson-current\"><p><span class=\"picker-eyebrow\">Current</span><strong>{state}</strong></p>"));
+            if self.path == "/lessons" {
+                out.push_str("<a class=\"text-link\" href=\"/recall\">Back to practice <span aria-hidden=\"true\">↑</span></a>");
+            } else {
+                // The enhanced close button never navigates or replaces the draft.
+                // Without JS the native summary remains the close control.
+                out.push_str("<button type=\"button\" class=\"text-button picker-return\" data-picker-close hidden>Back to practice <span aria-hidden=\"true\">↑</span></button>");
+            }
+            out.push_str("</div>");
+            if held {
+                out.push_str(
+                    "<p class=\"lesson-switch-note\">Switching leaves this question ungraded.</p>",
+                );
+            }
         }
-        let mut catalog = crate::lessons::catalog();
-        catalog.insert(
-            0,
-            crate::lessons::Lesson {
-                id: "nato".into(),
-                description: "26 letters. Recall each official code word.".into(),
-                input: crate::library::nato_input().expect("NATO"),
-            },
-        );
-        for item in catalog {
+        out.push_str("<div class=\"lesson-groups\">");
+        let groups = [
+            (
+                "01",
+                "NATO alphabet",
+                "26 letters",
+                vec![("nato", "Practise", "")],
+            ),
+            (
+                "02",
+                "Saint Michael",
+                "Phrase by phrase",
+                vec![
+                    ("st-michael-en", "English", "8 phrases · supplied wording"),
+                    (
+                        "st-michael-la-traditional",
+                        "Latin",
+                        "Traditional · unaccented",
+                    ),
+                    (
+                        "st-michael-en-lasance-1911",
+                        "Historical English",
+                        "Lasance · 1911",
+                    ),
+                ],
+            ),
+            (
+                "03",
+                "Rosary mysteries",
+                "Five in order",
+                vec![
+                    ("rosary-joyful", "Joyful", ""),
+                    ("rosary-luminous", "Luminous", ""),
+                    ("rosary-sorrowful", "Sorrowful", ""),
+                    ("rosary-glorious", "Glorious", ""),
+                ],
+            ),
+        ];
+        for (number, title, description, options) in groups {
+            let glyph = match number {
+                "01" => {
+                    r#"<svg viewBox="0 0 80 80" aria-hidden="true"><path d="M22 60 40 18l18 42M29 44h22"/><path class="glyph-accent" d="M9 27v26m62-26v26M15 34v12m50-12v12"/></svg>"#
+                }
+                "02" => {
+                    r#"<svg viewBox="0 0 80 80" aria-hidden="true"><path d="M40 12 61 21v21c0 12-13 22-21 26-8-4-21-14-21-26V21Z"/><path class="glyph-accent" d="M40 21v36m-9-25h18m-15 6 6-6 6 6"/></svg>"#
+                }
+                _ => {
+                    r#"<svg viewBox="0 0 80 80" aria-hidden="true"><g><circle cx="40" cy="12" r="3"/><circle cx="25" cy="16" r="3"/><circle cx="16" cy="29" r="3"/><circle cx="19" cy="44" r="3"/><circle cx="31" cy="53" r="3"/><circle cx="49" cy="53" r="3"/><circle cx="61" cy="44" r="3"/><circle cx="64" cy="29" r="3"/><circle cx="55" cy="16" r="3"/></g><path class="glyph-accent" d="M40 53v19m-6-7h12"/></svg>"#
+                }
+            };
             let _ = write!(
                 out,
-                "<article class=\"lesson-option\"><div><h3>{}</h3><p>{}</p><small>{}</small></div>",
-                escape(&item.input.title),
-                escape(&item.description),
-                escape(&item.input.name)
+                "<section class=\"lesson-group\" aria-labelledby=\"lesson-group-{number}\"><header><div class=\"lesson-glyph\">{glyph}</div><h2 id=\"lesson-group-{number}\">{title}</h2><p>{description}</p></header><div class=\"lesson-choices\">"
             );
-            out.push_str(&self.form(
-                "/practice/lesson/start",
-                &format!("lesson-{}", item.id),
-                "lesson-start",
-                "",
-                &format!(
-                    "{}{}<button class=\"button secondary\">{}</button>",
-                    hidden("starter", &item.id),
-                    after,
-                    if held { "Switch lesson" } else { "Practise" }
-                ),
-            ));
-            out.push_str("</article>");
+            for (id, label, detail) in options {
+                let active = current_starter == Some(id);
+                let detail = if detail.is_empty() {
+                    String::new()
+                } else {
+                    format!("<small>{detail}</small>")
+                };
+                let copy = format!(
+                    "<span class=\"lesson-choice-copy\"><strong>{label}</strong>{detail}</span>"
+                );
+                if active {
+                    let _ = write!(
+                        out,
+                        "<div class=\"lesson-choice is-current\" data-current-lesson=\"{}\">{copy}<span class=\"lesson-choice-state\">Current</span></div>",
+                        escape(id)
+                    );
+                } else {
+                    let verb = if held { "Switch to" } else { "Practise" };
+                    out.push_str(&self.form(
+                        "/practice/lesson/start", &format!("lesson-{id}"), "lesson-start", "",
+                        &format!("{}{}<button class=\"lesson-choice\" aria-label=\"{} {}: {}\">{copy}<span class=\"lesson-choice-arrow\" aria-hidden=\"true\">→</span></button>", hidden("starter", id), after, verb, title, label),
+                    ));
+                }
+            }
+            out.push_str("</div></section>");
         }
-        // Supplied metadata can contain answers. Keep that surface behind the
-        // existing assistance fence while recall is protected.
+        out.push_str("</div>");
+        // Supplied metadata can contain answers. Never render it during
+        // protected recall, even in a closed disclosure. Match complete content,
+        // not names, so custom versions with the same title remain reachable.
         if !self.app.practice.protected() {
-            for version in self
+            let supplied = self
                 .app
                 .library
                 .versions
                 .values()
-                .filter(|v| v.kind != crate::library::Kind::KeyedMapping)
-            {
-                let work = &self.app.library.works[&version.work_id];
-                if crate::lessons::catalog()
-                    .iter()
-                    .any(|l| l.input.title == work.title && l.input.name == version.name)
-                {
-                    continue;
+                .filter(|v| {
+                    v.kind != crate::library::Kind::KeyedMapping
+                        && !catalog.iter().any(|l| l.matches(v))
+                })
+                .collect::<Vec<_>>();
+            if !supplied.is_empty() {
+                out.push_str("<section class=\"lesson-supplied\" aria-labelledby=\"lesson-supplied-title\"><h2 id=\"lesson-supplied-title\">Your other texts</h2><div class=\"lesson-supplied-list\">");
+                for version in supplied {
+                    let work = &self.app.library.works[&version.work_id];
+                    let copy = format!(
+                        "<span class=\"lesson-choice-copy\"><strong>{}</strong><small>{}</small></span>",
+                        escape(&work.title),
+                        escape(&version.name)
+                    );
+                    if current_version.is_some_and(|v| v.id == version.id) {
+                        let _ = write!(
+                            out,
+                            "<div class=\"lesson-choice is-current\">{copy}<span class=\"lesson-choice-state\">Current</span></div>"
+                        );
+                    } else {
+                        out.push_str(&self.form(
+                            "/practice/lesson/start", &format!("lesson-version-{}", version.id), "lesson-start", "",
+                            &format!("{}{}<button class=\"lesson-choice\" aria-label=\"Practise {}: {}\">{copy}<span class=\"lesson-choice-arrow\" aria-hidden=\"true\">→</span></button>", hidden("version_id", &version.id), after, escape(&work.title), escape(&version.name)),
+                        ));
+                    }
                 }
-                let _ = write!(
-                    out,
-                    "<article class=\"lesson-option\"><div><h3>{}</h3><small>{}</small></div>",
-                    escape(&work.title),
-                    escape(&version.name)
-                );
-                {
-                    out.push_str(&self.form(
-                        "/practice/lesson/start",
-                        &format!("lesson-version-{}", version.id),
-                        "lesson-start",
-                        "",
-                        &format!(
-                            "{}{}<button class=\"button secondary\">{}</button>",
-                            hidden("version_id", &version.id),
-                            after,
-                            if held { "Switch lesson" } else { "Practise" }
-                        ),
-                    ));
-                }
-                out.push_str("</article>");
+                out.push_str("</div></section>");
             }
         }
         out.push_str("</div></details>");
@@ -1340,7 +1422,7 @@ impl View<'_> {
         };
         let Some(p) = &self.app.practice.current else {
             return format!(
-                "<section class=\"nato-screen lesson-screen\"><h1>What will you remember?</h1>{}</section>",
+                "<section class=\"nato-screen lesson-screen\"><h1>Practice</h1>{}</section>",
                 self.lesson_picker(true)
             );
         };
@@ -2910,7 +2992,7 @@ pub fn render(
             view.lesson_screen()
         }
         "/lessons" => format!(
-            "<section class=\"nato-screen lesson-screen\"><h1>What will you remember?</h1>{}</section>",
+            "<section class=\"nato-screen lesson-screen\"><h1>Practice</h1>{}</section>",
             view.lesson_picker(true)
         ),
         "/" => view.nato_screen(),

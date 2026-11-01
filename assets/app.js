@@ -6,6 +6,18 @@
     if (details) details.classList.toggle('animate-open', !details.open);
   }, { passive: true });
   document.addEventListener('keydown', () => document.querySelector('#nato-progress')?.classList.remove('animate-open'));
+  const enablePickerReturn = () => document.querySelectorAll('[data-picker-close]').forEach(button => { button.hidden = false; });
+  document.addEventListener('click', event => {
+    const button = event.target.closest?.('[data-picker-close]');
+    if (!button) return;
+    const picker = button.closest('.lesson-picker');
+    if (!picker) return;
+    picker.open = false;
+    const target = document.querySelector('#answer') || document.querySelector('[data-next] button') || picker.querySelector('summary');
+    target?.focus({ preventScroll: true });
+    (document.querySelector('.lesson-stage, .nato-stage') || target)?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  });
+  enablePickerReturn();
   let pending = null;
   let pollTimer = null;
   let pollRequest = null;
@@ -69,6 +81,7 @@
       if (nextSelected && oldProgress.open) nextSelected.checked = true;
     }
     previousMain.replaceWith(main);
+    enablePickerReturn();
     if (preserveDrafts && focused?.isConnected) {
       focused.focus({ preventScroll: true });
       if (selection) focused.setSelectionRange(...selection);
