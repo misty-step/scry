@@ -14,12 +14,9 @@ export async function releaseWalk(browser, capture) {
       page.on('pageerror', e=>errors.push(e.message));
       try {
         await page.goto(runtime.url);
-        // NATO Home deliberately hides the generic footer. Reach retained release
-        // notes through the visible account menu and Settings, not a hidden click.
+        // Release notes remain one visible menu action from every screen.
         await page.locator('.account-menu>summary').click();
-        await page.locator('.account-menu').getByRole('link',{name:'Settings',exact:true}).click();
-        assert.equal(new URL(page.url()).pathname,'/settings');
-        const changelog=page.locator('footer').getByRole('link',{name:'Changelog',exact:true});
+        const changelog=page.locator('.account-menu').getByRole('link',{name:'Changelog',exact:true});
         assert.equal(await changelog.isVisible(),true);
         await capture(page,`release-${width}-${scheme}-entry.png`);
         await changelog.click();

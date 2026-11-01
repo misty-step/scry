@@ -24,8 +24,13 @@ const assertExactReadOnly = (before,after) => {
 };
 const entry = (page,id) => page.locator(`${entries}[data-attempt-id="${id}"]`);
 const activate = async (page,locator,key='Enter') => {await locator.focus(); await page.keyboard.press(key);};
+const navigate = async (page,name) => {
+  const menu=page.locator('.account-menu');
+  if(await menu.getAttribute('open')===null)await activate(page,menu.locator('summary'));
+  await activate(page,menu.getByRole('link',{name,exact:true}));
+};
 const openHistory = async page => {
-  await activate(page,page.locator('footer').getByRole('link',{name:'History',exact:true}));
+  await navigate(page,'History');
   await page.locator('[data-state="history"]').waitFor();
   assert.equal(new URL(page.url()).pathname,'/history');
 };
@@ -145,7 +150,7 @@ export async function phoneHistory({f,page,row,original,typography,record}) {
   assert.ok((await entry(page,shown.id).innerText()).includes('No answer submitted.'));
   await typography(); await record('history-disclosure');
   assert.deepEqual(await f.rows(),before,'History, reload and keyboard disclosures write no events, attempts, Corrections or schedules.');
-  await activate(page,page.locator('footer').getByRole('link',{name:'Review',exact:true}));
+  await navigate(page,'Practice');
   await page.getByText('Assistance is recorded.',{exact:true}).waitFor();
   assert.equal(await page.getByLabel('Your answer',{exact:true}).inputValue(),'');
   await activate(page,page.getByRole('button',{name:'Check my answer',exact:true}));
@@ -238,7 +243,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     const newer=(await f.cli(['next','--after',saved.prompt.id,'--card',firstCard.id])).practice.prompt;
     assert.equal(newer.assisted,false); assert.notEqual(newer.id,saved.prompt.id);
     const before=await f.rows(), privateValues=[phoneText.trim(),previousText.trim(),phoneAnswer,...Object.keys(history.attempts),...Object.keys(history.corrections)];
-    await activate(page,page.locator('footer').getByRole('link',{name:'Review',exact:true})); await page.locator('[data-state="exact-prompt"]').waitFor();
+    await navigate(page,'Practice'); await page.locator('[data-state="exact-prompt"]').waitFor();
     await page.goBack(); await assertGate(page,f,privateValues); await shot('back-gate');
     await page.goForward(); await page.locator('[data-state="exact-prompt"]').waitFor();
     assert.equal(await page.locator('[data-state="exact-prompt"]').getAttribute('data-prompt-id'),newer.id);
@@ -246,7 +251,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     await stale.reload(); await assertGate(stale,f,privateValues); await stale.close();
     // This separate tab still has the original expanded answer-bearing History
     // in its Back stack, rather than the safe gate installed by the online walk.
-    await activate(offline,offline.locator('footer').getByRole('link',{name:'Review',exact:true})); await offline.locator('[data-state="exact-prompt"]').waitFor();
+    await navigate(offline,'Practice'); await offline.locator('[data-state="exact-prompt"]').waitFor();
     await offline.waitForLoadState('load');
     let writes=0;
     const countWrite=request=>{if(request.method()==='POST')writes++;};
@@ -280,7 +285,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     assert.equal(writes,0,'Reconnecting and revalidating History send no mutation.');
     context.off('request',countWrite); await offline.close();
     assert.deepEqual(await f.rows(),before,'Protected navigation does not reveal, advance or reschedule.');
-    await activate(page,page.locator('footer').getByRole('link',{name:'Review',exact:true})); await page.locator('[data-state="exact-prompt"]').waitFor();
+    await navigate(page,'Practice'); await page.locator('[data-state="exact-prompt"]').waitFor();
     await answer(page,previousText);
     await openHistory(page); await assertHistory(page,await historyParity(f));
     row.observed={noJS,back_revalidated:true,forward_current_prompt:true,stale_tab_reload_gated:true,offline_return_private_history:false,offline_navigation:offlineNavigation,online_return_revalidated:true,offline_and_reconnect_writes:0,raw_html_safe:true,read_only_gate:true};
@@ -319,7 +324,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     await openHistory(page); await assertGate(page,f,[phoneText.trim(),previousText.trim(),...privateIds]);
     assertExactReadOnly(protectedRows,await f.rows());
     await shot('mixed-history-gate');
-    await activate(page,page.locator('footer').getByRole('link',{name:'Review',exact:true})); await page.locator('[data-state="exact-prompt"]').waitFor();
+    await navigate(page,'Practice'); await page.locator('[data-state="exact-prompt"]').waitFor();
     await answer(page,phoneAnswer); const history=await historyParity(f), original=(await f.cli(['export'])).app.events;
     assert.equal(original.length,1);
     await openHistory(page); await assertHistory(page,history);
