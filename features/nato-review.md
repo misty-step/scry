@@ -7,6 +7,10 @@ The current product rules are in [SPEC](../SPEC.md#nato-focused-review-2026-10-2
 
 - One Start practice action imports and starts the native deck atomically.
 - Type, Check, inspect feedback, and Next; no client-supplied grade.
+- Start/lesson selection and Next choose due/new letters, interleaving away from
+  the just-completed letter when another eligible letter exists. Future-due A
+  must not reappear just because the learner reselects NATO. With all letters
+  future-due, show caught-up and the next scheduled time; reads do not select.
 - Reveal records assistance separately from independent recall.
 - Per-letter count, accuracy and next-review visibility reflect stored evidence.
 

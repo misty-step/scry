@@ -1758,18 +1758,11 @@ impl View<'_> {
         );
         for letter in &progress.letters {
             let key = letter.letter;
-            let position = current.map_or_else(
-                || "A–Z practice".into(),
-                |(held, answered)| {
-                    let distance = (key as u32 + 26 - held as u32) % 26;
-                    match (distance, answered) {
-                        (0, false) => "On screen now".into(),
-                        (0, true) => "Again in 26 letters".into(),
-                        (1, _) => "Up next".into(),
-                        (n, _) => format!("In {n} letters"),
-                    }
-                },
-            );
+            let position = match current {
+                Some((held, false)) if held == key => "On screen now",
+                Some((held, true)) if held == key => "Answer saved",
+                _ => "",
+            };
             let accuracy = letter
                 .accuracy_percent()
                 .map_or_else(|| "—".into(), |value| format!("{value}%"));
@@ -1840,7 +1833,7 @@ impl View<'_> {
                 escape(&last)
             );
         }
-        out.push_str("</fieldset><div class=\"progress-legend\"><span class=\"evidence-correct\"><b aria-hidden=\"true\">✓</b>Correct</span><span class=\"evidence-miss\"><b aria-hidden=\"true\">×</b>Miss</span><span class=\"evidence-helped\"><b aria-hidden=\"true\">+</b>With help</span></div><details class=\"progress-method\"><summary>About these numbers</summary><p>Accuracy uses unaided answers, including extra practice. Reveals aren’t reviews. Due times are schedule suggestions; practice always moves A–Z.</p></details></div></details>");
+        out.push_str("</fieldset><div class=\"progress-legend\"><span class=\"evidence-correct\"><b aria-hidden=\"true\">✓</b>Correct</span><span class=\"evidence-miss\"><b aria-hidden=\"true\">×</b>Miss</span><span class=\"evidence-helped\"><b aria-hidden=\"true\">+</b>With help</span></div><details class=\"progress-method\"><summary>About these numbers</summary><p>Accuracy uses unaided answers, including extra practice. Reveals aren’t reviews. Practice selects due reviews and new letters.</p></details></div></details>");
         out
     }
     fn nato_screen(&self) -> String {
@@ -1980,17 +1973,27 @@ impl View<'_> {
                 && (self.path == "/recall"
                     || self.query.get("practice").is_some_and(|v| v == "nato"))
             {
-                let needs_allowance = self.app.practice.studies.values().any(|s| {
-                    !s.nato_all_letters
-                        && self
+                let has_eligible = self.app.practice.studies.values().any(|s| {
+                    nato_versions.contains(s.version_id.as_str())
+                        && s.status != crate::study::Status::Dropped
+                        && (self
                             .app
-                            .library
-                            .versions
-                            .get(&s.version_id)
-                            .is_some_and(crate::library::is_nato)
+                            .practice
+                            .cards
+                            .values()
+                            .any(|c| c.study_id == s.id && c.state.schedule.due_ms <= self.now)
+                            || (s.status == crate::study::Status::Active
+                                && self
+                                    .app
+                                    .practice
+                                    .cards
+                                    .values()
+                                    .filter(|c| c.study_id == s.id)
+                                    .count()
+                                    < 26))
                 });
-                if needs_allowance {
-                    out.push_str("<h1>Keep going.</h1>");
+                if has_eligible {
+                    out.push_str("<h1>Ready to review.</h1>");
                     out.push_str(&self.form(
                         "/practice/nato/start",
                         "nato-continue",
@@ -1999,7 +2002,24 @@ impl View<'_> {
                         "<button class=\"button primary\">Continue practice</button>",
                     ));
                 } else {
-                    out.push_str("<h1>All set for now.</h1><p>No reviews due.</p><a class=\"text-link\" href=\"/\">Back to start</a>");
+                    let next_due = self
+                        .app
+                        .practice
+                        .cards
+                        .values()
+                        .filter(|c| {
+                            self.app.practice.studies.get(&c.study_id).is_some_and(|s| {
+                                s.status != crate::study::Status::Dropped
+                                    && nato_versions.contains(s.version_id.as_str())
+                            }) && c.state.schedule.due_ms > self.now
+                        })
+                        .map(|c| c.state.schedule.due_ms)
+                        .min();
+                    out.push_str("<h1>All set for now.</h1>");
+                    if let Some(ms) = next_due {
+                        let _ = write!(out, "<p>Next review {}.</p>", relative(ms, self.now));
+                    }
+                    out.push_str("<a class=\"text-link\" href=\"/\">Back to start</a>");
                 }
             } else {
                 let (title, desc, action) = if has_study {

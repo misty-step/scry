@@ -1330,7 +1330,8 @@ impl DurableObject for LearningSpace {
                 let destination = fields
                     .get("return_to")
                     .filter(|to| path == "/practice/reveal" && web::library_destination(to));
-                let focused = path == "/practice/nato/start"
+                let focused = result.redirect == "/?practice=nato"
+                    || path == "/practice/nato/start"
                     || (path == "/practice/next"
                         && fields
                             .get("study_id")
