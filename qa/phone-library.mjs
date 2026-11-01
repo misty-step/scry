@@ -167,7 +167,12 @@ export async function phoneLibraryWalk(browser, capture) {
       const vid = new URL(page.url()).pathname.split('/').at(-1);
       await page.getByRole('heading',{name:title,level:1,exact:true}).waitFor();
       assert.ok((await page.locator('main').innerText()).includes(edition));
-      assert.ok((await page.locator('main').innerText()).includes(source));
+      const editionDetails=page.locator('.version-details');
+      assert.equal(await editionDetails.getAttribute('open'),null);
+      await activate(editionDetails.locator('summary'));
+      assert.ok((await editionDetails.innerText()).includes(source));
+      await activate(editionDetails.locator('summary'));
+      assert.equal(await editionDetails.getAttribute('open'),null);
       assert.ok((await page.locator('main').innerText()).includes(firstUnit));
       const original = await f.cli(['version','show',vid]);
       assert.equal(original.version.text,text);
