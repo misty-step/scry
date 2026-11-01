@@ -778,6 +778,7 @@ impl View<'_> {
             escape(&a.grade.authority.name),
             escape(&a.grade.authority.grader_version)
         );
+        out.push_str(&self.result_progress(a));
         out.push_str("<div class=\"result-actions\">");
         out.push_str(&self.form(
             "/practice/next",
@@ -1543,6 +1544,7 @@ impl View<'_> {
             if a.assisted {
                 out.push_str("<p class=\"lesson-note\">With help · schedule unchanged.</p>");
             }
+            out.push_str(&self.result_progress(a));
             if phrase && !good {
                 out.push_str(&self.form(
                     "/practice/lesson/next",
@@ -1720,6 +1722,101 @@ impl View<'_> {
             out.push_str("</ul>");
             out.push_str(&extras);
             out.push_str("</details>");
+        }
+        out.push_str("</div></section>");
+        out
+    }
+    fn result_progress(&self, a: &crate::study::Attempt) -> String {
+        use crate::result_progress::{Mark, summarize};
+        let evidence = summarize(self.app, a);
+        let scope = match a.prompt.scope {
+            crate::study::Scope::Whole
+                if self
+                    .app
+                    .library
+                    .versions
+                    .get(&a.version_id)
+                    .is_some_and(|v| v.kind == crate::library::Kind::OrderedList) =>
+            {
+                "This sequence"
+            }
+            crate::study::Scope::Whole => "Full text",
+            crate::study::Scope::Section { .. } => "This passage",
+            crate::study::Scope::Unit { .. }
+                if a.prompt.cue_level == crate::study::Cue::MappingKey =>
+            {
+                if self
+                    .app
+                    .library
+                    .versions
+                    .get(&a.version_id)
+                    .is_some_and(crate::library::is_nato)
+                {
+                    "This letter"
+                } else {
+                    "This item"
+                }
+            }
+            _ => "This phrase",
+        };
+        let recall = if evidence.unaided == 0 {
+            "With help".to_string()
+        } else {
+            format!("{} / {}", evidence.correct, evidence.unaided)
+        };
+        let recall_label = if evidence.unaided == 0 {
+            "Unaided recall not tested"
+        } else {
+            "Unaided correct"
+        };
+        let multi = a.effects.len() > 1;
+        let (due, exact) = if !evidence.active {
+            ("Not active".to_string(), "Study dropped".to_string())
+        } else if let Some(ms) = evidence.next_due_ms {
+            (
+                if ms <= self.now {
+                    "Now".to_string()
+                } else {
+                    relative(ms, self.now)
+                },
+                date(ms),
+            )
+        } else {
+            (
+                "Not scheduled".to_string(),
+                "First unaided review needed".to_string(),
+            )
+        };
+        let due_label = if multi {
+            "Next part review"
+        } else {
+            "Next review"
+        };
+        let mut out = format!(
+            "<section class=\"result-progress\" aria-label=\"{} recall and review\" data-result-progress><div><span class=\"result-progress-label\">{scope}</span><strong data-result-metric=\"recall\">{recall}</strong><span class=\"result-progress-label\">{recall_label}</span><ol class=\"result-marks\" aria-label=\"Recent answers, oldest first\">",
+            scope
+        );
+        for mark in evidence.recent {
+            let (tone, glyph, label) = match mark {
+                Mark::Correct => ("correct", "✓", "Correct without help"),
+                Mark::Miss => ("miss", "×", "Miss without help"),
+                Mark::Helped => ("helped", "+", "With help"),
+            };
+            let _ = write!(
+                out,
+                "<li class=\"evidence-{tone}\"><span aria-hidden=\"true\">{glyph}</span><span class=\"visually-hidden\">{label}</span></li>"
+            );
+        }
+        let _ = write!(
+            out,
+            "</ol></div><div><span class=\"result-progress-label\">{due_label}</span><strong data-result-metric=\"due\">{}</strong><span class=\"result-progress-date\">{}</span>",
+            escape(&due),
+            escape(&exact)
+        );
+        if multi && evidence.unscheduled_parts > 0 && evidence.next_due_ms.is_some() {
+            out.push_str(
+                "<span class=\"result-progress-label\">Some parts not scheduled yet</span>",
+            );
         }
         out.push_str("</div></section>");
         out
@@ -1916,6 +2013,7 @@ impl View<'_> {
                 if a.assisted {
                     out.push_str("<p class=\"nato-note\">Assisted. Schedule unchanged.</p>");
                 }
+                out.push_str(&self.result_progress(a));
                 out.push_str(&self.form(
                     "/practice/next",
                     "nato-next",
@@ -3415,11 +3513,23 @@ fn relative(ms: i64, now: i64) -> String {
     if diff < 60_000 {
         "in a moment".into()
     } else if diff < 3_600_000 {
-        format!("in {} minutes", (diff / 60_000).max(1))
+        format!(
+            "in {} minute{}",
+            diff / 60_000,
+            if diff / 60_000 == 1 { "" } else { "s" }
+        )
     } else if diff < DAY_MS {
-        format!("in {} hours", (diff / 3_600_000).max(1))
+        format!(
+            "in {} hour{}",
+            diff / 3_600_000,
+            if diff / 3_600_000 == 1 { "" } else { "s" }
+        )
     } else {
-        format!("in {} days", (diff / DAY_MS).max(1))
+        format!(
+            "in {} day{}",
+            diff / DAY_MS,
+            if diff / DAY_MS == 1 { "" } else { "s" }
+        )
     }
 }
 
