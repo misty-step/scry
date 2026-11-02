@@ -131,7 +131,7 @@ try{
  // its receipt. This reports the existing gate; it does not change acceptance.
  for(const check of ['concept_home','mixed_notebook','browser_recovery','create_journey','release_journey']){
   const value=receipt[check];
-  for(const row of (Array.isArray(value)?value:value?[value]:[]))if(row.status!=='pass')console.error('Ancillary browser failure: '+JSON.stringify({check,name:row.name,feature:row.feature,width:row.width,noJS:row.noJS,status:row.status,reason:row.reason||row.error}));
+  for(const row of (Array.isArray(value)?value:value?[value]:[]))if(row.status!=='pass')console.error('Ancillary browser failure: '+JSON.stringify({check,name:row.name,feature:row.feature,width:row.width,noJS:row.noJS,stage:row.stage,status:row.status,reason:row.reason||row.error,stack:row.stack}));
  }
  receipt.exit=receipt.stories.every(s=>s.status==='pass')&&(!browser||receipt.concept_home.every(s=>s.status==='pass')&&receipt.mixed_notebook.every(s=>s.status==='pass')&&receipt.browser_recovery.every(s=>s.status==='pass')&&receipt.create_journey.status==='pass'&&receipt.release_journey.every(s=>s.status==='pass'))?0:1;
 }catch(error){receipt.infrastructure_error=error.message;console.error(error);}
