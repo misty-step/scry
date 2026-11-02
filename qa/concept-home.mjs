@@ -56,7 +56,7 @@ export async function conceptHomeWalk(browser,capture){
    assert.equal(await menu.getAttribute('open'),null,'Native menu closes');
   };
   try{
-   await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'Review',exact:true}).waitFor();
+   await page.goto(url+'/');await home().waitFor();await page.getByRole('button',{name:'Study',exact:true}).waitFor();assert.equal(await page.locator('.lesson-picker').getAttribute('open'),null);assert.equal(await home().getByRole('heading').count(),1);
    assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Practice','Lessons','Library','History','Settings','Earlier practice','Changelog']);
       assert.equal(await page.locator('footer').count(),0);
    const empty=await state();assert.equal(empty.occurrence,null);assert.equal(empty.practice?.current??null,null);

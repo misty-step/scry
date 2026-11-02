@@ -2079,59 +2079,32 @@ impl View<'_> {
         out
     }
     fn mixed_home(&self) -> String {
-        let due = crate::study::mixed_cards(self.app, self.now);
+        let preview = crate::study::continuous_preview(self.app, self.now);
         let mut out = String::from(
-            "<section class=\"nato-screen\" data-state=\"mixed-home\"><header class=\"practice-heading\"><h1>Review</h1><span>All subjects</span></header>",
+            "<section class=\"nato-screen study-home\" data-state=\"mixed-home\"><div class=\"study-entry\">",
         );
-        if due.is_empty() {
-            out.push_str("<h2>No reviews due</h2>");
-            let ids = self
-                .app
-                .practice
-                .attempts
-                .values()
-                .filter(|a| !a.disclosure)
-                .flat_map(|a| a.effects.iter().map(|e| e.card_id.as_str()))
-                .collect::<std::collections::BTreeSet<_>>();
-            if let Some(next) = self
-                .app
-                .practice
-                .cards
-                .values()
-                .filter(|c| {
-                    self.app.practice.studies[&c.study_id].status != crate::study::Status::Dropped
-                        && ids.contains(c.id.as_str())
-                        && c.state.schedule.last_review_ms.is_some()
-                })
-                .map(|c| c.state.schedule.due_ms)
-                .min()
-            {
-                let _ = write!(
-                    out,
-                    "<p class=\"fineprint\">Next review {}</p>",
-                    relative(next, self.now)
-                );
-            }
-        } else {
-            let subjects = due
-                .iter()
-                .map(|c| c.study_id.as_str())
-                .collect::<std::collections::BTreeSet<_>>()
-                .len();
+        if let Some(subject) = preview {
             let _ = write!(
                 out,
-                "<p>{subjects} {} ready</p>",
-                if subjects == 1 { "subject" } else { "subjects" }
+                "<p class=\"study-context\">All subjects</p><h1>{}</h1>",
+                escape(&subject)
             );
             out.push_str(&self.form(
                 "/practice/review/start",
                 "mixed-start",
                 "",
                 "",
-                "<button class=\"button primary\">Review now</button>",
+                "<button class=\"button primary\"><span>Study</span><span aria-hidden=\"true\">→</span></button>",
             ));
+        } else {
+            out.push_str("<p class=\"study-context\">All subjects</p><h1>Rest for now</h1>");
         }
-        out.push_str(&self.lesson_picker(true));
+        out.push_str("</div>");
+        out.push_str(&self.lesson_picker(false).replacen(
+            "<summary><span>Lessons</span>",
+            "<summary><span>Browse</span>",
+            1,
+        ));
         out.push_str("</section>");
         out
     }

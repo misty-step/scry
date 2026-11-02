@@ -11,8 +11,8 @@ memory practice, not medical advice, hands-on training, or certification.
 - Safety constraints remain in the visible question, not only hidden notes.
 - Native strict grading accepts normalized case/punctuation, not unsafe extra
   clauses, negation, or guessed fuzzy synonyms. No self-rating.
-- Focused Next stays in the chosen collection; only scheduled, due work joins
-  default mixed review. Browsing never imports or enrolls content.
+- Focused Next stays in the chosen collection. Default Study serves due work first,
+  then introduces paced unseen collections. Browsing never imports or enrolls content.
 - Source notes are available in Library after answering or recording help;
   help does not count as unaided knowledge or reschedule the card.
 

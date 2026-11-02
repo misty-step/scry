@@ -11,7 +11,7 @@ fn review_home_is_clear_and_does_not_masquerade_as_an_empty_text_library() {
     let app = App::new("synthetic-concept-home-csrf-value".into());
     let home = render(&app, "/");
     assert!(home.contains("data-state=\"mixed-home\""));
-    assert!(home.contains("<h1>Review</h1>"));
+    assert!(home.contains("action=\"/practice/review/start\""));
     assert!(home.contains("action=\"/practice/lesson/start\""));
     assert!(home.contains("href=\"/library\">Library</a>"));
     assert!(!home.contains("Find a text") && !home.contains("library-query"));
@@ -114,7 +114,7 @@ fn archived_goal_concepts_leave_active_navigation_but_keep_their_reference() {
     );
     let before = app.clone();
     let home = render(&app, "/");
-    assert!(home.contains("No reviews due"));
+    assert!(home.contains("action=\"/practice/review/start\""));
     assert!(home.contains("Lessons"));
     for c in app.concepts.values() {
         assert!(!home.contains(&format!("href=\"/concepts/{}\"", c.id)));

@@ -1,4 +1,5 @@
-import {mixedReviewJourney} from './mixed-review.mjs';
+import {continuousLibraryJourney} from './continuous-library.mjs';
+import {mixedReviewJourney,continuousStudyJourney} from './mixed-review.mjs';
 import test from 'node:test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -15,3 +16,7 @@ await test('NATO scheduled selection skips future cards and stays caught up',asy
 await test('Rich progress fixture deliberately requests extra practice after scheduler exhaustion',async()=>{const f=await starterFixture();try{await seedProgressFixture(f);}finally{await f.close();}});
 
 await test('Default review fairly weaves practiced due subjects and advances same-day due work',async()=>{await writeFile(join(output,'mixed-review-runtime.json'),JSON.stringify(await mixedReviewJourney(),null,2)+'\n');});
+
+await test('Default Study continues all canonical subjects through graded learning and paced completion',async()=>{await writeFile(join(output,'continuous-study-runtime.json'),JSON.stringify(await continuousStudyJourney(),null,2)+'\n');});
+
+await test('Default Study admits external Library once and preserves paused and dropped subjects',async()=>{await writeFile(join(output,'continuous-library-runtime.json'),JSON.stringify(await continuousLibraryJourney(),null,2)+'\n');});

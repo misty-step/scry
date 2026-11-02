@@ -180,10 +180,41 @@ canvas holds the current question or graded result across refresh and return.
   network results never fabricate a grade. Test real local Worker/SQLite flows,
   keyboard-only, no-JS, reduced motion, long input and failure states.
 
+### Continuous study (2026-11-02, later owner direction)
+
+This supersedes the earlier due-only default below. Zero scheduled reviews is
+not completion while eligible unseen or unfinished material exists.
+
+- **STUDY-01:** Home offers one Study action and a closed secondary Browse. Study/Next
+  serves genuinely due practiced material first, then rotates unfinished learning
+  and unseen subjects by least recent completed service. The same read-only plan
+  powers availability. Home and an empty mixed `/recall` GET never enroll or introduce.
+- **STUDY-02:** Available material includes agent-authored local Library Works and
+  the curated starter shelf. Admission creates only the selected Study and needed
+  target, not the whole catalog. Active text advances its earliest unfinished
+  phrase through honest guided cues; new ordered lists remain indivisible sequences.
+  Mapping introductions obey the Study's rolling 24-hour Pace (not focused NATO's
+  all-letters override). Other eligible subjects remain available at one subject's limit.
+- **STUDY-03:** A selected edition is retained. Unstarted local Works select one
+  unsuperseded eligible Version (stable name/ID tie-break), never all historical
+  editions. The starter shelf defaults to supplied English Saint Michael; historical
+  English/Latin remain explicit alternatives, and an explicitly selected alternative
+  suppresses automatic default enrollment. Paused Studies receive no new work but
+  retain due reviews; dropped Studies receive neither. Alternate editions cannot
+  bypass a paused/dropped Work. No existing evidence or content is reset.
+- **STUDY-04:** Held drafts/questions/results survive reload and navigation. Only
+  explicit fenced Study/Next advances; operation replay reproduces one committed
+  selection without duplicate enrollment or cards. Native grading, assisted learning,
+  source privacy and safety-bearing baby-care cues remain unchanged.
+- **STUDY-05:** When no eligible work remains, show Rest for now and Browse, not
+  invented completion or a misleading future-review countdown. Material beyond
+  native grading capacity remains in Library rather than poisoning continuous entry.
+  Focused practice and explicit edition choices remain available.
+
 ### Mixed due review (2026-11-02)
 
 - Default review interleaves due, previously practiced content across enrolled, non-dropped Studies. Least-recently-served Study wins; due time and stable identity break ties. One overdue subject cannot monopolize the session.
-- Unstarted catalog lessons, unseen Units, and guided-only learning with no scheduled recall are not silently enrolled or introduced into review. Explicit focused lesson learning remains available when caught up. Paused Studies retain their existing due-review eligibility.
+- Earlier due-only admission is superseded by Continuous study above. Due-review eligibility remains distinct from unfinished/new learning; no learning introduction is relabeled as review evidence. Paused Studies retain their existing due-review eligibility.
 - New due-policy Attempts carry an explicit algorithm-policy identifier; new-semantic archives use `scry-rust-durable-sqlite-study-scheduled-v2`. Legacy history keeps its original bytes and remains readable by this build. Older binaries must refuse new semantics rather than strip metadata; rollback after new review writes requires a compatible build, not a transparent downgrade.
 - Held questions/results survive navigation and choosing all subjects. Only explicit fenced Next or lesson switching changes the current activity; no selection fabricates a grade.
 - Ordered-list lessons remain whole-sequence activities. Only genuinely due components change schedule; future components remain optional early practice. Mode and native feedback stay visible without inventing mastery.

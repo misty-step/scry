@@ -69,7 +69,7 @@ Choose the affected user journey. The first command is a small real-Worker proof
 the others cover different boundaries, not interchangeable substitutes.
 
 ```sh
-# Native NATO start, protected recall, duplicate safety and honest progress.
+# Continuous Study across due/unseen subjects, read-only home, native NATO, replay.
 node --test qa/nato-focus.test.mjs
 
 # NATO + practice chooser + Rosary + prayer; real native/enhanced phone/desktop UI.
@@ -88,6 +88,12 @@ The browser suite calls `lessonWalk` in `qa/lessons.mjs`. Its stable handles inc
 return without losing a draft, current-session identity, version selection,
 same-phrase retry, native forms, keyboard, and offline/uncertain-switch recovery.
 Read the corresponding feature guide before changing that flow.
+
+Default Study also runs `continuousStudyJourney` and `continuousLibraryJourney`: due-first
+selection, all nine canonical subjects, custom/current Library versions, explicit pause/drop,
+held results, 24-hour pacing, and read-only GET. Inspect `continuous-study-runtime.json`
+and `continuous-library-runtime.json`; the phone/desktop continuous-study walk must
+show one primary Study action, closed Browse, and no false no-reviews dead end.
 
 For retained exact-text, Library or historical compatibility changes, use the
 existing guide and `qa/walk --stories "US-016 US-017"` (or the appropriate SPEC IDs).
