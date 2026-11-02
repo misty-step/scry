@@ -18,6 +18,10 @@ fn act(a: &mut App, path: &str, extra: &[(&str, &str)]) {
     engine::mutate(a, path, &f, NOW, &seed).unwrap();
 }
 fn answer(a: &mut App, text: &str) {
+    if a.practice.current.as_ref().unwrap().source_visible() {
+        let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
+        act(a, "/practice/quiz", &[("prompt_id", &id)]);
+    }
     let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
     act(
         a,
@@ -96,7 +100,8 @@ fn phrase_join_and_whole_are_distinct_evidence() {
     let v = a.library.versions[&a.practice.current.as_ref().unwrap().prompt.version_id].clone();
     answer(&mut a, &v.sections[0].units[0].text);
     assert!(page(&a).contains("This phrase"));
-    assert!(page(&a).contains("Unaided recall not tested"));
+    assert_eq!(result_progress::summarize(&a, attempt(&a)).unaided, 1);
+    assert!(!page(&a).contains("Unaided recall not tested"));
     let after = a.practice.current.as_ref().unwrap().prompt.id.clone();
     act(
         &mut a,

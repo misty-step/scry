@@ -96,8 +96,15 @@ fn reveal_and_helped_answer_are_not_an_unaided_failure() {
     assert!(page(&app).contains("0 reviews"));
     act(
         &mut app,
+        "/practice/quiz",
+        &[("prompt_id", p.id.clone())],
+        "quiz",
+    );
+    let quiz_id = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    act(
+        &mut app,
         "/practice/answer",
-        &[("prompt_id", p.id), ("answer", "Alfa".into())],
+        &[("prompt_id", quiz_id), ("answer", "Alfa".into())],
         "answer",
     );
     let html = page(&app);

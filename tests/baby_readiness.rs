@@ -158,10 +158,14 @@ fn starter_switch_and_reveal_preserve_history_and_help_does_not_schedule() {
     .1
     .to_string();
     mutate(&mut a, "/practice/reveal", &[("prompt_id", &p.prompt.id)]);
+    let attempts = a.practice.attempts.clone();
+    mutate(&mut a, "/practice/quiz", &[("prompt_id", &p.prompt.id)]);
+    assert_eq!(a.practice.attempts, attempts);
+    let quiz_id = a.practice.current.as_ref().unwrap().prompt.id.clone();
     mutate(
         &mut a,
         "/practice/answer",
-        &[("prompt_id", &p.prompt.id), ("answer", &expected)],
+        &[("prompt_id", &quiz_id), ("answer", &expected)],
     );
     assert_eq!(
         a.practice.cards[&p.targets[0].card_id].state.schedule,
@@ -180,7 +184,7 @@ fn starter_switch_and_reveal_preserve_history_and_help_does_not_schedule() {
     mutate(
         &mut a,
         "/practice/lesson/start",
-        &[("starter", "baby-montessori"), ("after", &p.prompt.id)],
+        &[("starter", "baby-montessori"), ("after", &quiz_id)],
     );
     assert_eq!(a.practice.attempts[&attempt.id], attempt);
     assert_ne!(

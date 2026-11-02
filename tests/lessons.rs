@@ -27,6 +27,10 @@ fn mutate(a: &mut App, path: &str, extra: &[(&str, &str)]) -> MutationResult {
     result
 }
 fn answer(a: &mut App, text: &str) {
+    if a.practice.current.as_ref().unwrap().source_visible() {
+        let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
+        mutate(a, "/practice/quiz", &[("prompt_id", &id)]);
+    }
     let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
     mutate(
         a,
@@ -75,7 +79,7 @@ fn starter_is_idempotent_and_recovery_preserves_all_evidence() {
     );
 }
 #[test]
-fn phrase_practice_is_assisted_and_whole_challenge_is_separate() {
+fn source_study_is_ungraded_and_memory_phrase_and_whole_challenges_are_separate() {
     let mut a = app();
     mutate(
         &mut a,
@@ -98,12 +102,22 @@ fn phrase_practice_is_assisted_and_whole_challenge_is_separate() {
         .iter()
         .map(|(id, c)| (id.clone(), c.state.schedule.clone()))
         .collect::<BTreeMap<_, _>>();
+    assert_eq!(p.phase, Some(study::StudyPhase::Study));
+    assert!(a.practice.attempts.is_empty());
+    let source_id = p.prompt.id.clone();
+    mutate(&mut a, "/practice/quiz", &[("prompt_id", &source_id)]);
+    assert!(a.practice.attempts.is_empty());
+    for (id, schedule) in &schedules {
+        assert_eq!(&a.practice.cards[id].state.schedule, schedule);
+    }
     answer(&mut a, &text);
     let attempt = a.practice.attempts.values().next().unwrap();
-    assert!(attempt.assisted);
-    assert!(attempt.effects.iter().all(|e| !e.scheduled));
+    assert!(!attempt.assisted);
+    assert!(attempt.effects.iter().all(|e| e.scheduled));
     for (id, schedule) in schedules {
-        assert_eq!(a.practice.cards[&id].state.schedule, schedule);
+        if id != p.targets[0].card_id {
+            assert_eq!(a.practice.cards[&id].state.schedule, schedule);
+        }
     }
     next(&mut a, "join");
     assert!(matches!(
@@ -283,8 +297,8 @@ fn externally_authored_text_uses_same_lesson_without_changing_pace_or_version() 
     }
     assert_eq!(
         a.practice.current.as_ref().unwrap().prompt.cue_level,
-        study::Cue::FirstLetters,
-        "Two successful rounds fade phrase cues, not global mastery."
+        study::Cue::WholeTitle,
+        "Subsequent memory quizzes hide source even when historical card cue state is Read."
     );
     answer(&mut a, &original.sections[0].units[0].text);
     next(&mut a, "whole");
@@ -383,7 +397,8 @@ fn mistaken_continuation_gets_clear_feedback_and_a_fenced_guided_retry() {
     mutate(&mut a, "/practice/lesson/start", &[("version_id", &vid)]);
     let first = a.practice.current.as_ref().unwrap().clone();
     let prompt = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
-    assert!(prompt.contains("Copy the phrase shown below"));
+    assert!(prompt.contains("Try from memory"));
+    assert!(!prompt.contains("action=\"/practice/answer\""));
     assert!(prompt.contains("Phrase 1 / 2"));
     assert!(prompt.contains("Synthetic English"));
     answer(&mut a, "Second little phrase.");
@@ -402,7 +417,8 @@ fn mistaken_continuation_gets_clear_feedback_and_a_fenced_guided_retry() {
     assert!(!target.contains("Second little phrase."));
     assert!(result.contains("Try this phrase again"));
     assert!(result.contains("Continue to next phrase"));
-    let retry = fields(&a, &[("after", &first.prompt.id), ("mode", "retry")]);
+    let answered_id = a.practice.current.as_ref().unwrap().prompt.id.clone();
+    let retry = fields(&a, &[("after", &answered_id), ("mode", "retry")]);
     let r = engine::mutate(&mut a, "/practice/lesson/next", &retry, NOW, "retry-one").unwrap();
     engine::validate_app(&a).unwrap();
     let saved = a.clone();
@@ -463,13 +479,11 @@ fn supplied_english_is_distinct_and_does_not_rewrite_the_historical_lesson() {
     let old_version = a.library.versions[&historical.prompt.version_id].clone();
     answer(&mut a, &old_version.sections[0].units[0].text);
     let old_attempts = a.practice.attempts.clone();
+    let answered_id = a.practice.current.as_ref().unwrap().prompt.id.clone();
     mutate(
         &mut a,
         "/practice/lesson/start",
-        &[
-            ("starter", "st-michael-en"),
-            ("after", &historical.prompt.id),
-        ],
+        &[("starter", "st-michael-en"), ("after", &answered_id)],
     );
     let p = a.practice.current.as_ref().unwrap();
     let new_version = &a.library.versions[&p.prompt.version_id];
@@ -639,8 +653,10 @@ fn simplified_practice_has_one_identity_and_secondary_tools_without_losing_actio
     assert_eq!(page.matches("Phrase 1 / 8").count(), 1);
     assert_eq!(page.matches("<h1>").count(), 1);
     assert!(page.contains("class=\"practice-tools\""));
-    assert!(page.contains("Copy the phrase shown below"));
-    assert!(page.contains("Guided · with help"));
+    assert!(page.contains("Try from memory"));
+    assert!(page.contains("data-study-phase=\"study\""));
+    assert!(!page.contains("action=\"/practice/answer\""));
+    assert!(!page.contains("Copy the phrase"));
     assert!(!page.contains("Text practice</span>"));
     assert!(!page.contains("<footer"));
     assert_eq!(a, before);

@@ -44,8 +44,8 @@ is the work entrypoint. Dated receipts and proposals are not competing requireme
 The owner requests fewer components, less text, noise and friction throughout
 Scry. This refines presentation without changing stored learning or authoring.
 
-- **SIMPLE-01:** Practice shows one subject/scope, a clear copy-or-recall task,
-  one answer field and one primary next action. Assistance remains truthful;
+- **SIMPLE-01:** Practice shows one subject/scope, a clear source-study or memory-quiz task,
+  no input while studying and one answer field while quizzed and one primary next action. Assistance remains truthful;
   repeated labels, decorative panels and saved-answer reassurances are removed.
 - **SIMPLE-02:** Lessons, Progress and optional details remain reachable through
   compact native disclosures. Browsing, dismissal, previous-phrase inspection
@@ -107,10 +107,10 @@ phone Recite/Whole/Section chooser work: that earlier disposition is unchanged.
   item identities, reports missing, repeated and misplaced identities, and does
   not cascade an omission across the remaining correctly ordered items. A
   duplicate or transposition cannot earn a correct whole-sequence result.
-- **LESSON-03:** Prayer learning uses authored meaning-based clauses, existing
-  fading cue levels, intermediate joined passages (authored Sections), optional
-  midpoint starts, and a separate cold whole-text challenge. Cued/revealed typing
-  remains assisted evidence. Phrase success never becomes whole-prayer credit.
+- **LESSON-03:** Prayer learning uses authored meaning-based clauses, source study
+  followed by explicit memory quizzes, intermediate joined passages (authored
+  Sections), optional midpoint starts, and a separate whole-text challenge.
+  Retained cued attempts remain assisted historical evidence. Phrase success never becomes whole-prayer credit.
   A mismatched phrase shows the expected phrase immediately and offers a guided
   retry of that same phrase; continuing remains an explicit secondary choice.
   Successful phrases offer Next. Retry records no new Attempt until submission,
@@ -192,7 +192,7 @@ not completion while eligible unseen or unfinished material exists.
 - **STUDY-02:** Available material includes agent-authored local Library Works and
   the curated starter shelf. Admission creates only the selected Study and needed
   target, not the whole catalog. Active text advances its earliest unfinished
-  phrase through honest guided cues; new ordered lists remain indivisible sequences.
+  phrase through source study and memory quizzes; new ordered lists remain indivisible sequences.
   Mapping introductions obey the Study's rolling 24-hour Pace (not focused NATO's
   all-letters override). Other eligible subjects remain available at one subject's limit.
 - **STUDY-03:** A selected edition is retained. Unstarted local Works select one
@@ -210,6 +210,30 @@ not completion while eligible unseen or unfinished material exists.
   invented completion or a misleading future-review countdown. Material beyond
   native grading capacity remains in Library rather than poisoning continuous entry.
   Focused practice and explicit edition choices remain available.
+
+### Study source or quiz from memory (2026-11-02, latest owner direction)
+
+This supersedes app copy-to-grade and fading-copy flows, not immutable history.
+
+- **MEMORY-01:** Study displays source material without an answer field or grading
+  controls. Try from memory explicitly replaces that held source with a new,
+  same-scope hidden-source quiz. Studying and transitioning create no Attempt,
+  success, review count or schedule credit. New app source phases reject answer
+  submissions server-side, including API submissions.
+- **MEMORY-02:** Review is a genuine hidden-source native quiz. A later due review
+  cannot expose source because a retained Card has an old Read cue. Initial source
+  study does not permanently taint later recall; revealing during a quiz does mark
+  its retry assisted. Hidden assisted retry remains protected from source/reference
+  leakage and cannot earn unaided credit or extend scheduling.
+- **MEMORY-03:** Quiz transitions fence the held prompt, are replayable, reject
+  client grades and stale answers, and preserve historical Attempts, target scope
+  and card projections. Generic legacy API presentations without a phase remain
+  compatible; web renders their visible source as study, not a copy form. API,
+  CLI and MCP expose the explicit quiz transition.
+- **MEMORY-04:** New phase/transition archives use
+  `scry-rust-durable-sqlite-study-phase-v3`; old binaries must refuse rather than
+  strip the phase. Old archive/Attempt bytes retain their original meaning.
+  Mapping source study preserves its authored question and safety-bearing cues.
 
 ### Mixed due review (2026-11-02)
 

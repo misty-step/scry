@@ -1,3 +1,4 @@
+import {enterMemory,enterMemoryPage} from './study-review.mjs';
 // Explicit, supplied starter through the same real native Library/Study forms.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -39,7 +40,7 @@ export async function starterJourney(){
   const detail=await f.get(path);assert.match(detail,/<dt>A<\/dt><dd>Alfa<\/dd>/);assert.equal([...detail.matchAll(/<dt>([A-Z])<\/dt><dd>/g)].map(match=>match[1]).join(''),'ABCDEFGHIJKLMNOPQRSTUVWXYZ');const afterAdd=await f.rows();
   assert.equal((await f.post('/library/mapping/add',add)).headers.get('location'),path);
   assert.deepEqual(Object.fromEntries(Object.entries(await f.rows()).filter(([key])=>key!=='meta')),Object.fromEntries(Object.entries(afterAdd).filter(([key])=>key!=='meta')));
-  const learn=await f.post('/practice/learn',nativeFields(detail,'/practice/learn'));assert.equal(learn.status,303);assert.equal(learn.headers.get('location'),'/recall');
+  const learn=await f.post('/practice/study/start',nativeFields(detail,'/practice/study/start'));assert.equal(learn.status,303);assert.equal(learn.headers.get('location'),'/recall');
   const prompt=await f.get('/recall');assert.match(prompt,/data-state="exact-prompt"/);assert.doesNotMatch(prompt,/Alfa|Bravo/);
   const answer=nativeFields(prompt,'/practice/answer');assert.equal((await f.post('/practice/answer',{...answer,answer:'Alfa'})).status,303);
   const result=await f.get('/recall');assert.match(result,/data-verdict="Good"/);assert.match(result,/Alfa/);assert.doesNotMatch(result,/I was right|Count as a miss/);
@@ -76,7 +77,7 @@ export async function focusedJourney(){
   const next=await f.get('/?practice=nato');assert.match(next,/aria-label="Letter B"/);assert.doesNotMatch(next,/Alfa|Bravo|Alphabet reference/);
   assert.equal((await f.post('/practice/reveal',nativeFields(next,'/practice/reveal'))).status,303);
   const disclosed=await f.get('/?practice=nato');assert.match(disclosed,/Bravo/);assert.match(disclosed,/1<span class="nato-muted"> \/ 26 practiced/);
-  assert.equal((await f.post('/practice/answer',{...nativeFields(disclosed,'/practice/answer'),answer:'Bravo'})).status,303);
+  assert.equal((await f.post('/practice/answer',{...nativeFields(await enterMemory(f,'/?practice=nato'),'/practice/answer'),answer:'Bravo'})).status,303);
   const assisted=await f.get('/?practice=nato');assert.match(assisted,/With help/);assert.match(assisted,/1<span class="nato-muted"> \/ 26 practiced/);
   assert.equal((await f.post('/practice/next',nativeFields(assisted,'/practice/next'))).status,303);
   const afterHelp=await f.get('/?practice=nato');assert.match(afterHelp,/aria-label="Letter A"/);assert.doesNotMatch(afterHelp,/Alfa|Bravo/);
@@ -148,7 +149,7 @@ export async function starterWalk(browser,capture){
     await page.unroute('**/practice/answer');await activate(page.getByRole('button',{name:'Reconcile this attempt',exact:true}));
     await page.locator('[data-verdict="Good"]').waitFor();assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attemptsBefore+1);row.response_loss_reconciles_once=true;
     await page.keyboard.press('Enter');await input.waitFor();const fifthLetter=await eligibleLetter(f);const fifthWord=natoWords[fifthLetter];assert.ok(fifthWord);
-    await activate(page.getByRole('button',{name:'Show answer',exact:true}));await page.getByText(fifthWord,{exact:true}).waitFor();
+    await activate(page.getByRole('button',{name:'Show answer',exact:true}));await page.getByText(fifthWord,{exact:true}).waitFor();await enterMemoryPage(page);
     await input.fill(fifthWord);await page.keyboard.press('Enter');await page.locator('.nato-feedback').getByText('With help',{exact:true}).waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);
     await page.keyboard.press('Enter');await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),await eligibleLetter(f));assert.notEqual(await page.locator('.nato-letter').innerText(),fifthLetter,'Interleave another eligible letter');await shot('after-assisted-next');
    }else{await input.fill('Bravo');await activate(page.getByRole('button',{name:/^Check/}));await page.locator('[data-verdict="Good"]').waitFor();await shot('good');}
@@ -199,7 +200,7 @@ export async function seedProgressFixture(f){
    await explicit(0);html=await f.get('/');
    assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer:'incorrect'})).status,303);
    await explicit(4);html=await f.get('/');
-   await f.post('/practice/reveal',nativeFields(html,'/practice/reveal'));html=await f.get('/');
+   await f.post('/practice/reveal',nativeFields(html,'/practice/reveal'));html=await enterMemory(f);
    assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer:'Echo'})).status,303);
    await explicit(1);
    const rows=await f.rows();

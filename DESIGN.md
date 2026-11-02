@@ -342,9 +342,10 @@ action bar.
 ## Authored lessons: prayer and sequence
 
 Retain the NATO instrument frame, restrained serif title and warm ruled sheet.
-One typed answer and one primary next action stay central. Previous phrase is
-quiet context, not a second card. Guided wording says what is visible; cold whole
-recall never looks like a listening or speech task. Changed words and per-item
+Study shows the source and one Try from memory action, without a typing field.
+Review hides source and shows one answer field and Check. Revealing returns to
+source study; retry is hidden but honestly assisted. Do not turn reading into a
+copying chore. Whole recall never looks like a listening or speech task. Changed words and per-item
 order feedback lead results; raw comparison, progress, sources and alternate
 challenges live in native disclosures. No mastery ring is inferred from practice.
 

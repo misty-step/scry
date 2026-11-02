@@ -77,7 +77,7 @@ export async function studyJourney({seedHistorical=true}={}){
    const a=value.practice?.attempt,c=value.practice?.correction;
    const output=a?{attempt:{id:a.id,prompt:a.prompt,raw_answer:a.raw_answer,grade:a.grade,acting_token:a.acting_token,assisted:a.assisted,effects:a.effects.map(e=>({unit_id:e.unit_id,cue_level:e.cue_level,verdict:e.verdict,assisted:e.assisted,extra_practice:e.extra_practice,scheduled:e.scheduled,before_due:e.before.schedule.due_ms,after_due:e.after.schedule.due_ms,after_cue:e.after.cue}))}}:c?{correction:c}:args[0]==='export'?{sha256:hash(out),format:value.format,studies:Object.keys(value.app?.practice?.studies||{}).length,attempts:Object.keys(value.app?.practice?.attempts||{}).length}:args[0]==='history'?{sha256:hash(out),studies:Object.keys(value.studies||{}).length,attempts:Object.keys(value.attempts||{}).length}:value;
    transcript.push({command,exit:code,output});done({code,value});
-  }catch(e){reject(e);}});p.stdin.end(input);
+  }catch(e){reject(e);}});p.stdin.on('error',error=>{if(error.code!=='EPIPE')reject(error);});p.stdin.end(input);
  });
  const ok=async(args,input='')=>{const {code,value}=await cli(args,input);assert.equal(code,0,JSON.stringify(value));return value;};
  const file=async(name,data)=>{const path=join(temp,name);await writeFile(path,data);return path;};

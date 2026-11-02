@@ -39,6 +39,9 @@ impl Owner {
         self.app.practice.current.as_ref().unwrap().prompt.clone()
     }
     fn answer(&mut self, answer: &str, now: i64) {
+        if self.app.practice.current.as_ref().unwrap().phase == Some(study::StudyPhase::Study) {
+            self.call("/practice/quiz", &[("prompt_id", self.prompt().id)], now);
+        }
         self.call(
             "/practice/answer",
             &[("prompt_id", self.prompt().id), ("answer", answer.into())],
@@ -346,12 +349,23 @@ fn legacy_correction_replays_original_policy_not_new_due_policy() {
 #[test]
 fn due_reviews_exclude_guided_but_continuous_study_keeps_teaching() {
     let mut o = Owner::new();
-    o.call(
-        "/practice/lesson/start",
-        &[("starter", "st-michael-en-lasance-1911".into())],
-        NOW,
-    );
-    assert!(o.app.practice.cards.len() > 1);
+    // Genuine retained generic/API guided practice remains readable; the app
+    // must present its next turn as a hidden memory quiz, not another copy task.
+    let vid = o
+        .app
+        .library
+        .add(
+            scry::lessons::input("st-michael-en-lasance-1911").unwrap(),
+            "legacy-guided",
+            None,
+        )
+        .unwrap();
+    let sid = o
+        .call("/practice/learn", &[("version_id", vid)], NOW)
+        .entity_id
+        .unwrap();
+    o.focus(&sid, NOW);
+    assert_eq!(o.app.practice.cards.len(), 1);
     assert!(study::mixed_cards(&o.app, NOW).is_empty());
     let p = o.prompt();
     let text = o.app.library.versions[&p.version_id].sections[0].units[0]
@@ -382,7 +396,11 @@ fn due_reviews_exclude_guided_but_continuous_study_keeps_teaching() {
         o.mixed(NOW + 2 + i);
     }
     assert_eq!(o.prompt().study_id, prayer_sid);
-    assert!(o.prompt().assisted);
+    assert!(!o.prompt().assisted);
+    assert_eq!(
+        o.app.practice.current.as_ref().unwrap().phase,
+        Some(study::StudyPhase::Quiz)
+    );
     assert_eq!(o.prompt().unit_ids, p.unit_ids);
 }
 
@@ -497,7 +515,7 @@ fn new_policy_and_mixed_receipts_fence_archives_and_reject_tampered_pairs() {
     let persisted = persistence::app_from_rows(&persistence::rows(&o.app).unwrap()).unwrap();
     assert!(persisted.practice.mixed_review);
     assert_eq!(persisted, o.app);
-    let format = "scry-rust-durable-sqlite-study-scheduled-v2";
+    let format = "scry-rust-durable-sqlite-study-phase-v3";
     assert_eq!(
         persistence::Archive::new(o.app.clone(), vec![], NOW).format,
         format
@@ -518,6 +536,8 @@ fn new_policy_and_mixed_receipts_fence_archives_and_reject_tampered_pairs() {
     );
     let mut archive = persistence::Archive::new(o.app.clone(), vec![], NOW);
     archive.validate().unwrap();
+    archive.format = "scry-rust-durable-sqlite-study-scheduled-v2".into();
+    assert_eq!(archive.validate().unwrap_err().status, 422);
     archive.format = "scry-rust-durable-sqlite-study-v1".into();
     assert_eq!(archive.validate().unwrap_err().status, 422);
     let mut stripped = o.app.clone();

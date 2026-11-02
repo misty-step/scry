@@ -8,6 +8,9 @@ import {mkdtemp, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {createRuntime, internalKey} from './runtime-helper.mjs';
+import {assertStudySource} from './study-review.mjs';
+import {nativeFields} from './nato-starter.mjs';
+import {htmlStructure} from './html-structure.mjs';
 
 const title = 'The quiet lantern garden';
 const alias = 'Lantern garden exercise';
@@ -136,7 +139,7 @@ export async function phoneLibraryWalk(browser, capture) {
         activate(page.locator(`main a[href="${versionPath(id)}"]`))
       ]);
       await page.locator('[data-state="library-version"]').waitFor();
-      await page.locator('form[action="/practice/learn"]').waitFor({state:'visible'});
+      await page.locator('form[action="/practice/study/start"]').waitFor({state:'visible'});
     };
     try {
       await page.goto(f.origin + '/recall');
@@ -209,23 +212,31 @@ export async function phoneLibraryWalk(browser, capture) {
       await search(page,otherEdition); await page.getByText('Nothing matches.',{exact:true}).waitFor();
       await shot('honest-miss');
       await search(page,alias); await selectVersion(vid);
-      const learnFields = await fields(page.locator('form[action="/practice/learn"]'));
+      const learnFields = await fields(page.locator('form[action="/practice/study/start"]'));
       await Promise.all([
         page.waitForURL(f.origin + '/recall',{waitUntil:'domcontentloaded'}),
         activate(page.getByRole('button',{name:'Learn',exact:true}))
       ]);
       await page.locator('[data-state="exact-prompt"]').waitFor();
       assert.equal(new URL(page.url()).pathname,'/recall');
-      assert.equal(await page.getByLabel('Your answer',{exact:true}).count(),1);
-      assert.equal(await page.getByRole('button',{name:'Check my answer',exact:true}).count(),1);
+      const sourceAction=assertStudySource(await page.content(),firstUnit);
+      assert.equal(await page.getByLabel('Your answer',{exact:true}).count(),0);
+      assert.equal(await count(f,'practice_attempts/'),0,'Reading source is not a graded attempt.');
       assert.equal(await count(f,'practice_studies/'),1);
-      const prompt = (await f.record('meta')).practice.current.prompt;
+      const sourcePrompt = (await f.record('meta')).practice.current.prompt;
       const study = (await f.cli(['learn',vid])).practice.study;
-      const replay = await f.post('/practice/learn',learnFields);
+      const replay = await f.post('/practice/study/start',learnFields);
       assert.equal(replay.status,303);
       assert.equal(new URL(replay.headers.get('location'),f.origin).pathname,'/recall');
       assert.equal(await count(f,'practice_studies/'),1);
-      assert.deepEqual((await f.record('meta')).practice.current.prompt,prompt);
+      assert.deepEqual((await f.record('meta')).practice.current.prompt,sourcePrompt);
+      await shot('source-study');
+      await activate(page.locator(`form[action="${sourceAction.path}"] .primary`));
+      await page.getByLabel('Your answer',{exact:true}).waitFor();
+      const prompt=(await f.record('meta')).practice.current.prompt;
+      assert.notEqual(prompt.id,sourcePrompt.id,'Memory quiz has a separately fenced prompt.');
+      assert.equal(await count(f,'practice_attempts/'),0,'Starting a quiz is not a successful review.');
+      assert.ok(!(await page.content()).includes(firstUnit),'Source wording is hidden before memory input.');
       await shot('first-prompt');
       await page.setViewportSize({width,height:844});
       await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter a tired garden.');
@@ -237,7 +248,7 @@ export async function phoneLibraryWalk(browser, capture) {
       await page.setViewportSize({width,height:900});
       const attempt = (await f.cli(['next'])).practice.attempt;
       assert.equal(attempt.prompt.id,prompt.id);
-      assert.equal(attempt.assisted,true,'First answer-bearing cue is not unaided recall.');
+      assert.equal(attempt.assisted,false,'A submitted hidden-source quiz is graded as recall, not copied text.');
       assert.equal(await page.locator('[data-verdict]').getAttribute('data-verdict'),attempt.grade.verdict);
       assert.deepEqual(await page.locator('[data-diff-kind]').evaluateAll(nodes => nodes.map(node => node.dataset.diffKind)),attempt.grade.diff.map(part => part.kind));
       await page.reload(); await page.locator('[data-state="exact-result"]').waitFor();
@@ -350,6 +361,8 @@ export async function phoneLibraryRecovery(browser, capture) {
     const added=await f.cli(['version','add','--title',longTitle,'--kind','text','--name',edition,'--source',source,'--text-file',await f.file('long.txt',longWord+'.')]);
     await f.cli(['learn',added.result.entity_id]);
     await page.goto(f.origin+'/recall');
+    const action=assertStudySource(await page.content(),longWord+'.');
+    await page.locator(`form[action="${action.path}"] .primary`).tap();
     await page.getByLabel('Your answer',{exact:true}).fill(longAnswer);
     await page.getByRole('button',{name:'Check my answer',exact:true}).tap();
     await page.locator('[data-state="exact-result"]').waitFor();
@@ -429,4 +442,33 @@ export async function phoneLibraryRecovery(browser, capture) {
     row.observed={noJS,html_routes:paths,json_refusals:4,export_refusal:409,back_revalidated:true,durable_before_redirect:true,disclosure_attempts_added:1,schedule_unchanged:true,validated_return:destination,invalid_returns_refused:invalidReturns.length};
   });
   return results;
+}
+
+// Actual native forms + parsed response structure for the Library entry, without
+// substituting browser screenshots or mutating SQLite to set up the transition.
+export async function phoneLibraryStudyProof() {
+ const f=await libraryFixture();
+ try {
+  const added=await f.cli(['version','add','--title',title,'--kind','text','--name',edition,'--source',source,'--text-file',await f.file('study.txt',text)]),vid=added.result.entity_id;
+  const get=async path=>(await f.api(path)).text();
+  const detail=await get(versionPath(vid)),learn=nativeFields(detail,'/practice/study/start');
+  assert.equal((await f.post('/practice/study/start',learn)).status,303);
+  const sourceRows=await f.rows(),sourcePrompt=sourceRows.meta.practice.current.prompt;
+  const sourceHtml=await get('/recall'),action=assertStudySource(sourceHtml,firstUnit);
+  assert.equal(await count(f,'practice_attempts/'),0);
+  await get('/recall');await get('/');assert.deepEqual(await f.rows(),sourceRows,'Source navigation preserves learner state');
+  const refused=await f.post('/practice/answer',{csrf:sourceRows.meta.csrf,revision:String(sourceRows.meta.revision),operation_id:randomUUID(),prompt_id:sourcePrompt.id,answer:firstUnit});
+  assert.ok([409,422].includes(refused.status));assert.deepEqual(await f.rows(),sourceRows,'Browser Learn source cannot be forged into a successful copy answer');
+  assert.equal((await f.post(action.path,action.fields)).status,303);
+  const quizRows=await f.rows(),quizHtml=await get('/recall'),dom=htmlStructure(quizHtml);
+  assert.equal(dom.forms('/practice/answer').length,1);assert.ok(!quizHtml.includes(firstUnit));
+  assert.equal(await count(f,'practice_attempts/'),0);
+  const cardStates=rows=>Object.entries(rows).filter(([key])=>key.startsWith('practice_cards/')).map(([key,card])=>[key,card.state]);
+  assert.deepEqual(cardStates(quizRows),cardStates(sourceRows),'Entering memory does not award learning credit');
+  assert.equal((await f.post('/practice/answer',{...nativeFields(quizHtml,'/practice/answer'),answer:firstUnit})).status,303);
+  const result=await get('/recall');assert.equal(htmlStructure(result).withAttr('data-verdict').length,1);
+  const attempt=(await f.cli(['next'])).practice.attempt;
+  assert.equal(attempt.assisted,false);assert.equal(attempt.grade.verdict,'Good');assert.equal(attempt.effects[0].scheduled,true);
+  return {library_source_no_grade:true,forged_copy_refused:true,quiz_hidden:true,server_owned_grade:true,scheduled_once:true};
+ } finally {await f.close();}
 }

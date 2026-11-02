@@ -118,7 +118,35 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  assert.deepEqual(app.practice.attempts[attempt.id],attempt);assert.deepEqual(app.practice.attempts[helped.id],helped);
  assert.deepEqual(app.practice.corrections,{});
  assert.deepEqual(app.jobs,{});assert.deepEqual(app.assessments,{});assert.deepEqual(app.spend,[]);
+ // Additive agent Study→Quiz is real transport, while the legacy modeNone
+ // NATO/Reveal chain above retains its original records and semantics.
+ const source=(await ok('scry_lesson_start',{operation_id:'mcp-worker-source-operation',starter:'st-michael-en',after:second.prompt.id})).practice;
+ const beforeSource=await rows(),meta=()=>rows().then(rows=>JSON.parse(rows.find(row=>row.key==='meta').value));
+ const sourceCurrent=(await meta()).practice.current;
+ const sourceVersion=JSON.parse(beforeSource.find(row=>row.key==='library_versions/'+sourceCurrent.prompt.version_id).value);
+ const words=sourceVersion.sections.flatMap(section=>section.units).find(unit=>unit.id===sourceCurrent.prompt.unit_ids[0]).text;
+ const attemptsIn=rows=>rows.filter(row=>row.key.startsWith('practice_attempts/'));
+ const schedulesIn=rows=>rows.filter(row=>row.key.startsWith('practice_cards/')).map(row=>[row.key,JSON.parse(row.value).state.schedule]);
+ const blocked=await call('scry_answer',{operation_id:'mcp-worker-copy-refusal',prompt_id:sourceCurrent.prompt.id,answer:words});
+ assert.equal(blocked.isError,true,'A source page cannot be submitted as recall through MCP');assert.deepEqual(await rows(),beforeSource);
+ await refused('scry_quiz',{operation_id:'mcp-worker-forged-quiz',prompt_id:sourceCurrent.prompt.id,verdict:'Good'},'invalid_arguments');
+ const quizArgs={operation_id:'mcp-worker-quiz-operation',prompt_id:sourceCurrent.prompt.id};
+ const quiz=(await ok('scry_quiz',quizArgs)).practice;
+ assert.notEqual(quiz.prompt.id,sourceCurrent.prompt.id);assert.ok(!JSON.stringify(quiz).includes(words.trim()));
+ const quizRows=await rows();assert.deepEqual(attemptsIn(quizRows),attemptsIn(beforeSource));assert.deepEqual(schedulesIn(quizRows),schedulesIn(beforeSource));
+ assert.equal((await ok('scry_quiz',quizArgs)).replayed,true);
+ const disclosed=(await ok('scry_reveal',{operation_id:'mcp-worker-quiz-peek',prompt_id:quiz.prompt.id})).practice;
+ assert.equal(disclosed.assisted,true);
+ // CLI shares the same explicit operation, never a hidden copy/grade shortcut.
+ const quizCli=spawn(join(dirname(binary),'scry'),['quiz',quiz.prompt.id,'--operation-id','mcp-worker-cli-retry','--config',config,'--json'],{env:{PATH:process.env.PATH,HOME:directory},stdio:['ignore','pipe','pipe']});
+ let quizOutput='',quizError='';quizCli.stdout.on('data',v=>quizOutput+=v);quizCli.stderr.on('data',v=>quizError+=v);
+ assert.equal((await once(quizCli,'close'))[0],0,quizError);assert.ok(!quizOutput.includes(secret));
+ const retry=JSON.parse(quizOutput).practice;
+ assert.notEqual(retry.prompt.id,quiz.prompt.id);assert.ok(!JSON.stringify(retry).includes(words.trim()));
+ const answeredRetry=(await ok('scry_answer',{operation_id:'mcp-worker-helped-retry',prompt_id:retry.prompt.id,answer:words})).practice.attempt;
+ assert.equal(answeredRetry.assisted,true);assert.equal(answeredRetry.effects[0].scheduled,false,'Hiding a peek through CLI never erases help');
+ const finalRows=await rows();for(const old of attemptsIn(beforeSource))assert.deepEqual(finalRows.find(row=>row.key===old.key),old,'Additive quiz preserves every legacy Attempt byte');
  assert.equal(stderr,'');assert.equal(pending.size,0);
  assert.equal(sha(await readFile(join(artifact,'index_bg.wasm'))),wasmHash);assert.equal(sha(await readFile(binary)),mcpHash);
- console.log('MCP Worker receipt: '+JSON.stringify({format:'scry-mcp-workerd-proof-v1',mcp_sha256:mcpHash,worker_wasm_sha256:wasmHash,units:26,answer_attempts:2,disclosure_attempts:1,wrong_spelling:'Again',revealed_correct:'assisted Good',answer_replay_domain_and_receipts_unchanged:true,replay_cas_revision_increment:1,protected_replay_and_library_reads:409,client_grade_refused_before_http:true,external_egress:egress,limits:['synthetic local Owner token','loopback workerd/SQLite','no hosted or physical-phone claim']}));
+ console.log('MCP Worker receipt: '+JSON.stringify({format:'scry-mcp-workerd-proof-v1',mcp_sha256:mcpHash,worker_wasm_sha256:wasmHash,units:26,legacy_answer_attempts:2,legacy_disclosure_attempts:1,explicit_source_quiz_mcp_cli:true,source_copy_refused:true,help_persists_across_quiz:true,wrong_spelling:'Again',revealed_correct:'assisted Good',answer_replay_domain_and_receipts_unchanged:true,replay_cas_revision_increment:1,protected_replay_and_library_reads:409,client_grade_refused_before_http:true,external_egress:egress,limits:['synthetic local Owner token','loopback workerd/SQLite','no hosted or physical-phone claim']}));
 });

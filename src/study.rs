@@ -96,6 +96,9 @@ pub struct Study {
     /// Explicit phrase/sequence lesson; does not alter retained Pace or due dates.
     #[serde(default, skip_serializing_if = "is_false")]
     pub lesson: bool,
+    /// App source/quiz semantics survive an exhausted or dismissed current prompt.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub source_quiz: bool,
     pub status: Status,
     pub created_ms: i64,
 }
@@ -150,13 +153,33 @@ pub struct Prompt {
     pub cue: String,
     pub assisted: bool,
 }
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StudyPhase {
+    Study,
+    Quiz,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Presentation {
+    /// Absent on retained/API guided presentations; immutable Attempts are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<StudyPhase>,
     pub prompt: Prompt,
     pub targets: Vec<Target>,
     pub created_ms: i64,
     pub revealed: bool,
     pub attempt_id: Option<String>,
+}
+impl Presentation {
+    pub fn source_visible(&self) -> bool {
+        self.attempt_id.is_none()
+            && match self.phase {
+                Some(StudyPhase::Study) => true,
+                Some(StudyPhase::Quiz) => false,
+                None => self.prompt.assisted || self.revealed,
+            }
+    }
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Effect {
@@ -244,9 +267,10 @@ impl Practice {
             && self.current.is_none()
     }
     pub fn protected(&self) -> bool {
-        self.current
-            .as_ref()
-            .is_some_and(|p| p.attempt_id.is_none() && !p.prompt.assisted && !p.revealed)
+        self.current.as_ref().is_some_and(|p| {
+            p.attempt_id.is_none()
+                && (p.phase == Some(StudyPhase::Quiz) || (!p.prompt.assisted && !p.revealed))
+        })
     }
 }
 fn field<'a>(fields: &'a BTreeMap<String, String>, key: &str) -> &'a str {
@@ -314,7 +338,7 @@ fn held(app: &App) -> AppResult<Value> {
     let mut prompt = p.prompt.clone();
     prompt.title = visible_prompt_title(&prompt).to_string();
     Ok(
-        json!({"prompt":prompt,"revealed":p.revealed,"attempt_id":p.attempt_id,
+        json!({"prompt":prompt,"phase":p.phase,"revealed":p.revealed,"attempt_id":p.attempt_id,
         "correction_ids":app.practice.corrections.values().filter(|c| Some(&c.attempt_id)==p.attempt_id.as_ref()).map(|c| &c.id).collect::<Vec<_>>() }),
     )
 }
@@ -572,6 +596,7 @@ fn make_prompt(
             .into(),
     };
     Presentation {
+        phase: None,
         prompt: Prompt {
             id: id(seed, "prompt"),
             study_id: study.id.clone(),
@@ -595,6 +620,162 @@ fn make_prompt(
         attempt_id: None,
     }
 }
+/// Current app learning separates source reading from an actual memory quiz.
+/// Retained cue state is history, not permission to disclose a due quiz answer.
+fn make_ui_prompt(
+    app: &App,
+    study: &Study,
+    cards: Vec<&Card>,
+    scope: Scope,
+    cue: Cue,
+    now: i64,
+    seed: &str,
+) -> Presentation {
+    let learned = cards.iter().any(|c| {
+        c.state.schedule.last_review_ms.is_some()
+            || app
+                .practice
+                .attempts
+                .values()
+                .any(|a| !a.disclosure && a.effects.iter().any(|e| e.card_id == c.id))
+    });
+    let source = cue.assisted() && !learned;
+    let cue = if source {
+        Cue::Read
+    } else {
+        quiz_cue(&scope, app.library.versions[&study.version_id].kind)
+    };
+    let mut p = make_prompt(app, study, cards, scope, cue, now, seed);
+    p.phase = Some(if source {
+        StudyPhase::Study
+    } else {
+        StudyPhase::Quiz
+    });
+    p
+}
+fn mark_current_ui(app: &mut App) {
+    let Some(old) = app
+        .practice
+        .current
+        .clone()
+        .filter(|p| p.attempt_id.is_none())
+    else {
+        return;
+    };
+    let study = &app.practice.studies[&old.prompt.study_id];
+    let cards = old
+        .targets
+        .iter()
+        .map(|t| &app.practice.cards[&t.card_id])
+        .collect();
+    let mut p = make_ui_prompt(
+        app,
+        study,
+        cards,
+        old.prompt.scope.clone(),
+        old.prompt.cue_level,
+        old.created_ms,
+        &old.prompt.id,
+    );
+    p.prompt.id = old.prompt.id;
+    p.revealed = old.revealed;
+    app.practice.current = Some(p);
+}
+fn study_start(
+    app: &mut App,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+) -> AppResult<MutationResult> {
+    if fields.keys().any(|k| {
+        !matches!(
+            k.as_str(),
+            "csrf" | "operation_id" | "revision" | "version_id" | "pace"
+        )
+    }) {
+        return Err(AppError::new(
+            422,
+            "Start studying without answer or grading overrides.",
+        ));
+    }
+    let held_before = app.practice.current.is_some();
+    let learned = mutate(app, "/practice/learn", fields, now, seed)?;
+    let sid = learned.entity_id.expect("Study identity");
+    app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
+    let mut result = next(
+        app,
+        &BTreeMap::from([("study_id".into(), sid.clone())]),
+        now,
+        seed,
+    )?;
+    if !held_before {
+        mark_current_ui(app);
+    }
+    result.entity_id = Some(sid);
+    if app.practice.current.is_some() {
+        result.data = Some(held(app)?);
+    }
+    Ok(result)
+}
+fn quiz_cue(scope: &Scope, kind: Kind) -> Cue {
+    if kind == Kind::KeyedMapping {
+        Cue::MappingKey
+    } else if matches!(scope, Scope::Section { .. }) {
+        Cue::SectionHeading
+    } else {
+        Cue::WholeTitle
+    }
+}
+fn quiz(
+    app: &mut App,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+) -> AppResult<MutationResult> {
+    if fields.keys().any(|k| {
+        !matches!(
+            k.as_str(),
+            "csrf" | "operation_id" | "revision" | "prompt_id"
+        )
+    }) {
+        return Err(AppError::new(
+            422,
+            "Choose the saved study prompt, without answers or grades.",
+        ));
+    }
+    let old = active(app, fields, false)?;
+    if !old.source_visible() {
+        return Err(AppError::conflict());
+    }
+    let study = &app.practice.studies[&old.prompt.study_id];
+    let kind = app.library.versions[&study.version_id].kind;
+    let cards = old
+        .targets
+        .iter()
+        .map(|t| &app.practice.cards[&t.card_id])
+        .collect();
+    let mut p = make_prompt(
+        app,
+        study,
+        cards,
+        old.prompt.scope.clone(),
+        quiz_cue(&old.prompt.scope, kind),
+        now,
+        seed,
+    );
+    p.phase = Some(StudyPhase::Quiz);
+    // Help belongs to this attempt: hiding a peek does not erase assistance.
+    // Initial source reading has no Attempt and is not itself a successful recall.
+    p.revealed = old.revealed;
+    app.practice
+        .studies
+        .get_mut(&p.prompt.study_id)
+        .unwrap()
+        .source_quiz = true;
+    app.practice.current = Some(p);
+    Ok(response(None, held(app)?))
+}
+
 fn introduce_card(app: &mut App, study: &Study, index: usize, now: i64, seed: &str) -> String {
     let version = &app.library.versions[&study.version_id];
     let unit = units(version)[index];
@@ -941,6 +1122,7 @@ fn continuous_present(
                     sid
                 }
             };
+            app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
             let study = app.practice.studies[&sid].clone();
             let index = app
                 .practice
@@ -958,13 +1140,15 @@ fn continuous_present(
             introduce_card(app, &study, index, now, seed)
         }
     };
+    let sid = app.practice.cards[&cid].study_id.clone();
+    app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
     let card = &app.practice.cards[&cid];
     let study = &app.practice.studies[&card.study_id];
     if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
         let sid = study.id.clone();
         lesson_present(app, &sid, 0, true, now, seed)?;
     } else {
-        app.practice.current = Some(make_prompt(
+        app.practice.current = Some(make_ui_prompt(
             app,
             study,
             vec![card],
@@ -1076,6 +1260,11 @@ fn next(
             "Choose one Card or one Recitation scope.",
         ));
     }
+    let ui_phase = app
+        .practice
+        .current
+        .as_ref()
+        .is_some_and(|p| p.phase.is_some());
     app.practice.mixed_review = false;
     let after = field(fields, "after");
     if let Some(p) = &app.practice.current {
@@ -1174,7 +1363,12 @@ fn next(
                     })
             })
             .collect::<AppResult<Vec<_>>>()?;
-        let presentation = make_prompt(app, study, cards, scope, cue, now, seed);
+        let build = if ui_phase || study.source_quiz || study.lesson || study.nato_all_letters {
+            make_ui_prompt
+        } else {
+            make_prompt
+        };
+        let presentation = build(app, study, cards, scope, cue, now, seed);
         let expected_words = prompt_words(app, &presentation);
         if !fits_grading_capacity(
             expected_words,
@@ -1254,7 +1448,12 @@ fn next(
         if let Some(cid) = chosen {
             let c = &app.practice.cards[&cid];
             let study = &app.practice.studies[&c.study_id];
-            app.practice.current = Some(make_prompt(
+            let build = if ui_phase || study.source_quiz || study.lesson || study.nato_all_letters {
+                make_ui_prompt
+            } else {
+                make_prompt
+            };
+            app.practice.current = Some(build(
                 app,
                 study,
                 vec![c],
@@ -1506,6 +1705,7 @@ fn lesson_start(
     let sid = result.entity_id.expect("Study identity");
     let s = app.practice.studies.get_mut(&sid).unwrap();
     s.status = Status::Active;
+    s.source_quiz = true;
     s.lesson = app.library.versions[&vid].kind != Kind::KeyedMapping
         || crate::library::is_nato(&app.library.versions[&vid]);
     if crate::library::is_nato(&app.library.versions[&vid]) {
@@ -1526,6 +1726,10 @@ fn lesson_start(
         }
         app.practice.current = None;
         let mut result = next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)?;
+        mark_current_ui(app);
+        if app.practice.current.is_some() {
+            result.data = Some(held(app)?);
+        }
         result.redirect = route.into();
         return Ok(result);
     }
@@ -1578,7 +1782,7 @@ fn lesson_present(
             .filter(|c| c.study_id == sid)
             .collect::<Vec<_>>();
         cards.sort_by_key(|c| c.unit_index);
-        let p = make_prompt(app, study, cards, Scope::Whole, Cue::WholeTitle, now, seed);
+        let p = make_ui_prompt(app, study, cards, Scope::Whole, Cue::WholeTitle, now, seed);
         if !fits_grading_capacity(
             prompt_words(app, &p),
             prompt_words(app, &p),
@@ -1597,7 +1801,7 @@ fn lesson_present(
             .values()
             .find(|c| c.study_id == sid && c.unit_index == index)
             .ok_or_else(AppError::conflict)?;
-        app.practice.current = Some(make_prompt(
+        app.practice.current = Some(make_ui_prompt(
             app,
             study,
             vec![card],
@@ -1690,6 +1894,9 @@ fn lesson_next(
             now,
             seed,
         ));
+        let current = app.practice.current.as_mut().unwrap();
+        current.phase = Some(StudyPhase::Study);
+        current.revealed = true; // feedback was already shown before retry
         return Ok(response(None, held(app)?));
     }
     if mode == "join" && v.kind == Kind::Text {
@@ -1705,7 +1912,7 @@ fn lesson_next(
             .filter(|c| c.study_id == sid && section.units.iter().any(|u| u.id == c.unit_id))
             .collect::<Vec<_>>();
         cards.sort_by_key(|c| c.unit_index);
-        let presentation = make_prompt(
+        let presentation = make_ui_prompt(
             app,
             study,
             cards,
@@ -1753,6 +1960,8 @@ pub fn mutate(
     seed: &str,
 ) -> AppResult<MutationResult> {
     match path {
+        "/practice/quiz" => quiz(app, fields, now, seed),
+        "/practice/study/start" => study_start(app, fields, now, seed),
         "/practice/review/start" => mixed_next(app, fields, now, seed, true),
         "/practice/review/next" => mixed_next(app, fields, now, seed, false),
         "/practice/lesson/start" => lesson_start(app, fields, now, seed),
@@ -1797,6 +2006,7 @@ pub fn mutate(
                 .get_mut(&sid)
                 .expect("learn retains its Study");
             study.status = Status::Active;
+            study.source_quiz = true;
             study.nato_all_letters = true;
             next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)
         }
@@ -1820,6 +2030,7 @@ pub fn mutate(
                     pace,
                     nato_all_letters: false,
                     lesson: false,
+                    source_quiz: false,
                     status: Status::Active,
                     created_ms: now,
                 };
@@ -1905,7 +2116,11 @@ pub fn mutate(
                 }
                 Some(aid)
             };
-            app.practice.current.as_mut().unwrap().revealed = true;
+            let current = app.practice.current.as_mut().unwrap();
+            current.revealed = true;
+            if current.phase.is_some() {
+                current.phase = Some(StudyPhase::Study);
+            }
             Ok(response(
                 aid.clone(),
                 json!({"prompt_id":p.prompt.id,"assisted":true,"disclosure_attempt_id":aid,"expected":expected}),
@@ -1913,6 +2128,12 @@ pub fn mutate(
         }
         "/practice/answer" => {
             let p = active(app, fields, false)?;
+            if p.phase == Some(StudyPhase::Study) {
+                return Err(AppError::new(
+                    409,
+                    "This is source study. Try from memory before submitting an answer.",
+                ));
+            }
             if fields.keys().any(|k| {
                 !matches!(
                     k.as_str(),
@@ -2203,6 +2424,7 @@ pub fn validate(app: &App) -> AppResult<()> {
         // immutable; hints retain the sibling name even if that unused Version
         // is deleted later. No contemporary Library state rewrites an Attempt.
         let pres = Presentation {
+            phase: None,
             prompt: a.prompt.clone(),
             targets,
             created_ms: a.created_ms,
@@ -2322,6 +2544,13 @@ pub fn validate(app: &App) -> AppResult<()> {
         }
     }
     if let Some(current) = &p.current {
+        if (current.phase == Some(StudyPhase::Study)
+            && (current.attempt_id.is_some() || (!current.prompt.assisted && !current.revealed)))
+            || (current.phase == Some(StudyPhase::Quiz)
+                && (current.prompt.assisted || current.prompt.context.is_some()))
+        {
+            return Err(fail());
+        }
         validate_targets(app, &current.prompt, &current.targets)?;
         if p.studies[&current.prompt.study_id].status == Status::Dropped
             || current.created_ms < p.studies[&current.prompt.study_id].created_ms

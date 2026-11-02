@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {createRuntime, internalKey} from './runtime-helper.mjs';
+import {assertStudySource} from './study-review.mjs';
 
 export function formFields(html, action) {
   const form = [...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m => m[1] === action);
@@ -35,7 +36,7 @@ export async function mixedFixture({nowMs} = {}) {
   await api('learn', {version_id:version.result.entity_id, pace:'steady'});
   await api('next', {});
   const practice = structuredClone((await record('meta')).practice);
-  return {origin, html, post, record, sql, practice, close:async () => {await runtime.mf.dispose(); assert.equal(egress, 0);}};
+  return {origin, html, post, api, record, sql, practice, close:async () => {await runtime.mf.dispose(); assert.equal(egress, 0);}};
 }
 
 export async function mixedHttpProof() {
@@ -47,7 +48,7 @@ export async function mixedHttpProof() {
       const html=await f.html('/');assert.ok(html.includes('data-state="'+(held.attempt_id?'exact-result':'exact-prompt')+'"'));
       const mainText=/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(html)[1].replace(/<[^>]*>/g,'');
       for(const hidden of [meta.occurrence.presentation.answer,meta.occurrence.presentation.explanation])assert.ok(!mainText.includes(hidden),stage+': default home cannot reveal unrelated legacy text: '+hidden);
-      if(!held.attempt_id){assert.equal(held.prompt.assisted,true);assert.ok(html.includes('Copper lanterns shelter quiet gardens.'));assert.ok(html.includes('Assisted practice · the schedule stays unchanged.'));}
+      if(!held.attempt_id){assert.equal(held.prompt.assisted,true);assert.ok(html.includes('Copper lanterns shelter quiet gardens.'));assertStudySource(html,'Copper lanterns shelter quiet gardens.');}
       const countClass=name=>[...html.matchAll(/<[a-z][^>]*class="([^"]*)"[^>]*>/g)].filter(m=>m[1].split(/\s+/).includes(name)).length;
       const pairs=held.attempt_id?1:0;assert.equal(countClass('explanation'),0,stage+': no unrelated legacy explanation');assert.equal(countClass('answer-pair'),pairs,stage+': only graded exact answers have a pair');assert.equal(countClass('exact-full-answer'),pairs,stage+': exact result owns the answer disclosure');
       if(held.attempt_id)assert.match(html,/<details class="exact-full-answer"><summary>Full answer<\/summary>[\s\S]*?<div class="answer-pair"><span>You answered<\/span><p>Copper lanterns shelter quiet gardens\.<\/p>[\s\S]*?<\/details>/,'Exact answer pair is contained in its initially closed disclosure');
@@ -101,20 +102,21 @@ export async function mixedHttpProof() {
     const meaning=await f.html('/notebook');assert.match(meaning,/data-state="self-check"/);assert.match(meaning,/Your answer is saved, not graded\./);assert.doesNotMatch(meaning,/>I was right</);
     await historical('/review/self');await nextLegacy();assert.doesNotMatch(await f.html('/notebook'),/data-state="result"/);assert.deepEqual((await f.record('meta')).practice,f.practice);
     await heldHome('legacy-history-complete-exact-guided');
-    const cardRows=await f.sql.exec("SELECT key,value FROM records WHERE key LIKE 'practice_cards/%' ORDER BY key"),schedules=rows=>rows.map(r=>[r.key,JSON.parse(r.value).state.schedule]);
-    assert.equal((await f.post('/practice/answer',{...formFields(await f.html('/'),'/practice/answer'),answer:'Copper lanterns shelter quiet gardens.'})).status,303);
-    await heldHome('exact-held');assert.deepEqual(schedules(await f.sql.exec("SELECT key,value FROM records WHERE key LIKE 'practice_cards/%' ORDER BY key")),schedules(cardRows),'Guided answer cannot advance a schedule');
-    observed.push({guided_home_honest:true,guided_schedule_unchanged:true,held_home_read_only:true});
-    observed.push({answer_redirect:'/notebook', held_result:true, replay_learning_rows_unchanged:true, exact_practice_unchanged:true});
-    // Reach an unaided cue through actual guided answers, never row setters.
-    let protectedPrompt=false;
-    for(let i=0;i<8;i++){
-      assert.equal((await f.post('/practice/next',formFields(await f.html('/'),'/practice/next'))).status,303);
-      const held=(await f.record('meta')).practice.current,html=await f.html('/');
-      if(!held.prompt.assisted&&!held.revealed){assert.doesNotMatch(html,/Copper lanterns shelter quiet gardens\./);assert.doesNotMatch(html,/class="(?:answer-pair|exact-full-answer|explanation)"/);protectedPrompt=true;observed.push({stage:'protected-exact',canonical_hidden:true,exact_answer_pairs:0});break;}
-      assert.equal((await f.post('/practice/answer',{...formFields(html,'/practice/answer'),answer:'Copper lanterns shelter quiet gardens.'})).status,303);
-    }
-    assert.equal(protectedPrompt,true,'Native cue progression reaches protected unaided recall');
+    const beforeQuiz=await f.sql.exec('SELECT key,value FROM records ORDER BY key'),action=assertStudySource(await f.html('/'),'Copper lanterns shelter quiet gardens.');
+    assert.equal((await f.post(action.path,action.fields)).status,303);
+    const quiz=await f.html('/'),quizCurrent=(await f.record('meta')).practice.current;
+    assert.notEqual(quizCurrent.prompt.id,f.practice.current.prompt.id);
+    assert.doesNotMatch(quiz,/Copper lanterns shelter quiet gardens\./,'Explicit memory quiz hides supplied wording');
+    assert.equal((await f.sql.exec("SELECT key FROM records WHERE key LIKE 'practice_attempts/%'")).length,0,'Studying and starting memory creates no attempt');
+    const schedules=rows=>rows.filter(r=>r.key.startsWith('practice_cards/')).map(r=>[r.key,JSON.parse(r.value).state.schedule]);
+    assert.deepEqual(schedules(await f.sql.exec('SELECT key,value FROM records ORDER BY key')),schedules(beforeQuiz),'Source-to-quiz does not advance a schedule');
+    assert.equal((await f.post('/practice/answer',{...formFields(quiz,'/practice/answer'),answer:'Copper lanterns shelter quiet gardens.'})).status,303);
+    await heldHome('exact-held');
+    const savedAttempt=(await f.api('next',{})).practice.attempt;
+    assert.equal(savedAttempt.assisted,false,'Hidden-source response is recall, not copied-source success');
+    assert.equal(savedAttempt.effects[0].scheduled,true);
+    observed.push({source_no_answer_input:true,source_to_quiz_schedule_unchanged:true,quiz_source_hidden:true,graded_recall_scheduled:true,held_home_read_only:true});
+    observed.push({answer_redirect:'/notebook',held_result:true,replay_learning_rows_unchanged:true,exact_practice_unchanged_until_explicit_quiz:true});
     return observed;
   } finally {await f.close();}
 }
@@ -151,7 +153,7 @@ export async function mixedBrowserWalk(browser, capture) {
       for(const hidden of [frozen.occurrence.presentation.answer,frozen.occurrence.presentation.explanation])assert.ok(!content.includes(hidden), 'Home never leaks the unrelated legacy stream');
       if(!frozen.practice.current.attempt_id){
         const assisted=frozen.practice.current.prompt.assisted||frozen.practice.current.revealed;
-        if(assisted){assert.ok(content.includes('Copper lanterns shelter quiet gardens.'),'Held guided reading retains its supplied text');assert.ok(content.includes('Assisted practice · the schedule stays unchanged.'),'Visible guidance is honestly labeled');}
+        if(assisted){assert.ok(content.includes('Copper lanterns shelter quiet gardens.'),'Held guided reading retains its supplied text');assertStudySource(await page.content(),'Copper lanterns shelter quiet gardens.');}
         else assert.ok(!content.includes('Copper lanterns shelter quiet gardens.'),'Held unaided exact prompt keeps its answer hidden');
       }
       const pairs=frozen.practice.current.attempt_id?1:0;
@@ -219,11 +221,16 @@ export async function mixedBrowserWalk(browser, capture) {
       await page.locator('[data-state="result"]').waitFor({state:'detached'});
       assert.equal(new URL(page.url()).pathname, '/notebook');
       assert.deepEqual((await f.record('meta')).practice, f.practice);
-      row.stage='exact stream unchanged and explicit guided answer';
+      row.stage='exact stream unchanged, source study, and explicit memory quiz';
       await page.goto(f.origin + '/recall');
       await page.locator('[data-state="exact-prompt"]').waitFor();
       assert.deepEqual((await f.record('meta')).practice, f.practice);
       await shot('exact-unchanged');
+      const action=assertStudySource(await page.content(),'Copper lanterns shelter quiet gardens.');
+      await page.locator(`form[action="${action.path}"] .primary`).tap();
+      await page.getByLabel('Your answer',{exact:true}).waitFor();
+      assert.ok(!(await page.content()).includes('Copper lanterns shelter quiet gardens.'));
+      assert.equal((await f.sql.exec("SELECT key FROM records WHERE key LIKE 'practice_attempts/%'")).length,0);
       await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter quiet gardens.');
       await page.getByRole('button',{name:'Check my answer',exact:true}).tap();await page.locator('[data-state="exact-result"]').waitFor();
       await homeRoundTrip('exact-held');

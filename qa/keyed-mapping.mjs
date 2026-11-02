@@ -1,3 +1,4 @@
+import {enterMemoryPage} from './study-review.mjs';
 // Supplied canonical content through the compiled CLI, built Worker and its
 // actual SQLite/local-R2 boundary. No row writes, generation or external egress.
 import assert from 'node:assert/strict';
@@ -62,7 +63,7 @@ export async function keyedMappingFixture({capturePredecessor=false,captureMappi
    const home=await(await runtime.worker.fetch(origin+'/')).text();
    const started=await runtime.worker.fetch(origin+'/practice/review/start',{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...nativeFields(home,'/practice/review/start'),operation_id:randomUUID()})});assert.equal(started.status,303);
    const response=await api('/api/v1/export');assert.equal(response.status,200,response.status===200?'':await response.text());archives.baseline=Buffer.from(await response.arrayBuffer());
-   const empty=JSON.parse(archives.baseline);assert.equal(empty.format,'scry-rust-durable-sqlite-study-scheduled-v2');assert.equal(empty.app.practice.mixed_review,true);assert.equal(Object.keys(empty.app.practice.attempts).length,0);assert.ok(Object.values(empty.app.operations).some(op=>op.path==='/practice/review/start'));
+   const empty=JSON.parse(archives.baseline);assert.equal(empty.format,'scry-rust-durable-sqlite-study-phase-v3');assert.equal(empty.app.practice.current.phase,'study');assert.equal(empty.app.practice.mixed_review,true);assert.equal(Object.keys(empty.app.practice.attempts).length,0);assert.ok(Object.values(empty.app.operations).some(op=>op.path==='/practice/review/start'));
    return {archives,at,get egress(){return egress;},close:async()=>{await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}};
   }
   if(capturePredecessor){
@@ -224,7 +225,7 @@ async function nativeMappingForms(transcript){
  }finally{await f.close();}
 }
 
-async function predecessorRestore(artifact,bytes,accept,at){
+export async function predecessorRestore(artifact,bytes,accept,at){
  const name='mapping-predecessor-'+randomUUID(),restoreToken='synthetic-predecessor-restore-only-32chars';
  const bindings={SCRY_ENV:'restore',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:name,INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken,SCRY_TEST_NOW_MS:String(at)};
  let runtime=await createRuntime({artifact,port:0,name,inspect:true,testClock:true,bindings});
@@ -298,7 +299,7 @@ export async function keyedMappingWalk(browser,capture){
    await page.getByRole('button',{name:/^Next/}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await page.locator('.nato-letter').innerText()).trim(),'C');
    assert.doesNotMatch(await page.content(),/Charlie/);
    const before=(await f.record('meta')).practice.current.targets[0].before.schedule;
-   await page.getByRole('button',{name:'Show answer',exact:true}).tap();await page.getByText('With help · type the answer shown.',{exact:true}).waitFor();
+   await page.getByRole('button',{name:'Show answer',exact:true}).tap();await page.locator('[data-study-phase="study"]').waitFor();await page.getByText('Charlie',{exact:true}).waitFor();assert.equal(await page.locator('#answer').count(),0);await enterMemoryPage(page);assert.doesNotMatch(await page.content(),/Charlie/,'Hiding the peek removes the expected word before typing');
    await page.getByLabel('Type your answer',{exact:true}).fill('Charlie');await page.getByRole('button',{name:/^Check/}).tap();await page.locator('[data-state="exact-result"]').waitFor();
    const shown=(await f.ok(['next'])).practice.attempt;assert.equal(shown.assisted,true);assert.equal(shown.effects[0].scheduled,false);assert.deepEqual(shown.effects[0].after.schedule,before);
    await typography(page,zoom);

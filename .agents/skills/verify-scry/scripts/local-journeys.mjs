@@ -112,7 +112,10 @@ try{
   const learn=await run(['learn',vid]);
   if(learn.code)throw Error(`learn ${learn.err}`);
   await page.goto(origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
-  if(await page.locator('textarea').count()!==1)throw Error('phone Stream must show one answer field');
+  if(await page.locator('textarea').count()!==0)throw Error('source Study must not show an answer field');
+  await page.getByRole('button',{name:'Try from memory',exact:true}).click();
+  await page.getByLabel('Your answer',{exact:true}).waitFor();
+  if(await page.locator('textarea').count()!==1)throw Error('memory quiz must show one answer field');
   const prompt=await shot('study-prompt');
   await page.getByLabel('Your answer',{exact:true}).fill('The path begins in a synthetic notebook.');
   await page.getByRole('button',{name:'Check my answer',exact:true}).click();
@@ -132,7 +135,7 @@ try{
   if(overflow)throw Error('horizontal overflow at phone width');
   await page.getByRole('button',{name:'Next',exact:true}).click();
   await page.locator('[data-state="exact-prompt"],[data-state="exact-caught-up"]').first().waitFor();
-  log('study.phone','PASS',`scry learn → /recall opens the exact Prompt (one field); typed answer → ${verdict} with Diff [${[...new Set(kinds)].join(', ')}] held across reload and equal to scry next; Next advances. On arrival the first changed word and replacement are fully visible and unoccluded`,{evidence:[prompt,arrival,diff,await shot('study-next')]});
+  log('study.phone','PASS',`scry learn → /recall opens source Study (no field) → Try from memory opens hidden quiz (one field); typed answer → ${verdict} with Diff [${[...new Set(kinds)].join(', ')}] held across reload and equal to scry next; Next advances. On arrival the first changed word and replacement are fully visible and unoccluded`,{evidence:[prompt,arrival,diff,await shot('study-next')]});
  });
  await step('notebook.legacy-link',async()=>{
   await page.goto(origin+'/notebook');

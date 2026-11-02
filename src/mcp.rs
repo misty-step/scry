@@ -20,7 +20,7 @@ use std::{
 pub const PROTOCOL_VERSION: &str = "2025-11-25";
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 const MAX_SESSION_REQUESTS: usize = 10_000;
-const INSTRUCTIONS: &str = "Scry stores externally authored material and grades raw answers natively. Search before import; validation is local, not remote admission. Retain every mutation's operation_id and exact arguments before sending. Never replace an unknown mutation with a new ID. Reconcile the same operation and payload BEFORE Next; older answer-bearing replays can be fenced by a newer unanswered unaided Prompt. Reveal records assistance. No generation or caller-supplied grades. Hosted Owner API admission is not established by this local adapter.";
+const INSTRUCTIONS: &str = "Scry stores externally authored material and grades raw answers natively. Search before import; validation is local, not remote admission. Retain every mutation's operation_id and exact arguments before sending. Never replace an unknown mutation with a new ID. Reconcile the same operation and payload BEFORE Next; older answer-bearing replays can be fenced by a newer unanswered unaided Prompt. Study shows source without grades; scry_quiz deliberately starts hidden-source recall and preserves any prior help. Reveal records assistance. No generation or caller-supplied grades. Hosted Owner API admission is not established by this local adapter.";
 
 #[derive(Default)]
 enum Phase {
@@ -368,12 +368,16 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
                 json!({"operation_id":input.operation_id,"prompt_id":input.prompt_id,"answer":input.answer}),
             ))
         }
-        "scry_reveal" => {
+        "scry_reveal" | "scry_quiz" => {
             let input: Reveal = parse(args)?;
             operation(&input.operation_id)?;
             identity(&input.prompt_id)?;
             Ok(write(
-                "/api/v1/reveal",
+                if name == "scry_quiz" {
+                    "/api/v1/quiz"
+                } else {
+                    "/api/v1/reveal"
+                },
                 json!({"operation_id":input.operation_id,"prompt_id":input.prompt_id}),
             ))
         }
@@ -660,6 +664,31 @@ pub fn serve(config: PathBuf) -> owner_client::Result<()> {
 #[cfg(test)]
 mod lesson_tests {
     use super::*;
+    #[test]
+    fn quiz_tool_is_explicit_and_rejects_grades() {
+        let args = json!({"operation_id":"quiz-mcp-operation-001","prompt_id":"a".repeat(32)});
+        match prepare("scry_quiz", args.clone()).unwrap() {
+            Call::Api { path, payload } => {
+                assert_eq!(path, "/api/v1/quiz");
+                assert_eq!(payload.unwrap(), args);
+            }
+            _ => panic!("not API"),
+        }
+        for field in ["grade", "verdict", "answer", "assisted", "scheduled"] {
+            let mut supplied = args.clone();
+            supplied[field] = json!("Good");
+            assert!(prepare("scry_quiz", supplied).is_err());
+        }
+        assert_eq!(
+            crate::api::mutation_path("/api/v1/quiz"),
+            Some("/practice/quiz")
+        );
+        assert!(
+            schema::tools()
+                .iter()
+                .any(|tool| tool["name"] == "scry_quiz")
+        );
+    }
     #[test]
     fn lesson_tools_share_native_routes_and_reject_self_grades() {
         let op = "lesson-mcp-operation-001";

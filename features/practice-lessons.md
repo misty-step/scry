@@ -7,7 +7,7 @@ native feedback. [SPEC](../SPEC.md#visual-practice-chooser-2026-11-01) owns acce
 
 - The topic shelf groups NATO, Saint Michael editions and Rosary mystery sets.
 - Current-session return preserves the prompt and typed draft.
-- Prayer practice moves from guided phrases to joined and whole-prayer recall.
+- Prayer practice separates source study from hidden phrase, joined and whole-prayer quizzes.
 - A mistaken phrase shows expected wording and retries the same phrase.
 - Rosary sequence practice identifies missing or misplaced mysteries.
 
@@ -21,7 +21,8 @@ separate. Return goes to the held current session, not a promised cross-lesson r
 ## Driving it with verify-scry helpers
 
 `node --test qa/keyed-mapping.test.mjs` calls `lessonJourney` and `lessonWalk`
-from `qa/lessons.mjs`. The browser journey starts a set through its native form,
+from `qa/lessons.mjs`. Source study has no answer field; Try from memory is a fenced native transition.
+The browser journey starts a set through its native form,
 types a partial answer into `#answer`, opens/closes `.lesson-picker > summary`,
 and verifies the draft and frozen prompt are unchanged. It selects the prayer,
 types the next line by mistake, verifies the full expected current line, retries,

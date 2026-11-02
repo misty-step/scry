@@ -253,3 +253,8 @@ test('Mixed notebook legacy errors, held feedback and replay preserve exact prac
   const {mixedHttpProof} = await import('./mixed-notebook.mjs');
   await mixedHttpProof();
 });
+
+ test('Native Library Learn studies source, refuses copied answers, then grades explicit memory', async () => {
+  const {phoneLibraryStudyProof}=await import('./phone-library.mjs');
+  observations.push(await phoneLibraryStudyProof());
+});

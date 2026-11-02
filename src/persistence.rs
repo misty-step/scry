@@ -302,7 +302,22 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
-    if app.practice.mixed_review
+    if app.practice.studies.values().any(|s| s.source_quiz)
+        || app
+            .practice
+            .current
+            .as_ref()
+            .is_some_and(|p| p.phase.is_some())
+        || app.operations.values().any(|r| {
+            r.path.as_deref() == Some("/practice/quiz")
+                || r.result
+                    .data
+                    .as_ref()
+                    .is_some_and(|d| d.get("phase").is_some_and(Value::is_string))
+        })
+    {
+        "scry-rust-durable-sqlite-study-phase-v3"
+    } else if app.practice.mixed_review
         || app
             .practice
             .attempts

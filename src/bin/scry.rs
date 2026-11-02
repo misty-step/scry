@@ -365,11 +365,19 @@ mod cli {
                 Some(&json!({"operation_id":operation,"prompt_id":args[1],"answer":answer})),
             );
         }
-        if args.first().is_some_and(|a| a == "reveal") && args.len() == 2 {
+        if args
+            .first()
+            .is_some_and(|a| matches!(a.as_str(), "reveal" | "quiz"))
+            && args.len() == 2
+        {
             return request(
                 &client,
                 &login,
-                "/api/v1/reveal",
+                if args[0] == "quiz" {
+                    "/api/v1/quiz"
+                } else {
+                    "/api/v1/reveal"
+                },
                 Some(&json!({"operation_id":operation,"prompt_id":args[1]})),
             );
         }
@@ -517,7 +525,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|reveal|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

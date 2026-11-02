@@ -169,3 +169,14 @@ and [the runbook](../../../docs/runbook.md). Missing access is UNPROVEN.
 
 Use pstack's `maintain-verification-skill` when the feature map drifts. Preserve
 SPEC and user intent instead of weakening a journey to turn it green.
+
+
+## Study versus memory quiz
+
+Run `cargo test --locked --test study_quiz` and `node --test qa/nato-focus.test.mjs`
+after changing source visibility. New app source phases must have no answer field,
+refuse copied answers without writes, and transition explicitly through
+`/practice/quiz`. Inspect source → hidden quiz → native result and
+reveal → source → hidden assisted retry screenshots. Preserve safety-bearing
+mapping questions. Exercise `scry quiz PROMPT` / `scry_quiz` in the existing
+MCP runtime suite; legacy phase-less API history remains compatible.

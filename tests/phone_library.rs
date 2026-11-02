@@ -118,20 +118,20 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
         "Synthetic author",
         "Private only",
         TEXT,
-        "action=\"/practice/learn\"",
+        "action=\"/practice/study/start\"",
     ] {
         assert!(detail.contains(expected), "{expected}");
     }
     let learned = action(
         &mut app,
-        "/practice/learn",
+        "/practice/study/start",
         "phone-library-learn-01",
         &[("version_id", &vid)],
     );
     assert_eq!(
         action(
             &mut app,
-            "/practice/learn",
+            "/practice/study/start",
             "phone-library-learn-02",
             &[("version_id", &vid)]
         )
@@ -141,7 +141,29 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
     assert_eq!(app.practice.studies.len(), 1);
     study::ensure_stream(&mut app, NOW, "first-prompt").unwrap();
     assert!(page(&app, "/recall").contains("data-state=\"exact-prompt\""));
+    let source_pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let source_page = page(&app, "/recall");
+    assert!(source_page.contains("Try from memory"));
+    assert!(!source_page.contains("name=\"answer\""));
+    let unchanged = app.clone();
+    let copied = fields(
+        &app,
+        "phone-copy-refused-01",
+        &[("prompt_id", &source_pid), ("answer", TEXT)],
+    );
+    assert!(engine::mutate(&mut app, "/practice/answer", &copied, NOW, "copy-refused").is_err());
+    assert_eq!(app, unchanged);
+    action(
+        &mut app,
+        "/practice/quiz",
+        "phone-memory-start-01",
+        &[("prompt_id", &source_pid)],
+    );
+    assert!(app.practice.attempts.is_empty());
+    assert_eq!(app.practice.cards, unchanged.practice.cards);
+    assert!(!page(&app, "/recall").contains(TEXT.trim()));
     let pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    assert_ne!(pid, source_pid);
     action(
         &mut app,
         "/practice/answer",

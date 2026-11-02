@@ -57,6 +57,7 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 | `scry_lesson_next` | Advance phrases, join their authored Section, try the whole text, or practise from the middle |
 | `scry_answer` | Raw learner answer, graded by Scry; no verdict/rating/correct field |
 | `scry_reveal` | Record assistance before disclosing the target |
+| `scry_quiz` | Deliberately hide the held source and start a memory quiz; no grade or schedule credit |
 
 `scry_validate` and `scry_import` accept `format: "version" | "mapping"` and a
 `data` object matching `scry_schema`. Import additionally requires
@@ -82,12 +83,21 @@ the current answered Prompt; explicit `leave` abandons the identified unanswered
 Prompt without recording a grade or schedule update. Never supply both.
 Browsing is not permission to abandon the learner's draft.
 
-Submit raw typed text with `scry_answer`. Then call `scry_lesson_next` with a
+When `practice.phase` is `study`, show the source without an answer input.
+Call `scry_quiz` with a retained `operation_id` and that `prompt_id` only when
+the learner chooses to try from memory. Its new Prompt hides the source and
+creates no Attempt or schedule credit. Source-phase `scry_answer` is refused.
+A reveal returns to source study; hiding it again preserves assistance, so the
+subsequent answer cannot count as unaided recall. Generic legacy `scry_next`
+without a phase retains its historical guided-cue protocol; `scry_quiz` is also
+the explicit opt-in from its visible source cue.
+
+Submit raw typed text for the quiz with `scry_answer`. Then call `scry_lesson_next` with a
 new retained `operation_id`, the answered Prompt ID in `after`, and `mode`:
 `phrases`, `join`, `whole`, or `middle`. `join` uses the current authored Section;
 `whole` is a distinct complete-text challenge. Existing `scry_reveal` records
-help before disclosure. Guided phrase success does not become unaided or
-whole-text credit. No speech/pronunciation judgment is implied. See
+help before disclosure. Studying alone earns no recall credit; helped answers
+do not become unaided or whole-text credit. No speech/pronunciation judgment is implied. See
 [authored lesson and metadata contract](owner-api.md#authored-sequence-and-phrase-lessons).
 
 ## Frozen operation and interruption contract

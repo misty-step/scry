@@ -1,6 +1,6 @@
 # Exact text practice
 
-The owner learns a Library Version unit by unit with fading cues. He gets an
+The owner studies a Library Version source, then explicitly quizzes from memory. He gets an
 exact verdict and a word-by-word Diff, and on his phone the Stream opens
 straight into the next due Unit. Behavior authority:
 [US-016](../SPEC.md#us-016-learn-a-version-unit-by-unit),
@@ -11,7 +11,7 @@ straight into the next due Unit. Behavior authority:
 ## Sub-features
 
 - `study-learn` creates one Study per Version (`scry learn`).
-- `study-prompt` shows the Work title, the previous Unit and the cue for the Card's level, with one field and one submit control.
+- `study-prompt` shows source without an input, then Try from memory selects a hidden-source quiz with one field and one submit control. Historical phase-less API cues remain compatible.
 - `study-verdict` gives Good or Again with a Diff of correct, slipped, wrong, missing and extra words, held until Next.
 - `study-assist` records Show me or a cue as an assisted Attempt before showing it.
 - `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 under the [retirement amendment](../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406).
@@ -25,7 +25,7 @@ straight into the next due Unit. Behavior authority:
 - Phone or desktop: choose Review (`/recall`). Before a Study, Library offers search or supplied
   text and Learn; afterwards the current Prompt or held result opens directly.
   Review Home is `/`; saved earlier practice remains separate at `/notebook`.
-- Terminal: `scry learn VERSION`, then `scry next` and `scry answer PROMPT --text-stdin`
+- Terminal: `scry learn VERSION`, then `scry next`, `scry quiz PROMPT` to leave source study, and `scry answer PROMPT --text-stdin`
   (see the [command reference](../docs/owner-api.md#text-study-and-practice)).
 
 ## Driving it with verify-scry helpers
@@ -46,7 +46,7 @@ Preconditions:
   whose second Unit is already in Free recall. Drive it with Playwright or the
   T3 preview; start another fixture for Show me before answering.
 - **First study.** `qa/phone-library.mjs` walks empty Library → supplied Version
-  → Learn → held result, with CLI readback, dedupe, protected navigation, native
+  → Learn → source study → Try from memory → native quiz → held result, with CLI readback, dedupe, protected navigation, native
   forms and interruption checks under US-018.6.
 - **History.** `qa/phone-history.mjs`, called by the existing phone Stream walks,
   exercises native disclosures, saved CLI/export parity, original Verdicts and

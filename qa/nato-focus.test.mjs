@@ -1,3 +1,4 @@
+import {studyReviewJourney} from './study-review.mjs';
 import {continuousLibraryJourney} from './continuous-library.mjs';
 import {mixedReviewJourney,continuousStudyJourney} from './mixed-review.mjs';
 import test from 'node:test';
@@ -20,3 +21,5 @@ await test('Default review fairly weaves practiced due subjects and advances sam
 await test('Default Study continues all canonical subjects through graded learning and paced completion',async()=>{await writeFile(join(output,'continuous-study-runtime.json'),JSON.stringify(await continuousStudyJourney(),null,2)+'\n');});
 
 await test('Default Study admits external Library once and preserves paused and dropped subjects',async()=>{await writeFile(join(output,'continuous-library-runtime.json'),JSON.stringify(await continuousLibraryJourney(),null,2)+'\n');});
+
+await test('Study shows sources without copy grading; Review hides answers and preserves assistance',async()=>{await writeFile(join(output,'study-review-runtime.json'),JSON.stringify(await studyReviewJourney(),null,2)+'\n');});
