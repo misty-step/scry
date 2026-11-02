@@ -44,13 +44,15 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 
 ## Features
 
+- [Mixed due review](../SPEC.md#mixed-due-review-2026-11-02): default Review → Review now interleaves previously practiced due subjects; caught-up keeps focused lessons reachable. `tests/mixed_review.rs` covers fair selection, immutable legacy policy/corrections, native due scheduling, whole sequences, replay and scope. The browser/runtime journey is `qa/mixed-review.mjs`. Existing agent `/api/v1/next` remains explicit scoped/general Study selection, not an implicit mixed-mode switch.
+
 - [NATO review](nato-review.md): native start, server grading, assistance and honest progress.
 - [Choose and practise lessons](practice-lessons.md): visual topic shelf, prayer editions, Rosary sets, draft-preserving return and same-phrase retry.
 - [External-agent authoring and review](agent-authoring.md): compiled MCP/CLI through real Worker/SQLite, immutable supplied content and replay proof.
 
 - [Visual practice chooser](../SPEC.md#visual-practice-chooser-2026-11-01): inline grouped NATO, Saint Michael editions and Rosary sets; current-session return preserves the draft. `tests/lessons.rs` covers current identity, supplied-content collisions and protected metadata; `qa/lessons.mjs` covers native/enhanced phone/desktop browsing, return and switch reconciliation. Source-bound journey proof belongs to #445 and its PR; authenticated learner acceptance is separate.
 
-- [NATO-focused review](../SPEC.md#nato-focused-review-2026-10-29): Home → Start practice → type → Check → Next. One atomic start, server grading, honest practiced-letter count and inline per-letter review/accuracy/due evidence (NATO-06–08). `qa/nato-focus.test.mjs` verifies the atomic local Worker journey; `qa/keyed-mapping.test.mjs` verifies native and enhanced phone/desktop flows and exports screenshots.
+- [NATO-focused review](../SPEC.md#nato-focused-review-2026-10-29): Lessons → NATO → type → Check → Next (or the focused `/?practice=nato` entry). One atomic start, server grading, honest practiced-letter count and inline per-letter review/accuracy/due evidence (NATO-06–08). `qa/nato-focus.test.mjs` verifies the atomic local Worker journey; `qa/keyed-mapping.test.mjs` verifies native and enhanced phone/desktop flows and exports screenshots.
 
 - [Sign in with the QA account](sign-in.md): S09 QA sign-in and role, enrollment, signed-out, expired, wrong identity, alternate host, Doctor.
 - [Exact text practice](exact-study.md): US-016, US-017, US-018 phone Stream / AG1.

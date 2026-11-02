@@ -12,7 +12,13 @@ fn act(app: &mut App, path: &str, extras: &[(&str, String)], tag: &str) {
     engine::mutate(app, path, &fields, NOW, tag).unwrap();
 }
 fn page(app: &App) -> String {
-    web::render(app, "/", &BTreeMap::new(), NOW, None)
+    web::render(
+        app,
+        "/",
+        &BTreeMap::from([("practice".into(), "nato".into())]),
+        NOW,
+        None,
+    )
 }
 #[test]
 fn empty_progress_has_all_letters_and_no_invented_accuracy() {

@@ -1,3 +1,4 @@
+import {mixedReviewJourney} from './mixed-review.mjs';
 import test from 'node:test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -12,3 +13,5 @@ await test('NATO focus: one native action, protected recall, duplicate safety an
 await test('NATO scheduled selection skips future cards and stays caught up',async()=>{const report=await scheduledJourney();await writeFile(join(output,'scheduled-runtime.json'),JSON.stringify(report,null,2)+'\n');});
 
 await test('Rich progress fixture deliberately requests extra practice after scheduler exhaustion',async()=>{const f=await starterFixture();try{await seedProgressFixture(f);}finally{await f.close();}});
+
+await test('Default review fairly weaves practiced due subjects and advances same-day due work',async()=>{await writeFile(join(output,'mixed-review-runtime.json'),JSON.stringify(await mixedReviewJourney(),null,2)+'\n');});

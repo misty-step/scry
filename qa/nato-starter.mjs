@@ -14,16 +14,17 @@ export function nativeFields(html,action){
  const body=html.split('<form').find(part=>part.startsWith(` method="post" action="${action}"`))?.split('</form>')[0];assert.ok(body,`Native ${action} form exists`);
  return Object.fromEntries([...body.matchAll(/<input\b[^>]*>/g)].filter(([tag])=>tag.includes('type="hidden"')||tag.includes(' checked')).map(([tag])=>[ /name="([^"]+)"/.exec(tag)[1], /value="([^"]*)"/.exec(tag)[1] ]));
 }
-export async function starterFixture(){
- const name='nato-starter-'+randomUUID(),bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:name,INTERNAL_KEY:internalKey};let egress=0;
- let runtime=await createRuntime({port:0,name,inspect:true,bindings,egress:async()=>{egress++;throw Error('No egress in supplied starter proof.');}});
+export async function starterFixture({nowMs}={}){
+ const name='nato-starter-'+randomUUID(),bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:name,INTERNAL_KEY:internalKey,...(nowMs===undefined?{}:{SCRY_TEST_NOW_MS:String(nowMs)})};let egress=0;
+ let runtime=await createRuntime({port:0,name,inspect:true,testClock:nowMs!==undefined,bindings,egress:async()=>{egress++;throw Error('No egress in supplied starter proof.');}});
  try{
   const origin=(await runtime.mf.ready).origin;runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin})};
-  const sql=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+  let sql=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
   const rows=async()=>Object.fromEntries((await sql.exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,JSON.parse(r.value)]));
   const get=async path=>{const r=await runtime.worker.fetch(origin+path);assert.equal(r.status,200);return r.text();};
   const post=(path,fields)=>runtime.worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});
-  return {origin,rows,get,post,get egress(){return egress;},close:()=>runtime.mf.dispose()};
+  const clock=async at=>{assert.notEqual(nowMs,undefined,'Clock only enabled in explicit synthetic fixtures');bindings.SCRY_TEST_NOW_MS=String(at);runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin})};sql=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});};
+  return {origin,rows,get,post,clock,get egress(){return egress;},close:()=>runtime.mf.dispose()};
  }catch(e){await runtime.mf.dispose();throw e;}
 }
 export async function starterJourney(){
@@ -54,7 +55,7 @@ export async function starterJourney(){
 export async function focusedJourney(){
  const f=await starterFixture();
  try{
-  const initial=await f.get('/'),before=await f.rows();assert.match(initial,/data-state="nato-home"/);assert.match(initial,/Start practice/);
+  const initial=await f.get('/?practice=nato'),before=await f.rows();assert.match(initial,/data-state="nato-home"/);assert.match(initial,/Start practice/);
   await f.get('/');assert.deepEqual(await f.rows(),before,'Home reads do not import or select.');
   const start=nativeFields(initial,'/practice/nato/start');
   for(const extra of [{grade:'Good'},{answer:'Alfa'},{pace:'light'}]){const saved=await f.rows();assert.equal((await f.post('/practice/nato/start',{...start,...extra,operation_id:randomUUID()})).status,422);assert.deepEqual(await f.rows(),saved);}
@@ -98,7 +99,7 @@ export async function starterWalk(browser,capture){
     row.banners={...row.banners,[state]:geometry};
    };
    const activate=async button=>width<1000?button.tap():button.click();
-   await page.goto(f.origin+'/');await page.getByRole('heading',{name:'From Alfa to Zulu.',exact:true}).waitFor();await layout();await shot('entry');
+   await page.goto(f.origin+'/?practice=nato');await page.getByRole('heading',{name:'From Alfa to Zulu.',exact:true}).waitFor();await layout();await shot('entry');
    await activate(page.getByRole('button',{name:'Start practice',exact:true}));const input=page.getByLabel('Type your answer',{exact:true});await input.waitFor();assert.doesNotMatch(await page.content(),/Alfa|Bravo|Alphabet reference/);await shot('question');
    if(!noJS)assert.equal(await input.evaluate(node=>node===document.activeElement),true,'New prompt receives focus');
    await input.fill('Alpha');
@@ -178,7 +179,7 @@ async function letterContrast(page,letter){
  return result;
 }
 export async function seedProgressFixture(f){
-   let html=await f.get('/');await f.post('/practice/nato/start',nativeFields(html,'/practice/nato/start'));
+   let html=await f.get('/?practice=nato');await f.post('/practice/nato/start',nativeFields(html,'/practice/nato/start'));
    for(let i=0;i<26;i++){
     html=await f.get('/');
     assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer:natoWords[String.fromCharCode(65+i)]})).status,303);

@@ -172,6 +172,18 @@ pub struct Effect {
     pub before: CardState,
     pub after: CardState,
 }
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SchedulePolicy {
+    #[default]
+    CalendarDay,
+    Due,
+}
+impl SchedulePolicy {
+    fn is_legacy(&self) -> bool {
+        *self == Self::CalendarDay
+    }
+}
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Attempt {
     pub id: String,
@@ -188,6 +200,8 @@ pub struct Attempt {
     pub revealed: bool,
     pub created_ms: i64,
     pub algorithm: String,
+    #[serde(default, skip_serializing_if = "SchedulePolicy::is_legacy")]
+    pub schedule_policy: SchedulePolicy,
     pub effects: Vec<Effect>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -206,6 +220,8 @@ pub struct Correction {
 }
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct Practice {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub mixed_review: bool,
     pub studies: BTreeMap<String, Study>,
     pub cards: BTreeMap<String, Card>,
     pub attempts: BTreeMap<String, Attempt>,
@@ -394,14 +410,28 @@ pub(crate) fn check_replay(app: &App, result: &MutationResult) -> AppResult<()> 
     }
     Ok(())
 }
-fn effect(target: &Target, verdict: Verdict, revealed: bool, now: i64) -> AppResult<Effect> {
+fn effect(
+    target: &Target,
+    verdict: Verdict,
+    revealed: bool,
+    now: i64,
+    policy: SchedulePolicy,
+) -> AppResult<Effect> {
     let assisted = target.cue.assisted() || revealed;
+    // Old immutable attempts replay under their original policy. New attempts
+    // advance genuinely due learning/relearning even within the same day.
     let extra = !assisted
-        && target
-            .before
-            .schedule
-            .last_review_ms
-            .is_some_and(|t| t.div_euclid(DAY_MS) == now.div_euclid(DAY_MS));
+        && match policy {
+            SchedulePolicy::CalendarDay => target
+                .before
+                .schedule
+                .last_review_ms
+                .is_some_and(|t| t.div_euclid(DAY_MS) == now.div_euclid(DAY_MS)),
+            SchedulePolicy::Due => {
+                target.before.schedule.last_review_ms.is_some()
+                    && target.before.schedule.due_ms > now
+            }
+        };
     let scheduled = !assisted && !extra;
     let mut after = target.before.clone();
     if scheduled {
@@ -578,6 +608,114 @@ fn introduce_card(app: &mut App, study: &Study, index: usize, now: i64, seed: &s
     cid
 }
 
+/// Mixed review admits only content the learner has actually practised.
+/// Lesson entry may introduce a whole Version, but that is not review evidence.
+pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
+    let practised = app
+        .practice
+        .attempts
+        .values()
+        .filter(|a| !a.disclosure)
+        .flat_map(|a| a.effects.iter().map(|e| e.card_id.as_str()))
+        .collect::<BTreeSet<_>>();
+    app.practice
+        .cards
+        .values()
+        .filter(|c| {
+            app.practice.studies[&c.study_id].status != Status::Dropped
+                && c.state.schedule.last_review_ms.is_some()
+                && c.state.schedule.due_ms <= now
+                && practised.contains(c.id.as_str())
+        })
+        .collect()
+}
+fn mixed_next(
+    app: &mut App,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+    start: bool,
+) -> AppResult<MutationResult> {
+    if fields.keys().any(|k| {
+        !matches!(
+            k.as_str(),
+            "csrf" | "operation_id" | "revision" | "after" | "leave"
+        )
+    }) {
+        return Err(AppError::new(
+            422,
+            "Review uses saved schedules, without overrides.",
+        ));
+    }
+    let after = field(fields, "after");
+    let leave = field(fields, "leave");
+    if !after.is_empty() && !leave.is_empty() {
+        return Err(AppError::conflict());
+    }
+    if let Some(p) = &app.practice.current {
+        if after.is_empty() && leave.is_empty() {
+            // Choosing all subjects does not discard the held question or result.
+            app.practice.mixed_review = true;
+            return Ok(response(None, held(app)?));
+        }
+        if (!leave.is_empty() && (!start || leave != p.prompt.id || p.attempt_id.is_some()))
+            || (!after.is_empty() && (after != p.prompt.id || p.attempt_id.is_none()))
+        {
+            return Err(AppError::conflict());
+        }
+    } else if !after.is_empty() || !leave.is_empty() {
+        return Err(AppError::conflict());
+    }
+    app.practice.current = None;
+    app.practice.mixed_review = true;
+    // Round robin by last completed service, not alphabetical subject order.
+    // Stable sequence IDs disambiguate simultaneous timestamps and survive reload.
+    let mut last = BTreeMap::<&str, u64>::new();
+    for a in app.practice.attempts.values().filter(|a| !a.disclosure) {
+        let served = last.entry(&a.prompt.study_id).or_default();
+        *served = (*served).max(a.sequence);
+    }
+    let chosen = mixed_cards(app, now)
+        .into_iter()
+        .min_by_key(|c| {
+            (
+                last.get(c.study_id.as_str()).copied().unwrap_or(0),
+                c.state.schedule.due_ms,
+                app.practice.studies[&c.study_id].created_ms,
+                &c.study_id,
+                c.unit_index,
+            )
+        })
+        .map(|c| c.id.clone());
+    if let Some(cid) = chosen {
+        let c = &app.practice.cards[&cid];
+        let study = &app.practice.studies[&c.study_id];
+        if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
+            let sid = study.id.clone();
+            return lesson_present(app, &sid, 0, true, now, seed);
+        }
+        app.practice.current = Some(make_prompt(
+            app,
+            study,
+            vec![c],
+            Scope::Unit {
+                unit_id: c.unit_id.clone(),
+                position: c.unit_index + 1,
+            },
+            c.state.cue,
+            now,
+            seed,
+        ));
+    }
+    Ok(response(
+        None,
+        if app.practice.current.is_some() {
+            held(app)?
+        } else {
+            json!({"prompt":null,"due":due(app,now)})
+        },
+    ))
+}
 fn next(
     app: &mut App,
     fields: &BTreeMap<String, String>,
@@ -592,6 +730,7 @@ fn next(
             "Choose one Card or one Recitation scope.",
         ));
     }
+    app.practice.mixed_review = false;
     let after = field(fields, "after");
     if let Some(p) = &app.practice.current {
         if after.is_empty() {
@@ -970,6 +1109,7 @@ fn lesson_start(
     if !field(fields, "after").is_empty() && !field(fields, "leave").is_empty() {
         return Err(AppError::new(422, "Choose after or leave, not both."));
     }
+    app.practice.mixed_review = false;
     let starter = field(fields, "starter");
     let supplied = field(fields, "version_id");
     if starter.is_empty() == supplied.is_empty() {
@@ -1162,6 +1302,7 @@ fn lesson_next(
             "Use phrases, retry, join, whole or middle lesson mode.",
         ));
     }
+    app.practice.mixed_review = false;
     if crate::library::is_nato(v) {
         if !matches!(mode, "" | "phrases") {
             return Err(AppError::new(
@@ -1264,9 +1405,12 @@ pub fn mutate(
     seed: &str,
 ) -> AppResult<MutationResult> {
     match path {
+        "/practice/review/start" => mixed_next(app, fields, now, seed, true),
+        "/practice/review/next" => mixed_next(app, fields, now, seed, false),
         "/practice/lesson/start" => lesson_start(app, fields, now, seed),
         "/practice/lesson/next" => lesson_next(app, fields, now, seed),
         "/practice/nato/start" => {
+            app.practice.mixed_review = false;
             if fields
                 .keys()
                 .any(|k| !matches!(k.as_str(), "csrf" | "operation_id" | "revision"))
@@ -1404,6 +1548,7 @@ pub fn mutate(
                         revealed: true,
                         created_ms: now,
                         algorithm: learning::ALGORITHM.into(),
+                        schedule_policy: SchedulePolicy::Due,
                         effects,
                     },
                 );
@@ -1446,7 +1591,7 @@ pub fn mutate(
                 .targets
                 .iter()
                 .zip(&grade.units)
-                .map(|(t, g)| effect(t, g.verdict, p.revealed, now))
+                .map(|(t, g)| effect(t, g.verdict, p.revealed, now, SchedulePolicy::Due))
                 .collect::<AppResult<Vec<_>>>()?;
             for e in &effects {
                 let c = app.practice.cards.get_mut(&e.card_id).unwrap();
@@ -1470,6 +1615,7 @@ pub fn mutate(
                     revealed: p.revealed,
                     created_ms: now,
                     algorithm: learning::ALGORITHM.into(),
+                    schedule_policy: SchedulePolicy::Due,
                     effects,
                 },
             );
@@ -1520,7 +1666,7 @@ pub fn mutate(
                 revision: e.revision_before,
                 before: e.before.clone(),
             };
-            let replacement = effect(&t, verdict, a.revealed, a.created_ms)?;
+            let replacement = effect(&t, verdict, a.revealed, a.created_ms, a.schedule_policy)?;
             let cid = id(seed, "correction");
             app.practice.corrections.insert(
                 cid.clone(),
@@ -1573,7 +1719,11 @@ pub fn due(app: &App, now: i64) -> Value {
 pub fn ensure_stream(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
     if app.practice.current.is_none() {
         let previous = app.practice.clone();
-        next(app, &BTreeMap::new(), now, seed)?;
+        if app.practice.mixed_review {
+            mixed_next(app, &BTreeMap::new(), now, seed, false)?;
+        } else {
+            next(app, &BTreeMap::new(), now, seed)?;
+        }
         if app.practice != previous {
             app.revision += 1;
         }
@@ -1768,7 +1918,13 @@ pub fn validate(app: &App) -> AppResult<()> {
                     let expected = if a.disclosure {
                         disclosure_effect(&target)
                     } else {
-                        effect(&target, e.verdict, a.revealed, a.created_ms)?
+                        effect(
+                            &target,
+                            e.verdict,
+                            a.revealed,
+                            a.created_ms,
+                            a.schedule_policy,
+                        )?
                     };
                     if expected != *e {
                         return Err(fail());
@@ -1795,7 +1951,14 @@ pub fn validate(app: &App) -> AppResult<()> {
                     || *revision != e.revision_before + 1
                     || *revision != c.revision_before
                     || *state != c.before
-                    || effect(&target_from_effect(e), c.verdict, a.revealed, a.created_ms)?.after
+                    || effect(
+                        &target_from_effect(e),
+                        c.verdict,
+                        a.revealed,
+                        a.created_ms,
+                        a.schedule_policy,
+                    )?
+                    .after
                         != c.after
                 {
                     return Err(fail());

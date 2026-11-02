@@ -100,21 +100,22 @@ export async function mixedBrowserWalk(browser, capture) {
       const frozen = {occurrence:meta.occurrence, practice:meta.practice};
       assert.ok(frozen.occurrence && frozen.practice.current, 'Both practice streams must be populated');
       const unchanged = async () => {const current=await f.record('meta');assert.deepEqual({occurrence:current.occurrence,practice:current.practice},frozen, 'Home navigation must preserve both frozen practice streams');};
-      const home = () => page.locator('[data-state="nato-home"]');
+      const exactState=frozen.practice.current.attempt_id?'exact-result':'exact-prompt';
+      const home = () => page.locator('[data-state="'+exactState+'"]');
       const openHome = async () => {await page.getByRole('link',{name:'Scry, home',exact:true}).tap();await home().waitFor();await unchanged();};
       await openHome();
       const content=await page.locator('main').innerText();
-      for(const hidden of [frozen.occurrence.presentation.answer,frozen.occurrence.presentation.explanation,'Copper lanterns shelter quiet gardens.'])assert.ok(!content.includes(hidden), 'Home must not show answer-bearing material from either stream');
-      assert.equal(await page.locator('[data-state^="exact-"],.answer-pair,.explanation').count(),0);
+      for(const hidden of [frozen.occurrence.presentation.answer,frozen.occurrence.presentation.explanation])assert.ok(!content.includes(hidden), 'Home never leaks the unrelated legacy stream');
+      if(!frozen.practice.current.attempt_id)assert.ok(!content.includes('Copper lanterns shelter quiet gardens.'),'Held unaided exact prompt keeps its answer hidden');
+      assert.equal(await page.locator('.answer-pair,.explanation').count(),0);
       await shot(`home-${stage}`);
       await page.reload();await home().waitFor();await unchanged();
-      await page.reload();await home().waitFor();await unchanged();
-      await page.goBack();await page.locator('[data-state="'+(new URL(page.url()).pathname==='/recall'?(frozen.practice.current.attempt_id?'exact-result':'exact-prompt'):frozen.occurrence.phase)+'"]').waitFor();await unchanged();await page.goForward();await home().waitFor();await unchanged();
+      // Read-only default home resumes the held exact stream, not a new selection.
+      await page.goto(f.origin+'/recall');await home().waitFor();await unchanged();
+      await page.goBack();await home().waitFor();await unchanged();
+      await page.goForward();await home().waitFor();await unchanged();
       await page.locator('.account-menu>summary').tap();await page.getByRole('link',{name:'Earlier practice',exact:true}).tap();
       await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
-      await openHome();await home().getByRole('link',{name:'Resume review',exact:true}).tap();
-      await page.waitForURL(f.origin+'/recall');await page.locator('[data-state="'+(frozen.practice.current.attempt_id?'exact-result':'exact-prompt')+'"]').waitFor();await unchanged();
-      await page.goBack();await home().waitFor();await unchanged();await page.goForward();await page.locator('[data-state^="exact-"]').waitFor();await unchanged();
       await openHome();await page.locator('.account-menu>summary').tap();await page.getByRole('link',{name:'Earlier practice',exact:true}).tap();await page.waitForURL(f.origin+'/notebook');await page.locator('[data-state="'+frozen.occurrence.phase+'"]').waitFor();await unchanged();
     };
     try {

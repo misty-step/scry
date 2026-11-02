@@ -201,7 +201,13 @@ fn repeated_starter_and_agent_manifest_preserve_same_study_and_schedule() {
 fn focused_home_is_one_native_action_and_never_discloses_the_held_answer() {
     let mut app = app();
     let before = app.clone();
-    let home = page(&app, "/");
+    let home = web::render(
+        &app,
+        "/",
+        &BTreeMap::from([("practice".into(), "nato".into())]),
+        NOW,
+        None,
+    );
     assert!(home.contains("action=\"/practice/nato/start\""));
     assert!(home.contains("0<span class=\"nato-muted\"> / 26 practiced"));
     assert_eq!(

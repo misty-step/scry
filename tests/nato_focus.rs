@@ -371,16 +371,15 @@ fn nato_eligible_interleaving_preserves_history_and_schedules_with_realistic_del
     }
     assert!(!a.practice.cards.is_empty());
     assert!(a.practice.current.is_some());
-    assert!(
-        a.practice
-            .attempts
-            .values()
-            .any(|a| a.effects.iter().any(|e| e.extra_practice && !e.scheduled))
-    );
+    assert!(a.practice.attempts.values().all(|a| {
+        a.effects
+            .iter()
+            .all(|e| !e.extra_practice && (e.scheduled || e.assisted))
+    }));
 }
 
 #[test]
-fn nato_existing_overdue_correct_extra_practice_advances_without_reset() {
+fn nato_existing_overdue_correct_review_advances_without_reset() {
     let mut a = app();
     start(&mut a, "loop-existing-start");
     answer_at(&mut a, Some("Alpha"), NOW + 5_000, "existing-wrong");
@@ -408,8 +407,8 @@ fn nato_existing_overdue_correct_extra_practice_advances_without_reset() {
         .values()
         .max_by_key(|a| a.sequence)
         .unwrap();
-    assert!(latest.effects[0].extra_practice);
-    assert!(!latest.effects[0].scheduled);
+    assert!(!latest.effects[0].extra_practice);
+    assert!(latest.effects[0].scheduled);
     let before = a.practice.cards.clone();
     next_at(&mut a, NOW + 80_000, "existing-correct");
     assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
