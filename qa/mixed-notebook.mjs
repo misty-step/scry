@@ -42,6 +42,14 @@ export async function mixedHttpProof() {
   const f = await mixedFixture();
   const observed = [];
   try {
+    const heldHome=async()=>{
+      const before=await f.sql.exec('SELECT key,value FROM records ORDER BY key'),meta=await f.record('meta'),held=meta.practice.current;
+      const html=await f.html('/');assert.ok(html.includes('data-state="'+(held.attempt_id?'exact-result':'exact-prompt')+'"'));
+      for(const hidden of [meta.occurrence.presentation.answer,meta.occurrence.presentation.explanation])assert.ok(!html.includes(hidden),'Default home cannot reveal the unrelated legacy stream');
+      if(!held.attempt_id){assert.equal(held.prompt.assisted,true);assert.ok(html.includes('Copper lanterns shelter quiet gardens.'));assert.ok(html.includes('Assisted practice · the schedule stays unchanged.'));}
+      await f.html('/');assert.deepEqual(await f.sql.exec('SELECT key,value FROM records ORDER BY key'),before,'Default held home reads preserve every record');
+    };
+    await heldHome();
     const original = await f.html('/notebook');
     const fields = formFields(original, '/review/answer');
     const before = await f.sql.exec('SELECT key,value FROM records ORDER BY key');
@@ -73,6 +81,11 @@ export async function mixedHttpProof() {
     });
     // The existing browser save increments the storage revision even on replay.
     assert.ok(isDeepStrictEqual(withoutRevision(after), withoutRevision(saved)), 'Replay changes no learning records or receipts');
+    await heldHome();
+    const cardRows=await f.sql.exec("SELECT key,value FROM records WHERE key LIKE 'practice_cards/%' ORDER BY key"),schedules=rows=>rows.map(r=>[r.key,JSON.parse(r.value).state.schedule]);
+    assert.equal((await f.post('/practice/answer',{...formFields(await f.html('/'),'/practice/answer'),answer:'Copper lanterns shelter quiet gardens.'})).status,303);
+    await heldHome();assert.deepEqual(schedules(await f.sql.exec("SELECT key,value FROM records WHERE key LIKE 'practice_cards/%' ORDER BY key")),schedules(cardRows),'Guided answer cannot advance a schedule');
+    observed.push({guided_home_honest:true,guided_schedule_unchanged:true,held_home_read_only:true});
     observed.push({answer_redirect:'/notebook', held_result:true, replay_learning_rows_unchanged:true, exact_practice_unchanged:true});
     return observed;
   } finally {await f.close();}
@@ -106,7 +119,11 @@ export async function mixedBrowserWalk(browser, capture) {
       await openHome();
       const content=await page.locator('main').innerText();
       for(const hidden of [frozen.occurrence.presentation.answer,frozen.occurrence.presentation.explanation])assert.ok(!content.includes(hidden), 'Home never leaks the unrelated legacy stream');
-      if(!frozen.practice.current.attempt_id)assert.ok(!content.includes('Copper lanterns shelter quiet gardens.'),'Held unaided exact prompt keeps its answer hidden');
+      if(!frozen.practice.current.attempt_id){
+        const assisted=frozen.practice.current.prompt.assisted||frozen.practice.current.revealed;
+        if(assisted){assert.ok(content.includes('Copper lanterns shelter quiet gardens.'),'Held guided reading retains its supplied text');assert.ok(content.includes('Assisted practice · the schedule stays unchanged.'),'Visible guidance is honestly labeled');}
+        else assert.ok(!content.includes('Copper lanterns shelter quiet gardens.'),'Held unaided exact prompt keeps its answer hidden');
+      }
       assert.equal(await page.locator('.answer-pair,.explanation').count(),0);
       await shot(`home-${stage}`);
       await page.reload();await home().waitFor();await unchanged();
