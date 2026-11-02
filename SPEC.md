@@ -169,6 +169,7 @@ canvas holds the current question or graded result across refresh and return.
 
 - Default review interleaves due, previously practiced content across enrolled, non-dropped Studies. Least-recently-served Study wins; due time and stable identity break ties. One overdue subject cannot monopolize the session.
 - Unstarted catalog lessons, unseen Units, and guided-only learning with no scheduled recall are not silently enrolled or introduced into review. Explicit focused lesson learning remains available when caught up. Paused Studies retain their existing due-review eligibility.
+- New due-policy Attempts carry an explicit algorithm-policy identifier; new-semantic archives use `scry-rust-durable-sqlite-study-scheduled-v2`. Legacy history keeps its original bytes and remains readable by this build. Older binaries must refuse new semantics rather than strip metadata; rollback after new review writes requires a compatible build, not a transparent downgrade.
 - Held questions/results survive navigation and choosing all subjects. Only explicit fenced Next or lesson switching changes the current activity; no selection fabricates a grade.
 - Ordered-list lessons remain whole-sequence activities. Only genuinely due components change schedule; future components remain optional early practice. Mode and native feedback stay visible without inventing mastery.
 

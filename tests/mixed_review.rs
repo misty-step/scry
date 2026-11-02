@@ -170,6 +170,7 @@ fn mixed_caught_up_never_steals_an_unseen_card_and_can_resume_safely() {
 fn legacy_snapshot(o: &mut Owner) -> serde_json::Value {
     for a in o.app.practice.attempts.values_mut() {
         a.schedule_policy = study::SchedulePolicy::CalendarDay;
+        a.algorithm = scry::learning::ALGORITHM.into();
         for e in &mut a.effects {
             if !e.assisted
                 && e.before
@@ -206,6 +207,10 @@ fn legacy_missing_policy_keeps_old_due_extra_and_new_due_policy_survives_archive
     o.focus(&sid, NOW + 60_000);
     o.answer("Value", NOW + 60_000);
     let snapshot = legacy_snapshot(&mut o);
+    assert_eq!(
+        persistence::Archive::new(o.app.clone(), vec![], NOW).format,
+        "scry-rust-durable-sqlite-study-v1"
+    );
     let old = snapshot["practice"]["attempts"].clone();
     let second = o
         .app
@@ -450,4 +455,69 @@ fn all_subjects_and_focused_entry_preserve_held_until_explicit_fenced_switch() {
     assert!(!o.app.practice.mixed_review);
     assert_eq!(o.prompt().cue, "A");
     assert!(o.app.practice.attempts.is_empty());
+}
+
+#[test]
+fn new_policy_and_mixed_receipts_fence_archives_and_reject_tampered_pairs() {
+    let mut o = Owner::new();
+    assert_eq!(
+        persistence::Archive::new(o.app.clone(), vec![], NOW).format,
+        persistence::ARCHIVE_FORMAT
+    );
+    o.call("/practice/review/start", &[], NOW);
+    let persisted = persistence::app_from_rows(&persistence::rows(&o.app).unwrap()).unwrap();
+    assert!(persisted.practice.mixed_review);
+    assert_eq!(persisted, o.app);
+    let format = "scry-rust-durable-sqlite-study-scheduled-v2";
+    assert_eq!(
+        persistence::Archive::new(o.app.clone(), vec![], NOW).format,
+        format
+    );
+    o.call("/practice/lesson/start", &[("starter", "nato".into())], NOW);
+    assert!(!o.app.practice.mixed_review);
+    assert!(o.app.practice.attempts.is_empty());
+    assert_eq!(
+        persistence::Archive::new(o.app.clone(), vec![], NOW).format,
+        format,
+        "Retained mixed receipt requires its reader after focused switch"
+    );
+    o.answer("Alfa", NOW);
+    let a = o.app.practice.attempts.values().next().unwrap();
+    assert_eq!(
+        a.algorithm,
+        format!("{};schedule=due-v1", scry::learning::ALGORITHM)
+    );
+    let mut archive = persistence::Archive::new(o.app.clone(), vec![], NOW);
+    archive.validate().unwrap();
+    archive.format = "scry-rust-durable-sqlite-study-v1".into();
+    assert_eq!(archive.validate().unwrap_err().status, 422);
+    let mut stripped = o.app.clone();
+    stripped
+        .practice
+        .attempts
+        .values_mut()
+        .next()
+        .unwrap()
+        .schedule_policy = study::SchedulePolicy::CalendarDay;
+    assert!(
+        engine::validate_app(&stripped).is_err(),
+        "Unknown algorithm/policy pair refuses before writes"
+    );
+    let mut old_algorithm = o.app.clone();
+    old_algorithm
+        .practice
+        .attempts
+        .values_mut()
+        .next()
+        .unwrap()
+        .algorithm = scry::learning::ALGORITHM.into();
+    assert!(engine::validate_app(&old_algorithm).is_err());
+    let mut unknown = serde_json::to_value(&o.app).unwrap();
+    unknown["practice"]["attempts"]
+        .as_object_mut()
+        .unwrap()
+        .values_mut()
+        .next()
+        .unwrap()["schedule_policy"] = "unknown".into();
+    assert!(serde_json::from_value::<App>(unknown).is_err());
 }

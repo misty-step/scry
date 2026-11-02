@@ -87,3 +87,18 @@ instructions to provision, run or revive that infrastructure.
 [The runbook](runbook.md) retains dated serving and migration observations.
 Historical source, tags, releases, learner content and receipts remain intact;
 they do not establish the current production version or a new acceptance pass.
+
+### Due-review policy compatibility (2026-11-02)
+
+New exact-recall Attempts identify the pinned memory model plus `schedule=due-v1`.
+Legacy Attempts retain their original algorithm and omitted policy fields; this
+build reads both without rewriting history. Once a new-policy Attempt is stored,
+a pre-policy binary is not a compatible writer: its algorithm validation must
+refuse the new record, not drop metadata or recalculate old evidence.
+
+Archives containing new-policy Attempts, mixed-review mode or retained mixed
+review receipts use `scry-rust-durable-sqlite-study-scheduled-v2`; old readers
+refuse them before restore writes. Truly legacy archives retain their format.
+Use a compatible code fix for rollback, never an old snapshot over acknowledged
+writes. The archive fence also protects mixed-only session state; it does not
+claim old code can preserve that state when pointed directly at live rows.

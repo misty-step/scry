@@ -7,6 +7,7 @@ import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createRuntime,internalKey} from './runtime-helper.mjs';
+import {nativeFields} from './nato-starter.mjs';
 import {feedbackArrival,assertFeedbackArrival} from './feedback-arrival.mjs';
 const DAY=86400000;
 // Always later than initialization's wall clock, including the afternoon UTC.
@@ -23,14 +24,14 @@ function successfulReplay(before,after){
  assert.deepEqual({...current,revision:previous.revision},previous);
  return {before_revision:previous.revision,after_revision:current.revision,domain_and_receipts_unchanged:true};
 }
-export async function keyedMappingFixture({capturePredecessor=false}={}){
+export async function keyedMappingFixture({capturePredecessor=false,captureMapping=false,artifact,legacyOnly=false,mixedOnly=false}={}){
  const temp=await mkdtemp(join(tmpdir(),'scry-keyed-mapping-'));
  const name='mapping-'+randomUUID(),space=name,config=join(temp,'login.json');
  const base={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:space,INTERNAL_KEY:internalKey};
  let at=START,egress=0,runtime,origin,storage,secret='';
  const transcript=[];
  const start=async()=>{
-  runtime=await createRuntime({port:0,name,inspect:true,testClock:true,resourcePersistencePath:join(temp,'state'),bindings:{...base,SCRY_TEST_NOW_MS:String(at)},egress:async()=>{egress++;throw Error('No external egress in mapping proof.');}});
+  runtime=await createRuntime({artifact,port:0,name,inspect:true,testClock:true,resourcePersistencePath:join(temp,'state'),bindings:{...base,SCRY_TEST_NOW_MS:String(at)},egress:async()=>{egress++;throw Error('No external egress in mapping proof.');}});
   origin=(await runtime.mf.ready).origin;
   runtime={...runtime,...await runtime.rebind({...base,CANONICAL_ORIGIN:origin,SCRY_TEST_NOW_MS:String(at)})};
   storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
@@ -52,6 +53,15 @@ export async function keyedMappingFixture({capturePredecessor=false}={}){
   secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await minted.text())?.[1];assert.ok(secret);
   await ok(['login','--url',origin,'--token-stdin'],secret+'\n');
   const archives={};
+  if(mixedOnly){
+   // Explicit valid transport request to the public route, not an assertion
+   // that the empty home offers an action when there is no due work.
+   const settings=await(await runtime.worker.fetch(origin+'/settings')).text();
+   const started=await runtime.worker.fetch(origin+'/practice/review/start',{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...nativeFields(settings,'/tokens/create'),operation_id:randomUUID()})});assert.equal(started.status,303);
+   const response=await api('/api/v1/export');assert.equal(response.status,200);archives.baseline=Buffer.from(await response.arrayBuffer());
+   const empty=JSON.parse(archives.baseline);assert.equal(empty.format,'scry-rust-durable-sqlite-study-scheduled-v2');assert.equal(empty.app.practice.mixed_review,true);assert.equal(Object.keys(empty.app.practice.attempts).length,0);assert.ok(Object.values(empty.app.operations).some(op=>op.path==='/practice/review/start'));
+   return {archives,at,get egress(){return egress;},close:async()=>{await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}};
+  }
   if(capturePredecessor){
    const path=join(temp,'predecessor-control.txt');await writeFile(path,'Synthetic predecessor control.\n');
    const version=(await ok(['version','add','--title','Predecessor positive control','--kind','text','--text-file',path])).result.entity_id;
@@ -59,9 +69,10 @@ export async function keyedMappingFixture({capturePredecessor=false}={}){
    await ok(['answer',prompt.id,'--text-stdin'],'Synthetic predecessor control.');await ok(['study','drop',study]);
    const response=await api('/api/v1/export');assert.equal(response.status,200);archives.baseline=Buffer.from(await response.arrayBuffer());
   }
+  if(legacyOnly)return {archives,at,get egress(){return egress;},close:async()=>{await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}};
   const imported=await ok(['mapping','add','--file',manifest,'--operation-id','mapping-fixture-import-operation']);
   const vid=imported.result.entity_id,shown=await ok(['version','show',vid]);
-  if(capturePredecessor){const response=await api('/api/v1/export');assert.equal(response.status,200);archives.mappingLibrary=Buffer.from(await response.arrayBuffer());}
+  if(capturePredecessor||captureMapping){const response=await api('/api/v1/export');assert.equal(response.status,200);archives.mappingLibrary=Buffer.from(await response.arrayBuffer());}
   const sid=(await ok(['learn',vid,'--pace','intense'])).practice.study.id;
   const r2=async()=>{
    const result={};
@@ -155,12 +166,20 @@ export async function keyedMappingJourney({predecessorArtifact}={}){
    const b=await f.ok(['answer',pid,'--text-stdin','--operation-id',op],'Alfa');assert.deepEqual(b.practice,a.practice);const secondReplay=await f.rows();transcript.push({observation:'Repeated answer receipt remains immutable',...successfulReplay(firstReplay,secondReplay)});
    assert.equal((await f.api('/api/v1/answer',{...payload,answer:'Alpha'})).status,409);assert.deepEqual(await f.rows(),secondReplay);
   }],
-  ['published predecessor restores its baseline and refuses mapping Library/Study without writes',async()=>{
+  ['published predecessor preserves genuine legacy history and refuses new scheduling/mapping archives without writes',async()=>{
    assert.ok(predecessorArtifact,'Exact frozen predecessor is mandatory.');
    const response=await f.api('/api/v1/export');assert.equal(response.status,200);const studyBytes=Buffer.from(await response.arrayBuffer());
-   for(const [label,bytes,accept]of [['baseline',f.archives.baseline,true],['mapping-library',f.archives.mappingLibrary,false],['mapping-study',studyBytes,false]]){
+   const legacy=await keyedMappingFixture({capturePredecessor:true,artifact:predecessorArtifact,legacyOnly:true});
+   let legacyBytes;try{legacyBytes=legacy.archives.baseline;assert.equal(legacy.egress,0);}finally{await legacy.close();}
+   const mixed=await keyedMappingFixture({mixedOnly:true});let mixedBytes;try{mixedBytes=mixed.archives.baseline;assert.equal(mixed.egress,0);}finally{await mixed.close();}
+   const mapping=await keyedMappingFixture({captureMapping:true});let mappingBytes;try{mappingBytes=mapping.archives.mappingLibrary;assert.equal(Object.keys(JSON.parse(mappingBytes).app.practice?.attempts||{}).length,0);}finally{await mapping.close();}
+   const due=JSON.parse(f.archives.baseline);assert.equal(due.format,'scry-rust-durable-sqlite-study-scheduled-v2');assert.ok(Object.values(due.app.practice.attempts).every(a=>a.schedule_policy==='due'&&a.assisted));
+   // Adversarial envelope downgrade only: never delete policy or rewrite history.
+   const downgraded=Buffer.from(JSON.stringify({...due,format:'scry-rust-durable-sqlite-study-v1'}));
+   for(const [label,bytes,accept]of [['actual-legacy-baseline',legacyBytes,true],['mixed-only-no-attempts',mixedBytes,false],['new-guided-due',f.archives.baseline,false],['forged-legacy-envelope-new-due',downgraded,false],['mapping-library-without-new-policy',mappingBytes,false],['mapping-study',studyBytes,false]]){
     const result=await predecessorRestore(predecessorArtifact,bytes,accept,f.at);transcript.push({observation:'Published v0.8.1 predecessor '+label,...result});
    }
+   transcript.push({observation:'Current Worker restores actual predecessor history unchanged',...await predecessorRestore(undefined,legacyBytes,true,f.at)});
   }],
   ['held result, immutable history, runtime restart and complete local-R2 restore',async()=>{
    const held=await f.ok(['next']),history=await f.ok(['history']);assert.deepEqual(history.attempts[original.id],original);

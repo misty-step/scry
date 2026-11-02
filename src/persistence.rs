@@ -302,7 +302,20 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
-    if !app.practice.is_empty()
+    if app.practice.mixed_review
+        || app
+            .practice
+            .attempts
+            .values()
+            .any(|a| a.schedule_policy == crate::study::SchedulePolicy::Due)
+        || app.operations.values().any(|r| {
+            r.path
+                .as_deref()
+                .is_some_and(|p| p.starts_with("/practice/review/"))
+        })
+    {
+        "scry-rust-durable-sqlite-study-scheduled-v2"
+    } else if !app.practice.is_empty()
         || app.operations.values().any(|r| {
             r.path
                 .as_deref()

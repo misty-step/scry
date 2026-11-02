@@ -180,6 +180,12 @@ pub enum SchedulePolicy {
     Due,
 }
 impl SchedulePolicy {
+    fn algorithm(self) -> String {
+        match self {
+            Self::CalendarDay => learning::ALGORITHM.into(),
+            Self::Due => format!("{};schedule=due-v1", learning::ALGORITHM),
+        }
+    }
     fn is_legacy(&self) -> bool {
         *self == Self::CalendarDay
     }
@@ -230,7 +236,8 @@ pub struct Practice {
 }
 impl Practice {
     pub fn is_empty(&self) -> bool {
-        self.studies.is_empty()
+        !self.mixed_review
+            && self.studies.is_empty()
             && self.cards.is_empty()
             && self.attempts.is_empty()
             && self.corrections.is_empty()
@@ -1547,7 +1554,7 @@ pub fn mutate(
                         disclosure: true,
                         revealed: true,
                         created_ms: now,
-                        algorithm: learning::ALGORITHM.into(),
+                        algorithm: SchedulePolicy::Due.algorithm(),
                         schedule_policy: SchedulePolicy::Due,
                         effects,
                     },
@@ -1614,7 +1621,7 @@ pub fn mutate(
                     disclosure: false,
                     revealed: p.revealed,
                     created_ms: now,
-                    algorithm: learning::ALGORITHM.into(),
+                    algorithm: SchedulePolicy::Due.algorithm(),
                     schedule_policy: SchedulePolicy::Due,
                     effects,
                 },
@@ -1819,7 +1826,7 @@ pub fn validate(app: &App) -> AppResult<()> {
         if aid != &a.id
             || !valid_id(aid)
             || !valid_actor(&a.acting_token)
-            || a.algorithm != learning::ALGORITHM
+            || a.algorithm != a.schedule_policy.algorithm()
             || a.raw_answer.len() > crate::library::TEXT_BYTES
             || a.sequence > app.revision
             || a.version_id != a.prompt.version_id
