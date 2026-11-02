@@ -299,7 +299,7 @@ export async function keyedMappingWalk(browser,capture){
    await page.getByRole('button',{name:/^Next/}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await page.locator('.nato-letter').innerText()).trim(),'C');
    assert.doesNotMatch(await page.content(),/Charlie/);
    const before=(await f.record('meta')).practice.current.targets[0].before.schedule;
-   await page.getByRole('button',{name:'Show answer',exact:true}).tap();assert.equal(await page.locator('#answer').count(),0);await enterMemoryPage(page);
+   await page.getByRole('button',{name:'Show answer',exact:true}).tap();await page.locator('[data-study-phase="study"]').waitFor();await page.getByText('Charlie',{exact:true}).waitFor();assert.equal(await page.locator('#answer').count(),0);await enterMemoryPage(page);assert.doesNotMatch(await page.content(),/Charlie/,'Hiding the peek removes the expected word before typing');
    await page.getByLabel('Type your answer',{exact:true}).fill('Charlie');await page.getByRole('button',{name:/^Check/}).tap();await page.locator('[data-state="exact-result"]').waitFor();
    const shown=(await f.ok(['next'])).practice.attempt;assert.equal(shown.assisted,true);assert.equal(shown.effects[0].scheduled,false);assert.deepEqual(shown.effects[0].after.schedule,before);
    await typography(page,zoom);

@@ -14,7 +14,7 @@ export function primaryStudyAction(html){
  assert.ok(form,'Study has one deliberate primary transition');const action=/action="([^"]+)"/.exec(form)?.[1];assert.ok(action);assert.notEqual(action,'/practice/answer','Study is not a copy-answer exercise');return {path:action,fields:nativeFields('<form'+form,action)};
 }
 export function assertStudySource(html,text){
- const dom=htmlStructure(html);assert.ok(dom.withAttr('data-study-phase').some(node=>node.attrs['data-study-phase']==='study'));assert.equal(dom.forms('/practice/answer').length,0,'Visible source never has a gradeable answer form');assert.equal(dom.nodes.filter(node=>node.attrs.name==='answer'||node.attrs.id==='answer').length,0,'Study has no typing input');assert.equal(dom.withAttr('data-verdict').length,0,'Studying is not a graded result');assert.equal(dom.classes('primary').length,1,'One clear transition to review');assert.ok(dom.text.includes(text.trim()),'Study displays the supplied source: '+JSON.stringify(text));assert.doesNotMatch(html,/Copy the phrase|Type the answer shown|Check answer/);return primaryStudyAction(html);
+ const dom=htmlStructure(html);assert.ok(dom.withAttr('data-study-phase').some(node=>node.attrs['data-study-phase']==='study'));assert.equal(dom.forms('/practice/quiz').length,1,'Committed Source exposes exactly one transition for the browser phase wait');assert.equal(dom.forms('/practice/answer').length,0,'Visible source never has a gradeable answer form');assert.equal(dom.nodes.filter(node=>node.attrs.name==='answer'||node.attrs.id==='answer').length,0,'Study has no typing input');assert.equal(dom.withAttr('data-verdict').length,0,'Studying is not a graded result');assert.equal(dom.classes('primary').length,1,'One clear transition to review');assert.ok(dom.text.includes(text.trim()),'Study displays the supplied source: '+JSON.stringify(text));assert.doesNotMatch(html,/Copy the phrase|Type the answer shown|Check answer/);return primaryStudyAction(html);
 }
 export async function enterMemory(f,path='/'){
  let html=await f.get(path);
@@ -28,9 +28,20 @@ export async function enterMemory(f,path='/'){
  return html;
 }
 export async function enterMemoryPage(page){
+ // A click/tap resolves before enhanced fetch rendering. Wait for the held
+ // prompt's committed phase, not an instantaneous count on the prior result.
+ await page.locator('form[action="/practice/quiz"] button, #answer').first().waitFor({state:'visible'});
+ await page.locator('[data-state="exact-prompt"] [data-study-phase]').first().waitFor({state:'attached'});
  const form=page.locator('form[action="/practice/quiz"]');
- if(await form.count()){assert.equal(await page.locator('form[action="/practice/answer"]').count(),0);await form.locator('button').click();}
+ if(await form.count()){
+  await page.locator('[data-study-phase="study"]').waitFor();
+  assert.equal(await page.locator('form[action="/practice/answer"]').count(),0);
+  await form.locator('button').click();
+ }
+ await page.locator('[data-state="exact-prompt"] [data-study-phase="quiz"]').waitFor({state:'attached'});
  await page.locator('#answer').waitFor();
+ await form.waitFor({state:'detached'});
+ assert.equal(await page.locator('.exact-expected').count(),0,'Hidden review contains no expected-answer disclosure');
 }
 export async function studyReviewJourney(){
  const f=await starterFixture();
@@ -44,7 +55,7 @@ export async function studyReviewJourney(){
   for(const extra of [{grade:'Good'},{answer:text},{phase:'quiz'}]){const response=await f.post(action.path,{...action.fields,operation_id:randomUUID(),...extra});assert.equal(response.status,422);assert.deepEqual(await f.rows(),initial,'Client transition overrides cannot manufacture evidence');}
   const starts=await Promise.all([f.post(action.path,action.fields),f.post(action.path,action.fields)]);assert.ok(starts.every(response=>response.status===303),'Double submit selects one quiz');const started=await f.rows();assert.equal(attempts(started),0,'Trying from memory selects a quiz; it does not grade');
   await submit(f,action.path,action.fields);assert.deepEqual(domain(await f.rows()),domain(started));assert.deepEqual(held(await f.rows()),held(started),'Duplicate Study transition holds one quiz');
-  const quiz=await f.get('/'),quizDOM=htmlStructure(quiz);assert.ok(quizDOM.withAttr('data-study-phase').some(node=>node.attrs['data-study-phase']==='quiz'));assert.equal(quizDOM.forms('/practice/answer').length,1);assert.ok(!quiz.includes(text),'Expected text is absent from the entire memory response, including hidden disclosures');
+  const quiz=await f.get('/'),quizDOM=htmlStructure(quiz);assert.equal(quizDOM.forms('/practice/quiz').length,0,'Committed Quiz removes the prior Source transition');assert.ok(quizDOM.withAttr('data-study-phase').some(node=>node.attrs['data-study-phase']==='quiz'));assert.equal(quizDOM.forms('/practice/answer').length,1);assert.ok(!quiz.includes(text),'Expected text is absent from the entire memory response, including hidden disclosures');
   const beforeRead=await f.rows();await f.get('/recall');await f.get('/');assert.deepEqual(await f.rows(),beforeRead,'Refresh/back route keeps protected memory prompt');
   const answer={...nativeFields(quiz,'/practice/answer'),answer:text};await submit(f,'/practice/answer',answer);const graded=await f.rows();assert.equal(attempts(graded),1);assert.match(await f.get('/'),/data-verdict="Good"/);
   await submit(f,'/practice/answer',answer);assert.deepEqual(domain(await f.rows()),domain(graded),'Double submit commits one native grade');
@@ -64,22 +75,33 @@ export async function studyReviewJourney(){
  }finally{await f.close();}
 }
 
+async function assertVisibleSourcePage(page,text){
+ const source=page.locator('[data-study-phase="study"]');await source.waitFor();
+ const normalized=value=>value.replace(/\s+/g,' ').trim();
+ assert.equal(normalized((await source.locator('.exact-expected').allTextContents()).join(' ')),normalized(text),'Source panel shows the exact supplied unit');
+}
+async function assertHiddenReviewPage(page,text){
+ assert.equal(await page.locator('.exact-expected').count(),0);
+ const normalized=value=>value.replace(/\s+/g,' ').trim();
+ assert.ok(!normalized(await page.locator('body').textContent()).includes(normalized(text)),'Expected text is absent even from hidden DOM text');
+ assert.ok(!(await page.content()).includes(text),'Expected source is absent from raw response markup');
+}
 export async function studyReviewWalk(browser,capture){
  const results=[];
  for(const [width,noJS]of [[390,false],[320,true],[1280,false]]){
   const f=await starterFixture(),context=await browser.newContext({viewport:{width,height:844},isMobile:width<1000,hasTouch:width<1000,javaScriptEnabled:!noJS,colorScheme:noJS?'dark':'light'}),row={feature:'source-study-memory-review',width,noJS,status:'pass',evidence:[]};results.push(row);
   try{
    await submit(f,'/practice/lesson/start',selectedLesson(await f.get('/lessons'),'st-michael-en'));
-   const page=await context.newPage();page.setDefaultTimeout(12000);await page.goto(f.origin+'/');const initial=await f.rows(),p=held(initial),v=initial['library_versions/'+p.prompt.version_id],text=v.sections.flatMap(s=>s.units).find(u=>u.id===p.prompt.unit_ids[0]).text;
-   assert.equal(await page.locator('form[action="/practice/answer"],#answer').count(),0);await page.locator('form[action="/practice/quiz"] button').waitFor();assert.ok((await page.locator('main').innerText()).includes(text));
+   const page=await context.newPage();page.setDefaultTimeout(12000);await page.goto(f.origin+'/');const initial=await f.rows(),p=held(initial),v=initial['library_versions/'+p.prompt.version_id],text=v.sections.flatMap(s=>s.units).find(u=>u.id===p.prompt.unit_ids[0]).text.trim();
+   assert.equal(await page.locator('form[action="/practice/answer"],#answer').count(),0);await page.locator('form[action="/practice/quiz"] button').waitFor();await assertVisibleSourcePage(page,text);
    row.evidence.push(await capture(page,`study-review-${width}-${noJS?'native':'enhanced'}-source.png`));await page.reload();assert.deepEqual(await f.rows(),initial);
-   await enterMemoryPage(page);const quiz=await f.rows();assert.ok(!(await page.content()).includes(text));assert.equal(attempts(quiz),0);
-   if(noJS){await page.goBack();await page.locator('#answer').waitFor();assert.ok(!(await page.content()).includes(text),'Back cannot resurrect the prior source page after quiz selection');assert.deepEqual(await f.rows(),quiz);}
-   await page.goto(f.origin+'/lessons');await page.goBack();await page.locator('#answer').waitFor();assert.deepEqual(await f.rows(),quiz,'Browser back re-renders held quiz rather than disclosing old source');assert.ok(!(await page.content()).includes(text));
+   await enterMemoryPage(page);const quiz=await f.rows();await assertHiddenReviewPage(page,text);assert.equal(attempts(quiz),0);
+   if(noJS){await page.goBack();await page.locator('#answer').waitFor();await assertHiddenReviewPage(page,text);assert.deepEqual(await f.rows(),quiz);}
+   await page.goto(f.origin+'/lessons');await page.goBack();await page.locator('#answer').waitFor();assert.deepEqual(await f.rows(),quiz,'Browser back re-renders held quiz rather than disclosing old source');await assertHiddenReviewPage(page,text);
    row.evidence.push(await capture(page,`study-review-${width}-${noJS?'native':'enhanced'}-quiz.png`));
-   await page.locator('form[action="/practice/reveal"] button').click();assert.equal(await page.locator('#answer').count(),0);assert.ok((await page.locator('main').innerText()).includes(text));
+   await page.locator('form[action="/practice/reveal"] button').click();await page.locator('[data-study-phase="study"]').waitFor();assert.equal(await page.locator('#answer').count(),0);await assertVisibleSourcePage(page,text);
    const afterPeek=await f.rows();for(const target of held(quiz).targets)assert.deepEqual(afterPeek['practice_cards/'+target.card_id].state.schedule,quiz['practice_cards/'+target.card_id].state.schedule);
-   await enterMemoryPage(page);assert.ok(!(await page.content()).includes(text));await page.locator('#answer').fill(text);await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-verdict="Good"]').waitFor();
+   await enterMemoryPage(page);await assertHiddenReviewPage(page,text);await page.locator('#answer').fill(text);await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-verdict="Good"]').waitFor();
    const result=await f.rows(),attempt=result['practice_attempts/'+held(result).attempt_id];assert.equal(attempt.assisted,true);assert.equal(await page.locator('[data-result-progress]').isVisible(),true);
    for(const target of held(quiz).targets)assert.deepEqual(result['practice_cards/'+target.card_id].state.schedule,quiz['practice_cards/'+target.card_id].state.schedule);
    row.evidence.push(await capture(page,`study-review-${width}-${noJS?'native':'enhanced'}-helped-result.png`));await page.reload();assert.deepEqual(await f.rows(),result);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(f.egress,0);
