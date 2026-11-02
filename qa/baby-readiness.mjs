@@ -1,3 +1,5 @@
+import {htmlStructure} from './html-structure.mjs';
+import {enterMemory,assertStudySource} from './study-review.mjs';
 // Original, sourced baby content: real Worker/native forms and synthetic history only.
 import assert from 'node:assert/strict';
 import {mkdir,writeFile} from 'node:fs/promises';
@@ -14,8 +16,8 @@ export async function babyJourney(){
   const unchanged=await f.rows();await f.get(dest);assert.deepEqual(await f.rows(),unchanged,'Refresh does not advance or write evidence');
   dest=await send(f,'/practice/answer',{...nativeFields(page,'/practice/answer'),answer:'not swaddle'});assert.equal(dest,'/?practice=baby-soothing');page=await f.get(dest);assert.match(page,/data-verdict="Again"/);assert.match(page,/data-result-progress/);
   const next=nativeFields(page,'/practice/next');assert.equal(next.study_id,sid);dest=await send(f,'/practice/next',next);assert.equal(dest,'/?practice=baby-soothing');page=await f.get(dest);rows=await f.rows();p=current(rows);assert.equal(p.prompt.study_id,sid);
-  const reveal=nativeFields(page,'/practice/reveal');await send(f,'/practice/reveal',reveal);page=await f.get(dest);rows=await f.rows();p=current(rows);const card=rows['practice_cards/'+p.targets[0].card_id],v=rows['library_versions/'+p.prompt.version_id],text=v.sections.flatMap(s=>s.units).find(u=>u.id===p.prompt.unit_ids[0]).text;const value=text.split('\t')[1];assert.ok(value);
-  await send(f,'/practice/answer',{...nativeFields(page,'/practice/answer'),answer:value});page=await f.get(dest);assert.match(page,/With help/);const helped=await f.rows();assert.deepEqual(helped['practice_cards/'+card.id].state.schedule,card.state.schedule);
+  const reveal=nativeFields(page,'/practice/reveal');await send(f,'/practice/reveal',reveal);page=await f.get(dest);rows=await f.rows();p=current(rows);const card=rows['practice_cards/'+p.targets[0].card_id],v=rows['library_versions/'+p.prompt.version_id],text=v.sections.flatMap(s=>s.units).find(u=>u.id===p.prompt.unit_ids[0]).text;const value=text.split('\t')[1];assert.ok(value);assertStudySource(page,value);assert.ok(htmlStructure(page).text.includes(p.prompt.cue),'Study preserves the full safety-bearing mapping cue, not only the answer');
+  page=await enterMemory(f,dest);await send(f,'/practice/answer',{...nativeFields(page,'/practice/answer'),answer:value});page=await f.get(dest);assert.match(page,/With help/);const helped=await f.rows();assert.deepEqual(helped['practice_cards/'+card.id].state.schedule,card.state.schedule);
   const detail=await f.get('/library/versions/'+p.prompt.version_id);await writeFile('target/keyed-mapping/baby-source-notes.html',detail);assert.match(detail,/healthychildren.org/);assert.match(detail,/happiestbaby.com/);assert.match(detail,/not medical advice|not a medical|not medical training/i);
   const history=Object.fromEntries(Object.entries(helped).filter(([key])=>key.startsWith('practice_attempts/')));
   dest=await send(f,'/practice/lesson/start',select(page,'baby-montessori'));assert.equal(dest,'/?practice=baby-montessori');await f.get(dest);const after=await f.rows();assert.notEqual(current(after).prompt.study_id,sid);for(const [k,v]of Object.entries(history))assert.deepEqual(after[k],v);assert.equal(f.egress,0);

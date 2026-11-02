@@ -384,6 +384,7 @@ remain available. These reads never record help or consume a Prompt.
   --recite section --section SECTION --json
 ./target/debug/scry next --after PROMPT --study STUDY --recite whole --json
 ./target/debug/scry reveal PROMPT --json
+./target/debug/scry quiz PROMPT --operation-id RETAINED_OPERATION_ID --json
 ./target/debug/scry study pause STUDY --json
 ./target/debug/scry study resume STUDY --json
 ./target/debug/scry study drop STUDY --json
@@ -406,10 +407,26 @@ learner-supplied Verdict is accepted.
 | POST | `/api/v1/next` | `operation_id`, optional `after`, `study_id`, `card_id`, `recite`, `section_id` |
 | POST | `/api/v1/answer` | `operation_id`, `prompt_id`, raw `answer` |
 | POST | `/api/v1/reveal` | `operation_id`, `prompt_id` |
+| POST | `/api/v1/quiz` | `operation_id`, `prompt_id`; explicitly hide source and begin a memory quiz |
 | POST | `/api/v1/correct` | Retired: 410; existing Corrections remain readable through history/export |
 | GET | `/api/v1/due` | Presented and upcoming Card schedules, due identities and next due time |
 | GET | `/api/v1/history` | Studies, Cards, immutable Attempts and Corrections, referenced Versions and operation receipts |
 | GET | `/api/v1/export` | Complete compatible private archive, including the understanding notebook and historical custody |
+
+New lesson/app prompts distinguish `practice.phase: "study"` (visible source,
+no answer form or grade) from `"quiz"` (hidden source, raw answer graded natively).
+POST `/api/v1/quiz` with the source `prompt_id` creates a separately fenced quiz
+with the same Units and scope, without creating an Attempt or changing schedules.
+Source-phase answers are rejected server-side, including requests from older
+clients. Revealing a quiz records help; returning to quiz preserves that help.
+The generic API's legacy absent-phase guided-cue behavior remains compatible;
+clients can explicitly opt into quiz from a visible source cue. Existing Attempts
+and their original assistance/schedule evidence are never reinterpreted.
+
+Rollback safety: app Studies retain `source_quiz` even when no Prompt is held.
+Their archives use the phase-v3 format and older readers must refuse them. This
+archive fence does not make an older binary safe against the same live SQLite
+store: do not downgrade that store to a pre-phase runtime.
 
 Practice mutations return `practice` beside the shared `result` and `replayed`
 fields. The engine receipt freezes each response reference. Reconcile an

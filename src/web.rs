@@ -534,7 +534,7 @@ impl View<'_> {
                 "{}<details class=\"library-details\"><summary>Pace: 6 new Units a day</summary><fieldset><legend>New Units each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
                 hidden("version_id", id)
             );
-            out.push_str(&self.form("/practice/learn", "learn", "library-learn", "", &body));
+            out.push_str(&self.form("/practice/study/start", "learn", "library-learn", "", &body));
         } else {
             out.push_str("<p class=\"fineprint\">Practice for this kind is not available yet.</p>");
         }
@@ -665,7 +665,19 @@ impl View<'_> {
         }
         if let Some(a) = attempt {
             out.push_str(&self.exact_result(a));
+        } else if p.source_visible() {
+            let _ = write!(
+                out,
+                "<h1>{}</h1>",
+                escape(if prompt.cue_level == crate::study::Cue::MappingKey {
+                    &prompt.cue
+                } else {
+                    crate::study::visible_prompt_title(prompt)
+                })
+            );
+            out.push_str(&self.source_study(p));
         } else {
+            out.push_str("<span data-study-phase=\"quiz\" hidden></span>");
             if let Some(lesson) = &readiness {
                 let _ = write!(
                     out,
@@ -684,7 +696,7 @@ impl View<'_> {
             if prompt.assisted || p.revealed {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
             }
-            if p.revealed {
+            if p.revealed && p.phase != Some(crate::study::StudyPhase::Quiz) {
                 out.push_str("<section class=\"exact-disclosure\"><h2>The Unit</h2><p class=\"fineprint\">Assistance is recorded.</p>");
                 out.push_str(&self.exact_expected());
                 out.push_str("</section>");
@@ -705,7 +717,7 @@ impl View<'_> {
                     hidden("prompt_id", &prompt.id)
                 ),
             ));
-            if !p.revealed {
+            if !p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz) {
                 out.push_str("<details class=\"overflow\"><summary>More</summary>");
                 out.push_str(&self.practice_form(
                     "reveal",
@@ -736,6 +748,24 @@ impl View<'_> {
                 "<a class=\"text-link exact-notebook\" href=\"/notebook\">Concept practice →</a>",
             );
         }
+        out.push_str("</section>");
+        out
+    }
+    fn source_study(&self, p: &crate::study::Presentation) -> String {
+        let mut out = String::from(
+            "<section class=\"source-study\" data-study-phase=\"study\"><p class=\"eyebrow\">Study</p>",
+        );
+        out.push_str(&self.exact_expected());
+        out.push_str(&self.form(
+            "/practice/quiz",
+            "memory-quiz",
+            "study-to-quiz",
+            "",
+            &format!(
+                "{}<button class=\"button primary\">Try from memory</button>",
+                hidden("prompt_id", &p.prompt.id)
+            ),
+        ));
         out.push_str("</section>");
         out
     }
@@ -1580,7 +1610,7 @@ impl View<'_> {
         let scope = if ordered {
             format!("{} items · in order", all.len())
         } else if whole {
-            "Full text · no hints".into()
+            "Full text".into()
         } else if matches!(p.prompt.scope, Scope::Section { .. }) {
             format!(
                 "Joined phrases {}–{}",
@@ -1781,7 +1811,10 @@ impl View<'_> {
                     self.exact_expected()
                 );
             }
+        } else if p.source_visible() {
+            out.push_str(&self.source_study(p));
         } else {
+            out.push_str("<p class=\"eyebrow\" data-study-phase=\"quiz\">Review</p>");
             if ordered {
                 let _ = write!(
                     out,
@@ -1803,17 +1836,17 @@ impl View<'_> {
                     );
                 }
                 let cue_label = match p.prompt.cue_level {
-                    Cue::Read => "Copy the phrase shown below",
+                    Cue::Read => "Study",
                     Cue::FirstLetters => "Type this phrase using the initials",
                     Cue::FirstLetter => "Type this phrase using the first initial",
                     _ => "Type this phrase from memory",
                 };
                 let _ = write!(out, "<p class=\"lesson-instruction\">{cue_label}</p>");
-                if !p.prompt.cue.is_empty() {
+                if !p.prompt.cue.is_empty() && p.prompt.cue_level != Cue::WholeTitle {
                     let _ = write!(out, "<p class=\"lesson-cue\">{}</p>", escape(&p.prompt.cue));
                 }
             }
-            if p.revealed {
+            if p.revealed && p.phase != Some(crate::study::StudyPhase::Quiz) {
                 out.push_str("<div class=\"lesson-disclosure\">");
                 out.push_str(&self.exact_expected());
                 out.push_str("</div>");
@@ -1822,7 +1855,9 @@ impl View<'_> {
                 out.push_str("<p class=\"lesson-note\">Guided · with help</p>");
             }
             out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus></textarea><button class=\"button primary\">Check answer</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""})));
-            if !p.revealed && !matches!(p.prompt.cue_level, Cue::Read) {
+            if (!p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz))
+                && !matches!(p.prompt.cue_level, Cue::Read)
+            {
                 out.push_str(&self.practice_form(
                     "reveal",
                     "lesson-reveal",
@@ -2211,19 +2246,18 @@ impl View<'_> {
                         }
                     ),
                 ));
+            } else if p.source_visible() {
+                out.push_str(&self.source_study(p));
             } else {
+                out.push_str("<span data-study-phase=\"quiz\" hidden></span>");
                 out.push_str(
                     "<p class=\"nato-question\" id=\"nato-question\">What’s the code word?</p>",
                 );
                 if p.revealed {
-                    out.push_str("<div class=\"nato-disclosed\">");
-                    out.push_str(&self.exact_expected());
-                    out.push_str(
-                        "<p class=\"nato-note\">With help · type the answer shown.</p></div>",
-                    );
+                    out.push_str("<p class=\"nato-note\">With help</p>");
                 }
                 out.push_str(&self.form("/practice/answer", "nato-answer", "nato-answer answer-form", "data-answer-limit=\"32768\"", &format!("{}<label class=\"visually-hidden\" for=\"answer\">Type your answer</label><input id=\"answer\" name=\"answer\" type=\"text\" aria-describedby=\"nato-letter nato-question\" placeholder=\"Code word\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\" autofocus><button class=\"button primary\">Check <kbd>Enter</kbd></button>", hidden("prompt_id", &prompt.id))));
-                if !p.revealed {
+                if !p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz) {
                     out.push_str(&self.practice_form(
                         "reveal",
                         "nato-reveal",

@@ -1,3 +1,4 @@
+import {enterMemory,enterMemoryPage,assertStudySource} from './study-review.mjs';
 // Default cross-subject review through real native forms and stored schedules.
 // Clock changes are explicit fixture transport only; no learner-row setters.
 import assert from 'node:assert/strict';
@@ -22,7 +23,7 @@ export async function mixedReviewFixture(){
    await post(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:'A deliberate synthetic miss'});
   }
   await post(f,'/practice/lesson/start',lessonFields(await f.get('/lessons'),'st-michael-en'));
-  const guided=current(await f.rows());await post(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:expected(await f.rows(),guided)});
+  await enterMemory(f);const guided=current(await f.rows());await post(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:expected(await f.rows(),guided)});
   const introduced=await f.rows();assert.equal(Object.keys(introduced).filter(k=>k.startsWith('practice_studies/')).length,4,'Unused catalog subjects not enrolled');
   await f.clock(START+61000);
   await post(f,'/practice/review/start',{...nativeFields(await f.get('/'),'/practice/review/start'),after:current(await f.rows()).prompt.id});
@@ -49,7 +50,7 @@ export async function mixedReviewJourney(){
   const after=await f.rows();assert.ok(current(after),'After due reviews, default continues with new or unfinished learning');
   assert.ok(!studies.includes(current(after).prompt.study_id),'Least-served unstarted subject precedes more from already reviewed subjects');
   assert.doesNotMatch(await f.get('/'),/No reviews due/);await f.get('/');assert.deepEqual(await f.rows(),after);
-  assert.equal(f.egress,0);return {status:'pass',studies:seen.length,guided_learning_eligible:true,same_day_due_advances:true,held_refresh:true,replay_stable:true,untouched_catalog_not_enrolled:true,continues_after_due:true,egress:0};
+  assert.equal(f.egress,0);return {status:'pass',studies:seen.length,source_learning_eligible:true,same_day_due_advances:true,held_refresh:true,replay_stable:true,untouched_catalog_not_enrolled:true,continues_after_due:true,egress:0};
  }finally{await f.close();}
 }
 export async function mixedReviewWalk(browser,capture){
@@ -60,7 +61,7 @@ export async function mixedReviewWalk(browser,capture){
   try{
    const page=await context.newPage();page.setDefaultTimeout(12000);await page.goto(f.origin+'/');await page.locator('#answer').fill('Draft survives browsing');
    const held=current(await f.rows());await page.locator('.lesson-picker>summary').click();assert.equal(await page.locator('#answer').inputValue(),'Draft survives browsing');if(noJS)await page.locator('.lesson-picker>summary').click();else await page.locator('[data-picker-close]').click();assert.deepEqual(current(await f.rows()),held);
-   for(const sid of studies){const saved=await f.rows(),p=current(saved);assert.equal(p.prompt.study_id,sid);await page.locator('#answer').fill(expected(saved,p));await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);row.evidence.push(await capture(page,`mixed-review-${width}-${noJS?'native':'enhanced'}-${studies.indexOf(sid)}.png`));await page.locator('form[action="/practice/review/next"] button').click();}
+   for(const sid of studies){const saved=await f.rows(),p=current(saved);assert.equal(p.prompt.study_id,sid);await page.locator('#answer').fill(expected(saved,p));await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);row.evidence.push(await capture(page,`mixed-review-${width}-${noJS?'native':'enhanced'}-${studies.indexOf(sid)}.png`));await page.locator('form[action="/practice/review/next"] button').click();await enterMemoryPage(page);}
    await page.locator('#answer').waitFor();assert.ok(current(await f.rows()),'New learning follows due reviews without a dead end');assert.equal(await page.getByRole('heading',{name:'No reviews due',exact:true}).count(),0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);row.evidence.push(await capture(page,`mixed-review-${width}-${noJS?'native':'enhanced'}-continues-learning.png`));
   }catch(error){row.status='fail';row.reason=error.message;}
   finally{await context.close();await f.close();}
@@ -84,11 +85,12 @@ export async function continuousStudyJourney(){
   const first=current(rows);await post(f,'/practice/review/start',start);assert.deepEqual(domains(await f.rows()),domains(rows));assert.deepEqual(current(await f.rows()),first);
   const visits=[],guided=new Set(),cold=new Set(),firstVisits=new Set();let lastAnswer;
   for(let step=0;step<240;step++){
-   rows=await f.rows();const p=current(rows);if(!p)break;
+   rows=await f.rows();let p=current(rows);if(!p)break;
+   if(htmlStructure(await f.get('/')).forms('/practice/quiz').length){guided.add(p.prompt.study_id);assertStudySource(await f.get('/'),expected(rows,p));await enterMemory(f);rows=await f.rows();p=current(rows);}
    const html=await f.get('/');assert.deepEqual(await f.rows(),rows,'Holding a prompt is read-only');
    const promptDOM=htmlStructure(html);assert.equal(promptDOM.forms('/practice/answer').length,1);assert.equal(promptDOM.withAttr('data-result-progress').length,0);assert.equal(promptDOM.nodes.filter(n=>n.attrs.id==='answer').length,1);assert.equal(promptDOM.nodes.filter(n=>n.tag==='input'&&['grade','verdict','rating'].includes(n.attrs.name)).length,0,'Client cannot submit a grade');if(!p.prompt.assisted)assert.equal(promptDOM.classes('exact-expected').length,0,'Unaided response does not expose expected answer');assert.ok(!('open' in promptDOM.classes('lesson-picker')[0].attrs),'Choosing another subject stays secondary');
    visits.push(p.prompt.study_id);firstVisits.add(p.prompt.study_id);
-   if(p.prompt.assisted)guided.add(p.prompt.study_id);else cold.add(p.prompt.study_id);
+   if(!p.prompt.assisted)cold.add(p.prompt.study_id);
    const fields={...nativeFields(html,'/practice/answer'),answer:expected(rows,p)};
    await post(f,'/practice/answer',fields);const graded=await f.rows(),attempt=graded['practice_attempts/'+current(graded).attempt_id];
    assert.ok(attempt.id,'Server persisted one immutable attempt');
@@ -105,14 +107,14 @@ export async function continuousStudyJourney(){
   rows=await f.rows();assert.equal(current(rows),null,'Default eventually honors every per-study new-card budget');
   assert.equal(firstVisits.size,9,'All canonical catalog subjects are included, not historical/Latin variants');
   assert.equal(new Set(visits.slice(0,9)).size,9,'Unstarted subjects precede repeated new material from already-served subjects');
-  assert.ok(guided.size>0);for(const sid of guided)assert.ok(cold.has(sid),'Guided stages progress to unaided recall');
+  assert.ok(guided.size>0);for(const sid of guided)assert.ok(cold.has(sid),'Studying source progresses to protected memory review');
   const studies=Object.entries(rows).filter(([k])=>k.startsWith('practice_studies/')).map(([,s])=>s);
   const counts=studies.map(s=>({kind:rows['library_versions/'+s.version_id].kind,count:Object.values(rows).filter(c=>c.study_id===s.id&&c.unit_index!==undefined).length}));
   assert.ok(counts.some(c=>c.kind==='keyed_mapping'&&c.count===6),'Continuous NATO respects six-card pace, not focused all-26 flag');
   assert.ok(counts.every(c=>c.kind==='ordered_list'||c.count<=6),'Non-sequence subjects cannot exceed daily introductions');
   const exhausted=await f.get('/');const doneDOM=htmlStructure(exhausted);assert.equal(doneDOM.forms('/practice/review/start').length,0);assert.equal(doneDOM.classes('lesson-picker').length,1);assert.ok(!('open' in doneDOM.classes('lesson-picker')[0].attrs));assert.doesNotMatch(exhausted,/action="\/practice\/review\/start"/);assert.doesNotMatch(exhausted,/No reviews due/);assert.match(exhausted,/<h1>Rest for now<\/h1>/);assert.doesNotMatch(exhausted,/All learned|All done|Next review in/,'Paced rest is not a claim that all Library material is learned');
   await f.get('/');assert.deepEqual(await f.rows(),rows,'Paced completion GET preserves all history');assert.equal(f.egress,0);
-  return {status:'pass',prompts:visits.length,subjects:firstVisits.size,fresh_one_action:true,parsed_html_every_prompt_and_result:true,due_future_continues_new:true,guided_to_unaided:true,per_study_pacing:true,canonical_editions:true,true_paced_exhaustion:true,held_get_readonly:true,answer_and_next_idempotent:true,stale_grade_fenced:true,egress:0};
+  return {status:'pass',prompts:visits.length,subjects:firstVisits.size,fresh_one_action:true,parsed_html_every_prompt_and_result:true,due_future_continues_new:true,source_to_memory_review:true,per_study_pacing:true,canonical_editions:true,true_paced_exhaustion:true,held_get_readonly:true,answer_and_next_idempotent:true,stale_grade_fenced:true,egress:0};
  }finally{await f.close();}
 }
 
@@ -134,7 +136,7 @@ export async function continuousStudyWalk(browser,capture){
    for(let n=0;n<10;n++){
     const rows=await f.rows(),p=current(rows);await page.locator('#answer').fill(expected(rows,p));await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);
     if(n===0)row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-graded.png`));
-    await page.locator('form[action="/practice/review/next"] button').click();await page.locator('#answer').waitFor();
+    await page.locator('form[action="/practice/review/next"] button').click();await enterMemoryPage(page);
     if(n===0){assert.notEqual(current(await f.rows()).prompt.study_id,first.prompt.study_id);row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-next-subject.png`));}
    }
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(f.egress,0);

@@ -549,7 +549,7 @@ fn supplied_mapping_has_a_native_learn_action_in_library() {
         None,
     );
     assert!(
-        html.contains("action=\"/practice/learn\""),
+        html.contains("action=\"/practice/study/start\""),
         "Mapping Library detail must offer native Learn"
     );
     assert!(!html.contains("Practice for this kind is not available yet."));

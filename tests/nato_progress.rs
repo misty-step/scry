@@ -23,6 +23,10 @@ fn start(a: &mut App) {
     mutate(a, "/practice/nato/start", &[], NOW);
 }
 fn answer(a: &mut App, text: &str, now: i64) {
+    if a.practice.current.as_ref().unwrap().source_visible() {
+        let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
+        mutate(a, "/practice/quiz", &[("prompt_id", id)], now);
+    }
     let p = a.practice.current.as_ref().unwrap().prompt.clone();
     mutate(
         a,

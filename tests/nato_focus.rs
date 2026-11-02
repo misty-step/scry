@@ -262,6 +262,14 @@ fn imported_non_nato_study_cannot_claim_the_focused_allowance() {
 }
 
 fn answer_at(a: &mut App, answer: Option<&str>, now: i64, tag: &str) {
+    if answer.is_some() && a.practice.current.as_ref().unwrap().source_visible() {
+        let mut f = fields(a, &format!("loop-quiz-{tag}"));
+        f.insert(
+            "prompt_id".into(),
+            a.practice.current.as_ref().unwrap().prompt.id.clone(),
+        );
+        engine::mutate(a, "/practice/quiz", &f, now, &format!("quiz-{tag}")).unwrap();
+    }
     let p = a.practice.current.as_ref().unwrap().prompt.clone();
     let mut f = fields(a, &format!("loop-answer-{tag}"));
     f.insert("prompt_id".into(), p.id);
@@ -351,7 +359,10 @@ fn nato_eligible_interleaving_preserves_history_and_schedules_with_realistic_del
         let attempts = a.practice.attempts.clone();
         now += 70_000; // The learner reads feedback past Again's one-minute due time.
         let mut f = fields(&a, &format!("loop-repeat-next-{index}"));
-        f.insert("after".into(), p.id);
+        f.insert(
+            "after".into(),
+            a.practice.current.as_ref().unwrap().prompt.id.clone(),
+        );
         f.insert("study_id".into(), p.study_id);
         let result = engine::mutate(&mut a, "/practice/next", &f, now, &tag).unwrap();
         let saved = a.clone();

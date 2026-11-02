@@ -14,6 +14,7 @@ pub(super) const NAMES: &[&str] = &[
     "scry_next",
     "scry_answer",
     "scry_reveal",
+    "scry_quiz",
 ];
 
 fn object(properties: Value, required: &[&str]) -> Value {
@@ -170,6 +171,15 @@ pub(super) fn tools() -> Vec<Value> {
             object(
                 json!({"operation_id":operation(),"prompt_id":id(),"answer":{"type":"string","maxLength":262144,"description":"At most 256 KiB UTF-8, unchanged raw learner answer."}}),
                 &["operation_id", "prompt_id", "answer"],
+            ),
+            false,
+        ),
+        (
+            "scry_quiz",
+            "Start a hidden-source memory quiz for the held source Prompt. This creates no grade or review credit. Previous help remains assisted. Retain the operation ID for replay.",
+            object(
+                json!({"operation_id":operation(),"prompt_id":id()}),
+                &["operation_id", "prompt_id"],
             ),
             false,
         ),

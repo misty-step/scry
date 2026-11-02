@@ -105,8 +105,8 @@ test('MCP lifecycle, version negotiation, discovery, IDs and notifications', {ti
   assert.equal((await f.request('tools/list')).error.code,-32000);
   f.send({jsonrpc:'2.0',method:'notifications/initialized'});
   const list = await f.request('tools/list');
-  assert.equal(list.result.tools.length,13);
-  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,13);
+  assert.equal(list.result.tools.length,14);
+  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,14);
   for(const tool of list.result.tools) {
     assert.equal(tool.inputSchema.type,'object');
     assert.equal(tool.inputSchema.additionalProperties,false);
@@ -189,12 +189,14 @@ test('Each tool forwards only its exact existing Owner API route and frozen payl
     ['scry_next',{operation_id:operation('next'),after:prompt,study_id:entity},'/api/v1/next',{operation_id:operation('next'),after:prompt,study_id:entity}],
     ['scry_answer',{operation_id:operation('answer'),prompt_id:prompt,answer:'Raw\nanswer Ω'},'/api/v1/answer',{operation_id:operation('answer'),prompt_id:prompt,answer:'Raw\nanswer Ω'}],
     ['scry_reveal',{operation_id:operation('reveal'),prompt_id:prompt},'/api/v1/reveal',{operation_id:operation('reveal'),prompt_id:prompt}],
+    ['scry_quiz',{operation_id:operation('quiz'),prompt_id:prompt},'/api/v1/quiz',{operation_id:operation('quiz'),prompt_id:prompt}],
   ]) {
     data(await f.call(name,args));
     assert.deepEqual(f.seen.at(-1),{path,method:payload?'POST':'GET',payload});
   }
   const before = f.seen.length;
   for(const [name,args] of [
+    ['scry_quiz',{operation_id:operation('bad-quiz'),prompt_id:prompt,verdict:'Good'}],
     ['scry_answer',{operation_id:'short',prompt_id:prompt,answer:privateAnswer}],
     ['scry_answer',{operation_id:operation('answer'),prompt_id:prompt,answer:privateAnswer,verdict:'Good'}],
     ['scry_answer',{operation_id:operation('answer'),prompt_id:prompt,answer:privateAnswer,rating:4}],

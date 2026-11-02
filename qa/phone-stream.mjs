@@ -138,7 +138,8 @@ export async function phoneWalk(browser,capture) {
    const before=(await f.record('practice_cards/'+f.cid)).state;
    const attempts=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
    await page.locator('details.overflow>summary').click();await page.getByRole('button',{name:'Show me',exact:true}).click();
-   await page.getByText('Assistance is recorded.',{exact:true}).waitFor();
+   await page.locator('[data-study-phase="study"]').waitFor();
+   assert.equal(await page.locator('#answer').count(),0);
    assert.deepEqual((await f.record('practice_cards/'+f.cid)).state,before);
    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attempts+1);
    assert.ok(Object.values(await f.rows()).some(v=>v?.disclosure===true&&v?.assisted===true));

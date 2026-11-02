@@ -89,7 +89,7 @@ fn library_starter_native_form_imports_canonical_content_only_on_explicit_action
         web::mutation_redirect(&app, "/library/mapping/add", &result.redirect),
         destination
     );
-    assert!(page(&app, &destination).contains("action=\"/practice/learn\""));
+    assert!(page(&app, &destination).contains("action=\"/practice/study/start\""));
     let saved = app.clone();
     assert_eq!(
         engine::mutate(&mut app, "/library/mapping/add", &form, NOW, "repeat").unwrap(),

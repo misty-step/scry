@@ -1,3 +1,4 @@
+import {enterMemoryPage} from './study-review.mjs';
 // Saved History journeys against the built Worker and compiled CLI. All text is
 // synthetic; exact History and native disclosures must not mutate Practice.
 // Existing legacy History reads may still record concept exposure.
@@ -151,7 +152,8 @@ export async function phoneHistory({f,page,row,original,typography,record}) {
   await typography(); await record('history-disclosure');
   assert.deepEqual(await f.rows(),before,'History, reload and keyboard disclosures write no events, attempts, Corrections or schedules.');
   await navigate(page,'Practice');
-  await page.getByText('Assistance is recorded.',{exact:true}).waitFor();
+  await page.locator('[data-study-phase="study"]').waitFor();
+  await enterMemoryPage(page);
   assert.equal(await page.getByLabel('Your answer',{exact:true}).inputValue(),'');
   await activate(page,page.getByRole('button',{name:'Check my answer',exact:true}));
   await page.locator('[data-state="exact-result"]').waitFor();
@@ -196,7 +198,8 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
 
   await check('History keeps frozen wording, mixed Unit effects and dropped Studies',{},async({f,page,row,shot})=>{
     await page.locator('details.overflow>summary').tap(); await page.getByRole('button',{name:'Show me',exact:true}).tap();
-    await page.getByText('Assistance is recorded.',{exact:true}).waitFor();
+    await page.locator('[data-study-phase="study"]').waitFor();
+  await enterMemoryPage(page);
     await answer(page,'');
     const empty=(await f.cli(['next'])).practice.attempt;
     const prompt=(await f.cli(['next','--after',empty.prompt.id,'--study',f.sid,'--recite','whole'])).practice.prompt;
