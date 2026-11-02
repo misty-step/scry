@@ -723,6 +723,37 @@ fn mixed_next(
         },
     ))
 }
+fn can_introduce(app: &App, s: &Study, now: i64) -> bool {
+    s.status == Status::Active
+        && app
+            .practice
+            .cards
+            .values()
+            .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
+            .count()
+            < if s.nato_all_letters {
+                26
+            } else {
+                s.pace.limit()
+            }
+        && app
+            .practice
+            .cards
+            .values()
+            .filter(|c| c.study_id == s.id)
+            .count()
+            < units(&app.library.versions[&s.version_id]).len()
+}
+/// Read-only availability uses the same pace and due conditions as scoped next.
+pub fn study_ready(app: &App, s: &Study, now: i64) -> bool {
+    s.status != Status::Dropped
+        && (can_introduce(app, s, now)
+            || app
+                .practice
+                .cards
+                .values()
+                .any(|c| c.study_id == s.id && c.state.schedule.due_ms <= now))
+}
 fn next(
     app: &mut App,
     fields: &BTreeMap<String, String>,
@@ -890,28 +921,7 @@ fn next(
                 .studies
                 .values()
                 .filter(|s| (sid.is_empty() || s.id == sid) && s.status == Status::Active)
-                .filter(|s| {
-                    app.practice
-                        .cards
-                        .values()
-                        .filter(|c| {
-                            c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS)
-                        })
-                        .count()
-                        < if s.nato_all_letters {
-                            26
-                        } else {
-                            s.pace.limit()
-                        }
-                })
-                .filter(|s| {
-                    app.practice
-                        .cards
-                        .values()
-                        .filter(|c| c.study_id == s.id)
-                        .count()
-                        < units(&app.library.versions[&s.version_id]).len()
-                })
+                .filter(|s| can_introduce(app, s, now))
                 .min_by_key(|s| (s.created_ms, &s.id))
                 .cloned();
             study.map(|study| {
@@ -950,14 +960,24 @@ fn next(
             ));
         }
     }
-    Ok(response(
+    let mut result = response(
         None,
         if app.practice.current.is_some() {
             held(app)?
         } else {
             json!({"prompt":null,"due":due(app,now)})
         },
-    ))
+    );
+    if let Some(route) = app
+        .practice
+        .studies
+        .get(sid)
+        .and_then(|s| app.library.versions.get(&s.version_id))
+        .and_then(crate::lessons::mapping_route)
+    {
+        result.redirect = route.into();
+    }
+    Ok(result)
 }
 fn grade_words(version: &Version, text: &str) -> Vec<String> {
     if version.kind == Kind::KeyedMapping {
@@ -1137,7 +1157,10 @@ fn lesson_start(
         .get(&vid)
         .ok_or_else(|| AppError::new(404, "Version not found."))?;
     studyable(version)?;
-    if version.kind == Kind::KeyedMapping && !crate::library::is_nato(version) {
+    if version.kind == Kind::KeyedMapping
+        && !crate::library::is_nato(version)
+        && crate::lessons::mapping_route(version).is_none()
+    {
         return Err(AppError::new(
             422,
             "Use normal Study practice for this mapping; lessons support text, ordered lists and the NATO starter.",
@@ -1175,7 +1198,8 @@ fn lesson_start(
     let sid = result.entity_id.expect("Study identity");
     let s = app.practice.studies.get_mut(&sid).unwrap();
     s.status = Status::Active;
-    s.lesson = true;
+    s.lesson = app.library.versions[&vid].kind != Kind::KeyedMapping
+        || crate::library::is_nato(&app.library.versions[&vid]);
     if crate::library::is_nato(&app.library.versions[&vid]) {
         s.nato_all_letters = true;
     }
@@ -1186,6 +1210,15 @@ fn lesson_start(
         app.practice.current = None;
         let mut result = next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)?;
         result.redirect = "/?practice=nato".into();
+        return Ok(result);
+    }
+    if let Some(route) = crate::lessons::mapping_route(&app.library.versions[&vid]) {
+        if resume.is_some() {
+            return Ok(response(None, held(app)?));
+        }
+        app.practice.current = None;
+        let mut result = next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)?;
+        result.redirect = route.into();
         return Ok(result);
     }
     let s = s.clone();

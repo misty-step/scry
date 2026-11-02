@@ -550,10 +550,10 @@ fn chooser_groups_topics_and_identifies_current_without_restarting_it() {
     let mut a = app();
     let before = a.clone();
     let shelf = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
-    assert_eq!(shelf.matches("class=\"lesson-group\"").count(), 3);
+    assert_eq!(shelf.matches("class=\"lesson-group\"").count(), 4);
     assert_eq!(
         shelf.matches("action=\"/practice/lesson/start\"").count(),
-        8
+        11
     );
     assert!(shelf.contains("Historical English"));
     assert!(shelf.contains("Lasance · 1911"));

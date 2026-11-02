@@ -48,6 +48,7 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 
 - [NATO review](nato-review.md): native start, server grading, assistance and honest progress.
 - [Choose and practise lessons](practice-lessons.md): visual topic shelf, prayer editions, Rosary sets, draft-preserving return and same-phrase retry.
+- [Baby readiness](baby-readiness.md): sourced Karp, everyday safety and Montessori-inspired short-answer practice.
 - [External-agent authoring and review](agent-authoring.md): compiled MCP/CLI through real Worker/SQLite, immutable supplied content and replay proof.
 
 - [Visual practice chooser](../SPEC.md#visual-practice-chooser-2026-11-01): inline grouped NATO, Saint Michael editions and Rosary sets; current-session return preserves the draft. `tests/lessons.rs` covers current identity, supplied-content collisions and protected metadata; `qa/lessons.mjs` covers native/enhanced phone/desktop browsing, return and switch reconciliation. Source-bound journey proof belongs to #445 and its PR; authenticated learner acceptance is separate.

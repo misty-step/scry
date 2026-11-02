@@ -75,6 +75,21 @@ This refines LESSON-01, without reopening the stopped generic recitation work.
   interruption require actual verification; visual icons are decorative beside
   readable labels, never the only action names.
 
+### Baby-care readiness starter (2026-11-02)
+
+- **BABY-01:** The lesson shelf includes three original, sourced newborn/early-infant
+  preparation mappings: safe soothing (including Karp's five S's), everyday safety,
+  and Montessori-inspired awake interaction. They are educational memory practice,
+  not medical advice or hands-on certification; safety guidance takes precedence
+  over optional soothing and educational approaches. Source notes remain accessible.
+- **BABY-02:** Critical safety conditions remain in the question itself. Native
+  exact normalized answers reject dangerous alternatives, negation and extra unsafe
+  words; no approximate clinical judgment, self-grading or generated medical advice.
+- **BABY-03:** Browsing does not import or enroll. Deliberate selection imports the
+  immutable supplied mapping and enters normal paced, scheduled review scoped to
+  that lesson. Help remains assisted; prior history and other subjects remain intact.
+  Joined/whole prayer modes are not applied to factual keyed questions.
+
 ### Authored prayer and ordered-sequence lessons (2026-10-29)
 
 The next domain expands the same review canvas, rather than replacing NATO or

@@ -476,6 +476,13 @@ impl View<'_> {
                 escape(&v.sources.join(" · "))
             );
         }
+        if !item.work.context.is_empty() {
+            let _ = write!(
+                out,
+                "<p class=\"fineprint source-context\">{}</p>",
+                escape(&item.work.context)
+            );
+        }
         let rights = match v.rights {
             crate::library::Rights::PrivateOnly => "Private only",
             crate::library::Rights::Licensed => "Licensed",
@@ -558,6 +565,63 @@ impl View<'_> {
         out.push_str("</div></section>");
         out
     }
+    fn mapping_starter_home(&self, starter: &str) -> String {
+        let Some(lesson) = crate::lessons::catalog()
+            .into_iter()
+            .find(|l| l.id == starter && l.input.kind == crate::library::Kind::KeyedMapping)
+        else {
+            return self.not_found();
+        };
+        if self.app.practice.current.is_some() {
+            return self.exact_stream();
+        }
+        let study = self
+            .app
+            .practice
+            .studies
+            .values()
+            .find(|s| lesson.matches(&self.app.library.versions[&s.version_id]));
+        let next = study.and_then(|s| {
+            self.app
+                .practice
+                .cards
+                .values()
+                .filter(|c| c.study_id == s.id)
+                .map(|c| c.state.schedule.due_ms)
+                .min()
+        });
+        let ready = study.is_none_or(|s| crate::study::study_ready(self.app, s, self.now));
+        let timing = next.map_or_else(
+            || "Start with a few short questions.".into(),
+            |at| {
+                if at <= self.now {
+                    "Ready to review.".into()
+                } else {
+                    format!("Next review {} (UTC).", date(at))
+                }
+            },
+        );
+        let mut out = format!(
+            "<section class=\"nato-screen\" data-state=\"mapping-starter-home\"><h1>{}</h1><p>{}</p>",
+            escape(&lesson.input.title),
+            escape(&timing)
+        );
+        if ready {
+            out.push_str(&self.form(
+                "/practice/lesson/start",
+                "mapping-starter-start",
+                "",
+                "",
+                &format!(
+                    "{}<button class=\"button primary\">Continue</button>",
+                    hidden("starter", starter)
+                ),
+            ));
+        }
+        out.push_str(&self.lesson_picker(false));
+        out.push_str("</section>");
+        out
+    }
     fn exact_stream(&self) -> String {
         use crate::study::Status;
         let Some(p) = &self.app.practice.current else {
@@ -582,9 +646,14 @@ impl View<'_> {
         } else {
             "exact-prompt"
         };
+        let readiness = crate::lessons::catalog().into_iter().find(|l| {
+            l.id.starts_with("baby-") && l.matches(&self.app.library.versions[&prompt.version_id])
+        });
         let mut out = format!(
             "<section class=\"study exact-study{}\" data-state=\"{state}\" data-prompt-id=\"{}\">",
-            if prompt.cue_level == crate::study::Cue::MappingKey {
+            if readiness.is_some() {
+                " mapping-study readiness-study"
+            } else if prompt.cue_level == crate::study::Cue::MappingKey {
                 " mapping-study"
             } else {
                 ""
@@ -597,12 +666,21 @@ impl View<'_> {
         if let Some(a) = attempt {
             out.push_str(&self.exact_result(a));
         } else {
-            let _ = write!(
-                out,
-                "<p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
-                escape(crate::study::visible_prompt_title(prompt))
-            );
-            out.push_str(&Self::exact_prompt_context(prompt));
+            if let Some(lesson) = &readiness {
+                let _ = write!(
+                    out,
+                    "<p class=\"eyebrow\">{}</p><div class=\"exact-cue\"><h1 class=\"reading\">{}</h1></div>",
+                    escape(&lesson.input.title),
+                    escape(&prompt.cue)
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    "<p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
+                    escape(crate::study::visible_prompt_title(prompt))
+                );
+                out.push_str(&Self::exact_prompt_context(prompt));
+            }
             if prompt.assisted || p.revealed {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
             }
@@ -638,7 +716,16 @@ impl View<'_> {
                 out.push_str("</details>");
             }
         }
-        if self
+        if readiness.is_some() {
+            if attempt.is_some() || p.revealed {
+                let _ = write!(
+                    out,
+                    "<a class=\"text-link\" href=\"/library/versions/{}\">Source notes</a>",
+                    escape(&prompt.version_id)
+                );
+            }
+            out.push_str(&self.lesson_picker(false));
+        } else if self
             .app
             .practice
             .studies
@@ -730,11 +817,13 @@ impl View<'_> {
                         escape(&answered_key)
                     );
                 } else if feedback.kind == "spelling" {
-                    out.push_str("<p class=\"fineprint\">Spelling mismatch: use the official form shown above.</p>");
+                    out.push_str(
+                        "<p class=\"fineprint\">Spelling mismatch: use the answer shown above.</p>",
+                    );
                 }
             }
             if !good && self.app.library.versions[&a.version_id].spelling_strict {
-                out.push_str("<p class=\"fineprint\">Official spelling matters. Scry checks your answer; no self-rating.</p>");
+                out.push_str(if crate::lessons::mapping_route(&self.app.library.versions[&a.version_id]).is_some() { "<p class=\"fineprint\">Use the short answer shown above.</p>" } else { "<p class=\"fineprint\">Official spelling matters. Scry checks your answer; no self-rating.</p>" });
             }
         }
         let changed = a
@@ -793,9 +882,17 @@ impl View<'_> {
             "exact-form",
             "data-next",
             &format!(
-                "{}<button class=\"button primary\">Next</button>",
-                hidden("after", &a.prompt.id)
-            ),
+                    "{}{}<button class=\"button primary\">Next</button>",
+                    hidden("after", &a.prompt.id),
+                    if !self.app.practice.mixed_review
+                        && crate::lessons::mapping_route(&self.app.library.versions[&a.version_id])
+                            .is_some()
+                    {
+                        hidden("study_id", &a.prompt.study_id)
+                    } else {
+                        String::new()
+                    }
+                ),
         ));
         for e in &a.effects {
             if mapping {
@@ -1259,6 +1356,9 @@ impl View<'_> {
         if current.is_some() {
             let state = match current_starter {
                 Some("nato") => "NATO alphabet",
+                Some("baby-soothing") => "Baby care · Safe soothing",
+                Some("baby-everyday") => "Baby care · Everyday safety",
+                Some("baby-montessori") => "Baby care · Montessori",
                 Some("st-michael-en") => "Saint Michael · English",
                 Some("st-michael-la-traditional") => "Saint Michael · Latin",
                 Some("st-michael-en-lasance-1911") => "Saint Michael · Historical English",
@@ -1329,6 +1429,16 @@ impl View<'_> {
                     ("rosary-glorious", "Glorious", ""),
                 ],
             ),
+            (
+                "04",
+                "Baby care",
+                "Newborn readiness",
+                vec![
+                    ("baby-soothing", "Safe soothing", "Karp’s five S’s"),
+                    ("baby-everyday", "Everyday safety", "Newborn essentials"),
+                    ("baby-montessori", "Montessori", "Awake interaction"),
+                ],
+            ),
         ];
         for (number, title, description, options) in groups {
             let glyph = match number {
@@ -1337,6 +1447,9 @@ impl View<'_> {
                 }
                 "02" => {
                     r#"<svg viewBox="0 0 80 80" aria-hidden="true"><path d="M40 12 61 21v21c0 12-13 22-21 26-8-4-21-14-21-26V21Z"/><path class="glyph-accent" d="M40 21v36m-9-25h18m-15 6 6-6 6 6"/></svg>"#
+                }
+                "04" => {
+                    r#"<svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="40" cy="26" r="12"/><path d="M22 42q18-12 36 0l-8 24H30Z"/><path class="glyph-accent" d="m25 44 28 16M55 44 28 57"/></svg>"#
                 }
                 _ => {
                     r#"<svg viewBox="0 0 80 80" aria-hidden="true"><g><circle cx="40" cy="12" r="3"/><circle cx="25" cy="16" r="3"/><circle cx="16" cy="29" r="3"/><circle cx="19" cy="44" r="3"/><circle cx="31" cy="53" r="3"/><circle cx="49" cy="53" r="3"/><circle cx="61" cy="44" r="3"/><circle cx="64" cy="29" r="3"/><circle cx="55" cy="16" r="3"/></g><path class="glyph-accent" d="M40 53v19m-6-7h12"/></svg>"#
@@ -3168,7 +3281,22 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
     {
         "/"
     } else if path.starts_with("/practice/") {
-        "/recall"
+        if let Some(route) = app
+            .practice
+            .current
+            .as_ref()
+            .and_then(|p| app.library.versions.get(&p.prompt.version_id))
+            .and_then(crate::lessons::mapping_route)
+        {
+            route
+        } else if matches!(
+            redirect,
+            "/?practice=baby-soothing" | "/?practice=baby-everyday" | "/?practice=baby-montessori"
+        ) {
+            redirect
+        } else {
+            "/recall"
+        }
     } else if redirect == "/"
         && (path.starts_with("/review/")
             || path == "/settings/resume"
@@ -3215,6 +3343,27 @@ pub fn render(
             }) =>
         {
             view.lesson_screen()
+        }
+        "/" if !app.practice.mixed_review
+            && query.get("practice").is_some_and(|id| {
+                matches!(
+                    id.as_str(),
+                    "baby-soothing" | "baby-everyday" | "baby-montessori"
+                )
+            }) =>
+        {
+            view.mapping_starter_home(query.get("practice").unwrap())
+        }
+        "/" if !app.practice.mixed_review
+            && app
+                .practice
+                .current
+                .as_ref()
+                .and_then(|p| app.library.versions.get(&p.prompt.version_id))
+                .and_then(crate::lessons::mapping_route)
+                .is_some() =>
+        {
+            view.exact_stream()
         }
         "/lessons" => format!(
             "<section class=\"nato-screen lesson-screen\"><h1>Practice</h1>{}</section>",

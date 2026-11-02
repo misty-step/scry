@@ -1,0 +1,34 @@
+{
+  "title": "Montessori-informed care",
+  "direction": "forward",
+  "pairs": [
+    {
+      "key": "Montessori approach: before choosing an activity, first ___ the baby’s interests and cues.",
+      "value": "observe"
+    },
+    {
+      "key": "Montessori calls a thoughtfully arranged, development-appropriate space the prepared ___.",
+      "value": "environment"
+    },
+    {
+      "key": "Infant floor movement and tummy time belong in supervised ___ time, not sleep time.",
+      "value": "awake"
+    },
+    {
+      "key": "Montessori-informed conversation: respond to baby’s sounds, then pause so you can take ___.",
+      "value": "turns"
+    }
+  ],
+  "aliases": [],
+  "context": "Memory practice, not medical advice or certification of hands-on care. Follow the baby’s clinician for individual needs. Karp is an optional soothing framework; Montessori is an educational approach. Safety guidance takes precedence. Sources checked 2026-11-02. Observation supports responsive choices, not ignoring distress or postponing feeding/medical care. For awake play: simple, orderly and safe, with appropriate materials. Parenting philosophy does not replace sleep-safety standards. Provide safe floor space and stay attentive. Follow the baby’s tolerance; do not prescribe a fixed duration from the Montessori page. Warm face-to-face talk during ordinary routines; no need for special products or claims of accelerated development.",
+  "name": "Original readiness prompts · English · 2026-11-02",
+  "sources": [
+    "https://montessori-ami.org/node/8070",
+    "https://amshq.org/about-us/inside-the-montessori-classroom/infant-and-toddler/",
+    "https://aidtolife.org/movement/mat",
+    "https://safetosleep.nichd.nih.gov/reduce-risk/reduce",
+    "https://aidtolife.org/communication/conversations-young-babies"
+  ],
+  "rights": "private_only",
+  "spelling_strict": true
+}

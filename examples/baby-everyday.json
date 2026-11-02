@@ -1,0 +1,37 @@
+{
+  "title": "Everyday readiness",
+  "direction": "forward",
+  "pairs": [
+    {
+      "key": "An approved infant sleep surface should be firm and ___.",
+      "value": "flat"
+    },
+    {
+      "key": "Birth to 5 months: rooting toward breast or bottle can signal what need?",
+      "value": "hunger"
+    },
+    {
+      "key": "Birth to 5 months: turning away and closing the mouth during a feed can signal what?",
+      "value": "fullness"
+    },
+    {
+      "key": "A baby 3 months or younger has a rectal temperature of 100.4°F / 38°C or higher. Call the pediatrician when?",
+      "value": "immediately"
+    },
+    {
+      "key": "Overwhelmed by crying? For a brief calming break, put baby on their back in an empty crib or on a couch? Answer crib or couch.",
+      "value": "crib"
+    }
+  ],
+  "aliases": [],
+  "context": "Memory practice, not medical advice or certification of hands-on care. Follow the baby’s clinician for individual needs. Karp is an optional soothing framework; Montessori is an educational approach. Safety guidance takes precedence. Sources checked 2026-11-02. Use a safety-approved crib, bassinet or play yard with a fitted sheet, no loose bedding or soft objects. Do not substitute a floor mattress or futon. Read cues together rather than treating one motion as proof. Crying can be a late hunger sign. Do not pressure the baby to finish a bottle; discuss feeding concerns with their clinician. Do not wait for additional symptoms or use soothing techniques instead of seeking care. This is an escalation reminder, not diagnosis or medication advice. A safe bassinet or play yard is also appropriate; the question contrasts two specific locations. Seek another adult’s help and return/check on baby once calm. Never shake.",
+  "name": "Original readiness prompts · English · 2026-11-02",
+  "sources": [
+    "https://www.healthychildren.org/English/ages-stages/baby/sleep/Pages/a-parents-guide-to-safe-sleep.aspx",
+    "https://www.cdc.gov/infant-toddler-nutrition/mealtime/signs-your-child-is-hungry-or-full.html",
+    "https://www.healthychildren.org/english/health-issues/conditions/fever/pages/fever-and-your-baby.aspx",
+    "https://www.healthychildren.org/English/ages-stages/baby/crying-colic/Pages/Responding-to-Your-Babys-Cries.aspx"
+  ],
+  "rights": "private_only",
+  "spelling_strict": true
+}

@@ -43,13 +43,26 @@ describe('Rust source and Worker artifact provenance',()=>{
     await mkdir(join(source,'examples'));
     const starter='examples/nato-alphabet.json',starterBytes='{"title":"Canonical authored starter"}\n';
     await writeFile(join(source,starter),starterBytes);
+    const babyStarters=['examples/baby-soothing.json','examples/baby-everyday.json','examples/baby-montessori.json'];
+    for(const baby of babyStarters)await writeFile(join(source,baby),JSON.stringify({title:baby})+'\n');
     await writeFile(join(source,'examples/unrelated.json'),'UNRELATED_EXAMPLE_DO_NOT_COPY');
     await writeFile(join(source,'examples/.dev.vars'),'PRIVATE_EXAMPLE_DO_NOT_COPY=secret');
     const copy=join(temporary,'snapshot');
     const identity=await snapshotSource(source,copy);
-    assert.equal(identity.files.length,9);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
-    assert.deepEqual(identity.files.filter(file=>file.path.startsWith('examples/')).map(file=>file.path),[starter]);
+    assert.equal(identity.files.length,12);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
+    assert.deepEqual(identity.files.filter(file=>file.path.startsWith('examples/')).map(file=>file.path),[starter,...babyStarters].sort());
     assert.equal(await readFile(join(copy,starter),'utf8'),starterBytes);
+    for(const baby of babyStarters){
+      const original=await readFile(join(source,baby),'utf8');
+      assert.equal(await readFile(join(copy,baby),'utf8'),original);
+      await writeFile(join(source,baby),'changed authored content\n');
+      assert.notEqual((await snapshotSource(source,join(temporary,'changed-'+baby.split('/')[1]))).sha256,identity.sha256);
+      assert.equal(await readFile(join(copy,baby),'utf8'),original,'Frozen authored bytes stay immutable');
+      await rm(join(source,baby));
+      await symlink(join(source,'.dev.vars'),join(source,baby));
+      await assert.rejects(snapshotSource(source,join(temporary,'symlink-'+baby.split('/')[1])),/regular file/);
+      await rm(join(source,baby));await writeFile(join(source,baby),original);
+    }
     await assert.rejects(readFile(join(copy,'examples/unrelated.json')));
     await assert.rejects(readFile(join(copy,'examples/.dev.vars')));
     await writeFile(join(source,starter),'{"title":"Changed supplied starter"}\n');

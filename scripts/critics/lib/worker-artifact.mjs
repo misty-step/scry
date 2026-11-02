@@ -6,7 +6,7 @@ import {readFile,writeFile,mkdir,readdir,lstat,copyFile} from 'node:fs/promises'
 import {join,resolve,relative} from 'node:path';
 
 export const artifactFiles=['index.js','index_bg.wasm'];
-const sourceFiles=['Cargo.toml','Cargo.lock','rust-toolchain.toml','CHANGELOG.md','deploy/cloudflare-hosting/telemetry.mjs','examples/nato-alphabet.json'];
+const sourceFiles=['Cargo.toml','Cargo.lock','rust-toolchain.toml','CHANGELOG.md','deploy/cloudflare-hosting/telemetry.mjs','examples/nato-alphabet.json','examples/baby-soothing.json','examples/baby-everyday.json','examples/baby-montessori.json'];
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 
 export async function artifactIdentity(directory) {
@@ -37,7 +37,7 @@ export async function snapshotSource(root,directory) {
   // Rust embeds the inherited licensed fonts at their original source paths.
   // Copy only that directory, never the historical Go tree or operator state.
   await descend('internal/web/assets/fonts');
-  // This exact authored manifest is now embedded by Rust. Never traverse the
+  // These exact authored manifests are embedded by Rust. Never traverse the
   // caller's other examples or follow an examples-directory symlink.
   const examples=await lstat(join(root,'examples'));
   if(!examples.isDirectory()||examples.isSymbolicLink())throw Error('Examples must be a regular directory');

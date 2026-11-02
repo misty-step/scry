@@ -1,0 +1,55 @@
+{
+  "title": "Safe soothing",
+  "direction": "forward",
+  "pairs": [
+    {
+      "key": "Karp's five S's: unweighted wrapping of a young infant is which S? Stop at any signs of trying to roll. Use the verb.",
+      "value": "swaddle"
+    },
+    {
+      "key": "Karp's held-soothing position S is side or ___. Only while held by an awake caregiver; never a sleep position.",
+      "value": "stomach"
+    },
+    {
+      "key": "Karp's five S's: a gentle calming sound is which S? Use the verb.",
+      "value": "shush"
+    },
+    {
+      "key": "Karp's five S's: gentle held movement, head and neck supported, is which S? Never shake; not a swing seat for sleep. Use the verb.",
+      "value": "swing"
+    },
+    {
+      "key": "Karp's five S's: comfort from sucking is which S? Use the verb.",
+      "value": "suck"
+    },
+    {
+      "key": "For every infant sleep, place the baby on their ___.",
+      "value": "back"
+    },
+    {
+      "key": "Stop swaddling at the first signs of trying to do what movement? Use the -ing word.",
+      "value": "rolling"
+    },
+    {
+      "key": "If using a baby sound machine, keep volume as ___ as possible.",
+      "value": "low"
+    },
+    {
+      "key": "When is shaking a baby safe?",
+      "value": "never"
+    }
+  ],
+  "aliases": [],
+  "context": "Memory practice, not medical advice or certification of hands-on care. Follow the baby’s clinician for individual needs. Karp is an optional soothing framework; Montessori is an educational approach. Safety guidance takes precedence. Sources checked 2026-11-02. Teach proper technique with a qualified caregiver; hips must move freely. No weighted swaddles; stop at signs of trying to roll. Only while held by an awake caregiver. Place the baby on their back for sleep; do not leave a baby sleeping on their side or stomach. If using a sound machine: far from baby, low volume, limited duration. Do not teach loudness targets from commercial soothing claims. Gentle held movement with head and neck supported, never shaking. This names a soothing action, not permission to sleep in a swing. Check feeding needs first; soothing must not delay a needed feed. If breastfeeding, AAP advises waiting until breastfeeding is established before offering a pacifier. Never attach it to clothing or bedding for sleep. Do not wait for a successful roll or a fixed age. Place it far from the baby and limit duration; a louder sound is not a better soothing strategy.",
+  "name": "Original readiness prompts · English · 2026-11-02",
+  "sources": [
+    "https://www.happiestbaby.com/blogs/baby/the-5-s-s-for-soothing-babies",
+    "https://www.healthychildren.org/English/ages-stages/baby/diapers-clothing/Pages/Swaddling-Is-it-Safe.aspx",
+    "https://www.healthychildren.org/English/ages-stages/baby/sleep/Pages/a-parents-guide-to-safe-sleep.aspx",
+    "https://publications.aap.org/pediatrics/article/152/5/e2023063752/194392/Preventing-Excessive-Noise-Exposure-in-Infants",
+    "https://www.healthychildren.org/English/ages-stages/baby/crying-colic/Pages/Responding-to-Your-Babys-Cries.aspx",
+    "https://www.cdc.gov/infant-toddler-nutrition/mealtime/signs-your-child-is-hungry-or-full.html"
+  ],
+  "rights": "private_only",
+  "spelling_strict": true
+}

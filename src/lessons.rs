@@ -1,6 +1,6 @@
 //! Small curated, externally authored starter shelf. Grading lives in native policy.
 use crate::{
-    library::{self, VersionInput},
+    library::{self, MappingInput, VersionInput},
     model::*,
 };
 use serde::Deserialize;
@@ -32,8 +32,33 @@ impl Lesson {
     }
 }
 pub fn catalog() -> Vec<Lesson> {
-    serde_json::from_str(include_str!("../assets/lessons.json"))
-        .expect("bundled authored lessons are valid")
+    let mut lessons: Vec<Lesson> = serde_json::from_str(include_str!("../assets/lessons.json"))
+        .expect("bundled authored lessons are valid");
+    for (id, description, source) in [
+        (
+            "baby-soothing",
+            "Safe soothing",
+            include_str!("../examples/baby-soothing.json"),
+        ),
+        (
+            "baby-everyday",
+            "Everyday safety",
+            include_str!("../examples/baby-everyday.json"),
+        ),
+        (
+            "baby-montessori",
+            "Montessori-inspired care",
+            include_str!("../examples/baby-montessori.json"),
+        ),
+    ] {
+        let mapping: MappingInput = serde_json::from_str(source).expect("bundled mapping is valid");
+        lessons.push(Lesson {
+            id: id.into(),
+            description: description.into(),
+            input: mapping.into_version().expect("bundled mapping imports"),
+        });
+    }
+    lessons
 }
 pub fn input(id: &str) -> AppResult<VersionInput> {
     if id == "nato" {
@@ -44,4 +69,18 @@ pub fn input(id: &str) -> AppResult<VersionInput> {
         .find(|s| s.id == id)
         .map(|s| s.input)
         .ok_or_else(|| AppError::new(404, "Lesson not found."))
+}
+
+/// Only exact bundled content receives a trusted focus route; editable titles
+/// or supplied metadata cannot impersonate a starter.
+pub fn mapping_route(version: &library::Version) -> Option<&'static str> {
+    catalog()
+        .iter()
+        .find(|l| l.input.kind == library::Kind::KeyedMapping && l.matches(version))
+        .and_then(|l| match l.id.as_str() {
+            "baby-soothing" => Some("/?practice=baby-soothing"),
+            "baby-everyday" => Some("/?practice=baby-everyday"),
+            "baby-montessori" => Some("/?practice=baby-montessori"),
+            _ => None,
+        })
 }

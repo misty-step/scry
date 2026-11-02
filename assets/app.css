@@ -454,3 +454,5 @@ body:has(.nato-screen) main {margin-top:24px}
 .result-marks {list-style:none;display:flex;gap:5px;margin:4px 0 0;padding:0}
 .result-marks li {display:grid;place-items:center;width:19px;height:19px;border:1px solid currentColor;border-radius:50%;font:12px/1 var(--mono)}
 @media(prefers-reduced-motion:no-preference){.result-progress{animation:result-evidence-in 160ms ease-out}@keyframes result-evidence-in{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:none}}}
+
+.readiness-study .exact-cue .reading{font-family:var(--sans);font-size:clamp(1.35rem,5vw,1.8rem);line-height:1.45;letter-spacing:-.02em;font-weight:500}.readiness-study .mapping-result{font-size:1rem;line-height:1.5}.readiness-study .lesson-picker{margin-top:1.5rem}
