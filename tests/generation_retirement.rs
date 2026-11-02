@@ -166,8 +166,8 @@ fn review_home_never_consumes_or_exposes_interrupted_legacy_practice() {
     engine::ensure_occurrence(&mut app, NOW, "interrupted").unwrap();
     let before = app.clone();
     let html = web::render(&app, "/", &BTreeMap::new(), NOW, None);
-    assert!(html.contains("data-state=\"nato-home\""));
-    assert!(html.contains("/practice/nato/start"));
+    assert!(html.contains("data-state=\"mixed-home\""));
+    assert!(html.contains("/practice/lesson/start"));
     assert!(html.contains("Earlier practice"));
     assert!(!html.contains("href=\"/create\"") && !html.contains("Add material"));
     assert!(!html.contains(&app.occurrence.as_ref().unwrap().presentation.answer));

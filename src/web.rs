@@ -591,6 +591,9 @@ impl View<'_> {
             },
             escape(&prompt.id)
         );
+        if self.app.practice.mixed_review {
+            out.push_str("<p class=\"eyebrow\">All subjects</p>");
+        }
         if let Some(a) = attempt {
             out.push_str(&self.exact_result(a));
         } else {
@@ -759,7 +762,7 @@ impl View<'_> {
                 "<p class=\"helped-label\">Assisted practice · the schedule stayed unchanged.</p>",
             );
         } else if a.effects.iter().all(|e| e.extra_practice) {
-            out.push_str("<p class=\"fineprint\">Extra practice · already scheduled today.</p>");
+            out.push_str("<p class=\"fineprint\">Extra practice · schedule unchanged.</p>");
         }
         let _ = write!(
             out,
@@ -781,7 +784,11 @@ impl View<'_> {
         out.push_str(&self.result_progress(a));
         out.push_str("<div class=\"result-actions\">");
         out.push_str(&self.form(
-            "/practice/next",
+            if self.app.practice.mixed_review {
+                "/practice/review/next"
+            } else {
+                "/practice/next"
+            },
             "exact-next",
             "exact-form",
             "data-next",
@@ -1276,6 +1283,15 @@ impl View<'_> {
                 );
             }
         }
+        if current.is_some() && !self.app.practice.mixed_review {
+            out.push_str(&self.form(
+                "/practice/review/start",
+                "review-all",
+                "",
+                "",
+                "<button class=\"text-button\">Review all subjects</button>",
+            ));
+        }
         out.push_str("<div class=\"lesson-groups\">");
         let groups = [
             (
@@ -1474,6 +1490,9 @@ impl View<'_> {
             },
             escape(&p.prompt.id)
         );
+        if self.app.practice.mixed_review {
+            out.push_str("<p class=\"eyebrow\">All subjects</p>");
+        }
         if let Some(a) = a {
             let good = a.grade.verdict == Verdict::Good;
             let label = if !good {
@@ -1545,48 +1564,61 @@ impl View<'_> {
                 out.push_str("<p class=\"lesson-note\">With help · schedule unchanged.</p>");
             }
             out.push_str(&self.result_progress(a));
-            if phrase && !good {
+            if self.app.practice.mixed_review {
                 out.push_str(&self.form(
-                    "/practice/lesson/next",
-                    "lesson-retry",
+                    "/practice/review/next",
+                    "mixed-next",
                     "lesson-action",
                     "data-next",
                     &format!(
-                        "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                        "{}<button class=\"button primary\">Next</button>",
+                        hidden("after", &p.prompt.id)
+                    ),
+                ));
+            } else {
+                if phrase && !good {
+                    out.push_str(&self.form(
+                        "/practice/lesson/next",
+                        "lesson-retry",
+                        "lesson-action",
+                        "data-next",
+                        &format!(
+                            "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                            hidden("after", &p.prompt.id),
+                            hidden("mode", "retry")
+                        ),
+                    ));
+                }
+                out.push_str(&self.form(
+                    "/practice/lesson/next",
+                    "lesson-next",
+                    "lesson-action",
+                    if phrase && !good { "" } else { "data-next" },
+                    &format!(
+                        "{}{}<button class=\"{}\">{}</button>",
                         hidden("after", &p.prompt.id),
-                        hidden("mode", "retry")
+                        hidden("mode", if ordered { "whole" } else { "phrases" }),
+                        if phrase && !good {
+                            "text-button"
+                        } else {
+                            "button primary"
+                        },
+                        if ordered {
+                            "Try the sequence again"
+                        } else if whole {
+                            "Practise phrases"
+                        } else if phrase && !good {
+                            "Continue to next phrase"
+                        } else {
+                            "Next phrase"
+                        }
                     ),
                 ));
             }
-            out.push_str(&self.form(
-                "/practice/lesson/next",
-                "lesson-next",
-                "lesson-action",
-                if phrase && !good { "" } else { "data-next" },
-                &format!(
-                    "{}{}<button class=\"{}\">{}</button>",
-                    hidden("after", &p.prompt.id),
-                    hidden("mode", if ordered { "whole" } else { "phrases" }),
-                    if phrase && !good {
-                        "text-button"
-                    } else {
-                        "button primary"
-                    },
-                    if ordered {
-                        "Try the sequence again"
-                    } else if whole {
-                        "Practise phrases"
-                    } else if phrase && !good {
-                        "Continue to next phrase"
-                    } else {
-                        "Next phrase"
-                    }
-                ),
-            ));
-            if !ordered {
+            if !ordered && !self.app.practice.mixed_review {
                 extras.push_str("<div class=\"lesson-challenges\"><h2>Challenges</h2>");
             }
-            if !ordered && !whole {
+            if !ordered && !whole && !self.app.practice.mixed_review {
                 extras.push_str(&self.form(
                     "/practice/lesson/next",
                     "lesson-join",
@@ -1599,7 +1631,7 @@ impl View<'_> {
                     ),
                 ));
             }
-            if !ordered && whole {
+            if !ordered && whole && !self.app.practice.mixed_review {
                 extras.push_str(&self.form(
                     "/practice/lesson/next",
                     "lesson-middle",
@@ -1612,7 +1644,7 @@ impl View<'_> {
                     ),
                 ));
             }
-            if !ordered {
+            if !ordered && !self.app.practice.mixed_review {
                 extras.push_str(&self.form(
                     "/practice/lesson/next",
                     "lesson-whole",
@@ -1625,7 +1657,7 @@ impl View<'_> {
                     ),
                 ));
             }
-            if !ordered {
+            if !ordered && !self.app.practice.mixed_review {
                 extras.push_str("</div>");
             }
             if ordered || good {
@@ -1933,6 +1965,63 @@ impl View<'_> {
         out.push_str("</fieldset><div class=\"progress-legend\"><span class=\"evidence-correct\"><b aria-hidden=\"true\">✓</b>Correct</span><span class=\"evidence-miss\"><b aria-hidden=\"true\">×</b>Miss</span><span class=\"evidence-helped\"><b aria-hidden=\"true\">+</b>With help</span></div><details class=\"progress-method\"><summary>About these numbers</summary><p>Accuracy uses unaided answers, including extra practice. Reveals aren’t reviews. Practice selects due reviews and new letters.</p></details></div></details>");
         out
     }
+    fn mixed_home(&self) -> String {
+        let due = crate::study::mixed_cards(self.app, self.now);
+        let mut out = String::from(
+            "<section class=\"nato-screen\" data-state=\"mixed-home\"><header class=\"practice-heading\"><h1>Review</h1><span>All subjects</span></header>",
+        );
+        if due.is_empty() {
+            out.push_str("<h2>No reviews due</h2>");
+            let ids = self
+                .app
+                .practice
+                .attempts
+                .values()
+                .filter(|a| !a.disclosure)
+                .flat_map(|a| a.effects.iter().map(|e| e.card_id.as_str()))
+                .collect::<std::collections::BTreeSet<_>>();
+            if let Some(next) = self
+                .app
+                .practice
+                .cards
+                .values()
+                .filter(|c| {
+                    self.app.practice.studies[&c.study_id].status != crate::study::Status::Dropped
+                        && ids.contains(c.id.as_str())
+                        && c.state.schedule.last_review_ms.is_some()
+                })
+                .map(|c| c.state.schedule.due_ms)
+                .min()
+            {
+                let _ = write!(
+                    out,
+                    "<p class=\"fineprint\">Next review {}</p>",
+                    relative(next, self.now)
+                );
+            }
+        } else {
+            let subjects = due
+                .iter()
+                .map(|c| c.study_id.as_str())
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            let _ = write!(
+                out,
+                "<p>{subjects} {} ready</p>",
+                if subjects == 1 { "subject" } else { "subjects" }
+            );
+            out.push_str(&self.form(
+                "/practice/review/start",
+                "mixed-start",
+                "",
+                "",
+                "<button class=\"button primary\">Review now</button>",
+            ));
+        }
+        out.push_str(&self.lesson_picker(true));
+        out.push_str("</section>");
+        out
+    }
     fn nato_screen(&self) -> String {
         let nato_versions = self
             .app
@@ -1956,6 +2045,9 @@ impl View<'_> {
         let mut out = format!(
             "<section class=\"nato-screen\" data-state=\"nato-home\"><div class=\"nato-meta\"><span><i class=\"signal-dot\" aria-hidden=\"true\"></i>NATO alphabet</span><span title=\"Unique letters answered without revealing the answer; not a mastery score\">{practiced}<span class=\"nato-muted\"> / 26 practiced</span></span></div>"
         );
+        if self.app.practice.mixed_review {
+            out.push_str("<p class=\"eyebrow\">All subjects</p>");
+        }
         if let Some(p) = self.app.practice.current.as_ref().filter(|p| {
             self.app
                 .library
@@ -2015,14 +2107,22 @@ impl View<'_> {
                 }
                 out.push_str(&self.result_progress(a));
                 out.push_str(&self.form(
-                    "/practice/next",
+                    if self.app.practice.mixed_review {
+                        "/practice/review/next"
+                    } else {
+                        "/practice/next"
+                    },
                     "nato-next",
                     "nato-action",
                     "data-next",
                     &format!(
                         "{}{}<button class=\"button primary\">Next <kbd>Enter</kbd></button>",
                         hidden("after", &prompt.id),
-                        hidden("study_id", &prompt.study_id)
+                        if self.app.practice.mixed_review {
+                            String::new()
+                        } else {
+                            hidden("study_id", &prompt.study_id)
+                        }
                     ),
                 ));
             } else {
@@ -3063,6 +3163,10 @@ fn legacy_home(_app: &App) -> &'static str {
 pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
     if matches!(path, "/library/version/add" | "/library/mapping/add") {
         redirect.strip_prefix("/api/v1").unwrap_or("/library")
+    } else if path.starts_with("/practice/review/")
+        || (path.starts_with("/practice/") && app.practice.mixed_review)
+    {
+        "/"
     } else if path.starts_with("/practice/") {
         "/recall"
     } else if redirect == "/"
@@ -3116,6 +3220,17 @@ pub fn render(
             "<section class=\"nato-screen lesson-screen\"><h1>Practice</h1>{}</section>",
             view.lesson_picker(true)
         ),
+        "/" if app.practice.current.is_none()
+            && !query.get("practice").is_some_and(|v| v == "nato") =>
+        {
+            view.mixed_home()
+        }
+        "/" if app.practice.current.as_ref().is_some_and(|p| {
+            !crate::library::is_nato(&app.library.versions[&p.prompt.version_id])
+        }) =>
+        {
+            view.exact_stream()
+        }
         "/" => view.nato_screen(),
         "/recall"
             if app.practice.current.as_ref().is_some_and(|p| {
@@ -3126,6 +3241,9 @@ pub fn render(
             }) =>
         {
             view.nato_screen()
+        }
+        "/recall" if app.practice.current.is_none() && app.practice.mixed_review => {
+            view.mixed_home()
         }
         "/recall"
             if app.practice.current.is_none()

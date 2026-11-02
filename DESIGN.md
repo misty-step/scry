@@ -1,5 +1,14 @@
 # Scry: a recall instrument
 
+## Review across subjects — 2026-11-02
+
+The default Review canvas offers one action for due, previously practiced material
+across subjects; when empty, it says No reviews due and keeps Lessons reachable.
+Held questions and results stay in place. A quiet All subjects label identifies
+when Next will cross subjects; focused lesson entry remains deliberate. Native
+feedback shows the real updated schedule, including same-day learning reviews.
+No catalog-wide enrollment, invented mastery, or client success grades.
+
 ## Whole-app subtraction — 2026-11-01
 
 One subject and scope, one clear instruction, one answer, one primary action.

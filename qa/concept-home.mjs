@@ -31,7 +31,7 @@ export async function conceptHomeWalk(browser,capture){
    }
    assert.fail('The requested control is not reachable through the keyboard tab order');
   };
-  const home=()=>page.locator('[data-state="nato-home"]');
+  const home=()=>page.locator('[data-state="mixed-home"]');
   const headerHome=()=>page.getByRole('link',{name:'Scry, home',exact:true});
   const earlier=async()=>{await activate(page.locator('.account-menu>summary'));await activate(page.getByRole('link',{name:'Earlier practice',exact:true}));};
   const layout=async()=>{
@@ -56,7 +56,7 @@ export async function conceptHomeWalk(browser,capture){
    assert.equal(await menu.getAttribute('open'),null,'Native menu closes');
   };
   try{
-   await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'From Alfa to Zulu.',exact:true}).waitFor();
+   await page.goto(url+'/');await home().waitFor();await page.getByRole('heading',{name:'Review',exact:true}).waitFor();
    assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Practice','Lessons','Library','History','Settings','Earlier practice','Changelog']);
       assert.equal(await page.locator('footer').count(),0);
    const empty=await state();assert.equal(empty.occurrence,null);assert.equal(empty.practice?.current??null,null);
@@ -146,7 +146,7 @@ export async function conceptHomeWalk(browser,capture){
   assert.equal(await page.getByLabel('Your unsent material',{exact:true}).inputValue(),'Unsent material');
   assert.equal(await page.locator('form[action="/create"],input[type="file"]').count(),0);
   await page.getByRole('link',{name:'Scry, home',exact:true}).tap();
-  await page.locator('[data-state="nato-home"]').waitFor();assert.equal(await page.locator('[data-poll]').count(),0);
+  await page.locator('[data-state="mixed-home"]').waitFor();assert.equal(await page.locator('[data-poll]').count(),0);
   assert.deepEqual(await read(),before);row.evidence.push(await capture(page,'review-home-retired-request.png'));
  }catch(error){row.status='fail';row.reason=error.message;}
  finally{await context.close();await runtime.mf.dispose();}

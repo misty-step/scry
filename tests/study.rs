@@ -606,7 +606,10 @@ fn populated_study_archive_requires_compatible_format_and_intact_payload_chunks(
     let archive = persistence::Archive::new(o.app.clone(), vec![], NOW);
     let bytes = archive.encode().unwrap();
     let mut wrong: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(wrong["format"], "scry-rust-durable-sqlite-study-v1");
+    assert_eq!(
+        wrong["format"],
+        "scry-rust-durable-sqlite-study-scheduled-v2"
+    );
     wrong["format"] = json!("scry-rust-durable-sqlite-library-v1");
     let wrong = serde_json::to_vec(&wrong).unwrap();
     assert!(persistence::Archive::decode(&wrong, &persistence::sha256(&wrong)).is_err());

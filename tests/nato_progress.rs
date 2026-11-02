@@ -118,10 +118,10 @@ fn correct_miss_extra_practice_and_actual_scheduled_due_are_distinct() {
     assert_eq!(p.practiced, 26);
     assert_eq!(p.reviews, 27);
     assert_eq!(p.correct, 26);
-    // Same-day extra practice is still an observed answer, not a schedule write.
-    assert_eq!(r.due_ms, Some(NOW + 60_001));
+    // The one-minute learning review is genuinely due, even on the same day.
+    assert_eq!(r.due_ms, Some(NOW + 671_000));
     let held = a.practice.current.as_ref().unwrap();
-    assert!(a.practice.attempts[held.attempt_id.as_ref().unwrap()].effects[0].extra_practice);
+    assert!(a.practice.attempts[held.attempt_id.as_ref().unwrap()].effects[0].scheduled);
 }
 #[test]
 fn retained_false_allowance_flag_preserves_metrics_and_reads_are_pure() {

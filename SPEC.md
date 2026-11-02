@@ -102,7 +102,7 @@ phone Recite/Whole/Section chooser work: that earlier disposition is unchanged.
   and never turns disclosed wording into unaided credit. Optional challenges
   stay secondary. Deliberate
   lesson entry introduces the selected short text without changing stored Pace
-  or globally removing daily schedule constraints.
+  or changing the underlying pinned memory model.
 - **LESSON-04:** Native deterministic grading owns every result. No client grade,
   fuzzy theological equivalence, speech recognition, or pronunciation validation
   is implied. Text follows exact-v2 case/punctuation policy; accents remain
@@ -165,6 +165,14 @@ canvas holds the current question or graded result across refresh and return.
   network results never fabricate a grade. Test real local Worker/SQLite flows,
   keyboard-only, no-JS, reduced motion, long input and failure states.
 
+### Mixed due review (2026-11-02)
+
+- Default review interleaves due, previously practiced content across enrolled, non-dropped Studies. Least-recently-served Study wins; due time and stable identity break ties. One overdue subject cannot monopolize the session.
+- Unstarted catalog lessons, unseen Units, and guided-only learning with no scheduled recall are not silently enrolled or introduced into review. Explicit focused lesson learning remains available when caught up. Paused Studies retain their existing due-review eligibility.
+- New due-policy Attempts carry an explicit algorithm-policy identifier; new-semantic archives use `scry-rust-durable-sqlite-study-scheduled-v2`. Legacy history keeps its original bytes and remains readable by this build. Older binaries must refuse new semantics rather than strip metadata; rollback after new review writes requires a compatible build, not a transparent downgrade.
+- Held questions/results survive navigation and choosing all subjects. Only explicit fenced Next or lesson switching changes the current activity; no selection fabricates a grade.
+- Ordered-list lessons remain whole-sequence activities. Only genuinely due components change schedule; future components remain optional early practice. Mode and native feedback stay visible without inventing mastery.
+
 ### NATO progress visibility (2026-10-29)
 
 The owner requests useful per-letter learning evidence without adding screens.
@@ -173,7 +181,7 @@ information or all microanimation; it does not invent mastery or alter grading.
 
 - **NATO-06:** A read-only progress disclosure on the same canvas exposes all
   26 letters. Reviews count distinct answered prompts, including assisted and
-  same-day extra practice. Reveal-only disclosure records are not completed
+  early extra practice. Reveal-only disclosure records are not completed
   reviews or wrong answers. Accuracy is correct / unaided answered prompts,
   with the denominator visible; no evidence shows a dash. Assisted answers are
   counted separately. Existing immutable receipts are the source; opening,
@@ -1262,7 +1270,7 @@ Criteria:
 3. WHEN I ask for the next Prompt, THE SYSTEM SHALL show the Work title, the previous Unit as context and the cue for the Card's Cue level, and nothing more of the Unit than that level allows.
 4. WHEN I ask to recite a Section or a whole Version, THE SYSTEM SHALL prompt from its heading or title alone and treat the answer as a Recitation.
 5. WHEN I answer with an answer-bearing cue, THE SYSTEM SHALL record the Attempt as assisted and leave the Card's schedule unchanged.
-6. WHEN I answer in Free recall, THE SYSTEM SHALL schedule the Card with the pinned memory model from the Verdict at most once per Card per day; later same-day Attempts SHALL be recorded as extra practice without changing the schedule.
+6. WHEN I answer in Free recall, THE SYSTEM SHALL schedule a genuinely due Card with the pinned memory model from the native Verdict, including learning/relearning within the same day. Optional early Attempts SHALL be recorded as extra practice without changing the schedule. Immutable historical Attempts and corrections SHALL retain their original scheduling policy (missing policy means the legacy calendar-day rule). This November 2 direction supersedes the previous once-per-day constraint.
 7. WHEN I succeed twice in a row at a Card's Cue level, THE SYSTEM SHALL fade its cue one level; WHEN a Free recall Attempt is Again, THE SYSTEM SHALL drop the Card one Cue level for relearning.
 8. WHEN I ask what is due, THE SYSTEM SHALL list due Cards and upcoming due times without presenting, consuming or changing any Card.
 9. WHEN I pause a Study, THE SYSTEM SHALL stop introducing its new Units while keeping its due Cards and history; WHEN I drop a Study, THE SYSTEM SHALL stop presenting its Cards and keep its Attempts.

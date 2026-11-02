@@ -10,9 +10,9 @@ fn render(app: &App, path: &str) -> String {
 fn review_home_is_clear_and_does_not_masquerade_as_an_empty_text_library() {
     let app = App::new("synthetic-concept-home-csrf-value".into());
     let home = render(&app, "/");
-    assert!(home.contains("data-state=\"nato-home\""));
-    assert!(home.contains("<h1>From Alfa to Zulu.</h1>"));
-    assert!(home.contains("action=\"/practice/nato/start\""));
+    assert!(home.contains("data-state=\"mixed-home\""));
+    assert!(home.contains("<h1>Review</h1>"));
+    assert!(home.contains("action=\"/practice/lesson/start\""));
     assert!(home.contains("href=\"/library\">Library</a>"));
     assert!(!home.contains("Find a text") && !home.contains("library-query"));
     assert!(!home.contains("<h1>Your Library</h1>"));
@@ -26,7 +26,7 @@ fn home_resumes_without_exposing_or_replacing_the_concept_occurrence() {
     engine::ensure_occurrence(&mut app, NOW, "home-practice").unwrap();
     let before = app.clone();
     let home = render(&app, "/");
-    assert!(home.contains("data-state=\"nato-home\""));
+    assert!(home.contains("data-state=\"mixed-home\""));
     assert!(home.contains("href=\"/notebook\">Earlier practice</a>"));
     assert!(!home.contains("data-state=\"question\""));
     assert!(!home.contains(&app.occurrence.as_ref().unwrap().presentation.answer));
@@ -114,8 +114,8 @@ fn archived_goal_concepts_leave_active_navigation_but_keep_their_reference() {
     );
     let before = app.clone();
     let home = render(&app, "/");
-    assert!(home.contains("From Alfa to Zulu."));
-    assert!(home.contains("Start practice"));
+    assert!(home.contains("No reviews due"));
+    assert!(home.contains("Lessons"));
     for c in app.concepts.values() {
         assert!(!home.contains(&format!("href=\"/concepts/{}\"", c.id)));
         let detail = render(&app, &format!("/concepts/{}", c.id));
