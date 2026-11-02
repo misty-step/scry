@@ -54,11 +54,14 @@ export async function keyedMappingFixture({capturePredecessor=false,captureMappi
   await ok(['login','--url',origin,'--token-stdin'],secret+'\n');
   const archives={};
   if(mixedOnly){
-   // Explicit valid transport request to the public route, not an assertion
-   // that the empty home offers an action when there is no due work.
-   const settings=await(await runtime.worker.fetch(origin+'/settings')).text();
-   const started=await runtime.worker.fetch(origin+'/practice/review/start',{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...nativeFields(settings,'/tokens/create'),operation_id:randomUUID()})});assert.equal(started.status,303);
-   const response=await api('/api/v1/export');assert.equal(response.status,200);archives.baseline=Buffer.from(await response.arrayBuffer());
+   // Supply an unstarted text subject: its first guided prompt is exportable
+   // without revealing an unaided answer or inventing a graded attempt. This
+   // isolates mixed-mode archive compatibility from mapping/new-grade checks.
+   const textPath=join(temp,'mixed-guided-control.txt');await writeFile(textPath,'A supplied guided control.\n');
+   await ok(['version','add','--title','Mixed guided control','--kind','text','--text-file',textPath]);
+   const home=await(await runtime.worker.fetch(origin+'/')).text();
+   const started=await runtime.worker.fetch(origin+'/practice/review/start',{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...nativeFields(home,'/practice/review/start'),operation_id:randomUUID()})});assert.equal(started.status,303);
+   const response=await api('/api/v1/export');assert.equal(response.status,200,response.status===200?'':await response.text());archives.baseline=Buffer.from(await response.arrayBuffer());
    const empty=JSON.parse(archives.baseline);assert.equal(empty.format,'scry-rust-durable-sqlite-study-scheduled-v2');assert.equal(empty.app.practice.mixed_review,true);assert.equal(Object.keys(empty.app.practice.attempts).length,0);assert.ok(Object.values(empty.app.operations).some(op=>op.path==='/practice/review/start'));
    return {archives,at,get egress(){return egress;},close:async()=>{await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}};
   }
@@ -67,7 +70,7 @@ export async function keyedMappingFixture({capturePredecessor=false,captureMappi
    const version=(await ok(['version','add','--title','Predecessor positive control','--kind','text','--text-file',path])).result.entity_id;
    const study=(await ok(['learn',version])).practice.study.id,prompt=(await ok(['next'])).practice.prompt;
    await ok(['answer',prompt.id,'--text-stdin'],'Synthetic predecessor control.');await ok(['study','drop',study]);
-   const response=await api('/api/v1/export');assert.equal(response.status,200);archives.baseline=Buffer.from(await response.arrayBuffer());
+   const response=await api('/api/v1/export');assert.equal(response.status,200,response.status===200?'':await response.text());archives.baseline=Buffer.from(await response.arrayBuffer());
   }
   if(legacyOnly)return {archives,at,get egress(){return egress;},close:async()=>{await runtime.mf.dispose();await rm(temp,{recursive:true,force:true});}};
   const imported=await ok(['mapping','add','--file',manifest,'--operation-id','mapping-fixture-import-operation']);

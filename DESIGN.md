@@ -1,13 +1,14 @@
 # Scry: a recall instrument
 
-## Review across subjects — 2026-11-02
+## Continuous study — 2026-11-02
 
-The default Review canvas offers one action for due, previously practiced material
-across subjects; when empty, it says No reviews due and keeps Lessons reachable.
-Held questions and results stay in place. A quiet All subjects label identifies
-when Next will cross subjects; focused lesson entry remains deliberate. Native
-feedback shows the real updated schedule, including same-day learning reviews.
-No catalog-wide enrollment, invented mastery, or client success grades.
+The default canvas is one subject preview and one Study action. Due work comes
+first; otherwise unstarted and unfinished subjects stay reachable without a
+catalog setup detour. Browse is a closed secondary disclosure, not an expanded
+wall of editions. Held questions and results stay in place; Next continues across
+subjects. When all eligible work is paced or inactive, say Rest for now rather
+than pretending all material has been learned. Actual review dates belong with
+committed answer feedback. This supersedes the earlier due-only empty home.
 
 ## Whole-app subtraction — 2026-11-01
 

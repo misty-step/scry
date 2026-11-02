@@ -974,3 +974,18 @@ fn stream_distinguishes_stopped_partial_archived_and_mixed_preparations() {
         "class=\"button primary\" href=\"/goals/{latest}\""
     )));
 }
+
+#[test]
+fn continuous_home_has_one_study_action_and_closed_browse_without_writes() {
+    let app = App::new("01234567890123456789012345678901".into());
+    let before = serde_json::to_value(&app).unwrap();
+    let html = web::render(&app, "/", &query("study-home"), NOW, None);
+    assert!(html.contains("data-state=\"mixed-home\""));
+    assert!(html.contains("<span>Study</span>"));
+    assert_eq!(html.matches("action=\"/practice/review/start\"").count(), 1);
+    assert!(html.contains("<summary><span>Browse</span>"));
+    assert!(!html.contains("class=\"lesson-picker\" open"));
+    assert!(!html.contains("No reviews due"));
+    assert!(!html.contains("Rest for now"));
+    assert_eq!(serde_json::to_value(&app).unwrap(), before);
+}

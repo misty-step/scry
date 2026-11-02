@@ -456,3 +456,10 @@ body:has(.nato-screen) main {margin-top:24px}
 @media(prefers-reduced-motion:no-preference){.result-progress{animation:result-evidence-in 160ms ease-out}@keyframes result-evidence-in{from{opacity:.3;transform:translateY(3px)}to{opacity:1;transform:none}}}
 
 .readiness-study .exact-cue .reading{font-family:var(--sans);font-size:clamp(1.35rem,5vw,1.8rem);line-height:1.45;letter-spacing:-.02em;font-weight:500}.readiness-study .mapping-result{font-size:1rem;line-height:1.5}.readiness-study .lesson-picker{margin-top:1.5rem}
+
+/* The default doorway has one action; choosing a subject is optional. */
+.study-entry {padding:clamp(28px,8vw,64px) 0 32px}
+.study-entry h1 {font:550 clamp(28px,6vw,42px)/1.15 var(--sans);letter-spacing:-.035em;margin:12px 0 32px;overflow-wrap:anywhere}
+.study-context {color:var(--ink-2);font:14px/1.5 var(--sans);margin:0}
+.study-home .button {justify-content:space-between}
+.study-home .lesson-picker {border-top:1px solid var(--rule)}

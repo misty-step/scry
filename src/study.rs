@@ -636,6 +636,350 @@ pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
         })
         .collect()
 }
+/// A pure plan shared by the landing page and explicit Study/Next writes.
+/// Merely viewing the library must never enroll a subject or introduce a card.
+#[derive(Clone, Debug)]
+enum ContinuousChoice {
+    Card(String),
+    Introduce(String),
+    Version(String),
+    Starter(String),
+}
+
+fn continuous_limit(app: &App, s: &Study, now: i64) -> bool {
+    // Focused NATO's all-letters choice is not a catalog-wide learning budget.
+    app.practice
+        .cards
+        .values()
+        .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
+        .count()
+        < s.pace.limit()
+}
+
+fn continuous_version_eligible(app: &App, v: &Version) -> bool {
+    if studyable(v).is_err() || units(v).is_empty() {
+        return false;
+    }
+    let all = units(v);
+    let ranges = if v.kind == Kind::OrderedList {
+        vec![(0, all.len())]
+    } else {
+        (0..all.len()).map(|i| (i, i + 1)).collect()
+    };
+    ranges.into_iter().all(|(start, end)| {
+        continuous_scope_eligible(app, v, start, end, v.kind == Kind::OrderedList)
+    })
+}
+
+fn continuous_scope_eligible(
+    app: &App,
+    v: &Version,
+    start: usize,
+    end: usize,
+    whole: bool,
+) -> bool {
+    let all = units(v);
+    let Some(scope) = all.get(start..end).filter(|scope| !scope.is_empty()) else {
+        return false;
+    };
+    let words = scope
+        .iter()
+        .map(|u| grade_words(v, expected_unit(v, u)).len())
+        .sum();
+    let siblings = app
+        .library
+        .versions
+        .values()
+        .filter(|s| v.kind != Kind::KeyedMapping && s.work_id == v.work_id && s.id != v.id)
+        .filter_map(|s| {
+            if whole {
+                Some((s, s.text.clone()))
+            } else {
+                units(s).get(start).map(|u| (s, u.text.clone()))
+            }
+        })
+        .collect::<Vec<_>>();
+    fits_grading_capacity(words, words, &siblings)
+}
+
+fn continuous_target_eligible(app: &App, study: &Study, index: usize) -> bool {
+    let v = &app.library.versions[&study.version_id];
+    let whole = study.lesson && v.kind == Kind::OrderedList;
+    let (start, end) = if whole {
+        (0, units(v).len())
+    } else {
+        (index, index + 1)
+    };
+    continuous_scope_eligible(app, v, start, end, whole)
+}
+
+fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
+    let mut last = BTreeMap::<&str, u64>::new();
+    for a in app.practice.attempts.values().filter(|a| !a.disclosure) {
+        let served = last.entry(&a.prompt.study_id).or_default();
+        *served = (*served).max(a.sequence);
+    }
+    if let Some(c) = mixed_cards(app, now)
+        .into_iter()
+        .filter(|c| {
+            continuous_target_eligible(app, &app.practice.studies[&c.study_id], c.unit_index)
+        })
+        .min_by_key(|c| {
+            (
+                last.get(c.study_id.as_str()).copied().unwrap_or(0),
+                c.state.schedule.due_ms,
+                app.practice.studies[&c.study_id].created_ms,
+                &c.study_id,
+                c.unit_index,
+            )
+        })
+    {
+        return Some(ContinuousChoice::Card(c.id.clone()));
+    }
+    let catalog = crate::lessons::catalog();
+    let mut choices: Vec<(u64, String, ContinuousChoice)> = Vec::new();
+    for study in app
+        .practice
+        .studies
+        .values()
+        .filter(|s| s.status == Status::Active)
+    {
+        // Guided learning has no scheduled review yet, but still needs a next
+        // step. Finish the earliest unfinished phrase before introducing more.
+        let unfinished = app
+            .practice
+            .cards
+            .values()
+            .filter(|c| {
+                c.study_id == study.id
+                    && c.state.schedule.last_review_ms.is_none()
+                    && continuous_target_eligible(app, study, c.unit_index)
+            })
+            .min_by_key(|c| c.unit_index);
+        let choice = if let Some(c) = unfinished {
+            Some(ContinuousChoice::Card(c.id.clone()))
+        } else if continuous_limit(app, study, now)
+            && continuous_target_eligible(
+                app,
+                study,
+                app.practice
+                    .cards
+                    .values()
+                    .filter(|c| c.study_id == study.id)
+                    .count(),
+            )
+            && app
+                .practice
+                .cards
+                .values()
+                .filter(|c| c.study_id == study.id)
+                .count()
+                < units(&app.library.versions[&study.version_id]).len()
+        {
+            Some(ContinuousChoice::Introduce(study.id.clone()))
+        } else {
+            None
+        };
+        if let Some(choice) = choice {
+            choices.push((
+                last.get(study.id.as_str()).copied().unwrap_or(0),
+                format!("0:{}", study.id),
+                choice,
+            ));
+        }
+    }
+    // One default edition per local Work, never a back door around a paused or
+    // dropped Study. Existing explicitly enrolled editions remain independent.
+    let studied_works = app
+        .practice
+        .studies
+        .values()
+        .map(|s| app.library.versions[&s.version_id].work_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let superseded = app
+        .library
+        .relations
+        .values()
+        .filter_map(|r| match r {
+            crate::library::Relation::Supersedes { previous_id, .. } => Some(previous_id.as_str()),
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>();
+    for work in app
+        .library
+        .works
+        .values()
+        .filter(|w| !studied_works.contains(w.id.as_str()))
+    {
+        let version = app
+            .library
+            .versions
+            .values()
+            .filter(|v| {
+                v.work_id == work.id
+                    && !superseded.contains(v.id.as_str())
+                    && continuous_version_eligible(app, v)
+                    && !catalog.iter().any(|l| {
+                        l.matches(v)
+                            && matches!(
+                                l.id.as_str(),
+                                "st-michael-en-lasance-1911" | "st-michael-la-traditional"
+                            )
+                    })
+            })
+            .min_by_key(|v| (&v.name, &v.id));
+        if let Some(v) = version {
+            choices.push((
+                0,
+                format!("1:{}", work.id),
+                ContinuousChoice::Version(v.id.clone()),
+            ));
+        }
+    }
+    // Curated defaults are available without an enrollment/setup detour. The
+    // other Saint Michael wordings remain explicit choices, not extra subjects.
+    let defaults = [
+        "nato",
+        "st-michael-en",
+        "rosary-joyful",
+        "rosary-luminous",
+        "rosary-sorrowful",
+        "rosary-glorious",
+        "baby-soothing",
+        "baby-everyday",
+        "baby-montessori",
+    ];
+    for (rank, starter) in defaults.iter().enumerate() {
+        let input = crate::lessons::input(starter).expect("curated default exists");
+        let is_michael = *starter == "st-michael-en";
+        let represented = if is_michael {
+            app.library
+                .works
+                .values()
+                .any(|w| w.title == input.title && studied_works.contains(w.id.as_str()))
+                || app.library.versions.values().any(|v| {
+                    catalog.iter().any(|l| {
+                        l.matches(v)
+                            && (l.id == *starter
+                                || (l.id.starts_with("st-michael-")
+                                    && app.practice.studies.values().any(|s| s.version_id == v.id)))
+                    })
+                })
+        } else {
+            app.library.works.values().any(|w| w.title == input.title)
+                || app.library.versions.values().any(|v| {
+                    if *starter == "nato" {
+                        crate::library::is_nato(v)
+                    } else {
+                        catalog.iter().any(|l| l.id == *starter && l.matches(v))
+                    }
+                })
+        };
+        if !represented {
+            choices.push((
+                0,
+                format!("2:{rank:02}"),
+                ContinuousChoice::Starter((*starter).into()),
+            ));
+        }
+    }
+    choices
+        .into_iter()
+        .min_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)))
+        .map(|(_, _, c)| c)
+}
+
+/// Home-only subject preview. Never render editable metadata as a recall cue.
+pub fn continuous_preview(app: &App, now: i64) -> Option<String> {
+    let vid = match continuous_choice(app, now)? {
+        ContinuousChoice::Card(cid) => app.practice.studies[&app.practice.cards[&cid].study_id]
+            .version_id
+            .clone(),
+        ContinuousChoice::Introduce(sid) => app.practice.studies[&sid].version_id.clone(),
+        ContinuousChoice::Version(vid) => vid,
+        ContinuousChoice::Starter(id) => return Some(crate::lessons::input(&id).ok()?.title),
+    };
+    Some(
+        app.library.works[&app.library.versions[&vid].work_id]
+            .title
+            .clone(),
+    )
+}
+
+fn continuous_present(
+    app: &mut App,
+    choice: ContinuousChoice,
+    now: i64,
+    seed: &str,
+) -> AppResult<()> {
+    let cid = match choice {
+        ContinuousChoice::Card(cid) => cid,
+        choice => {
+            let sid = match choice {
+                ContinuousChoice::Introduce(sid) => sid,
+                choice => {
+                    let vid = match choice {
+                        ContinuousChoice::Version(vid) => vid,
+                        ContinuousChoice::Starter(starter) => {
+                            app.library
+                                .add(crate::lessons::input(&starter)?, seed, None)?
+                        }
+                        _ => unreachable!(),
+                    };
+                    let result = mutate(
+                        app,
+                        "/practice/learn",
+                        &BTreeMap::from([("version_id".into(), vid.clone())]),
+                        now,
+                        seed,
+                    )?;
+                    let sid = result.entity_id.expect("learn returns Study");
+                    // Text retains phrase/join/whole presentation; sequence
+                    // order remains one indivisible authored recall target.
+                    app.practice.studies.get_mut(&sid).unwrap().lesson =
+                        app.library.versions[&vid].kind != Kind::KeyedMapping;
+                    sid
+                }
+            };
+            let study = app.practice.studies[&sid].clone();
+            let index = app
+                .practice
+                .cards
+                .values()
+                .filter(|c| c.study_id == sid)
+                .count();
+            if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
+                for i in index..units(&app.library.versions[&study.version_id]).len() {
+                    introduce_card(app, &study, i, now, &format!("{seed}:unit:{i}"));
+                }
+                lesson_present(app, &sid, 0, true, now, seed)?;
+                return Ok(());
+            }
+            introduce_card(app, &study, index, now, seed)
+        }
+    };
+    let card = &app.practice.cards[&cid];
+    let study = &app.practice.studies[&card.study_id];
+    if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
+        let sid = study.id.clone();
+        lesson_present(app, &sid, 0, true, now, seed)?;
+    } else {
+        app.practice.current = Some(make_prompt(
+            app,
+            study,
+            vec![card],
+            Scope::Unit {
+                unit_id: card.unit_id.clone(),
+                position: card.unit_index + 1,
+            },
+            card.state.cue,
+            now,
+            seed,
+        ));
+    }
+    Ok(())
+}
+
 fn mixed_next(
     app: &mut App,
     fields: &BTreeMap<String, String>,
@@ -675,44 +1019,8 @@ fn mixed_next(
     }
     app.practice.current = None;
     app.practice.mixed_review = true;
-    // Round robin by last completed service, not alphabetical subject order.
-    // Stable sequence IDs disambiguate simultaneous timestamps and survive reload.
-    let mut last = BTreeMap::<&str, u64>::new();
-    for a in app.practice.attempts.values().filter(|a| !a.disclosure) {
-        let served = last.entry(&a.prompt.study_id).or_default();
-        *served = (*served).max(a.sequence);
-    }
-    let chosen = mixed_cards(app, now)
-        .into_iter()
-        .min_by_key(|c| {
-            (
-                last.get(c.study_id.as_str()).copied().unwrap_or(0),
-                c.state.schedule.due_ms,
-                app.practice.studies[&c.study_id].created_ms,
-                &c.study_id,
-                c.unit_index,
-            )
-        })
-        .map(|c| c.id.clone());
-    if let Some(cid) = chosen {
-        let c = &app.practice.cards[&cid];
-        let study = &app.practice.studies[&c.study_id];
-        if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
-            let sid = study.id.clone();
-            return lesson_present(app, &sid, 0, true, now, seed);
-        }
-        app.practice.current = Some(make_prompt(
-            app,
-            study,
-            vec![c],
-            Scope::Unit {
-                unit_id: c.unit_id.clone(),
-                position: c.unit_index + 1,
-            },
-            c.state.cue,
-            now,
-            seed,
-        ));
+    if let Some(choice) = continuous_choice(app, now) {
+        continuous_present(app, choice, now, seed)?;
     }
     Ok(response(
         None,
@@ -1760,10 +2068,10 @@ pub fn ensure_stream(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
     if app.practice.current.is_none() {
         let previous = app.practice.clone();
         if app.practice.mixed_review {
-            mixed_next(app, &BTreeMap::new(), now, seed, false)?;
-        } else {
-            next(app, &BTreeMap::new(), now, seed)?;
+            // Continuous admission is an explicit Study/Next write, never GET.
+            return Ok(());
         }
+        next(app, &BTreeMap::new(), now, seed)?;
         if app.practice != previous {
             app.revision += 1;
         }

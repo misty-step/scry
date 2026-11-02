@@ -145,7 +145,7 @@ fn mixed_rotates_subjects_due_only_without_import_or_new_units() {
     assert_eq!(decoded.app.practice, o.app.practice);
 }
 #[test]
-fn mixed_caught_up_never_steals_an_unseen_card_and_can_resume_safely() {
+fn continuous_study_introduces_unseen_when_reviews_are_future_and_resumes_safely() {
     let mut o = Owner::new();
     let a = o.mapping("Only", "A", NOW);
     o.focus(&a, NOW);
@@ -155,13 +155,17 @@ fn mixed_caught_up_never_steals_an_unseen_card_and_can_resume_safely() {
     assert!(o.app.practice.mixed_review);
     o.answer("Value", NOW);
     o.mixed(NOW + 1);
-    assert!(o.app.practice.current.is_none());
+    assert_ne!(o.prompt().study_id, a);
+    assert_eq!(o.prompt().cue, "A");
+    let held = o.prompt();
     let before = o.app.clone();
     let html = web::render(&o.app, "/", &BTreeMap::new(), NOW + 1, None);
-    assert!(html.contains("No reviews due"));
-    assert!(html.contains("Next review"));
+    assert!(!html.contains("No reviews due"));
     assert_eq!(before, o.app);
     o.call("/practice/review/start", &[], NOW + 600_000);
+    assert_eq!(o.prompt(), held);
+    o.answer("Alfa", NOW + 600_000);
+    o.mixed(NOW + 600_001);
     assert_eq!(o.prompt().study_id, a);
 }
 
@@ -340,7 +344,7 @@ fn legacy_correction_replays_original_policy_not_new_due_policy() {
     engine::validate_app(&o.app).unwrap();
 }
 #[test]
-fn mixed_excludes_unattempted_and_guided_only_prayer_without_scheduled_review() {
+fn due_reviews_exclude_guided_but_continuous_study_keeps_teaching() {
     let mut o = Owner::new();
     o.call(
         "/practice/lesson/start",
@@ -356,10 +360,30 @@ fn mixed_excludes_unattempted_and_guided_only_prayer_without_scheduled_review() 
     o.answer(&text, NOW);
     assert!(study::mixed_cards(&o.app, NOW).is_empty());
     o.mixed(NOW + 1);
-    assert!(o.app.practice.current.is_none());
-    let page = web::render(&o.app, "/", &BTreeMap::new(), NOW + 1, None);
-    assert!(page.contains("Lessons"));
-    assert!(!page.contains("Next review"));
+    assert!(o.app.practice.current.is_some());
+    // An unstarted subject receives a turn before the already-served prayer.
+    assert_eq!(o.prompt().cue, "A");
+    let prayer_sid = p.study_id;
+    for i in 0..10 {
+        let p = o.prompt();
+        if p.study_id == prayer_sid {
+            break;
+        }
+        let version = &o.app.library.versions[&p.version_id];
+        let answer = if version.kind == library::Kind::KeyedMapping {
+            library::mapping_pair(&version.sections[0].units[0].text)
+                .unwrap()
+                .1
+                .to_string()
+        } else {
+            version.text.clone()
+        };
+        o.answer(&answer, NOW + 2 + i);
+        o.mixed(NOW + 2 + i);
+    }
+    assert_eq!(o.prompt().study_id, prayer_sid);
+    assert!(o.prompt().assisted);
+    assert_eq!(o.prompt().unit_ids, p.unit_ids);
 }
 
 #[test]
@@ -400,7 +424,8 @@ fn mixed_next_replays_original_receipt_and_rejects_overrides_without_mutation() 
         first
     );
     assert_eq!(o.app, saved);
-    assert!(o.app.practice.current.is_none());
+    assert!(o.app.practice.current.is_some());
+    assert_eq!(o.app.practice.studies.len(), 2);
     for (key, value) in [
         ("grade", "Good"),
         ("study_id", sid.as_str()),
@@ -431,8 +456,8 @@ fn mixed_next_replays_original_receipt_and_rejects_overrides_without_mutation() 
         "/"
     );
     let page = web::render(&o.app, "/recall", &BTreeMap::new(), NOW + 70_000, None);
-    assert!(page.contains("mixed-home"));
-    assert!(!page.contains("nato-home"));
+    assert!(page.contains("/practice/answer"));
+    assert!(page.contains(&format!("name=\"prompt_id\" value=\"{}\"", o.prompt().id)));
     engine::validate_app(&o.app).unwrap();
 }
 
@@ -449,9 +474,13 @@ fn all_subjects_and_focused_entry_preserve_held_until_explicit_fenced_switch() {
     assert_eq!(o.app.practice.current, held);
     let p = o.prompt();
     o.call("/practice/review/start", &[("leave", p.id)], NOW);
-    assert!(o.app.practice.current.is_none());
+    assert!(o.app.practice.current.is_some());
     assert!(o.app.practice.attempts.is_empty());
-    o.call("/practice/lesson/start", &[("starter", "nato".into())], NOW);
+    o.call(
+        "/practice/lesson/start",
+        &[("starter", "nato".into()), ("leave", o.prompt().id)],
+        NOW,
+    );
     assert!(!o.app.practice.mixed_review);
     assert_eq!(o.prompt().cue, "A");
     assert!(o.app.practice.attempts.is_empty());
@@ -520,4 +549,275 @@ fn new_policy_and_mixed_receipts_fence_archives_and_reject_tampered_pairs() {
         .next()
         .unwrap()["schedule_policy"] = "unknown".into();
     assert!(serde_json::from_value::<App>(unknown).is_err());
+}
+
+fn park_catalog(o: &mut Owner) {
+    for id in [
+        "nato",
+        "st-michael-en",
+        "rosary-joyful",
+        "rosary-luminous",
+        "rosary-sorrowful",
+        "rosary-glorious",
+        "baby-soothing",
+        "baby-everyday",
+        "baby-montessori",
+    ] {
+        let vid = o
+            .app
+            .library
+            .add(scry::lessons::input(id).unwrap(), id, None)
+            .unwrap();
+        let sid = o
+            .call("/practice/learn", &[("version_id", vid)], NOW)
+            .entity_id
+            .unwrap();
+        o.call("/practice/pause", &[("study_id", sid)], NOW);
+    }
+}
+
+#[test]
+fn empty_mixed_get_is_read_only_and_explicit_study_admits_one_subject() {
+    let mut o = Owner::new();
+    o.app.practice.mixed_review = true;
+    let before = o.app.clone();
+    assert!(study::continuous_preview(&o.app, NOW).is_some());
+    study::ensure_stream(&mut o.app, NOW, "read").unwrap();
+    assert_eq!(o.app, before);
+    o.mixed(NOW);
+    assert_eq!(o.app.practice.studies.len(), 1);
+    assert_eq!(o.app.practice.cards.len(), 1);
+    assert_eq!(o.prompt().cue, "A");
+    let saved = o.app.clone();
+    study::ensure_stream(&mut o.app, NOW, "read-held").unwrap();
+    assert_eq!(o.app, saved);
+}
+
+#[test]
+fn paused_catalog_is_not_reenrolled_or_reactivated_and_rest_is_honest() {
+    let mut o = Owner::new();
+    park_catalog(&mut o);
+    let old = o.app.practice.studies.clone();
+    assert!(study::continuous_preview(&o.app, NOW).is_none());
+    o.mixed(NOW);
+    assert!(o.app.practice.current.is_none());
+    assert_eq!(o.app.practice.studies, old);
+    assert!(o.app.practice.cards.is_empty());
+    let page = web::render(&o.app, "/", &BTreeMap::new(), NOW, None);
+    assert!(page.contains("Rest for now"));
+    assert!(!page.contains("No reviews due"));
+}
+
+#[test]
+fn continuous_custom_library_uses_current_version_and_keeps_pace_without_bypass() {
+    let mut o = Owner::new();
+    park_catalog(&mut o);
+    let mut input = library::nato_input().unwrap();
+    input.title = "Custom external subject".into();
+    input.text = "Legacy\tOld wording".into();
+    input.sections.as_mut().unwrap()[0].units = vec![input.text.clone()];
+    let old = o
+        .app
+        .library
+        .add(input.clone(), "custom-old", None)
+        .unwrap();
+    input.name = "Current supplied edition".into();
+    input.text =
+        "Q\tQuail\nR\tRobin\nS\tSwan\nT\tTern\nU\tUmbrellabird\nV\tVulture\nW\tWren".into();
+    input.sections.as_mut().unwrap()[0].units = input
+        .text
+        .split_inclusive('\n')
+        .map(str::to_owned)
+        .collect();
+    let new = o.app.library.add(input, "custom-new", Some(&old)).unwrap();
+    o.mixed(NOW);
+    assert_eq!(o.prompt().version_id, new);
+    let sid = o.prompt().study_id;
+    for i in 0..6 {
+        let p = o.prompt();
+        assert_eq!(p.version_id, new);
+        let v = &o.app.library.versions[&new];
+        let unit = v
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .find(|u| u.id == p.unit_ids[0])
+            .unwrap();
+        let answer = library::mapping_pair(&unit.text).unwrap().1.to_string();
+        o.answer(&answer, NOW + i);
+        o.mixed(NOW + i);
+    }
+    assert!(o.app.practice.current.is_none());
+    assert_eq!(
+        o.app
+            .practice
+            .cards
+            .values()
+            .filter(|c| c.study_id == sid)
+            .count(),
+        6
+    );
+    assert_eq!(
+        o.app
+            .practice
+            .studies
+            .values()
+            .filter(|s| s.version_id == old)
+            .count(),
+        0
+    );
+    assert!(study::continuous_preview(&o.app, NOW + 10).is_none());
+}
+
+#[test]
+fn imported_historical_prayer_does_not_become_default_but_selected_alternative_is_respected() {
+    let mut o = Owner::new();
+    let old = o
+        .app
+        .library
+        .add(
+            scry::lessons::input("st-michael-en-lasance-1911").unwrap(),
+            "historic",
+            None,
+        )
+        .unwrap();
+    o.mixed(NOW);
+    o.answer("Alfa", NOW);
+    o.mixed(NOW);
+    let p = o.prompt();
+    assert_ne!(p.version_id, old);
+    assert!(
+        scry::lessons::catalog()
+            .iter()
+            .find(|l| l.id == "st-michael-en")
+            .unwrap()
+            .matches(&o.app.library.versions[&p.version_id])
+    );
+    let mut o = Owner::new();
+    let old = o
+        .app
+        .library
+        .add(
+            scry::lessons::input("st-michael-en-lasance-1911").unwrap(),
+            "historic",
+            None,
+        )
+        .unwrap();
+    let sid = o
+        .call("/practice/learn", &[("version_id", old.clone())], NOW)
+        .entity_id
+        .unwrap();
+    o.call("/practice/drop", &[("study_id", sid)], NOW);
+    for _ in 0..9 {
+        o.mixed(NOW);
+        let p = o.prompt();
+        assert_ne!(p.version_id, old);
+        let v = &o.app.library.versions[&p.version_id];
+        assert!(
+            !scry::lessons::catalog()
+                .iter()
+                .any(|l| l.id == "st-michael-en" && l.matches(v))
+        );
+        let answer = if v.kind == library::Kind::KeyedMapping {
+            library::mapping_pair(&v.sections[0].units[0].text)
+                .unwrap()
+                .1
+                .to_string()
+        } else {
+            v.text.clone()
+        };
+        o.answer(&answer, NOW);
+    }
+}
+
+#[test]
+fn oversized_authored_text_is_preserved_without_blocking_other_study() {
+    let mut o = Owner::new();
+    let mut input = scry::lessons::input("st-michael-en").unwrap();
+    input.title = "Large external text".into();
+    input.text = "word ".repeat(2000);
+    input.sections.as_mut().unwrap().truncate(1);
+    input.sections.as_mut().unwrap()[0].units = vec![input.text.clone()];
+    let vid = o.app.library.add(input, "oversize", None).unwrap();
+    let before = o.app.library.versions[&vid].clone();
+    o.mixed(NOW);
+    assert_eq!(o.prompt().cue, "A");
+    assert_eq!(o.app.library.versions[&vid], before);
+    assert!(!o.app.practice.studies.values().any(|s| s.version_id == vid));
+}
+
+#[test]
+fn paused_custom_wording_cannot_be_bypassed_by_canonical_starter() {
+    let mut o = Owner::new();
+    let mut input = scry::lessons::input("st-michael-en").unwrap();
+    input.name = "Custom supplied wording".into();
+    input.text = "A privately supplied different sentence.".into();
+    input.sections.as_mut().unwrap().truncate(1);
+    input.sections.as_mut().unwrap()[0].units = vec![input.text.clone()];
+    let vid = o.app.library.add(input, "custom-prayer", None).unwrap();
+    let sid = o
+        .call("/practice/learn", &[("version_id", vid.clone())], NOW)
+        .entity_id
+        .unwrap();
+    o.call("/practice/pause", &[("study_id", sid.clone())], NOW);
+    o.mixed(NOW);
+    o.answer("Alfa", NOW);
+    o.mixed(NOW);
+    assert!(matches!(o.prompt().scope, study::Scope::Whole));
+    assert_eq!(o.app.practice.studies[&sid].status, study::Status::Paused);
+    let work = &o.app.library.versions[&vid].work_id;
+    assert_eq!(
+        o.app
+            .library
+            .versions
+            .values()
+            .filter(|v| &v.work_id == work)
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn safe_existing_due_phrase_is_not_hidden_by_an_oversized_unseen_unit() {
+    let mut o = Owner::new();
+    let mut input = scry::lessons::input("st-michael-en").unwrap();
+    input.title = "Mixed-size external text".into();
+    let first = "A short phrase.\n";
+    let large = "word ".repeat(2000);
+    input.text = format!("{first}{large}");
+    input.sections.as_mut().unwrap().truncate(1);
+    input.sections.as_mut().unwrap()[0].units = vec![first.into(), large];
+    let vid = o.app.library.add(input, "mixed-size", None).unwrap();
+    let sid = o
+        .call("/practice/learn", &[("version_id", vid)], NOW)
+        .entity_id
+        .unwrap();
+    for i in 0..7 {
+        o.focus(&sid, NOW + i);
+        o.answer(first, NOW + i);
+    }
+    assert!(
+        o.app
+            .practice
+            .cards
+            .values()
+            .next()
+            .unwrap()
+            .state
+            .schedule
+            .last_review_ms
+            .is_some()
+    );
+    o.mixed(NOW + 600_010);
+    assert_eq!(o.prompt().study_id, sid);
+    assert_eq!(o.prompt().unit_ids.len(), 1);
+    assert_eq!(
+        o.app
+            .practice
+            .cards
+            .values()
+            .filter(|c| c.study_id == sid)
+            .count(),
+        1
+    );
 }
