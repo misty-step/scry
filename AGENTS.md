@@ -12,6 +12,8 @@ before scoping or verifying behavior. [GLOSSARY](GLOSSARY.md) owns the words. It
 intent; [DESIGN](DESIGN.md) owns visuals; [ADRs](docs/adr/README.md) own technical
 decisions. Do not restate their contracts here.
 
+Design principles (UX/DX/AX; no layout captions) live in [mistystack design](https://github.com/misty-step/mistystack/blob/master/skills/design/SKILL.md#principles); point there, don't copy them.
+
 ## Architecture and boundaries
 
 [ADR 004](docs/adr/004-rust-cloudflare-candidate.md) owns the current Rust
