@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hetzner-ci, scry-ci]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -87,7 +87,7 @@ jobs:
   story-walk:
     needs: ci
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hetzner-ci, scry-ci]
     steps:
       - env:
           CI_RESULT: ${{ needs.ci.result }}
