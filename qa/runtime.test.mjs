@@ -77,6 +77,53 @@ try {
     const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
     assert.deepEqual(await storage.exec('SELECT key FROM records'),[]);
   });
+  await check('session scope and wrong-scope enhanced requests never need a Durable Object',async()=>{
+    const scopeEgress = async () => new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}});
+    const isolated = await createRuntime({bindings:baseBindings,name:'scope-no-object',artifact,egress:scopeEgress,inspect:true,traceObjectFetch:true});
+    try {
+      const call = (path, init={}) => isolated.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
+      const response = await call('/session/scope');
+      assert.equal(response.status,200);
+      const scopeBody = await response.json(); assert.equal(scopeBody.version,1); const scope = scopeBody.scope; assert.match(scope,/^[a-f0-9]{64}$/);
+      assert.match(response.headers.get('Cache-Control'),/no-store/);
+      const mismatch = await call('/settings',{method:'POST',headers:{'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64),'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},body:'x='.padEnd(5*1024*1024,'x')});
+      assert.equal(mismatch.status,409); assert.equal(mismatch.headers.get('X-Scry-Scope-Mismatch'),'1'); assert.equal(mismatch.headers.get('X-Scry-Test-Body-Used'),'false');
+      const missing = await call('/settings',{headers:{'X-Scry-Request':'poll'}});
+      assert.equal(missing.status,409);
+      const other = await createRuntime({bindings:{...baseBindings, INTERNAL_KEY:''},name:'scope-other-namespace',artifact,egress:scopeEgress,inspect:true});
+      try {
+        const differentNamespace = await other.worker.fetch(`${origin}/session/scope`,{headers:{'Cf-Access-Jwt-Assertion':jwt()}});
+        assert.equal(differentNamespace.status,200);
+        assert.notEqual((await differentNamespace.json()).scope,scope,'The same actor and space name in another Durable Object namespace must not share scope.');
+      } finally { await other.mf.dispose(); }
+      const absentAuth = await call('/session/scope',{headers:{'Cf-Access-Jwt-Assertion':''}});
+      assert.equal(absentAuth.status,401);
+      const sentinel = await isolated.mf.getR2Bucket('SCRY_ASSETS');
+      assert.equal(await sentinel.get('__qa_scope_do_contact'),null,'Scope and refusals made zero DO fetches.');
+      const ordinary = await call('/settings');
+      assert.equal(ordinary.status,200);
+      assert.ok(await sentinel.get('__qa_scope_do_contact'),'An ordinary authorized page reaches the same instrumented DO.');
+    } finally { await isolated.mf.dispose(); }
+  });
+  await check('Access assertion expiring during key verification is refused',async()=>{
+    let release, reached;
+    const barrier = new Promise(resolve=>{release=resolve});
+    const keyRequest = new Promise(resolve=>{reached=resolve});
+    const slowEgress = async () => { reached(); await barrier; return new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}}); };
+    const isolated = await createRuntime({bindings:baseBindings,name:'scope-expiry-verification',artifact,egress:slowEgress,inspect:true,traceObjectFetch:true});
+    try {
+      const current = Math.floor(Date.now()/1000); const expires = current + 5;
+      const token = jwt({iat:current,nbf:current-1,exp:expires});
+      const pending = isolated.worker.fetch(`${origin}/session/scope`,{headers:{'Cf-Access-Jwt-Assertion':token}});
+      await keyRequest;
+      assert.ok(Date.now() < expires*1000, 'The assertion passed the initial expiry check before the blocked key response.');
+      await new Promise(resolve=>setTimeout(resolve,Math.max(0,expires*1000-Date.now()+100)));
+      const releasedAt=Date.now(); release(); const response=await pending;
+      assert.ok(Date.now()-releasedAt < 8000, 'Refusal followed verification, not the ten-second key-fetch timeout.');
+      assert.equal(response.status,401);
+      assert.equal(await (await isolated.mf.getR2Bucket('SCRY_ASSETS')).get('__qa_scope_do_contact'),null);
+    } finally { release(); await isolated.mf.dispose(); }
+  });
   await check('real RS256 owner signature and private response headers',async()=>{
     const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/data-state="mixed-home"/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
   });
@@ -683,7 +730,38 @@ try {
       try {
         const home = await req('/notebook');
         assert.equal(home.status, 200);
-        assert.match(await home.text(), /<title>Your notebook · Scry<\/title>/);
+        const homeHtml = await home.text();
+        assert.match(homeHtml, /<title>Your notebook · Scry<\/title>/);
+        const qaScope = (await (await req('/session/scope')).json()).scope;
+        const ownerScope = (await (await req('/session/scope',jwt())).json()).scope;
+        assert.notEqual(qaScope,ownerScope);
+        const secondPerson = jwt({...identityClaims, sub:'another-synthetic-qa-person'});
+        const secondScope = (await (await req('/session/scope',secondPerson)).json()).scope;
+        const serviceScope = (await (await req('/session/scope',service)).json()).scope;
+        assert.notEqual(secondScope,qaScope, 'Different verified people sharing QA space have distinct scopes.');
+        assert.notEqual(serviceScope,qaScope, 'QA service and person have distinct scopes.');
+        const refreshed = jwt({...identityClaims,iat:epoch+1});
+        assert.equal((await (await req('/session/scope',refreshed)).json()).scope,qaScope, 'Token rotation preserves the same actor scope.');
+        const switchedActor = await req('/session/scope',secondPerson,{headers:{'X-Scry-Expected-Scope':qaScope}});
+        assert.equal(switchedActor.status,409);
+        const otherOrigin='https://other-synthetic.invalid';
+        active=await fixture.rebind({...bindings,CANONICAL_ORIGIN:otherOrigin});
+        const changedOrigin=await active.worker.fetch(`${otherOrigin}/session/scope`,{headers:{'Cf-Access-Jwt-Assertion':identity}});
+        assert.equal(changedOrigin.status,200);assert.notEqual((await changedOrigin.json()).scope,qaScope,'Canonical origin participates in scope.');
+        active=await fixture.rebind({...bindings,SCRY_ENV:mode==='preview'?'production':'preview'});
+        const changedMode=await req('/session/scope',identity);
+        assert.equal(changedMode.status,200);assert.notEqual((await changedMode.json()).scope,qaScope,'Environment participates in scope.');
+        const otherAudience='synthetic-audience-other';
+        active=await fixture.rebind({...bindings,ACCESS_AUDIENCE:otherAudience});
+        const changedAudience=await req('/session/scope',jwt({...identityClaims,aud:[otherAudience]}));
+        assert.equal(changedAudience.status,200);assert.notEqual((await changedAudience.json()).scope,qaScope,'Verified audience participates in scope.');
+        active=await fixture.rebind(bindings);
+        assert.equal((await (await req('/session/scope',identity)).json()).scope,qaScope,'Returning to the original binding restores its scope.');
+        assert.equal(home.headers.get('X-Scry-Scope'),qaScope);
+        assert.ok(homeHtml.includes(`data-notebook-scope="${qaScope}"`));
+        const switched = await req('/notebook',jwt(),{headers:{'X-Scry-Request':'poll','X-Scry-Expected-Scope':qaScope}});
+        assert.equal(switched.status,409);
+        assert.equal(switched.headers.get('X-Scry-Scope-Mismatch'),'1');
         const qaFields=await savedRequestFields(await req('/settings'));
         const ownerFields=await savedRequestFields(await req('/settings',jwt()));
         assert.equal((await post('/create',{...qaFields,intent:'Rejected new QA generation'})).status,410);
