@@ -48,11 +48,19 @@ for (const suffix of ['saved','cleared']) {
     const bindings={SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:name,INTERNAL_KEY:internalKey,RESTORE_TOKEN:token};
     const runtime=await createRuntime({name,artifact:oldArtifact,bindings,inspect:true});
     try {
+      const baseline=await readFile(`${fixturePath}/baseline-archive.json`);
+      const baselineHash=createHash('sha256').update(baseline).digest('hex');
+      const control=await runtime.worker.fetch(`${origin}/operator/restore`,{method:'POST',headers:{'x-scry-restore-token':token,'x-scry-sha256':baselineHash},body:baseline});
+      assert.equal(control.status,200,'The same old Worker must accept a compatible archive.');
+      const store=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+      const restored=await store.exec("SELECT value FROM records WHERE key='meta'");
+      assert.equal(restored.length,1,'The compatible archive was written to the synthetic notebook.');
+      assert.equal(JSON.parse(restored[0].value).practice.current.prompt.id,JSON.parse(baseline).app.practice.current.prompt.id);
+      await store.exec('DELETE FROM records'); // Reset only the synthetic target for the refusal case.
       const bytes=await readFile(`${fixturePath}/${suffix}-archive.json`);
       const hash=createHash('sha256').update(bytes).digest('hex');
       const response=await runtime.worker.fetch(`${origin}/operator/restore`,{method:'POST',headers:{'x-scry-restore-token':token,'x-scry-sha256':hash},body:bytes});
       assert.equal(response.status,422);
-      const store=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
       assert.deepEqual(await store.exec('SELECT key FROM records'),[]);
     } finally { await runtime.mf.dispose(); }
   });

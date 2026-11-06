@@ -43,8 +43,9 @@ The command fails if inputs are absent or tracked source files or symlinks diffe
 checks the complete tracked tree and CI source archive, extracts and hashes the CI Worker,
 builds the CLI from the clean checkout, builds synthetic saved/cleared state,
 checks the old module hashes, proves that the same old Worker and storage path
-read a compatible baseline before each old-Worker refusal case, and drives both old
-archive refusals, restores a complete archive into a fresh synthetic notebook,
+read a compatible baseline before each old-Worker row refusal case, restores a
+compatible archive through the same old Worker before each old archive refusal,
+restores a complete archive into a fresh synthetic notebook,
 and exercises CLI lost-response reconciliation.
 Retain the PR head, base, merge commit and merge tree, authenticated run and artifact metadata and ZIP digest,
 candidate and previous module hashes, command output and exit code. A run ID or

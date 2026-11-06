@@ -237,6 +237,10 @@ fn export_synthetic_compatibility_fixtures_when_requested() {
         serde_json::to_vec(&baseline).unwrap(),
     )
     .unwrap();
+    let baseline_archive = persistence::Archive::new(app.clone(), vec![], NOW)
+        .encode()
+        .unwrap();
+    std::fs::write(format!("{path}/baseline-archive.json"), baseline_archive).unwrap();
     let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
     mutation(
         &mut app,
