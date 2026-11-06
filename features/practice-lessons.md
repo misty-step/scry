@@ -7,6 +7,7 @@ native feedback. [SPEC](../SPEC.md#visual-practice-chooser-2026-11-01) owns acce
 
 - The topic shelf groups NATO, Saint Michael editions and Rosary mystery sets.
 - Current-session return preserves the prompt and typed draft.
+- With JavaScript enabled, leaving a nonempty unsubmitted answer prompts for confirmation. In-page switches keep the answer read-only while their outcome is unresolved.
 - Prayer practice separates source study from hidden phrase, joined and whole-prayer quizzes.
 - A mistaken phrase shows expected wording and retries the same phrase.
 - Rosary sequence practice identifies missing or misplaced mysteries.
@@ -37,7 +38,9 @@ including the long historical-edition label, current state and keyboard focus.
 
 Switching to a different lesson starts its current supported learning flow; do
 not label it resume without evidence. Browsing must not import or schedule.
-Starting another topic must not record an unfinished draft as an attempt.
+Starting another topic must not record an unfinished draft as an attempt. The
+browser controls whether it shows an unload warning; a warning does not save an
+answer across reload, tab eviction or a crash.
 External content with the same title is not a built-in edition: identity comes
 from server data. Protected reference metadata must not leak into the chooser.
 Scripted browser success is not the user's acceptance of clarity.

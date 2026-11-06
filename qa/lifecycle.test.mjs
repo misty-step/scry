@@ -8,27 +8,32 @@ const scope = 'a'.repeat(64);
 const deferred = () => { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture({ hidden = false, prerendering = false, polling = false, pollState = 'checking', immediateTimeout = false } = {}) {
+function fixture({ hidden = false, prerendering = false, polling = false, pollState = 'checking', immediateTimeout = false, nativeTransport = false } = {}) {
   const listeners = {};
   const calls = [];
   const timerDelays = [];
   const classes = new Set();
   const status = { hidden: true, children: [], replaceChildren() { this.children = []; }, append(n) { this.children.push(n); } };
   const frame = { inert: false, erased: false, replaceChildren() { this.erased = true; } };
-  const previousMain = { replaced: false, querySelector() { return null; }, querySelectorAll() { return []; }, replaceWith() { this.replaced = true; } };
+  const previousMain = { replaced: false, querySelector() { return null; }, querySelectorAll() { return []; }, replaceWith() { this.replaced = true; document.answerFields = []; } };
   const nodes = new Map();
   const element = () => ({ children: [], className: '', textContent: '', addEventListener(type, f) { this[type] = f; }, append(...items) { this.children.push(...items); }, setAttribute() {}, focus() { this.focused = true; }, remove() { nodes.delete(this.id); } });
-  class Form { constructor() { this.method = 'post'; this.action = 'https://scry.test/practice/answer'; this.dataset = {}; this.classList = { contains: () => false }; } querySelector() { return null; } querySelectorAll() { return []; } getAttribute(name) { return name === 'action' ? this.action : null; } setAttribute() {} removeAttribute() {} }
+  class Form { constructor() { this.method = 'post'; this.action = 'https://scry.test/practice/answer'; this.isConnected = true; this.dataset = {}; this.classList = { contains: () => false }; } querySelector() { return null; } querySelectorAll() { return []; } getAttribute(name) { return name === 'action' ? this.action : null; } setAttribute() {} removeAttribute() {} }
   const document = {
-    hidden, prerendering, title: 'Private question · Scry', pollable: polling, activeElement: null, forms: [], documentElement: { dataset: { notebookScope: scope } },
+    hidden, prerendering, title: 'Private question · Scry', pollable: polling, activeElement: null, forms: [], answerFields: [], documentElement: { dataset: { notebookScope: scope } },
     body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c) }, append(n) { nodes.set(n.id, n); } },
     addEventListener(type, f) { (listeners[type] ||= []).push(f); },
     querySelector(selector) { if (selector === '.page-frame') return frame; if (selector === '#main[data-poll], [data-poll]' && this.pollable) return {}; if (selector === '[data-state]' && this.pollable) return { getAttribute: () => pollState }; return null; },
-    querySelectorAll() { return []; },
+    querySelectorAll(selector) { return selector.startsWith('form.answer-form') ? this.answerFields : []; },
     getElementById(id) { return id === 'request-status' ? status : id === 'main' ? previousMain : nodes.get(id); },
     createElement: element,
   };
-  const window = { addEventListener(type, f) { (listeners[`window:${type}`] ||= []).push(f); } };
+  const window = {
+    confirmResult: false, confirmCount: 0, scrollTo() {},
+    confirm() { this.confirmCount++; return this.confirmResult; },
+    addEventListener(type, f) { (listeners[`window:${type}`] ||= []).push(f); },
+    removeEventListener(type, f) { listeners[`window:${type}`] = (listeners[`window:${type}`] || []).filter(listener => listener !== f); },
+  };
   const fetch = (url, init) => {
     const gate = deferred();
     if (immediateTimeout && url === '/session/scope') init.signal.addEventListener('abort', () => gate.reject(new Error('aborted')));
@@ -38,11 +43,12 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
   class DOMParser {
     parseFromString(html) {
       const found = /data-notebook-scope=["']([^"']*)["']/.exec(html);
-      const main = { querySelector() { return null; }, querySelectorAll() { return []; } };
+      const main = { classList: { add() {} }, focus() {}, querySelector() { return null; }, querySelectorAll() { return []; } };
       return { title: 'Synthetic page', documentElement: { dataset: { notebookScope: found?.[1] } }, querySelector(selector) { if (selector === '#main') return main; return selector === '.notice, .empty-stage .lede' ? {textContent:'Synthetic rejection'} : {}; }, querySelectorAll() { return []; } };
     }
   }
-  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; } append() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: {}, console };
+  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; } append() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: { pushState() {} }, console };
+  if (nativeTransport) context.fetch = undefined;
   vm.runInNewContext(script, context);
   const emit = (type, event = {}) => (listeners[type] || []).forEach(f => f(event));
   const response = (statusCode, text = scope, headers = {}) => {
@@ -50,7 +56,7 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
     const bytes = new TextEncoder().encode(raw); let read = false;
     return { status: statusCode, ok: statusCode >= 200 && statusCode < 300, type: 'basic', url: 'https://scry.test/session/scope', headers: { get: key => headers[key.toLowerCase()] || (key.toLowerCase() === 'content-type' ? 'application/json' : null) }, text: async () => text, body: { getReader: () => ({ read: async () => read ? {done:true} : (read = true, {done:false,value:bytes}), releaseLock() {}, cancel: async () => {} }) } };
   };
-  return { document, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form };
+  return { document, window, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form };
 }
 
 test('background freezes an unknown request and never automatically sends it again', async () => {
@@ -382,4 +388,123 @@ test('a scoped HTML rejection missing its embedded scope preserves uncertainty',
   const original = f.calls[0];
   original.resolve(f.response(422, '<html><div class="notice">incomplete</div></html>', { 'x-scry-scope': scope, 'content-type': 'text/html' }));
   await reconcileAfterUncertainResponse(f, original);
+});
+
+test('leaving with an unsubmitted practice answer requests confirmation without changing it', () => {
+  const f = fixture(); const form = new f.Form();
+  const answer = { form, value: '  partial answer  ' };
+  form.operationId = 'synthetic-operation'; form.promptId = 'synthetic-prompt';
+  f.document.answerFields.push(answer);
+  f.emit('input', { target: answer });
+  const departure = { prevented: false, returnValue: undefined, preventDefault() { this.prevented = true; } };
+  f.emit('window:beforeunload', departure);
+  assert.equal(departure.prevented, true);
+  assert.equal(answer.value, '  partial answer  ');
+  assert.equal(form.promptId, 'synthetic-prompt'); assert.equal(form.operationId, 'synthetic-operation');
+  assert.equal(f.calls.length, 0); assert.equal(f.frame.erased, false);
+});
+
+function beforeUnload(f) {
+  const event = { prevented: false, returnValue: undefined, preventDefault() { this.prevented = true; } };
+  f.emit('window:beforeunload', event); return event.prevented;
+}
+function practiceDraft(f, value = 'unfinished synthetic answer') {
+  const form = new f.Form(); form.operationId = 'operation-unchanged'; form.promptId = 'prompt-unchanged';
+  const answer = { form, value, readOnly: false, disabled: false, type: 'textarea' }; f.document.answerFields.push(answer);
+  f.emit('input', { target: answer }); return { form, answer };
+}
+
+test('empty or cleared answers do not warn; whitespace and nonempty answers do', () => {
+  const f = fixture(); const { answer } = practiceDraft(f, '');
+  assert.equal(beforeUnload(f), false);
+  answer.value = ' '; f.emit('input', { target: answer }); assert.equal(beforeUnload(f), true);
+  answer.value = ''; f.emit('input', { target: answer }); assert.equal(beforeUnload(f), false);
+});
+
+test('canceling an in-page switch preserves answer, prompt and operation without a request', () => {
+  const f = fixture(); const { form, answer } = practiceDraft(f);
+  const switching = new f.Form(); let prevented = false;
+  f.emit('submit', { target: switching, preventDefault() { prevented = true; } });
+  assert.equal(prevented, true); assert.equal(f.window.confirmCount, 1); assert.equal(f.calls.length, 0);
+  assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(form.promptId, 'prompt-unchanged');
+  assert.equal(form.operationId, 'operation-unchanged'); assert.equal(beforeUnload(f), true);
+});
+
+test('confirming an in-page switch sends one deliberate request and keeps it pending', async () => {
+  const f = fixture(); const { answer } = practiceDraft(f); f.window.confirmResult = true;
+  f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  assert.equal(answer.readOnly, true, 'Freeze the answer while its switch is unresolved.');
+  assert.equal(f.window.confirmCount, 1); assert.equal(f.calls.length, 1); assert.equal(beforeUnload(f), false);
+  f.calls[0].resolve(f.response(503)); await tick(); f.calls[1].resolve(f.response(200)); await tick();
+  assert.ok(f.status.children.flatMap(n => n.children || []).some(n => n.textContent === 'Reconcile this attempt'));
+  assert.equal(f.calls.length, 2, 'No automatic resubmission.');
+});
+
+test('answer submission skips the switch confirmation; a definite rejection restores departure warning', async () => {
+  const f = fixture(); const { form } = practiceDraft(f);
+  f.emit('submit', { target: form, preventDefault() {} });
+  assert.equal(f.window.confirmCount, 0); assert.equal(f.calls.length, 1); assert.equal(beforeUnload(f), false);
+  f.calls[0].resolve(f.response(422, 'Rejected', { 'x-scry-scope': scope, 'content-type': 'text/plain' })); await tick();
+  assert.equal(beforeUnload(f), true);
+});
+
+test('a successful answer no longer warns after its result replaces the form', async () => {
+  const f = fixture(); const { form } = practiceDraft(f);
+  f.emit('submit', { target: form, preventDefault() {} });
+  const response = f.response(200, `<html data-notebook-scope="${scope}"><main></main></html>`, { 'x-scry-scope': scope, 'content-type': 'text/html' });
+  response.url = 'https://scry.test/'; f.calls[0].resolve(response); await tick();
+  assert.equal(f.previousMain.replaced, true); assert.equal(beforeUnload(f), false); assert.equal(f.window.confirmCount, 0);
+});
+
+test('confirmed departure still invokes privacy concealment', () => {
+  const f = fixture(); practiceDraft(f); assert.equal(beforeUnload(f), true);
+  f.emit('window:pagehide'); assert.equal(f.frame.erased, true); assert.ok(f.classes.has('private-hidden'));
+  assert.equal(beforeUnload(f), false);
+});
+
+test('background validation preserves the in-memory answer and its departure warning', async () => {
+  const f = fixture(); const { answer, form } = practiceDraft(f);
+  f.document.hidden = true; f.emit('visibilitychange');
+  f.document.hidden = false; f.emit('visibilitychange'); f.calls[0].resolve(f.response(200)); await tick();
+  assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(form.operationId, 'operation-unchanged');
+  assert.equal(beforeUnload(f), true); assert.equal(f.calls.length, 1, 'Only the existing scope check ran.');
+});
+
+test('an authentication denial conceals the page and removes the departure warning', async () => {
+  const f = fixture(); const { form } = practiceDraft(f);
+  f.emit('submit', { target: form, preventDefault() {} });
+  f.calls[0].resolve(f.response(401)); await tick();
+  assert.equal(f.frame.erased, true); assert.ok(f.classes.has('private-hidden')); assert.equal(beforeUnload(f), false);
+});
+
+test('a switch confirmation cannot send after the page becomes inactive', () => {
+  const f = fixture(); const { answer, form } = practiceDraft(f);
+  f.window.confirm = () => { f.document.hidden = true; f.emit('visibilitychange'); return true; };
+  f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  assert.equal(f.calls.length, 0); assert.equal(answer.value, 'unfinished synthetic answer');
+  assert.equal(form.operationId, 'operation-unchanged'); assert.equal(f.frame.inert, true);
+});
+
+test('a rejected switch returns the retained answer to editable state', async () => {
+  const f = fixture(); const { answer } = practiceDraft(f); f.window.confirmResult = true;
+  f.emit('submit', { target: new f.Form(), preventDefault() {} }); assert.equal(answer.readOnly, true);
+  f.calls[0].resolve(f.response(422, 'Rejected', { 'x-scry-scope': scope, 'content-type': 'text/plain' })); await tick();
+  assert.equal(answer.readOnly, false); assert.equal(answer.value, 'unfinished synthetic answer');
+  assert.equal(beforeUnload(f), true);
+});
+
+test('native answer submission without fetch does not trigger an unload warning', () => {
+  const f = fixture({ nativeTransport: true }); const { form } = practiceDraft(f);
+  assert.equal(beforeUnload(f), true);
+  let prevented = false; f.emit('submit', { target: form, preventDefault() { prevented = true; } });
+  assert.equal(prevented, false); assert.equal(beforeUnload(f), false);
+});
+
+test('an in-flight poll is fenced before a switch confirmation opens', async () => {
+  const f = fixture({ polling: true }); await new Promise(resolve => setTimeout(resolve, 10));
+  const poll = f.calls[0]; f.document.pollable = false; const { answer } = practiceDraft(f);
+  f.window.confirm = () => { assert.equal(poll.init.signal.aborted, true); return false; };
+  f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(f.calls.length, 1);
+  poll.resolve(f.response(401)); await tick(); assert.equal(f.frame.erased, false);
 });
