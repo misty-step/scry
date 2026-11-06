@@ -22,6 +22,10 @@ export function classifyOrigin(rawUrl, { mutating = false, allowOrigin = null } 
     return { ok: false, kind: 'invalid', reason: 'protocol must be http or https' };
   }
 
+  if (hostname.startsWith('.') || hostname.includes('..')) {
+    return { ok: false, kind: 'invalid', reason: 'hostname contains an empty label' };
+  }
+
   if (PRODUCTION_ORIGINS.has(hostname.replace(/\.$/, ''))) {
     if (mutating) {
       return { ok: false, kind: 'production', reason: 'production origins are forbidden for mutating modes' };
