@@ -556,6 +556,6 @@ test('discard cancellation preserves the answer and an uncertain discard reconci
   f.window.confirmResult=true;f.emit('submit',{target:form,submitter,preventDefault(){}});const original=f.calls[0];assert.equal(answer.readOnly,true);
   original.resolve(f.response(503));await tick();f.calls[1].resolve(f.response(200));await tick();
   const reconcile=f.status.children.flatMap(n=>n.children||[]).find(n=>n.textContent==='Reconcile this discard');assert.ok(reconcile);
-  assert.equal(f.calls.length,2);reconcile.click();assert.equal(f.calls[2].init.body,original.init.body);assert.equal(f.calls[2].url,original.url);
+  assert.equal(f.calls.length,2);assert.match(f.status.children[1].textContent,/does not send or grade your answer/);reconcile.click();assert.equal(f.calls[2].init.body,original.init.body);assert.equal(f.calls[2].url,original.url);
   f.calls[2].resolve(f.response(401));await tick();
 });

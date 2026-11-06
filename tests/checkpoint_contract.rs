@@ -595,3 +595,98 @@ fn archives_reject_checkpoint_text_that_save_would_refuse() {
         );
     }
 }
+
+#[test]
+fn old_discard_replay_cannot_erase_a_newer_saved_draft() {
+    let mut app = presented();
+    let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    mutation(
+        &mut app,
+        "/practice/draft",
+        "old-discard-start-save",
+        &[
+            ("prompt_id", &prompt),
+            ("generation", "0"),
+            ("answer", "first"),
+        ],
+    )
+    .unwrap();
+    let discard = [("prompt_id", prompt.as_str()), ("generation", "1")];
+    mutation(
+        &mut app,
+        "/practice/draft/discard",
+        "old-discard-operation",
+        &discard,
+    )
+    .unwrap();
+    mutation(
+        &mut app,
+        "/practice/draft",
+        "newer-save-operation",
+        &[
+            ("prompt_id", &prompt),
+            ("generation", "2"),
+            ("answer", "newer"),
+        ],
+    )
+    .unwrap();
+    let before = app.clone();
+    mutation(
+        &mut app,
+        "/practice/draft/discard",
+        "old-discard-operation",
+        &discard,
+    )
+    .unwrap();
+    assert_eq!(app, before);
+    assert_eq!(
+        mutation(
+            &mut app,
+            "/practice/draft/discard",
+            "different-discard-op",
+            &discard
+        )
+        .unwrap_err()
+        .status,
+        409
+    );
+    assert_eq!(app, before);
+    assert_eq!(
+        app.practice
+            .answer_checkpoint
+            .as_ref()
+            .unwrap()
+            .draft
+            .as_ref()
+            .unwrap()
+            .answer,
+        "newer"
+    );
+}
+
+#[test]
+fn incoming_tampered_checkpoint_archive_is_refused() {
+    let mut app = presented();
+    let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    mutation(
+        &mut app,
+        "/practice/draft",
+        "checkpoint-tamper-save",
+        &[
+            ("prompt_id", &prompt),
+            ("generation", "0"),
+            ("answer", "valid"),
+        ],
+    )
+    .unwrap();
+    let original = persistence::Archive::new(app, vec![], NOW)
+        .encode()
+        .unwrap();
+    for text in ["bad\rreturn", "bad\0null", "single\nline"] {
+        let mut archive: serde_json::Value = serde_json::from_slice(&original).unwrap();
+        archive["app"]["practice"]["answer_checkpoint"]["draft"]["answer"] =
+            serde_json::json!(text);
+        let bytes = serde_json::to_vec(&archive).unwrap();
+        assert!(persistence::Archive::decode(&bytes, &persistence::sha256(&bytes)).is_err());
+    }
+}

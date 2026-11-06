@@ -22,7 +22,7 @@
   enableDraftSave();
   let pending = null;
   const reconcileLabel = request => request.checkpoint === 'discard' ? 'Reconcile this discard' : request.checkpoint ? 'Reconcile this save' : 'Reconcile this attempt';
-  const reconcileDetail = request => request.checkpoint ? 'Reconciliation sends the same saved operation and text. Saving does not grade your answer.' : 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.';
+  const reconcileDetail = request => request.checkpoint === 'discard' ? 'Reconciliation sends the same discard operation. It does not send or grade your answer.' : request.checkpoint ? 'Reconciliation sends the same saved operation and text. Saving does not grade your answer.' : 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.';
   let pollTimer = null;
   let pollRequest = null;
   let pageSequence = 0;

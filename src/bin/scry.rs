@@ -379,7 +379,7 @@ mod cli {
             let stdin = flag(&mut args, "--text-stdin");
             if args.len() != 2 || file.is_some() == stdin {
                 return Err(
-                    "Usage: scry save-draft PROMPT --generation N --text-file PATH|--text-stdin [--operation-id ID]",
+                    "Usage: scry save-draft PROMPT --generation N --text-file PATH|--text-stdin --operation-id ID",
                 );
             }
             let answer = if let Some(path) = file {
