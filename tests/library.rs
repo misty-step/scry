@@ -37,6 +37,22 @@ fn add(app: &mut App, op: &str, data: Value) -> String {
     mutate(app, "/api/v1/library/versions", op, json!({"data":data})).unwrap()
 }
 #[test]
+fn valid_version_can_exceed_the_serialized_record_limit() {
+    let mut app = app();
+    let text = format!("{},.\n", "a".repeat(58)).repeat(4096);
+    mutate(
+        &mut app,
+        "/api/v1/library/versions",
+        "library-oversized-record-operation",
+        json!({"data":draft("Synthetic large version", &text)}),
+    )
+    .unwrap();
+    engine::validate_app(&app).unwrap();
+    let error = persistence::rows(&app).unwrap_err();
+    assert_eq!(error.status, 413);
+    assert!(error.message.contains("storage limit"));
+}
+#[test]
 fn library_search_dedupe_segmentation_and_shared_receipts() {
     let mut app = app();
     assert!(app.library.search("apostles creed").empty);

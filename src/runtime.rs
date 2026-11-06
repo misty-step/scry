@@ -252,6 +252,23 @@ fn api_json(value: &impl serde::Serialize, status: u16) -> Result<Response> {
 fn api_error(error: AppError) -> Result<Response> {
     api_json(&json!({"error": error.message}), error.status)
 }
+enum SaveError {
+    App(AppError),
+    Worker(Error),
+}
+impl From<Error> for SaveError {
+    fn from(error: Error) -> Self {
+        Self::Worker(error)
+    }
+}
+impl SaveError {
+    fn into_worker(self) -> Error {
+        match self {
+            Self::App(error) => to_worker_error(error),
+            Self::Worker(error) => error,
+        }
+    }
+}
 fn api_refusal() -> Result<Response> {
     api_json(&json!({"error": "Owner authorization required."}), 401)
 }
@@ -1317,7 +1334,29 @@ impl DurableObject for LearningSpace {
                         self.preparation_ready(),
                     );
                 }
-                self.save(&mut app, Some(before))?;
+                match self.save_typed(&mut app, Some(before)) {
+                    Ok(()) => {}
+                    Err(SaveError::Worker(error)) => return Err(error),
+                    Err(SaveError::App(error)) => {
+                        let retained = self.load()?;
+                        if let Some(key) = photo_key
+                            && !retained
+                                .goals
+                                .values()
+                                .any(|g| g.photo.as_ref().is_some_and(|p| p.key == key))
+                        {
+                            let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
+                        }
+                        return render_error(
+                            &self.env,
+                            &retained,
+                            &path,
+                            &fields,
+                            error,
+                            self.preparation_ready(),
+                        );
+                    }
+                }
                 if path == "/settings/backup" {
                     self.backup(false).await?;
                 }
@@ -1599,7 +1638,11 @@ impl LearningSpace {
         if let Err(error) = persistence::archive_size(&app) {
             return api_error(error);
         }
-        self.save(&mut app, Some(before))?;
+        match self.save_typed(&mut app, Some(before)) {
+            Ok(()) => {}
+            Err(SaveError::App(error)) => return api_error(error),
+            Err(SaveError::Worker(error)) => return Err(error),
+        }
         // Token creation is the only response containing a secret. Its receipt never does.
         let created = canonical_path == "/tokens/create";
         let token = if created {
@@ -1726,24 +1769,41 @@ impl LearningSpace {
         persistence::app_from_rows(&rows).map_err(to_worker_error)
     }
     fn save(&self, app: &mut App, expected: Option<u64>) -> Result<()> {
+        self.save_typed(app, expected)
+            .map_err(SaveError::into_worker)
+    }
+    fn save_typed(
+        &self,
+        app: &mut App,
+        expected: Option<u64>,
+    ) -> std::result::Result<(), SaveError> {
         app.revision = expected
             .unwrap_or(0)
             .checked_add(1)
             .ok_or_else(|| Error::RustError("State revision exhausted.".into()))?;
-        self.commit_at_revision(app, expected)
+        self.commit_at_revision_typed(app, expected)
     }
     // Revision assignment and target CAS are separate: a fresh restore keeps
     // its already-advanced source revision but must still find an unused target.
     fn commit_at_revision(&self, app: &App, expected: Option<u64>) -> Result<()> {
-        let next = persistence::rows(app).map_err(to_worker_error)?;
+        self.commit_at_revision_typed(app, expected)
+            .map_err(SaveError::into_worker)
+    }
+    fn commit_at_revision_typed(
+        &self,
+        app: &App,
+        expected: Option<u64>,
+    ) -> std::result::Result<(), SaveError> {
+        let next = persistence::rows(app).map_err(SaveError::App)?;
         let previous = self.stored_rows()?;
         let actual = previous
             .get("meta")
             .map(|meta| serde_json::from_str::<Value>(meta))
-            .transpose()?
+            .transpose()
+            .map_err(Error::from)?
             .and_then(|value| value.get("revision").and_then(Value::as_u64));
         if actual != expected {
-            return Err(to_worker_error(AppError::conflict()));
+            return Err(SaveError::App(AppError::conflict()));
         }
         let sql = self.state.storage().sql();
         let storage = self.state.storage();

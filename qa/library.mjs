@@ -88,6 +88,34 @@ export async function libraryJourney() {
     assert.deepEqual(await rows(),before,'Worker refusal changes no SQLite row, operation receipt or last-use time.');
     transcript.push({observation:'Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use',status:response.status,body,text_bytes:Buffer.byteLength(data.text),supplied_sections:data.sections?.length??null,supplied_units:data.sections?.reduce((n,s)=>n+s.units.length,0)??null});
    };
+   // Valid input whose serialized Version row exceeds the existing 1 MiB bound.
+   const oversized={title:'Synthetic oversized row',kind:'text',text:('a'.repeat(58)+',.\n').repeat(4096)};
+   const rejectedOperation='library-serialized-record-limit';
+   const beforeOversized=await rows();
+   for(let attempt=0;attempt<2;attempt++) {
+    const response=await request('/api/v1/library/versions',{operation_id:rejectedOperation,data:oversized});
+    assert.equal(response.status,413);
+    assert.deepEqual(await response.json(),{error:'This record exceeds the storage limit.'});
+    assert.deepEqual(await rows(),beforeOversized,'Storage refusal preserves every row, including receipts and token usage.');
+   }
+   const addPage=await(await runtime.worker.fetch(origin+'/library/add')).text();
+   const addForm=/<form[^>]*action="\/library\/version\/add"[^>]*>([\s\S]*?)<\/form>/.exec(addPage);assert.ok(addForm);
+   const addFields=Object.fromEntries([...addForm[1].matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+   const beforeForm=await rows();
+   const formRefusal=await runtime.worker.fetch(origin+'/library/version/add',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...addFields,title:oversized.title,text:oversized.text})});
+   assert.equal(formRefusal.status,413);assert.match(await formRefusal.text(),/This record exceeds the storage limit\./);
+   assert.deepEqual(await rows(),beforeForm,'Native form refusal preserves every row.');
+   const oversizedFile=await file('oversized-record.txt',oversized.text);
+   const beforeCli=await rows();const cliRefusal=await cli(addArgs(oversizedFile,oversized.title));
+   assert.equal(cliRefusal.code,1);assert.deepEqual(await rows(),beforeCli,'CLI refusal preserves every row.');
+   const small={title:'Synthetic after refusal',kind:'text',text:'A small supplied version.\n'};
+   const acceptedAfterRefusal=await request('/api/v1/library/versions',{operation_id:rejectedOperation,data:small});
+   assert.equal(acceptedAfterRefusal.status,200);
+   const replayAfterRefusal=await request('/api/v1/library/versions',{operation_id:rejectedOperation,data:small});
+   assert.equal(replayAfterRefusal.status,200);assert.equal((await replayAfterRefusal.json()).replayed,true);
+   const changedAfterSuccess=await request('/api/v1/library/versions',{operation_id:rejectedOperation,data:{...small,text:'Changed supplied version.\n'}});
+   assert.equal(changedAfterSuccess.status,409);
+   transcript.push({observation:'Oversized serialized row returns 413 without writes; operation can be reused after refusal and then replays/conflicts normally.'});
    await refusal({title:'Must never be stored',kind:'text',text,sections:[{heading:'Article',units:['Missing exact bytes.']}]},'Version Units must join to the submitted text exactly.');
    for(const explicit of [false,true])for(const [limit,separator,error]of [[4096,'\n','A Version supports at most 4096 Sections.'],[8192,',','A Version supports at most 8192 Units.']]) {
     const draft=count=>{
