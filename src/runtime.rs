@@ -496,7 +496,10 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         .to_string();
     let scope = persistence::sha256(
         serde_json::to_string(&(
-            "scry-notebook-scope-v2",
+            "scry-notebook-scope-v3",
+            &canonical_origin,
+            &mode,
+            variable(&env, "ACCESS_AUDIENCE"),
             principal.internal_identity(),
             &actor,
             notebook,

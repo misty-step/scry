@@ -8,23 +8,24 @@ const scope = 'a'.repeat(64);
 const deferred = () => { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture({ hidden = false, prerendering = false, polling = false, immediateTimeout = false } = {}) {
+function fixture({ hidden = false, prerendering = false, polling = false, pollState = 'checking', immediateTimeout = false } = {}) {
   const listeners = {};
   const calls = [];
   const timerDelays = [];
   const classes = new Set();
   const status = { hidden: true, children: [], replaceChildren() { this.children = []; }, append(n) { this.children.push(n); } };
   const frame = { inert: false, erased: false, replaceChildren() { this.erased = true; } };
+  const previousMain = { replaced: false, querySelector() { return null; }, querySelectorAll() { return []; }, replaceWith() { this.replaced = true; } };
   const nodes = new Map();
   const element = () => ({ children: [], className: '', textContent: '', addEventListener(type, f) { this[type] = f; }, append(...items) { this.children.push(...items); }, setAttribute() {}, focus() { this.focused = true; }, remove() { nodes.delete(this.id); } });
-  class Form { constructor() { this.method = 'post'; this.action = 'https://scry.test/practice/answer'; this.dataset = {}; this.classList = { contains: () => false }; } querySelector() { return null; } querySelectorAll() { return []; } setAttribute() {} removeAttribute() {} }
+  class Form { constructor() { this.method = 'post'; this.action = 'https://scry.test/practice/answer'; this.dataset = {}; this.classList = { contains: () => false }; } querySelector() { return null; } querySelectorAll() { return []; } getAttribute(name) { return name === 'action' ? this.action : null; } setAttribute() {} removeAttribute() {} }
   const document = {
     hidden, prerendering, title: 'Private question · Scry', pollable: polling, activeElement: null, forms: [], documentElement: { dataset: { notebookScope: scope } },
     body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c) }, append(n) { nodes.set(n.id, n); } },
     addEventListener(type, f) { (listeners[type] ||= []).push(f); },
-    querySelector(selector) { if (selector === '.page-frame') return frame; if (selector === '#main[data-poll], [data-poll]' && this.pollable) return {}; return null; },
+    querySelector(selector) { if (selector === '.page-frame') return frame; if (selector === '#main[data-poll], [data-poll]' && this.pollable) return {}; if (selector === '[data-state]' && this.pollable) return { getAttribute: () => pollState }; return null; },
     querySelectorAll() { return []; },
-    getElementById(id) { return id === 'request-status' ? status : nodes.get(id); },
+    getElementById(id) { return id === 'request-status' ? status : id === 'main' ? previousMain : nodes.get(id); },
     createElement: element,
   };
   const window = { addEventListener(type, f) { (listeners[`window:${type}`] ||= []).push(f); } };
@@ -34,7 +35,14 @@ function fixture({ hidden = false, prerendering = false, polling = false, immedi
     calls.push({ url, init, ...gate }); return gate.promise;
   };
   const clock = (fn, delay) => { timerDelays.push(delay); return setTimeout(fn, (polling && delay === 4000) || (immediateTimeout && delay === 8000) ? 0 : delay); };
-  const context = { document, window, fetch, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; } append() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: {}, console };
+  class DOMParser {
+    parseFromString(html) {
+      const found = /data-notebook-scope=["']([^"']*)["']/.exec(html);
+      const main = { querySelector() { return null; }, querySelectorAll() { return []; } };
+      return { title: 'Synthetic page', documentElement: { dataset: { notebookScope: found?.[1] } }, querySelector(selector) { if (selector === '#main') return main; return selector === '.notice, .empty-stage .lede' ? {textContent:'Synthetic rejection'} : {}; }, querySelectorAll() { return []; } };
+    }
+  }
+  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; } append() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: {}, console };
   vm.runInNewContext(script, context);
   const emit = (type, event = {}) => (listeners[type] || []).forEach(f => f(event));
   const response = (statusCode, text = scope, headers = {}) => {
@@ -42,7 +50,7 @@ function fixture({ hidden = false, prerendering = false, polling = false, immedi
     const bytes = new TextEncoder().encode(raw); let read = false;
     return { status: statusCode, ok: statusCode >= 200 && statusCode < 300, type: 'basic', url: 'https://scry.test/session/scope', headers: { get: key => headers[key.toLowerCase()] || (key.toLowerCase() === 'content-type' ? 'application/json' : null) }, text: async () => text, body: { getReader: () => ({ read: async () => read ? {done:true} : (read = true, {done:false,value:bytes}), releaseLock() {}, cancel: async () => {} }) } };
   };
-  return { document, frame, status, classes, calls, timerDelays, emit, response, Form };
+  return { document, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form };
 }
 
 test('background freezes an unknown request and never automatically sends it again', async () => {
@@ -262,4 +270,116 @@ test('polling resumes on its normal cadence after scope validation', async () =>
   await new Promise(resolve => setTimeout(resolve, 10));
   f.document.pollable = false;
   assert.ok(f.calls[1]); f.calls[1].resolve(f.response(503)); await tick();
+});
+
+async function reconcileAfterUncertainResponse(f, original) {
+  await tick();
+  assert.equal(f.frame.erased, false);
+  assert.equal(f.calls.length, 2); assert.equal(f.calls[1].url, '/session/scope');
+  f.calls[1].resolve(f.response(200)); await tick();
+  const actions = f.status.children.flatMap(n => n.children || []);
+  const reconcile = actions.find(n => n.textContent === 'Reconcile this attempt');
+  assert.ok(reconcile); assert.ok(!actions.some(n => n.textContent === 'Continue editing'));
+  reconcile.click(); assert.equal(f.calls[2].init.body, original.init.body);
+  f.calls[2].resolve(f.response(401)); await tick();
+}
+
+test('a malformed scope header on a gateway response preserves uncertainty', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  const original = f.calls[0];
+  original.resolve(f.response(503, 'gateway unavailable', { 'x-scry-scope': 'not-a-scope' }));
+  await reconcileAfterUncertainResponse(f, original);
+});
+
+test('a scoped HTML success without its embedded scope preserves uncertainty', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  const original = f.calls[0];
+  original.resolve(f.response(200, '<html><main>incomplete</main></html>', { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await reconcileAfterUncertainResponse(f, original);
+});
+
+test('a scoped HTML rejection with a conflicting embedded scope disposes the page', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  f.calls[0].resolve(f.response(422, `<html data-notebook-scope="${'b'.repeat(64)}"><div class="notice">wrong notebook</div></html>`, { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await tick(); assert.equal(f.frame.erased, true);
+  assert.ok(!f.status.children.flatMap(n => n.children || []).some(n => n.textContent === 'Continue editing'));
+});
+
+test('a scoped HTML rejection with malformed embedded scope preserves uncertainty', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  const original = f.calls[0];
+  original.resolve(f.response(422, '<html data-notebook-scope="broken"><div class="notice">incomplete</div></html>', { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await reconcileAfterUncertainResponse(f, original);
+});
+
+test('a consistent scoped HTML rejection unlocks the form', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  f.calls[0].resolve(f.response(422, `<html data-notebook-scope="${scope}"><div class="notice">refused</div></html>`, { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await tick(); assert.equal(f.frame.erased, false); assert.equal(f.calls.length, 1);
+  assert.ok(f.status.children.flatMap(n => n.children || []).some(n => n.textContent === 'Continue editing'));
+});
+
+test('a mismatch marker on a gateway error is not treated as an authenticated mismatch', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  const original = f.calls[0];
+  original.resolve(f.response(503, 'gateway error', { 'x-scry-scope-mismatch': '1' }));
+  await reconcileAfterUncertainResponse(f, original);
+});
+
+test('a late successful poll cannot replace a form dirtied during the request', async () => {
+  const f = fixture({ polling: true }); const form = new f.Form();
+  f.document.forms.push(form); await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(f.calls.length, 1); f.document.pollable = false;
+  form.value = 'unfinished answer'; f.emit('input', { target: { form } });
+  f.calls[0].resolve(f.response(200, `<html data-notebook-scope="${scope}"><main></main></html>`, { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await tick();
+  assert.equal(f.previousMain.replaced, false); assert.equal(form.value, 'unfinished answer');
+});
+
+test('a successful poll can still update a clean page', async () => {
+  const f = fixture({ polling: true }); await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(f.calls.length, 1); f.document.pollable = false;
+  f.calls[0].resolve(f.response(200, `<html data-notebook-scope="${scope}"><main></main></html>`, { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await tick(); assert.equal(f.previousMain.replaced, true);
+});
+
+test('a goal poll retains a dirty form when the replacement omits it', async () => {
+  const f = fixture({ polling: true, pollState: 'goal' }); const form = new f.Form();
+  f.document.forms.push(form); await new Promise(resolve => setTimeout(resolve, 10));
+  f.document.pollable = false; form.value = 'unfinished goal'; f.emit('input', { target: { form } });
+  f.calls[0].resolve(f.response(200, `<html data-notebook-scope="${scope}"><main></main></html>`, { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await tick(); assert.equal(f.previousMain.replaced, false); assert.equal(form.value, 'unfinished goal');
+});
+
+test('a non-200 successful scope response does not reveal a suspended page', async () => {
+  const f = fixture({ hidden: true }); f.document.hidden = false; f.emit('visibilitychange');
+  f.calls[0].resolve(f.response(201)); await tick();
+  assert.equal(f.frame.erased, false); assert.equal(f.frame.inert, true);
+  assert.ok(f.document.getElementById('scope-recovery'));
+});
+
+test('a scoped HTML conflict with a conflicting embedded scope cannot unlock the form', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  f.calls[0].resolve(f.response(409, `<html data-notebook-scope="${'b'.repeat(64)}"></html>`, { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await tick(); assert.equal(f.frame.erased, true);
+});
+
+test('a scoped HTML conflict with a missing embedded scope preserves uncertainty', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  const original = f.calls[0];
+  original.resolve(f.response(409, '<html><main>incomplete</main></html>', { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await reconcileAfterUncertainResponse(f, original);
+});
+
+test('a cross-origin rejection cannot unlock the private form', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  const response = f.response(422, '', { 'x-scry-scope': scope }); response.url = 'https://other.invalid/';
+  f.calls[0].resolve(response); await tick(); assert.equal(f.frame.erased, true);
+});
+
+test('a scoped HTML rejection missing its embedded scope preserves uncertainty', async () => {
+  const f = fixture(); f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  const original = f.calls[0];
+  original.resolve(f.response(422, '<html><div class="notice">incomplete</div></html>', { 'x-scry-scope': scope, 'content-type': 'text/html' }));
+  await reconcileAfterUncertainResponse(f, original);
 });

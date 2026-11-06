@@ -90,18 +90,21 @@
     document.getElementById('scope-recovery')?.remove();
     document.body.classList.add('private-hidden');
   };
+  const verifyScope = actual => {
+    if (typeof actual !== 'string' || !/^[a-f0-9]{64}$/.test(actual)) throw new Error('The response did not confirm its notebook.');
+    if (actual !== scope) { conceal(); return false; }
+    return true;
+  };
   const safePage = async (response, valid) => {
     if (!valid()) return null;
-    if (response.status === 401 || response.status === 403 || response.headers.get('X-Scry-Scope-Mismatch') || new URL(response.url, location.href).origin !== location.origin) { conceal(); return null; }
-    const responseScope = response.headers.get('X-Scry-Scope');
-    if (responseScope && responseScope !== scope) { conceal(); return null; }
-    if (!responseScope) throw new Error('The page did not confirm its notebook.');
+    if (response.status === 401 || response.status === 403 || (response.status === 409 && response.headers.get('X-Scry-Scope-Mismatch') === '1') || new URL(response.url, location.href).origin !== location.origin) { conceal(); return null; }
+    if (!verifyScope(response.headers.get('X-Scry-Scope'))) return null;
     const type = response.headers.get('content-type') || '';
     if (!type.includes('text/html')) throw new Error('The server returned an unexpected response.');
     const html = await response.text();
     if (!valid()) return null;
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    if (doc.documentElement.dataset.notebookScope !== scope) { conceal(); return null; }
+    if (!verifyScope(doc.documentElement.dataset.notebookScope)) return null;
     if (!doc.querySelector('#main') || !doc.querySelector('.masthead')) throw new Error('The saved page could not be read.');
     return doc;
   };
@@ -194,11 +197,15 @@
         headers: { Accept: 'text/html', 'X-Scry-Request': 'page', ...expectedHeaders }, signal: controller.signal
       });
       if (!valid()) return;
-      if (response.status === 401 || response.status === 403 || response.headers.get('X-Scry-Scope-Mismatch')) { conceal(); return; }
-      const responseScope = response.headers.get('X-Scry-Scope');
-      if (responseScope && responseScope !== scope) { conceal(); return; }
-      if (!responseScope) throw new Error('The response did not confirm its notebook.');
+      if (response.status === 401 || response.status === 403 || (response.status === 409 && response.headers.get('X-Scry-Scope-Mismatch') === '1') || (response.url && new URL(response.url, location.href).origin !== location.origin)) { conceal(); return; }
+      if (!verifyScope(response.headers.get('X-Scry-Scope'))) return;
       if (response.status === 409) {
+        if ((response.headers.get('content-type') || '').includes('text/html')) {
+          const text = await response.text();
+          if (!valid()) return;
+          const doc = new DOMParser().parseFromString(text, 'text/html');
+          if (!verifyScope(doc.documentElement.dataset.notebookScope)) return;
+        }
         pending = null;
         unlock(request);
         announce('This changed in another tab. Your draft is still here.', [['Open saved progress', () => location.reload()]], 'Reload deliberately to see the current question or saved result.');
@@ -207,9 +214,11 @@
       if ([400, 410, 413, 415, 422].includes(response.status)) {
         // A definite rejection may be an HTML page or a plain transport error.
         const text = await response.text();
+        if (!valid()) return;
         let error = text.trim().slice(0, 1000);
         if ((response.headers.get('content-type') || '').includes('text/html')) {
           const doc = new DOMParser().parseFromString(text, 'text/html');
+          if (!verifyScope(doc.documentElement.dataset.notebookScope)) return;
           error = doc.querySelector('.notice, .empty-stage .lede')?.textContent?.trim() || '';
         }
         if (!valid()) return;
@@ -232,7 +241,7 @@
           const probe = await fetch('/session/scope', { credentials: 'same-origin', redirect: 'manual', cache: 'no-store', headers: expectedHeaders, signal: AbortSignal.timeout(5000) });
           if (!valid()) return;
           if ([401, 403, 409].includes(probe.status) || probe.type === 'opaqueredirect' || (probe.url && new URL(probe.url, location.href).origin !== location.origin)) { conceal(); return; }
-          if (probe.ok) {
+          if (probe.status === 200) {
             const actual = await readScope(probe);
             if (!valid()) return;
             if (actual !== scope) { conceal(); return; }
@@ -301,6 +310,17 @@
       if (next) { event.preventDefault(); next.requestSubmit(); }
     }
   });
+  const mayInstallPoll = (doc, preserveDrafts) => {
+    const dirty = [...document.forms].filter(form => dirtyForms.has(form));
+    const focused = document.activeElement;
+    const editing = focused?.matches('textarea,input,select');
+    if (!preserveDrafts) return !editing && dirty.length === 0;
+    if (editing && !dirtyForms.has(focused.form)) return false;
+    const next = doc.querySelector('#main');
+    if (!next) return false;
+    const forms = [...next.querySelectorAll('form')];
+    return dirty.every(form => dirty.filter(candidate => candidate.getAttribute('action') === form.getAttribute('action')).length === 1 && forms.filter(candidate => candidate.getAttribute('action') === form.getAttribute('action')).length === 1);
+  };
   const schedulePoll = (delay = 4000) => {
     clearTimeout(pollTimer);
     if (!document.querySelector('#main[data-poll], [data-poll]')) return;
@@ -317,7 +337,7 @@
       try {
         const response = await fetch(location.href, { credentials: 'same-origin', headers: { Accept: 'text/html', 'X-Scry-Request': 'poll', ...expectedHeaders }, cache: 'no-store', signal: controller.signal });
         const doc = await safePage(response, valid);
-        if (doc && response.ok && !pending && valid()) {
+        if (doc && response.ok && !pending && valid() && mayInstallPoll(doc, preserveDrafts)) {
           // Never replace an editable page or an unanswered question just to poll.
           if (['concept-home', 'checking', 'checking-reference', 'checking-paused', 'pending', 'preparing', 'preparation-paused', 'preparation-stopped', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false, preserveDrafts);
         }
@@ -378,7 +398,7 @@
       const response = await fetch('/session/scope', { credentials: 'same-origin', redirect: 'manual', cache: 'no-store', headers: expectedHeaders, signal: controller.signal });
       if (validation !== controller || epoch !== generation || pageSequence !== sequence || inactive()) return;
       if ([401, 403, 409].includes(response.status) || response.type === 'opaqueredirect' || (response.url && new URL(response.url, location.href).origin !== location.origin)) { conceal(); return; }
-      if (!response.ok) { recovery(); return; }
+      if (response.status !== 200) { recovery(); return; }
       const actual = await readScope(response);
       if (validation !== controller || epoch !== generation || pageSequence !== sequence || inactive()) return;
       if (actual !== scope) { conceal(); return; }
