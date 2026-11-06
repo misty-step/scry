@@ -47,7 +47,7 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
       return { title: 'Synthetic page', documentElement: { dataset: { notebookScope: found?.[1] } }, querySelector(selector) { if (selector === '#main') return main; return selector === '.notice, .empty-stage .lede' ? {textContent:'Synthetic rejection'} : {}; }, querySelectorAll() { return []; } };
     }
   }
-  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; } append() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: { pushState() {} }, console };
+  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; form.onFormData?.(); } append() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: { pushState() {} }, console };
   if (nativeTransport) context.fetch = undefined;
   vm.runInNewContext(script, context);
   const emit = (type, event = {}) => (listeners[type] || []).forEach(f => f(event));
@@ -56,7 +56,7 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
     const bytes = new TextEncoder().encode(raw); let read = false;
     return { status: statusCode, ok: statusCode >= 200 && statusCode < 300, type: 'basic', url: 'https://scry.test/session/scope', headers: { get: key => headers[key.toLowerCase()] || (key.toLowerCase() === 'content-type' ? 'application/json' : null) }, text: async () => text, body: { getReader: () => ({ read: async () => read ? {done:true} : (read = true, {done:false,value:bytes}), releaseLock() {}, cancel: async () => {} }) } };
   };
-  return { document, window, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form };
+  return { document, window, navigator: context.navigator, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form };
 }
 
 test('background freezes an unknown request and never automatically sends it again', async () => {
@@ -507,4 +507,38 @@ test('an in-flight poll is fenced before a switch confirmation opens', async () 
   f.emit('submit', { target: new f.Form(), preventDefault() {} });
   assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(f.calls.length, 1);
   poll.resolve(f.response(401)); await tick(); assert.equal(f.frame.erased, false);
+});
+
+test('going offline during switch confirmation leaves the answer editable and protected', async () => {
+  const f = fixture(); const { form, answer } = practiceDraft(f);
+  f.window.confirm = () => { f.navigator.onLine = false; return true; };
+  f.emit('submit', { target: new f.Form(), preventDefault() {} });
+  assert.equal(f.calls.length, 0); assert.equal(answer.readOnly, false);
+  assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(form.operationId, 'operation-unchanged');
+  assert.equal(beforeUnload(f), true, 'The unsent answer remains protected.');
+  f.navigator.onLine = true; f.emit('window:online');
+  f.emit('submit', { target: form, preventDefault() {} });
+  assert.equal(f.calls.length, 1, 'The first submission was never sent or left pending.');
+  f.calls[0].resolve(f.response(401)); await tick();
+});
+
+test('going offline during form serialization does not create an unresolved operation', () => {
+  const f = fixture(); const { form, answer } = practiceDraft(f); const switching = new f.Form();
+  f.window.confirmResult = true; switching.onFormData = () => { f.navigator.onLine = false; };
+  f.emit('submit', { target: switching, preventDefault() {} });
+  assert.equal(f.calls.length, 0); assert.equal(answer.readOnly, false); assert.equal(beforeUnload(f), true);
+  assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(form.operationId, 'operation-unchanged');
+});
+
+test('offline reconciliation retains the original previously sent operation', async () => {
+  const f = fixture(); const { form } = practiceDraft(f);
+  f.emit('submit', { target: form, preventDefault() {} }); const original = f.calls[0];
+  original.resolve(f.response(503)); await tick(); f.calls[1].resolve(f.response(200)); await tick();
+  let actions = f.status.children.flatMap(n => n.children || []);
+  f.navigator.onLine = false; actions.find(n => n.textContent === 'Reconcile this attempt').click();
+  assert.equal(f.calls.length, 2); assert.equal(beforeUnload(f), false);
+  f.navigator.onLine = true; f.emit('window:online');
+  actions = f.status.children.flatMap(n => n.children || []); actions.find(n => n.textContent === 'Reconcile this attempt').click();
+  assert.equal(f.calls.length, 3); assert.equal(f.calls[2].init.body, original.init.body);
+  f.calls[2].resolve(f.response(401)); await tick();
 });

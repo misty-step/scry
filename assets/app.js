@@ -189,6 +189,10 @@
   const send = async request => {
     if (request.sending || suspended || inactive() || !scoped) return;
     if (!navigator.onLine) {
+      if (!request.attempted && pending === request) {
+        pending = null;
+        refreshDepartureWarning();
+      }
       announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.');
       return;
     }
@@ -210,6 +214,7 @@
     const valid = () => pending === request && request.flight === flight && sequence === pageSequence && current(generation, flight);
     const timer = setTimeout(() => controller.abort(), 20000);
     try {
+      request.attempted = true;
       const response = await fetch(request.action, {
         method: 'POST', body: request.data, credentials: 'same-origin', redirect: 'follow',
         headers: { Accept: 'text/html', 'X-Scry-Request': 'page', ...expectedHeaders }, signal: controller.signal
@@ -309,6 +314,10 @@
       poll?.abort();
       if (!window.confirm('Leave this answer? It will not be saved.')) return;
       if (disposed || suspended || inactive() || pending || !form.isConnected) return;
+      if (!navigator.onLine) {
+        announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.');
+        return;
+      }
     }
     const previousPoll = pollRequest;
     pollRequest = null;
