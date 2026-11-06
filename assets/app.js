@@ -25,10 +25,36 @@
   const scope = document.documentElement.dataset.notebookScope;
   let epoch = 0;
   let suspended = false;
+  let disposed = false;
   let validation = null;
+  let savedFocus = null;
+  let savedSelection = null;
+  let savedTitle = '';
+  const inactive = () => document.hidden || document.prerendering;
   const scoped = /^[a-f0-9]{64}$/.test(scope || '');
-  const current = (generation, flight) => scoped && !suspended && !document.hidden && epoch === generation && (!flight || flight.active);
+  const current = (generation, flight) => scoped && !disposed && !suspended && !inactive() && epoch === generation && (!flight || flight.active);
   const expectedHeaders = { 'X-Scry-Expected-Scope': scope || '' };
+  const readScope = async response => {
+    if (!(response.headers.get('content-type') || '').includes('application/json') || !response.body) throw new Error('The scope check had no JSON body.');
+    const reader = response.body.getReader();
+    const chunks = [];
+    let length = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.byteLength;
+        if (length > 512) { reader.cancel().catch(() => {}); throw new Error('The scope check was too large.'); }
+        chunks.push(value);
+      }
+    } finally { reader.releaseLock(); }
+    const bytes = new Uint8Array(length);
+    let offset = 0;
+    chunks.forEach(chunk => { bytes.set(chunk, offset); offset += chunk.byteLength; });
+    const parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!parsed || parsed.version !== 1 || typeof parsed.scope !== 'string' || !/^[a-f0-9]{64}$/.test(parsed.scope) || Object.keys(parsed).length !== 2) throw new Error('The scope check was incomplete.');
+    return parsed.scope;
+  };
   const dirtyForms = new WeakSet();
   document.addEventListener('input', event => { if (event.target.form) dirtyForms.add(event.target.form); });
   document.addEventListener('change', event => { if (event.target.form) dirtyForms.add(event.target.form); });
@@ -47,6 +73,8 @@
     box.hidden = false;
   };
   const conceal = () => {
+    if (disposed) return;
+    disposed = true;
     epoch += 1;
     suspended = true;
     validation?.abort();
@@ -54,6 +82,10 @@
     pollRequest?.abort();
     pending?.flight?.controller.abort();
     pending = null;
+    savedFocus = null;
+    savedSelection = null;
+    savedTitle = '';
+    document.title = 'Scry';
     document.querySelector('.page-frame')?.replaceChildren();
     document.getElementById('scope-recovery')?.remove();
     document.body.classList.add('private-hidden');
@@ -61,7 +93,9 @@
   const safePage = async (response, valid) => {
     if (!valid()) return null;
     if (response.status === 401 || response.status === 403 || response.headers.get('X-Scry-Scope-Mismatch') || new URL(response.url, location.href).origin !== location.origin) { conceal(); return null; }
-    if (response.headers.get('X-Scry-Scope') !== scope) { conceal(); return null; }
+    const responseScope = response.headers.get('X-Scry-Scope');
+    if (responseScope && responseScope !== scope) { conceal(); return null; }
+    if (!responseScope) throw new Error('The page did not confirm its notebook.');
     const type = response.headers.get('content-type') || '';
     if (!type.includes('text/html')) throw new Error('The server returned an unexpected response.');
     const html = await response.text();
@@ -134,7 +168,7 @@
     request.inputLocks?.forEach(([input, readOnly, disabled]) => { input.readOnly = readOnly; input.disabled = disabled; });
   };
   const send = async request => {
-    if (request.sending || suspended || document.hidden || !scoped) return;
+    if (request.sending || suspended || inactive() || !scoped) return;
     if (!navigator.onLine) {
       announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.');
       return;
@@ -161,7 +195,9 @@
       });
       if (!valid()) return;
       if (response.status === 401 || response.status === 403 || response.headers.get('X-Scry-Scope-Mismatch')) { conceal(); return; }
-      if (response.headers.get('X-Scry-Scope') !== scope) { conceal(); return; }
+      const responseScope = response.headers.get('X-Scry-Scope');
+      if (responseScope && responseScope !== scope) { conceal(); return; }
+      if (!responseScope) throw new Error('The response did not confirm its notebook.');
       if (response.status === 409) {
         pending = null;
         unlock(request);
@@ -196,6 +232,11 @@
           const probe = await fetch('/session/scope', { credentials: 'same-origin', redirect: 'manual', cache: 'no-store', headers: expectedHeaders, signal: AbortSignal.timeout(5000) });
           if (!valid()) return;
           if ([401, 403, 409].includes(probe.status) || probe.type === 'opaqueredirect' || (probe.url && new URL(probe.url, location.href).origin !== location.origin)) { conceal(); return; }
+          if (probe.ok) {
+            const actual = await readScope(probe);
+            if (!valid()) return;
+            if (actual !== scope) { conceal(); return; }
+          }
         } catch { /* Unavailable is still unknown; retain the frozen attempt. */ }
       }
       if (!valid()) return;
@@ -212,7 +253,7 @@
   document.addEventListener('submit', event => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || form.method.toLowerCase() !== 'post') return;
-    if (suspended || document.hidden || !scoped) { event.preventDefault(); return; }
+    if (suspended || inactive() || !scoped) { event.preventDefault(); return; }
     if (typeof fetch !== 'function' || typeof FormData !== 'function') return;
     event.preventDefault();
     if (pending) { announce('An earlier response still needs to be reconciled.', [['Reconcile that attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Only one answer can be unresolved at a time.'); return; }
@@ -226,6 +267,9 @@
     const answerLimit = Number(form.dataset.answerLimit || 4000);
     if (form.classList.contains('answer-form') && answer && new TextEncoder().encode(answer.value).length > answerLimit) { announce(`Keep your answer under ${answerLimit.toLocaleString('en-US')} bytes. Your draft is still here.`); return; }
     const submitter = event.submitter;
+    const previousPoll = pollRequest;
+    pollRequest = null;
+    previousPoll?.abort();
     const data = new FormData(form);
     if (submitter?.name) data.append(submitter.name, submitter.value);
     pending = { form, data, action: submitter?.hasAttribute('formaction') ? submitter.formAction : form.action };
@@ -263,7 +307,7 @@
     pollTimer = setTimeout(async () => {
       const currentState = document.querySelector('[data-state]')?.getAttribute('data-state');
       const preserveDrafts = currentState === 'goal';
-      if (pending || suspended || !navigator.onLine || document.hidden || document.querySelector('form[aria-busy]') || (!preserveDrafts && (document.activeElement?.matches('textarea,input,select') || [...document.forms].some(form => dirtyForms.has(form))))) { schedulePoll(); return; }
+      if (pending || suspended || !navigator.onLine || inactive() || document.querySelector('form[aria-busy]') || (!preserveDrafts && (document.activeElement?.matches('textarea,input,select') || [...document.forms].some(form => dirtyForms.has(form))))) { schedulePoll(); return; }
       const sequence = pageSequence;
       const generation = epoch;
       const controller = new AbortController();
@@ -296,9 +340,17 @@
       button.addEventListener('click', () => resume());
       panel.append(message, button);
       document.body.append(panel);
+      button.focus();
     }
   };
   const suspend = () => {
+    if (disposed) return;
+    if (!suspended) {
+      savedTitle = document.title;
+      savedFocus = document.activeElement;
+      savedSelection = savedFocus?.selectionStart == null ? null : [savedFocus.selectionStart, savedFocus.selectionEnd];
+    }
+    document.title = 'Scry';
     epoch += 1;
     suspended = true;
     validation?.abort();
@@ -315,34 +367,47 @@
     if (frame) frame.inert = true;
   };
   const resume = async () => {
-    if (!scoped || document.hidden || !suspended) return;
+    if (!scoped || disposed || inactive() || !suspended) return;
     const generation = epoch;
     const sequence = pageSequence;
     const controller = new AbortController();
     validation?.abort();
     validation = controller;
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const response = await fetch('/session/scope', { credentials: 'same-origin', redirect: 'manual', cache: 'no-store', headers: expectedHeaders, signal: controller.signal });
-      if (validation !== controller || epoch !== generation || pageSequence !== sequence || document.hidden) return;
+      if (validation !== controller || epoch !== generation || pageSequence !== sequence || inactive()) return;
       if ([401, 403, 409].includes(response.status) || response.type === 'opaqueredirect' || (response.url && new URL(response.url, location.href).origin !== location.origin)) { conceal(); return; }
       if (!response.ok) { recovery(); return; }
-      const actual = await response.text();
-      if (validation !== controller || epoch !== generation || pageSequence !== sequence || document.hidden) return;
+      const actual = await readScope(response);
+      if (validation !== controller || epoch !== generation || pageSequence !== sequence || inactive()) return;
       if (actual !== scope) { conceal(); return; }
       suspended = false;
       document.getElementById('scope-recovery')?.remove();
       document.body.classList.remove('private-suspended');
       const frame = document.querySelector('.page-frame');
       if (frame) frame.inert = false;
+      document.title = savedTitle;
+      if (savedFocus?.isConnected) {
+        savedFocus.focus({ preventScroll: true });
+        if (savedSelection) {
+          try { savedFocus.setSelectionRange(...savedSelection); } catch { /* This control does not support selection. */ }
+        }
+      }
+      savedFocus = null;
+      savedSelection = null;
+      savedTitle = '';
       if (pending) announce('The response did not arrive. Your draft is still here.', [['Reconcile this attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.');
-      else schedulePoll(0);
-    } catch { if (validation === controller && epoch === generation && pageSequence === sequence && !document.hidden) recovery(); }
-    finally { if (validation === controller) validation = null; }
+      else schedulePoll();
+    } catch { if (validation === controller && epoch === generation && pageSequence === sequence && !inactive()) recovery(); }
+    finally { clearTimeout(timeout); if (validation === controller) validation = null; }
   };
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) suspend();
+  const lifecycleChange = () => {
+    if (inactive()) suspend();
     else resume();
-  });
+  };
+  document.addEventListener('visibilitychange', lifecycleChange);
+  document.addEventListener('prerenderingchange', lifecycleChange);
   window.addEventListener('offline', () => { if (!suspended) announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); });
   window.addEventListener('online', () => {
     if (suspended) { resume(); return; }
@@ -353,7 +418,7 @@
   window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
   window.addEventListener('popstate', () => location.reload());
   if (!scoped) conceal();
-  else if (document.hidden) suspend();
+  else if (inactive()) suspend();
   else schedulePoll();
   if (!navigator.onLine && !suspended) announce('You are offline. Study is paused until you reconnect.');
 })();

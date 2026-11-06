@@ -68,6 +68,15 @@ export async function recoveryWalk(browser,capture){
   await page.locator('[data-state="result"]').waitFor();assert.equal(sends,2);
   assert.equal((await exported(context,url)).app.events.length,1);
  });
+ await check('scope retry stays reachable after a simulated background on a long page',{},async({page,context})=>{
+  await context.route('**/session/scope',route=>route.fulfill({status:503,body:'temporarily unavailable'}));
+  await page.evaluate(()=>{const spacer=document.createElement('div');spacer.style.height='3000px';document.querySelector('#main').append(spacer);window.scrollTo(0,document.body.scrollHeight);});
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+  const retry=page.getByRole('button',{name:'Try again',exact:true});await retry.waitFor();
+  assert.equal(await retry.evaluate(el=>el===document.activeElement),true);
+  const bounds=await retry.boundingBox();assert.ok(bounds && bounds.y>=0 && bounds.y+bounds.height<=844);
+  assert.equal(await page.locator('.page-frame').evaluate(el=>el.inert),true);
+ });
  await check('scope mismatch on return disposes private state',{},async({page,context})=>{
   await context.route('**/session/scope',route=>route.fulfill({status:409,body:'Notebook changed.'}));
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});

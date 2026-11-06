@@ -50,6 +50,11 @@ impl AccessPrincipal {
         }
     }
 }
+struct AccessIdentity {
+    principal: AccessPrincipal,
+    actor: String,
+}
+
 thread_local! {
     // Public keys only, scoped to an issuer and refreshed after five minutes.
     static ACCESS_KEYS: RefCell<BTreeMap<String, (i64, Value)>> = const { RefCell::new(BTreeMap::new()) };
@@ -390,6 +395,7 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     let bearer = api_request && req.headers().has("Authorization")?;
     let mode = variable(&env, "SCRY_ENV");
     let mut principal = AccessPrincipal::Owner;
+    let mut actor = "local-development".to_string();
     if development(&env) {
         if !loopback(&url)
             || provider_secrets_present(&env)
@@ -438,12 +444,15 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         // A separately scoped machine capability cannot read learner routes or
         // impersonate the owner. The outer Access policy remains required.
         let access = if bearer {
-            Ok(AccessPrincipal::Owner)
+            Ok(AccessIdentity {
+                principal: AccessPrincipal::Owner,
+                actor: "bearer-api".into(),
+            })
         } else {
             validate_access(&req, &env).await
         };
         if req.path() == "/internal/backup" {
-            if matches!(access, Ok(AccessPrincipal::Qa)) {
+            if matches!(&access, Ok(identity) if identity.principal == AccessPrincipal::Qa) {
                 return private(Response::error("QA cannot invoke owner operations.", 403)?);
             }
             if method != Method::Post {
@@ -462,11 +471,13 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
                 _ => private(Response::error("backup_failed", 503)?),
             };
         }
-        principal = match access {
-            Ok(principal) => principal,
+        let identity = match access {
+            Ok(identity) => identity,
             Err(_) if api_request => return api_refusal(),
             Err(_) => return private(Response::error("Owner authorization required.", 401)?),
         };
+        principal = identity.principal;
+        actor = identity.actor;
         if principal == AccessPrincipal::Qa && req.path().starts_with("/operator/") {
             return private(Response::error("QA cannot invoke owner operations.", 403)?);
         }
@@ -479,12 +490,17 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     }
     // This pseudonym binds a page to the authenticated notebook. It is not
     // an authorization credential and never substitutes for Access or CSRF.
+    let namespace = env.durable_object("LEARNING_SPACE")?;
+    let notebook = namespace
+        .id_from_name(&principal.space_name(&env)?)?
+        .to_string();
     let scope = persistence::sha256(
-        format!(
-            "scry-notebook-scope-v1:{}:{}",
+        serde_json::to_string(&(
+            "scry-notebook-scope-v2",
             principal.internal_identity(),
-            principal.space_name(&env)?
-        )
+            &actor,
+            notebook,
+        ))?
         .as_bytes(),
     );
     if req.path() == "/session/scope" {
@@ -495,11 +511,7 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         if expected.as_deref().is_some_and(|value| value != scope) {
             return private(Response::error("Notebook changed.", 409)?);
         }
-        let mut response = Response::ok(scope)?;
-        response
-            .headers_mut()
-            .set("Content-Type", "text/plain; charset=utf-8")?;
-        return private(response);
+        return api_json(&json!({"version": 1, "scope": scope}), 200);
     }
     if req.headers().has("X-Scry-Request")?
         && req.headers().get("X-Scry-Expected-Scope")?.as_deref() != Some(scope.as_str())
@@ -686,7 +698,7 @@ async fn internal_request_with_proof(
         .await
 }
 
-async fn validate_access(req: &Request, env: &Env) -> Result<AccessPrincipal> {
+async fn validate_access(req: &Request, env: &Env) -> Result<AccessIdentity> {
     let team = variable(env, "ACCESS_TEAM");
     let aud = variable(env, "ACCESS_AUDIENCE");
     let owner = secret(env, "OWNER_SUBJECT");
@@ -867,7 +879,35 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessPrincipal> {
     if verified.as_bool() != Some(true) {
         return Err(Error::RustError("Invalid signature.".into()));
     }
-    principal.ok_or_else(|| Error::RustError("Invalid identity.".into()))
+    // Key retrieval and signature verification can outlive the assertion.
+    if !claims
+        .get("exp")
+        .and_then(Value::as_i64)
+        .is_some_and(|expiry| expiry > now() / 1000)
+    {
+        return Err(Error::RustError("Expired token.".into()));
+    }
+    let principal = principal.ok_or_else(|| Error::RustError("Invalid identity.".into()))?;
+    let subject = claims
+        .get("sub")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let (kind, identity) = if subject.is_empty() {
+        (
+            "service",
+            claims
+                .get("common_name")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        )
+    } else {
+        ("person", subject)
+    };
+    if identity.is_empty() {
+        return Err(Error::RustError("Invalid identity.".into()));
+    }
+    let actor = serde_json::to_string(&(issuer, kind, identity))?;
+    Ok(AccessIdentity { principal, actor })
 }
 
 async fn bounded_stream(stream: JsValue, max: usize) -> Result<Vec<u8>> {

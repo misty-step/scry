@@ -466,5 +466,5 @@ body:has(.nato-screen) main {margin-top:24px}
 
 /* Keep an obscured private page in memory until its notebook is revalidated. */
 body.private-suspended .page-frame { visibility: hidden; }
-#scope-recovery { margin: 3rem auto; max-width: 36rem; padding: 0 1.5rem; }
+#scope-recovery { position: fixed; z-index: 1000; top: max(1rem, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(36rem, calc(100% - 2rem)); padding: 1.25rem; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule-2); border-radius: 5px; }
 #scope-recovery button { font: inherit; padding: .75rem 1rem; }
