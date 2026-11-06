@@ -18,7 +18,7 @@ export async function libraryJourney() {
  await mkdir(join(process.env.HOME,'.cache/tmp'),{recursive:true});
  const temp=await mkdtemp(join(process.env.HOME,'.cache/tmp/scry-library-'));
  const config=join(temp,'login.json'),binary=resolve(process.env.SCRY_LIBRARY_CLI||'target/debug/scry');
- const transcript=[];let secret,tokenId,workId,oldId,secondId,newId,original;
+ const transcript=[];let secret,tokenId,workId,oldId,secondId,newId,original,browserOperation,browserVersionId;
  const rows=()=>storage.exec('SELECT key,value FROM records ORDER BY key');
  const request=(path,payload,token=secret)=>runtime.worker.fetch(origin+path,{...(payload?{method:'POST',body:JSON.stringify(payload)}:{}),headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'}});
  const file=async(name,contents)=>{const path=join(temp,name);await writeFile(path,contents);return path;};
@@ -88,6 +88,51 @@ export async function libraryJourney() {
     assert.deepEqual(await rows(),before,'Worker refusal changes no SQLite row, operation receipt or last-use time.');
     transcript.push({observation:'Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use',status:response.status,body,text_bytes:Buffer.byteLength(data.text),supplied_sections:data.sections?.length??null,supplied_units:data.sections?.reduce((n,s)=>n+s.units.length,0)??null});
    };
+   // Valid input whose serialized Version row exceeds the existing 1 MiB bound.
+   const oversized={title:'Synthetic oversized row',kind:'text',text:('a'.repeat(58)+',.\n').repeat(4096)};
+   const rejectedOperation='library-serialized-record-limit';
+   const beforeOversized=await rows();
+   for(let attempt=0;attempt<2;attempt++) {
+    const response=await request('/api/v1/library/versions',{operation_id:rejectedOperation,data:oversized});
+    assert.equal(response.status,413);
+    assert.deepEqual(await response.json(),{error:'This record exceeds the storage limit.'});
+    assert.deepEqual(await rows(),beforeOversized,'Storage refusal preserves every row, including receipts and token usage.');
+   }
+   const addPage=await(await runtime.worker.fetch(origin+'/library/add')).text();
+   const addForm=/<form[^>]*action="\/library\/version\/add"[^>]*>([\s\S]*?)<\/form>/.exec(addPage);assert.ok(addForm);
+   const addFields=Object.fromEntries([...addForm[1].matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+   const beforeForm=await rows();
+   const formRefusal=await runtime.worker.fetch(origin+'/library/version/add',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...addFields,title:oversized.title,text:oversized.text})});
+   assert.equal(formRefusal.status,413);const refusedHtml=await formRefusal.text();assert.match(refusedHtml,/This record exceeds the storage limit\./);
+   assert.ok(refusedHtml.includes(`name="title" value="${oversized.title}"`));
+   assert.ok(refusedHtml.includes(`name="text" rows="10" maxlength="262144" required aria-describedby="text-note">${oversized.text}</textarea>`));
+   assert.deepEqual(await rows(),beforeForm,'Native form refusal preserves every row.');
+   const correctionForm=/<form[^>]*action="\/library\/version\/add"[^>]*>([\s\S]*?)<\/form>/.exec(refusedHtml);assert.ok(correctionForm);
+   const correctionFields=Object.fromEntries([...correctionForm[1].matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+   browserOperation=correctionFields.operation_id;assert.ok(browserOperation);
+   const correctedText='Corrected supplied text.\n';
+   const corrected=await runtime.worker.fetch(origin+'/library/version/add',{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...correctionFields,title:oversized.title,text:correctedText})});
+   assert.equal(corrected.status,303);
+   const correctedLocation=corrected.headers.get('Location');assert.match(correctedLocation,/^\/library\/versions\/[a-f0-9]{32}$/);
+   browserVersionId=correctedLocation.split('/').at(-1);
+   const correctedVersion=await(await request('/api/v1'+correctedLocation)).json();assert.equal(correctedVersion.version.text,correctedText);
+   const oversizedFile=await file('oversized-record.txt',oversized.text);
+   const cliOperation='library-oversized-cli-operation';
+   const cliData={title:'Independent oversized CLI work',kind:'text',text:oversized.text,aliases:[],sources:[],rights:'private_only',sections:null,name:'',context:'',spelling_strict:false};
+   const beforeCli=await rows();const cliRefusal=await cli(['version','add','--title',cliData.title,'--kind','text','--text-file',oversizedFile,'--operation-id',cliOperation]);
+   assert.equal(cliRefusal.code,1);assert.equal(cliRefusal.value.error,'API request failed.');
+   assert.deepEqual(await rows(),beforeCli,'CLI refusal preserves every row.');
+   const cliControl=await request('/api/v1/library/versions',{operation_id:cliOperation,data:cliData});
+   assert.equal(cliControl.status,413);assert.deepEqual(await cliControl.json(),{error:'This record exceeds the storage limit.'});
+   assert.deepEqual(await rows(),beforeCli,'Equivalent CLI request reaches storage admission without writes.');
+   const small={title:'Synthetic after refusal',kind:'text',text:'A small supplied version.\n'};
+   const acceptedAfterRefusal=await request('/api/v1/library/versions',{operation_id:rejectedOperation,data:small});
+   assert.equal(acceptedAfterRefusal.status,200);
+   const replayAfterRefusal=await request('/api/v1/library/versions',{operation_id:rejectedOperation,data:small});
+   assert.equal(replayAfterRefusal.status,200);assert.equal((await replayAfterRefusal.json()).replayed,true);
+   const changedAfterSuccess=await request('/api/v1/library/versions',{operation_id:rejectedOperation,data:{...small,text:'Changed supplied version.\n'}});
+   assert.equal(changedAfterSuccess.status,409);
+   transcript.push({observation:'Oversized serialized row returns 413 without writes; operation can be reused after refusal and then replays/conflicts normally.'});
    await refusal({title:'Must never be stored',kind:'text',text,sections:[{heading:'Article',units:['Missing exact bytes.']}]},'Version Units must join to the submitted text exactly.');
    for(const explicit of [false,true])for(const [limit,separator,error]of [[4096,'\n','A Version supports at most 4096 Sections.'],[8192,',','A Version supports at most 8192 Units.']]) {
     const draft=count=>{
@@ -155,7 +200,12 @@ export async function libraryJourney() {
    const check=v=>{if(v&&typeof v==='object'){for(const [k,x]of Object.entries(v)){assert.ok(!forbidden.has(k),`No private study/audit field ${k}`);check(x);}}};check(exported);
    assert.ok(!JSON.stringify(exported).includes(secret));
    const full=await noSpend();assert.ok(full.app.owner_tokens[tokenId]);
-   const receipts=Object.values(full.app.operations).filter(r=>r.path?.startsWith('/library/'));assert.ok(receipts.length>=6);assert.ok(receipts.every(r=>r.acting_token===tokenId));
+   const receipts=Object.entries(full.app.operations).filter(([,r])=>r.path?.startsWith('/library/'));
+   const browserReceipt=full.app.operations[browserOperation];assert.ok(browserReceipt);
+   assert.equal(browserReceipt.path,'/library/version/add');assert.equal(browserReceipt.acting_token,undefined);
+   assert.equal(browserReceipt.result.entity_id,browserVersionId);
+   const tokenReceipts=receipts.filter(([operation])=>operation!==browserOperation);
+   assert.ok(tokenReceipts.length>=6);assert.ok(tokenReceipts.every(([,receipt])=>receipt.acting_token===tokenId));
    assert.ok((await(await request('/api/v1/history')).json()).operations['library-supersede-operation'].acting_token===tokenId);
    // Rebind the same actual SQLite object to a fresh Worker instance configuration.
    const next=await runtime.rebind({...base,CANONICAL_ORIGIN:origin,RELEASE_REVISION:'library-readback'});runtime={...runtime,...next};
