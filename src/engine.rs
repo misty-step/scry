@@ -136,6 +136,15 @@ pub fn mutate_as(
     }
     let mut next = app.clone();
     let response = apply(&mut next, path, fields, now, seed)?;
+    if let Some(checkpoint) = &mut next.practice.answer_checkpoint
+        && checkpoint.draft.as_ref().is_some_and(|draft| {
+            next.practice.current.as_ref().is_none_or(|current| {
+                current.prompt.id != draft.prompt_id || current.attempt_id.is_some()
+            })
+        })
+    {
+        checkpoint.draft = None;
+    }
     let acting_token = actor.token_id();
     crate::study::attribute(&mut next, app, acting_token.clone());
     for (id, job) in &mut next.jobs {

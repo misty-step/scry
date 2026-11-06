@@ -519,3 +519,29 @@ test('offline reconciliation retains the original previously sent operation', as
   assert.equal(f.calls.length, 3); assert.equal(f.calls[2].init.body, original.init.body);
   f.calls[2].resolve(f.response(401)); await tick();
 });
+
+test('checkpoint acknowledgment is cleared when the answer is edited again', async () => {
+  const f = fixture(); const { form, answer } = practiceDraft(f);
+  form.querySelector = selector => selector === '[data-checkpoint-generation]' ? {dataset:{generation:'0'}} : selector.includes('answer') ? answer : null;
+  const submitter = { formAction: 'https://scry.test/practice/draft', hasAttribute: key => key === 'formaction' || key === 'data-checkpoint-save' };
+  f.emit('submit', { target: form, submitter, preventDefault() {} });
+  assert.equal(f.calls.length,1); assert.equal(f.calls[0].url,'https://scry.test/practice/draft');
+  const response=f.response(200, `<html data-notebook-scope="${scope}"><main></main></html>`, { 'x-scry-scope':scope, 'content-type':'text/html' });
+  response.url='https://scry.test/';f.calls[0].resolve(response);await tick();
+  assert.equal(f.status.hidden,false);assert.match(f.status.children[0].textContent,/Save confirmed/);
+  answer.value='edited after save';f.emit('input',{target:answer});assert.equal(f.status.hidden,true);
+});
+
+test('an uncertain checkpoint is frozen and reconciled only as the same save', async () => {
+  const f = fixture(); const { form, answer } = practiceDraft(f);
+  form.querySelectorAll = selector => selector.startsWith('textarea') ? [answer] : [];
+  form.querySelector = selector => selector === '[data-checkpoint-generation]' ? {dataset:{generation:'0'}} : selector.includes('answer') ? answer : null;
+  const submitter = { formAction:'https://scry.test/practice/draft', hasAttribute:key=>key==='formaction'||key==='data-checkpoint-save' };
+  f.emit('submit',{target:form,submitter,preventDefault(){}});const original=f.calls[0];
+  original.resolve(f.response(503));await tick();f.calls[1].resolve(f.response(200));await tick();
+  assert.equal(f.calls.length,2);assert.equal(answer.readOnly,true);
+  const reconcile=f.status.children.flatMap(n=>n.children||[]).find(n=>n.textContent==='Reconcile this save');
+  assert.ok(reconcile);reconcile.click();assert.equal(f.calls.length,3);
+  assert.equal(f.calls[2].url,original.url);assert.equal(f.calls[2].init.body,original.init.body);
+  f.calls[2].resolve(f.response(401));await tick();
+});

@@ -258,3 +258,22 @@ test('Mixed notebook legacy errors, held feedback and replay preserve exact prac
   const {phoneLibraryStudyProof}=await import('./phone-library.mjs');
   observations.push(await phoneLibraryStudyProof());
 });
+
+test('Owner CLI explicitly saves and reads a prompt-bound draft without grading', async t => {
+  const f=await fixture(t,false);
+  const initial=(await f.cli(['next','--study',f.sid])).practice;
+  const pid=initial.prompt.id, op=randomUUID(), before=await f.rows();
+  const saved=await f.cli(['save-draft',pid,'--generation','0','--text-stdin','--operation-id',op],'Synthetic checkpoint');
+  assert.equal(saved.practice.draft_generation,1);
+  assert.ok(!JSON.stringify(saved).includes('Synthetic checkpoint'),'The mutation receipt does not disclose text.');
+  const read=await f.cli(['draft']);assert.equal(read.generation,1);assert.equal(read.draft.answer,'Synthetic checkpoint');
+  assert.equal(read.draft.prompt_id,pid);
+  const after=await f.rows();
+  assert.equal(after.filter(r=>r.key.startsWith('practice_attempts/')).length,before.filter(r=>r.key.startsWith('practice_attempts/')).length);
+  await f.cli(['save-draft',pid,'--generation','0','--text-stdin','--operation-id',op],'Synthetic checkpoint');
+  assert.equal((await f.cli(['draft'])).generation,1);
+  await f.cli(['save-draft',pid,'--generation','0','--text-stdin'], 'Stale text', 1);
+  assert.equal((await f.cli(['draft'])).draft.answer,'Synthetic checkpoint');
+  await f.cli(['answer',pid,'--text-stdin'], 'Actual answer');
+  assert.equal((await f.cli(['draft'])).draft,null);
+});

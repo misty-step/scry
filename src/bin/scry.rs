@@ -250,6 +250,9 @@ mod cli {
             };
             return request(&client, &login, &resource_path(resource, &args[2])?, None);
         }
+        if args.as_slice() == ["draft"] {
+            return request(&client, &login, "/api/v1/draft", None);
+        }
         if args.as_slice() == ["study", "list"] {
             return request(&client, &login, "/api/v1/studies", None);
         }
@@ -341,6 +344,40 @@ mod cli {
                 );
             }
             return request(&client, &login, "/api/v1/next", Some(&payload));
+        }
+        if args.first().is_some_and(|a| a == "save-draft") {
+            let generation = option(&mut args, "--generation")?
+                .ok_or("Use --generation NUMBER.")?
+                .parse::<u64>()
+                .map_err(|_| "Use a numeric draft generation.")?;
+            let file = option(&mut args, "--text-file")?;
+            let stdin = flag(&mut args, "--text-stdin");
+            if args.len() != 2 || file.is_some() == stdin {
+                return Err(
+                    "Usage: scry save-draft PROMPT --generation N --text-file PATH|--text-stdin [--operation-id ID]",
+                );
+            }
+            let answer = if let Some(path) = file {
+                fs::read_to_string(path).map_err(|_| "Cannot read UTF-8 answer file.")?
+            } else {
+                let mut text = String::new();
+                std::io::stdin()
+                    .take(32769)
+                    .read_to_string(&mut text)
+                    .map_err(|_| "Cannot read answer.")?;
+                text
+            };
+            if answer.len() > 32768 {
+                return Err("Keep your answer under 32 KiB.");
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/draft",
+                Some(
+                    &json!({"operation_id":operation,"prompt_id":args[1],"generation":generation,"answer":answer}),
+                ),
+            );
         }
         if args.first().is_some_and(|a| a == "answer") {
             let file = option(&mut args, "--text-file")?;
@@ -525,7 +562,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|draft|save-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

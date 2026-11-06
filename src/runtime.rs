@@ -516,6 +516,13 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         }
         return api_json(&json!({"version": 1, "scope": scope}), 200);
     }
+    // Saving learner text is an enhanced-only action: do not buffer a body or
+    // contact the object without the page's original scope precondition.
+    if req.path() == "/practice/draft"
+        && req.headers().get("X-Scry-Request")?.as_deref() != Some("page")
+    {
+        return private(Response::error("Authenticated page required.", 403)?);
+    }
     if req.headers().has("X-Scry-Request")?
         && req.headers().get("X-Scry-Expected-Scope")?.as_deref() != Some(scope.as_str())
     {
@@ -1419,6 +1426,7 @@ impl DurableObject for LearningSpace {
                             | "/library/mapping/add"
                             | "/practice/nato/start"
                             | "/practice/lesson/start"
+                            | "/practice/draft"
                     ) || path.ends_with("/edit"))
                     && let Err(e) = persistence::archive_size(&app)
                 {
@@ -1440,27 +1448,29 @@ impl DurableObject for LearningSpace {
                         self.preparation_ready(),
                     );
                 }
-                match self.save_typed(&mut app, Some(before)) {
-                    Ok(()) => {}
-                    Err(SaveError::Worker(error)) => return Err(error),
-                    Err(SaveError::App(error)) => {
-                        let retained = self.load()?;
-                        if let Some(key) = photo_key
-                            && !retained
-                                .goals
-                                .values()
-                                .any(|g| g.photo.as_ref().is_some_and(|p| p.key == key))
-                        {
-                            let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
+                if path != "/practice/draft" || !replayed {
+                    match self.save_typed(&mut app, Some(before)) {
+                        Ok(()) => {}
+                        Err(SaveError::Worker(error)) => return Err(error),
+                        Err(SaveError::App(error)) => {
+                            let retained = self.load()?;
+                            if let Some(key) = photo_key
+                                && !retained
+                                    .goals
+                                    .values()
+                                    .any(|g| g.photo.as_ref().is_some_and(|p| p.key == key))
+                            {
+                                let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
+                            }
+                            return render_error(
+                                &self.env,
+                                &retained,
+                                &path,
+                                &fields,
+                                error,
+                                self.preparation_ready(),
+                            );
                         }
-                        return render_error(
-                            &self.env,
-                            &retained,
-                            &path,
-                            &fields,
-                            error,
-                            self.preparation_ready(),
-                        );
                     }
                 }
                 if path == "/settings/backup" {
@@ -1590,7 +1600,8 @@ impl LearningSpace {
         if read
             && matches!(
                 path.as_str(),
-                "/api/v1/spend"
+                "/api/v1/draft"
+                    | "/api/v1/spend"
                     | "/api/v1/due"
                     | "/api/v1/history"
                     | "/api/v1/export"
@@ -1612,6 +1623,13 @@ impl LearningSpace {
                         Err(error) => api_error(error),
                     }
                 }
+                "/api/v1/draft" => api_json(
+                    &json!({
+                        "generation": app.practice.answer_checkpoint.as_ref().map_or(0, |c| c.generation),
+                        "draft": app.practice.answer_checkpoint.as_ref().and_then(|c| c.draft.as_ref())
+                    }),
+                    200,
+                ),
                 "/api/v1/due" => api_json(&crate::study::due(&app, now()), 200),
                 "/api/v1/studies" => api_json(&json!({"studies":app.practice.studies}), 200),
                 "/api/v1/history" => match crate::study::history(&app) {
@@ -1744,10 +1762,12 @@ impl LearningSpace {
         if let Err(error) = persistence::archive_size(&app) {
             return api_error(error);
         }
-        match self.save_typed(&mut app, Some(before)) {
-            Ok(()) => {}
-            Err(SaveError::App(error)) => return api_error(error),
-            Err(SaveError::Worker(error)) => return Err(error),
+        if canonical_path != "/practice/draft" || !replayed {
+            match self.save_typed(&mut app, Some(before)) {
+                Ok(()) => {}
+                Err(SaveError::App(error)) => return api_error(error),
+                Err(SaveError::Worker(error)) => return Err(error),
+            }
         }
         // Token creation is the only response containing a secret. Its receipt never does.
         let created = canonical_path == "/tokens/create";

@@ -247,8 +247,20 @@ pub struct Correction {
     pub before: CardState,
     pub after: CardState,
 }
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct AnswerCheckpoint {
+    pub generation: u64,
+    pub draft: Option<SavedAnswer>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct SavedAnswer {
+    pub prompt_id: String,
+    pub answer: String,
+}
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct Practice {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer_checkpoint: Option<AnswerCheckpoint>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub mixed_review: bool,
     pub studies: BTreeMap<String, Study>,
@@ -259,7 +271,8 @@ pub struct Practice {
 }
 impl Practice {
     pub fn is_empty(&self) -> bool {
-        !self.mixed_review
+        self.answer_checkpoint.is_none()
+            && !self.mixed_review
             && self.studies.is_empty()
             && self.cards.is_empty()
             && self.attempts.is_empty()
@@ -1960,6 +1973,62 @@ pub fn mutate(
     seed: &str,
 ) -> AppResult<MutationResult> {
     match path {
+        "/practice/draft" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "prompt_id" | "generation" | "answer"
+                )
+            }) {
+                return Err(AppError::new(
+                    422,
+                    "Save only your answer and its draft generation.",
+                ));
+            }
+            let current = active(app, fields, false)?;
+            if current.phase == Some(StudyPhase::Study) {
+                return Err(AppError::conflict());
+            }
+            let expected = field(fields, "generation")
+                .parse::<u64>()
+                .map_err(|_| AppError::new(422, "A draft generation is required."))?;
+            let current_generation = app
+                .practice
+                .answer_checkpoint
+                .as_ref()
+                .map_or(0, |s| s.generation);
+            if expected != current_generation {
+                return Err(AppError::conflict());
+            }
+            let answer = fields
+                .get("answer")
+                .ok_or_else(|| AppError::new(422, "An answer is required."))?;
+            if answer.len() > 32768 {
+                return Err(AppError::new(422, "Keep your answer under 32 KiB."));
+            }
+            if answer.contains(['\r', '\0'])
+                || (current.prompt.cue_level == Cue::MappingKey && answer.contains('\n'))
+            {
+                return Err(AppError::new(
+                    422,
+                    "This draft contains characters the answer field cannot preserve. Your text is still editable.",
+                ));
+            }
+            let generation = current_generation
+                .checked_add(1)
+                .ok_or_else(AppError::conflict)?;
+            app.practice.answer_checkpoint = Some(AnswerCheckpoint {
+                generation,
+                draft: Some(SavedAnswer {
+                    prompt_id: current.prompt.id.clone(),
+                    answer: answer.clone(),
+                }),
+            });
+            Ok(response(
+                None,
+                json!({"draft_generation": generation, "prompt_id": current.prompt.id}),
+            ))
+        }
         "/practice/quiz" => quiz(app, fields, now, seed),
         "/practice/study/start" => study_start(app, fields, now, seed),
         "/practice/review/start" => mixed_next(app, fields, now, seed, true),
@@ -2329,6 +2398,50 @@ pub fn receipt_entity(app: &App, r: &Receipt, id: &str) -> bool {
 pub fn validate(app: &App) -> AppResult<()> {
     let fail = || AppError::new(422, "Invalid Study practice history or projection.");
     let p = &app.practice;
+    if let Some(checkpoint) = &p.answer_checkpoint
+        && (checkpoint.generation == 0
+            || checkpoint.draft.as_ref().is_some_and(|draft| {
+                draft.answer.len() > 32768
+                    || p.current.as_ref().is_none_or(|current| {
+                        current.prompt.id != draft.prompt_id || current.attempt_id.is_some()
+                    })
+            }))
+    {
+        return Err(fail());
+    }
+    let mut checkpoint_generations = BTreeSet::new();
+    for receipt in app
+        .operations
+        .values()
+        .filter(|receipt| receipt.path.as_deref() == Some("/practice/draft"))
+    {
+        let data = receipt
+            .result
+            .data
+            .as_ref()
+            .and_then(Value::as_object)
+            .ok_or_else(fail)?;
+        let generation = data
+            .get("draft_generation")
+            .and_then(Value::as_u64)
+            .ok_or_else(fail)?;
+        let prompt = data
+            .get("prompt_id")
+            .and_then(Value::as_str)
+            .ok_or_else(fail)?;
+        if data.len() != 2
+            || !valid_id(prompt)
+            || generation == 0
+            || p.answer_checkpoint
+                .as_ref()
+                .is_none_or(|checkpoint| generation > checkpoint.generation)
+            || !checkpoint_generations.insert(generation)
+            || receipt.result.entity_id.is_some()
+            || receipt.result.message.is_some()
+        {
+            return Err(fail());
+        }
+    }
     let mut versions = BTreeSet::new();
     for (sid, s) in &p.studies {
         let v = app.library.versions.get(&s.version_id).ok_or_else(fail)?;

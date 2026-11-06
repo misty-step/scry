@@ -989,3 +989,14 @@ fn continuous_home_has_one_study_action_and_closed_browse_without_writes() {
     assert!(!html.contains("Rest for now"));
     assert_eq!(serde_json::to_value(&app).unwrap(), before);
 }
+
+#[test]
+fn checkpoint_control_is_not_added_to_legacy_review_forms() {
+    let mut app = fixture();
+    let occurrence = app.occurrence.as_mut().unwrap();
+    occurrence.phase = "question".into();
+    occurrence.presentation.kind = "recall".into();
+    let html = web::render(&app, "/notebook", &query("legacy-checkpoint"), NOW, None);
+    assert!(html.contains("action=\"/review/answer\""));
+    assert!(!html.contains("data-checkpoint-save"));
+}

@@ -206,6 +206,14 @@ not completion while eligible unseen or unfinished material exists.
   explicit fenced Study/Next advances; operation replay reproduces one committed
   selection without duplicate enrollment or cards. Native grading, assisted learning,
   source privacy and safety-bearing baby-care cues remain unchanged.
+  An explicit Save draft checkpoints acknowledged text for the exact unanswered
+  Prompt in the notebook; anyone with that notebook's owner/token authority can
+  read it. Saving never grades, advances, schedules, or invokes a provider.
+  Competing saves use a draft generation, and exact operation replay is safe.
+  A committed answer or deliberate Prompt replacement clears the checkpoint.
+  Only acknowledged text can be relied on as durable; a lost response may have
+  committed and requires reconciliation. Automatic retention of unsaved
+  keystrokes remains an open part of STUDY-04.
 - **STUDY-05:** When no eligible work remains, show Rest for now and Browse, not
   invented completion or a misleading future-review countdown. Material beyond
   native grading capacity remains in Library rather than poisoning continuous entry.

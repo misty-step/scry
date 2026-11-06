@@ -55,7 +55,19 @@ export async function lessonWalk(browser,capture){
    const activate=locator=>width<1000?locator.tap():locator.click();const shot=async name=>{assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);row.evidence.push(await capture(page,`lesson-${width}-${noJS?'native':'enhanced'}-${name}.png`));};
    await page.goto(f.origin+'/lessons');await shot('shelf');
    await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="rosary-joyful"]')}).locator('button'));
-   await page.locator('#answer').waitFor();await page.locator('#answer').fill('Annunciation\nNativity');
+   await page.locator('#answer').waitFor();const beforeTyped=await f.rows();await page.locator('#answer').fill('Annunciation\nNativity');assert.deepEqual(await f.rows(),beforeTyped,'Typing alone never saves or creates evidence.');
+   if(!noJS){
+    await page.locator('#answer').fill('\nAnnunciation\nNativity');
+    const promptBefore=current(await f.rows()).prompt.id;
+    const countBefore=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
+    await activate(page.getByRole('button',{name:'Save draft',exact:true}));
+    await page.getByText('Save confirmed. The latest notebook state is shown.',{exact:true}).waitFor();
+    await page.reload();
+    assert.equal(await page.locator('#answer').inputValue(),'\nAnnunciation\nNativity');
+    assert.equal(current(await f.rows()).prompt.id,promptBefore);
+    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,countBefore);
+    await page.locator('#answer').fill('Annunciation\nNativity');
+   } else { assert.equal(await page.getByRole('button',{name:'Save draft',exact:true}).count(),0); }
    const saved=current(await f.rows());await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('#answer').inputValue(),'Annunciation\nNativity');assert.deepEqual(current(await f.rows()),saved);await shot('sequence-draft');
    assert.equal(await page.locator('[data-current-lesson="rosary-joyful"]').count(),1);
    assert.equal(await page.locator('[data-picker-close]').isVisible(),!noJS,'The enhanced return control is hidden without JavaScript.');
