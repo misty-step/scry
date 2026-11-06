@@ -81,6 +81,16 @@ export async function lessonWalk(browser,capture){
    if(!noJS&&width===1280){await page.locator('#answer').fill('First typed phrase');await page.locator('#answer').press('Enter');assert.equal(await page.locator('[data-state="exact-result"]').count(),0,'Full text Enter inserts a line, not a grade.');}
    const beforeLeave=await f.rows(),attemptCount=Object.keys(beforeLeave).filter(k=>k.startsWith('practice_attempts/')).length;
    await page.locator('#answer').fill('Unfinished synthetic draft');await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('#answer').inputValue(),'Unfinished synthetic draft');assert.deepEqual(current(await f.rows()),current(beforeLeave));
+   if(!noJS){
+    const prompt=await page.locator('form[action="/practice/answer"] input[name="prompt_id"]').inputValue();
+    const operation=await page.locator('form[action="/practice/answer"] input[name="operation_id"]').inputValue();
+    const switchDialog=page.waitForEvent('dialog');const cancelled=activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="nato"]')}).locator('button'));
+    const confirmation=await switchDialog;assert.equal(confirmation.type(),'confirm');await confirmation.dismiss();await cancelled;
+    assert.equal(await page.locator('#answer').inputValue(),'Unfinished synthetic draft');
+    assert.equal(await page.locator('form[action="/practice/answer"] input[name="prompt_id"]').inputValue(),prompt);
+    assert.equal(await page.locator('form[action="/practice/answer"] input[name="operation_id"]').inputValue(),operation);
+    assert.deepEqual(current(await f.rows()),current(beforeLeave));
+   }
    if(!noJS&&width===390){
     await context.setOffline(true);
     await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="nato"]')}).locator('button'));
@@ -89,6 +99,7 @@ export async function lessonWalk(browser,capture){
     await context.setOffline(false);
     await page.route('**/practice/lesson/start',async route=>{await route.fetch();await route.abort('failed');});
    }
+   if(!noJS)page.once('dialog',dialog=>dialog.accept());
    await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="nato"]')}).locator('button'));
    if(!noJS&&width===390){
     await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).waitFor();
@@ -105,6 +116,7 @@ export async function lessonWalk(browser,capture){
    await page.goto(f.origin+'/library');assert.equal(await page.locator('#nato-starter').count(),0);assert.equal(await page.locator('footer').count(),0);await shot('library');
    await activate(page.locator('.version-link').first());await page.locator('[data-state="library-version"]').waitFor();assert.equal(await page.locator('.version-details').getAttribute('open'),null);await shot('version');
    await page.goto(f.origin+'/history');assert.equal(await page.locator('h1').innerText(),'History');await shot('history');
+   if(!noJS){await page.goBack();await page.locator('[data-state="library-version"]').waitFor();await page.goForward();assert.equal(await page.locator('h1').innerText(),'History');}
    await page.goto(f.origin+'/settings');assert.equal(await page.locator('h1').innerText(),'Settings');assert.equal(await page.locator('#owner-tokens').getAttribute('open'),null);await shot('settings');
    await activate(page.locator('#owner-tokens > summary'));assert.equal(await page.locator('#token-name').isVisible(),true);await shot('settings-access');await activate(page.locator('#owner-tokens > summary'));
    assert.deepEqual(errors,[]);assert.equal(f.egress,0);

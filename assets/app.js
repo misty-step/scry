@@ -56,6 +56,7 @@
     return parsed.scope;
   };
   const dirtyForms = new WeakSet();
+  const unsentAnswer = () => [...document.querySelectorAll('form.answer-form textarea[name=answer], form.answer-form input[type=text][name=answer]')].find(input => !input.disabled && input.value.length > 0);
   document.addEventListener('input', event => { if (event.target.form) dirtyForms.add(event.target.form); });
   document.addEventListener('change', event => { if (event.target.form) dirtyForms.add(event.target.form); });
   const status = () => document.getElementById('request-status');
@@ -173,12 +174,17 @@
   const send = async request => {
     if (request.sending || suspended || inactive() || !scoped) return;
     if (!navigator.onLine) {
+      if (!request.attempted && pending === request) {
+        pending = null;
+      }
       announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.');
       return;
     }
     request.sending = true;
     if (!request.inputLocks) {
-      request.inputLocks = [...(request.form?.querySelectorAll('textarea,input:not([type=hidden]),select') || [])].map(input => [input, input.readOnly, input.disabled]);
+      const inputs = [...(request.form?.querySelectorAll('textarea,input:not([type=hidden]),select') || [])];
+      if (request.departureDraft && !inputs.includes(request.departureDraft)) inputs.push(request.departureDraft);
+      request.inputLocks = inputs.map(input => [input, input.readOnly, input.disabled]);
       request.inputLocks.forEach(([input]) => { if ('readOnly' in input && input.type !== 'file' && input.type !== 'radio' && input.type !== 'checkbox') input.readOnly = true; else input.disabled = true; });
     }
     request.form?.setAttribute('aria-busy', 'true');
@@ -192,6 +198,7 @@
     const valid = () => pending === request && request.flight === flight && sequence === pageSequence && current(generation, flight);
     const timer = setTimeout(() => controller.abort(), 20000);
     try {
+      request.attempted = true;
       const response = await fetch(request.action, {
         method: 'POST', body: request.data, credentials: 'same-origin', redirect: 'follow',
         headers: { Accept: 'text/html', 'X-Scry-Request': 'page', ...expectedHeaders }, signal: controller.signal
@@ -276,12 +283,24 @@
     const answerLimit = Number(form.dataset.answerLimit || 4000);
     if (form.classList.contains('answer-form') && answer && new TextEncoder().encode(answer.value).length > answerLimit) { announce(`Keep your answer under ${answerLimit.toLocaleString('en-US')} bytes. Your draft is still here.`); return; }
     const submitter = event.submitter;
+    const draft = unsentAnswer();
+    if (draft && draft.form !== form) {
+      const poll = pollRequest;
+      pollRequest = null;
+      poll?.abort();
+      if (!window.confirm('Leave this answer? It will not be saved.')) return;
+      if (disposed || suspended || inactive() || pending || !form.isConnected) return;
+      if (!navigator.onLine) {
+        announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.');
+        return;
+      }
+    }
     const previousPoll = pollRequest;
     pollRequest = null;
     previousPoll?.abort();
     const data = new FormData(form);
     if (submitter?.name) data.append(submitter.name, submitter.value);
-    pending = { form, data, action: submitter?.hasAttribute('formaction') ? submitter.formAction : form.action };
+    pending = { form, data, action: submitter?.hasAttribute('formaction') ? submitter.formAction : form.action, departureDraft: draft && draft.form !== form ? draft : null };
     send(pending);
   });
   document.addEventListener('click', event => {
