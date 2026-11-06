@@ -47,7 +47,7 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
       return { title: 'Synthetic page', documentElement: { dataset: { notebookScope: found?.[1] } }, querySelector(selector) { if (selector === '#main') return main; return selector === '.notice, .empty-stage .lede' ? {textContent:'Synthetic rejection'} : {}; }, querySelectorAll() { return []; } };
     }
   }
-  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; form.onFormData?.(); } append() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: { pushState() {} }, console };
+  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; form.onFormData?.(); } append() {} delete() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: { pushState() {} }, console };
   if (nativeTransport) context.fetch = undefined;
   vm.runInNewContext(script, context);
   const emit = (type, event = {}) => (listeners[type] || []).forEach(f => f(event));
@@ -518,4 +518,44 @@ test('offline reconciliation retains the original previously sent operation', as
   actions = f.status.children.flatMap(n => n.children || []); actions.find(n => n.textContent === 'Reconcile this attempt').click();
   assert.equal(f.calls.length, 3); assert.equal(f.calls[2].init.body, original.init.body);
   f.calls[2].resolve(f.response(401)); await tick();
+});
+
+test('checkpoint acknowledgment is cleared when the answer is edited again', async () => {
+  const f = fixture(); const { form, answer } = practiceDraft(f);
+  form.querySelector = selector => selector === '[data-checkpoint-generation]' ? {dataset:{generation:'0'}} : selector.includes('answer') ? answer : null;
+  const submitter = { formAction: 'https://scry.test/practice/draft', hasAttribute: key => key === 'formaction' || key === 'data-checkpoint-save' };
+  f.emit('submit', { target: form, submitter, preventDefault() {} });
+  assert.equal(f.calls.length,1); assert.equal(f.calls[0].url,'https://scry.test/practice/draft');
+  const response=f.response(200, `<html data-notebook-scope="${scope}"><main></main></html>`, { 'x-scry-scope':scope, 'content-type':'text/html' });
+  response.url='https://scry.test/';f.calls[0].resolve(response);await tick();
+  assert.equal(f.status.hidden,false);assert.match(f.status.children[0].textContent,/Save confirmed/);
+  answer.value='edited after save';f.emit('input',{target:answer});assert.equal(f.status.hidden,true);
+});
+
+test('an uncertain checkpoint is frozen and reconciled only as the same save', async () => {
+  const f = fixture(); const { form, answer } = practiceDraft(f);
+  form.querySelectorAll = selector => selector.startsWith('textarea') ? [answer] : [];
+  form.querySelector = selector => selector === '[data-checkpoint-generation]' ? {dataset:{generation:'0'}} : selector.includes('answer') ? answer : null;
+  const submitter = { formAction:'https://scry.test/practice/draft', hasAttribute:key=>key==='formaction'||key==='data-checkpoint-save' };
+  f.emit('submit',{target:form,submitter,preventDefault(){}});const original=f.calls[0];
+  original.resolve(f.response(503));await tick();f.calls[1].resolve(f.response(200));await tick();
+  assert.equal(f.calls.length,2);assert.equal(answer.readOnly,true);
+  const reconcile=f.status.children.flatMap(n=>n.children||[]).find(n=>n.textContent==='Reconcile this save');
+  assert.ok(reconcile);reconcile.click();assert.equal(f.calls.length,3);
+  assert.equal(f.calls[2].url,original.url);assert.equal(f.calls[2].init.body,original.init.body);
+  f.calls[2].resolve(f.response(401));await tick();
+});
+
+
+test('discard cancellation preserves the answer and an uncertain discard reconciles exactly', async()=>{
+  const f=fixture();const {form,answer}=practiceDraft(f);
+  form.querySelectorAll=selector=>selector.startsWith('textarea')?[answer]:[];
+  form.querySelector=selector=>selector==='[data-checkpoint-generation]'?{dataset:{generation:'1'}}:selector.includes('answer')?answer:null;
+  const submitter={formAction:'https://scry.test/practice/draft/discard',hasAttribute:key=>key==='formaction'||key==='data-checkpoint-discard'};
+  f.emit('submit',{target:form,submitter,preventDefault(){}});assert.equal(f.calls.length,0);assert.equal(answer.value,'unfinished synthetic answer');
+  f.window.confirmResult=true;f.emit('submit',{target:form,submitter,preventDefault(){}});const original=f.calls[0];assert.equal(answer.readOnly,true);
+  original.resolve(f.response(503));await tick();f.calls[1].resolve(f.response(200));await tick();
+  const reconcile=f.status.children.flatMap(n=>n.children||[]).find(n=>n.textContent==='Reconcile this discard');assert.ok(reconcile);
+  assert.equal(f.calls.length,2);assert.match(f.status.children[1].textContent,/does not send or grade your answer/);reconcile.click();assert.equal(f.calls[2].init.body,original.init.body);assert.equal(f.calls[2].url,original.url);
+  f.calls[2].resolve(f.response(401));await tick();
 });

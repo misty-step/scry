@@ -18,7 +18,13 @@ export async function lessonJourney(){
   await f.get('/lessons');assert.deepEqual(await f.rows(),initial,'Browsing never imports or schedules.');
   const start=selectedFields(shelf,'/practice/lesson/start','starter','rosary-joyful');
   for(const override of [{grade:'Good'},{answer:'known'},{pace:'intense'}]) {const before=await f.rows();assert.equal((await f.post('/practice/lesson/start',{...start,...override,operation_id:randomUUID()})).status,422);assert.deepEqual(await f.rows(),before);}
-  await submit(f,'/practice/lesson/start',start);const prompt=await f.get('/'),held=await f.rows();assert.equal(current(held).prompt.scope.kind,'whole');assert.equal(current(held).prompt.assisted,false);assert.doesNotMatch(prompt,/Annunciation|Visitation/);
+  await submit(f,'/practice/lesson/start',start);let prompt=await f.get('/');let held=await f.rows();assert.equal(current(held).prompt.scope.kind,'whole');assert.equal(current(held).prompt.assisted,false);assert.doesNotMatch(prompt,/Annunciation|Visitation/);
+  const checkpoint={...nativeFields(prompt,'/practice/answer'),generation:'0',answer:'\nFirst line\nSecond line'};
+  const scope=JSON.parse(await f.get('/session/scope')).scope;const saved=await f.postScoped('/practice/draft',scope,checkpoint);assert.equal(saved.status,303,await saved.text());
+  held=await f.rows();assert.equal(held.meta.practice.answer_checkpoint.draft.answer,checkpoint.answer,'Multipart form newline normalization preserves the textarea value.');
+  assert.equal(Object.keys(held).filter(k=>k.startsWith('practice_attempts/')).length,0);
+  assert.equal((await f.postScoped('/practice/draft',scope,checkpoint)).status,303);assert.deepEqual((await f.rows()).meta.practice,held.meta.practice,'Exact multipart replay does not change the checkpoint.');
+  prompt=await f.get('/');assert.match(prompt,/\n\nFirst line\nSecond line<\/textarea>/);
   const browse=await f.get('/lessons');assert.doesNotMatch(browse,/Annunciation|Visitation/);assert.deepEqual((await f.rows()).meta.practice,held.meta.practice);assert.deepEqual(domain(await f.rows()),domain(held));
   await submit(f,'/practice/answer',{...nativeFields(prompt,'/practice/answer'),answer:'Annunciation\nNativity\nPresentation\nFinding in the Temple'});
   let result=await f.get('/');assert.match(result,/data-verdict="Again"/);assert.match(result,/4 of 5 (?:mysteries|items) recalled/);
@@ -55,7 +61,27 @@ export async function lessonWalk(browser,capture){
    const activate=locator=>width<1000?locator.tap():locator.click();const shot=async name=>{assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);row.evidence.push(await capture(page,`lesson-${width}-${noJS?'native':'enhanced'}-${name}.png`));};
    await page.goto(f.origin+'/lessons');await shot('shelf');
    await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="rosary-joyful"]')}).locator('button'));
-   await page.locator('#answer').waitFor();await page.locator('#answer').fill('Annunciation\nNativity');
+   await page.locator('#answer').waitFor();const beforeTyped=await f.rows();await page.locator('#answer').fill('Annunciation\nNativity');assert.deepEqual(await f.rows(),beforeTyped,'Typing alone never saves or creates evidence.');
+   if(!noJS){
+    await page.locator('#answer').fill('\nAnnunciation\nNativity');
+    const promptBefore=current(await f.rows()).prompt.id;
+    const countBefore=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
+    await activate(page.getByRole('button',{name:'Save draft',exact:true}));
+    await page.getByText('Save confirmed. The latest notebook state is shown.',{exact:true}).waitFor();
+    await page.reload();
+    assert.equal(await page.locator('#answer').inputValue(),'\nAnnunciation\nNativity');
+    assert.equal(current(await f.rows()).prompt.id,promptBefore);
+    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,countBefore);
+    const cancelledDialog=page.waitForEvent('dialog');const cancelDiscard=activate(page.getByRole('button',{name:'Discard saved draft',exact:true}));
+    await (await cancelledDialog).dismiss();await cancelDiscard;
+    assert.equal(await page.locator('#answer').inputValue(),'\nAnnunciation\nNativity');
+    const discardDialog=page.waitForEvent('dialog');const discard=activate(page.getByRole('button',{name:'Discard saved draft',exact:true}));
+    await (await discardDialog).accept();await discard;
+    await page.getByText('Discard confirmed. The latest notebook state is shown.',{exact:true}).waitFor();
+    assert.equal(await page.locator('#answer').inputValue(),'');assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft,null);
+    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,countBefore);
+    await page.locator('#answer').fill('Annunciation\nNativity');
+   } else { assert.equal(await page.getByRole('button',{name:'Save draft',exact:true}).count(),0); }
    const saved=current(await f.rows());await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('#answer').inputValue(),'Annunciation\nNativity');assert.deepEqual(current(await f.rows()),saved);await shot('sequence-draft');
    assert.equal(await page.locator('[data-current-lesson="rosary-joyful"]').count(),1);
    assert.equal(await page.locator('[data-picker-close]').isVisible(),!noJS,'The enhanced return control is hidden without JavaScript.');

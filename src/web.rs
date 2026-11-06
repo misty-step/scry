@@ -156,6 +156,15 @@ impl View<'_> {
     fn resume_link(&self) -> &'static str {
         "<a class=\"text-link\" href=\"/settings#preparation\">Resume meaning checks →</a>"
     }
+    fn saved_answer(&self, prompt_id: &str) -> &str {
+        self.app
+            .practice
+            .answer_checkpoint
+            .as_ref()
+            .and_then(|checkpoint| checkpoint.draft.as_ref())
+            .filter(|draft| draft.prompt_id == prompt_id)
+            .map_or("", |draft| draft.answer.as_str())
+    }
     fn form(&self, action: &str, suffix: &str, class: &str, extra: &str, body: &str) -> String {
         let nonce = self.query.get("__nonce").map(String::as_str).unwrap_or("");
         let identity = format!(
@@ -163,8 +172,24 @@ impl View<'_> {
             self.now, self.app.revision, self.path
         );
         let operation = hex::encode(Sha256::digest(identity.as_bytes()));
+        let checkpoint = if action == "/practice/answer"
+            && class.split_whitespace().any(|c| c == "answer-form")
+        {
+            let generation = self
+                .app
+                .practice
+                .answer_checkpoint
+                .as_ref()
+                .map_or(0, |checkpoint| checkpoint.generation);
+            let discard = self.app.practice.answer_checkpoint.as_ref().and_then(|checkpoint| checkpoint.draft.as_ref()).map_or("", |_| "<input type=\"submit\" class=\"button\" formaction=\"/practice/draft/discard\" formnovalidate data-checkpoint-discard value=\"Discard saved draft\" hidden>");
+            format!(
+                "<input type=\"submit\" class=\"button\" formaction=\"/practice/draft\" data-checkpoint-save value=\"Save draft\" hidden>{discard}<p data-checkpoint-custody hidden>Saved drafts are visible to anyone with access to this notebook.</p><span hidden data-checkpoint-generation data-generation=\"{generation}\"></span>"
+            )
+        } else {
+            String::new()
+        };
         format!(
-            "<form method=\"post\" action=\"{}\" class=\"{}\" {}>{}{}{}{body}</form>",
+            "<form method=\"post\" action=\"{}\" class=\"{}\" {}>{}{}{}{body}{checkpoint}</form>",
             escape(action),
             escape(class),
             extra,
@@ -702,10 +727,15 @@ impl View<'_> {
                 out.push_str("</section>");
             }
             let mapping = prompt.cue_level == crate::study::Cue::MappingKey;
+            let saved = escape(self.saved_answer(&prompt.id));
             let answer = if mapping {
-                "<label class=\"answer-label\" for=\"answer\">Type your answer</label><input id=\"answer\" name=\"answer\" type=\"text\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\">"
+                format!(
+                    "<label class=\"answer-label\" for=\"answer\">Type your answer</label><input id=\"answer\" name=\"answer\" type=\"text\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\" value=\"{saved}\">"
+                )
             } else {
-                "<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\"></textarea>"
+                format!(
+                    "<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\">\n{saved}</textarea>"
+                )
             };
             out.push_str(&self.form(
                 "/practice/answer",
@@ -1854,7 +1884,7 @@ impl View<'_> {
             if p.prompt.assisted || p.revealed {
                 out.push_str("<p class=\"lesson-note\">Guided · with help</p>");
             }
-            out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus></textarea><button class=\"button primary\">Check answer</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""})));
+            out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus>\n{}</textarea><button class=\"button primary\">Check answer</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""},escape(self.saved_answer(&p.prompt.id)) )));
             if (!p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz))
                 && !matches!(p.prompt.cue_level, Cue::Read)
             {
@@ -2256,7 +2286,7 @@ impl View<'_> {
                 if p.revealed {
                     out.push_str("<p class=\"nato-note\">With help</p>");
                 }
-                out.push_str(&self.form("/practice/answer", "nato-answer", "nato-answer answer-form", "data-answer-limit=\"32768\"", &format!("{}<label class=\"visually-hidden\" for=\"answer\">Type your answer</label><input id=\"answer\" name=\"answer\" type=\"text\" aria-describedby=\"nato-letter nato-question\" placeholder=\"Code word\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\" autofocus><button class=\"button primary\">Check <kbd>Enter</kbd></button>", hidden("prompt_id", &prompt.id))));
+                out.push_str(&self.form("/practice/answer", "nato-answer", "nato-answer answer-form", "data-answer-limit=\"32768\"", &format!("{}<label class=\"visually-hidden\" for=\"answer\">Type your answer</label><input id=\"answer\" name=\"answer\" type=\"text\" aria-describedby=\"nato-letter nato-question\" placeholder=\"Code word\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"none\" autocorrect=\"off\" autocomplete=\"off\" value=\"{}\" autofocus><button class=\"button primary\">Check <kbd>Enter</kbd></button>", hidden("prompt_id", &prompt.id), escape(self.saved_answer(&prompt.id)))));
                 if !p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz) {
                     out.push_str(&self.practice_form(
                         "reveal",

@@ -1,0 +1,29 @@
+#!/bin/sh
+# Explicit synthetic release evidence; this is not invoked by the existing CI.
+set -eu
+: "${SCRY_CHECKPOINT_OLD_WORKER:?Set SCRY_CHECKPOINT_OLD_WORKER to the verified previous production Worker directory}"
+: "${SCRY_CHECKPOINT_SOURCE_SHA:?Set SCRY_CHECKPOINT_SOURCE_SHA to the exact authenticated PR merge commit}"
+: "${SCRY_CHECKPOINT_PR_BASE:?Set SCRY_CHECKPOINT_PR_BASE to the authenticated run base commit}"
+: "${SCRY_CHECKPOINT_PR_HEAD:?Set SCRY_CHECKPOINT_PR_HEAD to the authenticated run PR head commit}"
+: "${SCRY_CHECKPOINT_SOURCE_MANIFEST:?Set SCRY_CHECKPOINT_SOURCE_MANIFEST to the complete source hash manifest}"
+: "${SCRY_CHECKPOINT_CI_ZIP:?Set SCRY_CHECKPOINT_CI_ZIP to the authenticated candidate CI artifact ZIP}"
+: "${SCRY_CHECKPOINT_CI_SHA256:?Set SCRY_CHECKPOINT_CI_SHA256 to its independently authenticated SHA256}"
+: "${SCRY_CHECKPOINT_CI_RUN_ID:?Set SCRY_CHECKPOINT_CI_RUN_ID to the verified successful CI run}"
+case "$SCRY_CHECKPOINT_SOURCE_SHA" in *[!0-9a-f]*|'') echo 'Invalid source commit' >&2; exit 1;; esac
+[ "${#SCRY_CHECKPOINT_SOURCE_SHA}" -eq 40 ] || { echo 'Invalid source commit' >&2; exit 1; }
+printf 'CI merge commit: %s\n' "$SCRY_CHECKPOINT_SOURCE_SHA"
+python3 scripts/checkpoint-pr-merge "$SCRY_CHECKPOINT_SOURCE_SHA" "$SCRY_CHECKPOINT_PR_BASE" "$SCRY_CHECKPOINT_PR_HEAD"
+python3 scripts/checkpoint-manifest check "$SCRY_CHECKPOINT_SOURCE_MANIFEST" "$SCRY_CHECKPOINT_SOURCE_SHA"
+test -s "$SCRY_CHECKPOINT_OLD_WORKER/index.js"
+test -s "$SCRY_CHECKPOINT_OLD_WORKER/index_bg.wasm"
+checkpoint_fixture_dir=$(mktemp -d "${TMPDIR:-/tmp}/scry-checkpoint-compat.XXXXXXXX")
+trap 'rm -rf "$checkpoint_fixture_dir"' EXIT HUP INT TERM
+python3 scripts/checkpoint-ci-artifact "$SCRY_CHECKPOINT_CI_ZIP" "$SCRY_CHECKPOINT_CI_SHA256" "$SCRY_CHECKPOINT_SOURCE_SHA" "$SCRY_CHECKPOINT_CI_RUN_ID" "$checkpoint_fixture_dir/worker"
+export SCRY_WORKER_ARTIFACT="$checkpoint_fixture_dir/worker"
+export SCRY_CHECKPOINT_FIXTURE_DIR="$checkpoint_fixture_dir"
+cargo build --locked --bin scry
+sha256sum "$SCRY_WORKER_ARTIFACT/index.js" "$SCRY_WORKER_ARTIFACT/index_bg.wasm" target/debug/scry "$SCRY_CHECKPOINT_OLD_WORKER/index.js" "$SCRY_CHECKPOINT_OLD_WORKER/index_bg.wasm"
+printf '%s\n' 'Generating synthetic saved and cleared checkpoint fixtures'
+cargo test --locked --test checkpoint_contract export_synthetic_compatibility_fixtures_when_requested -- --ignored
+printf '%s\n' 'Checking exact previous Worker and compatible isolated restore'
+node --test qa/checkpoint-old-worker.test.mjs qa/checkpoint-recovery.test.mjs qa/checkpoint-cli-loss.test.mjs

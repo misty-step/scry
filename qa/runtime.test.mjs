@@ -77,6 +77,72 @@ try {
     const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
     assert.deepEqual(await storage.exec('SELECT key FROM records'),[]);
   });
+  await check('drafts stay in their authenticated notebook and shared QA actors use their own scope',async()=>{
+    const qaEmail='checkpoint-qa@agentmail.to';
+    const qaClaims={sub:'checkpoint-qa-person',email:qaEmail};
+    const qaToken=jwt(qaClaims), otherQaToken=jwt({...qaClaims,sub:'checkpoint-qa-other'}), ownerToken=jwt();
+    const bindings={...baseBindings,QA_EMAIL:qaEmail};
+    let fixtureCertRequests=0;
+    const fixtureEgress=async request=>{assert.equal(request.url,`https://${team}/cdn-cgi/access/certs`);fixtureCertRequests++;return new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}});};
+    const fixture=await createRuntime({bindings,name:'checkpoint-auth-isolation',artifact,egress:fixtureEgress,inspect:true});
+    const req=(path,token,init={})=>fixture.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':token,...init.headers}});
+    const post=(path,token,fields,extra={})=>req(path,token,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded',...extra},body:new URLSearchParams(fields)});
+    const fields=(html,path)=>{
+      const form=html.split('<form').find(x=>x.startsWith(` method="post" action="${path}"`))?.split('</form>')[0];
+      assert.ok(form,`missing ${path} form`);
+      return Object.fromEntries([...form.matchAll(/<input\b[^>]*name="(csrf|operation_id|revision|prompt_id)"[^>]*value="([^"]*)"/g)].map(m=>[m[1],m[2]]));
+    };
+    try {
+      const qaScope=(await (await req('/session/scope',qaToken)).json()).scope;
+      const otherScope=(await (await req('/session/scope',otherQaToken)).json()).scope;
+      const ownerScope=(await (await req('/session/scope',ownerToken)).json()).scope;
+      assert.equal(fixtureCertRequests,1,'The isolated fixture caches its own issuer keys.');
+      const start=await (await req('/?practice=nato',qaToken)).text();
+      assert.equal((await post('/practice/nato/start',qaToken,fields(start,'/practice/nato/start'))).status,303);
+      const question=await (await req('/?practice=nato',qaToken)).text();
+      const draft={...fields(question,'/practice/answer'),generation:'0',answer:'QA_CHECKPOINT_SYNTHETIC'};
+      const wrong=await post('/practice/draft',ownerToken,draft,{'X-Scry-Request':'page','X-Scry-Expected-Scope':qaScope});
+      assert.equal(wrong.status,409);assert.notEqual(qaScope,ownerScope);
+      assert.equal((await post('/practice/draft',qaToken,draft,{'X-Scry-Request':'page','X-Scry-Expected-Scope':qaScope})).status,303);
+      assert.match(await (await req('/?practice=nato',qaToken)).text(),/QA_CHECKPOINT_SYNTHETIC/);
+      assert.match(await (await req('/?practice=nato',otherQaToken)).text(),/QA_CHECKPOINT_SYNTHETIC/,'QA actors share the notebook rather than private partitions.');
+      assert.notEqual(qaScope,otherScope);
+      assert.doesNotMatch(await (await req('/?practice=nato',ownerToken)).text(),/QA_CHECKPOINT_SYNTHETIC/);
+      assert.equal((await post('/practice/draft',otherQaToken,draft,{'X-Scry-Request':'page','X-Scry-Expected-Scope':qaScope})).status,409);
+      const headers={'X-Scry-Request':'page','X-Scry-Expected-Scope':qaScope};
+      const left={...draft,operation_id:randomUUID(),generation:'1',answer:'RACE_LEFT'};
+      const right={...draft,operation_id:randomUUID(),generation:'1',answer:'RACE_RIGHT'};
+      const attempts=await Promise.all([post('/practice/draft',qaToken,left,headers),post('/practice/draft',qaToken,right,headers)]);
+      assert.deepEqual(attempts.map(r=>r.status).sort(),[303,409]);
+      const winner=attempts[0].status===303?left:right;
+      const store=await fixture.mf.unsafeGetDurableObjectStorage('checkpoint-auth-isolation','LearningSpace',{name:'scry-qa'});
+      const beforeReplay=await store.exec('SELECT key,value FROM records ORDER BY key');
+      assert.equal((await post('/practice/draft',qaToken,winner,headers)).status,303,'An exact retry reconciles the winner.');
+      assert.deepEqual(await store.exec('SELECT key,value FROM records ORDER BY key'),beforeReplay,'Reconciliation does not write another revision or receipt.');
+      const saved=await (await req('/?practice=nato',qaToken)).text(); assert.ok(saved.includes(winner.answer));
+      const attemptRows=await store.exec("SELECT key FROM records WHERE key LIKE 'practice_attempts/%'");
+      assert.equal(attemptRows.length,0,'Saving and replaying drafts never grade or create attempts.');
+      // Test-owned receipts fill the complete-archive budget using individually
+      // bounded rows; a refused save must retain the prior checkpoint exactly.
+      const filler=JSON.stringify({acting_token:null,path:null,created_ms:null,payload_hash:'a'.repeat(64),result:{redirect:'/',entity_id:null,message:null,data:{synthetic:'x'.repeat(900000)}}});
+      for(let i=0;i<19;i++) await store.exec('INSERT INTO records(key,value) VALUES(?,?)',`operations/checkpoint-capacity-${String(i).padStart(4,'0')}`,filler);
+      const metaBeforeCapacity=await store.exec("SELECT value FROM records WHERE key='meta'");
+      const blocked={...draft,operation_id:randomUUID(),generation:'2',answer:'TOO_LARGE_TO_ARCHIVE'};
+      assert.equal((await post('/practice/draft',qaToken,blocked,headers)).status,413);
+      assert.deepEqual(await store.exec("SELECT value FROM records WHERE key='meta'"),metaBeforeCapacity);
+      assert.equal((await store.exec('SELECT key FROM records WHERE key=?',`operations/${blocked.operation_id}`)).length,0);
+      await store.exec("DELETE FROM records WHERE key LIKE 'operations/checkpoint-capacity-%'");
+
+      const late={...draft,operation_id:randomUUID(),generation:'2',answer:'RACE_SAVE'};
+      const answer={...fields(question,'/practice/answer'),operation_id:randomUUID(),answer:'Alfa'};
+      const [saveRace,answerRace]=await Promise.all([post('/practice/draft',qaToken,late,headers),post('/practice/answer',qaToken,answer,headers)]);
+      assert.ok([303,409].includes(saveRace.status));assert.equal(answerRace.status,303);
+      const meta=JSON.parse((await store.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+      assert.equal(meta.practice.answer_checkpoint.draft,null,'A committed answer clears any winning checkpoint atomically.');
+      assert.equal((await store.exec("SELECT key FROM records WHERE key LIKE 'practice_attempts/%'")).length,1);
+
+    } finally {await fixture.mf.dispose();}
+  });
   await check('session scope and wrong-scope enhanced requests never need a Durable Object',async()=>{
     const scopeEgress = async () => new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}});
     const isolated = await createRuntime({bindings:baseBindings,name:'scope-no-object',artifact,egress:scopeEgress,inspect:true,traceObjectFetch:true});
@@ -88,6 +154,13 @@ try {
       assert.match(response.headers.get('Cache-Control'),/no-store/);
       const mismatch = await call('/settings',{method:'POST',headers:{'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64),'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},body:'x='.padEnd(5*1024*1024,'x')});
       assert.equal(mismatch.status,409); assert.equal(mismatch.headers.get('X-Scry-Scope-Mismatch'),'1'); assert.equal(mismatch.headers.get('X-Scry-Test-Body-Used'),'false');
+      for (const path of ['/practice/draft','/practice/draft/discard']) for (const headers of [
+        {'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},
+        {'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64),'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},
+      ]) {
+        const refused = await call(path,{method:'POST',headers,body:'x='.padEnd(5*1024*1024,'x')});
+        assert.ok([403,409].includes(refused.status)); assert.equal(refused.headers.get('X-Scry-Test-Body-Used'),'false');
+      }
       const missing = await call('/settings',{headers:{'X-Scry-Request':'poll'}});
       assert.equal(missing.status,409);
       const other = await createRuntime({bindings:{...baseBindings, INTERNAL_KEY:''},name:'scope-other-namespace',artifact,egress:scopeEgress,inspect:true});

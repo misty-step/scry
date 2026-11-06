@@ -153,6 +153,9 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
             result.insert(format!("{field}/{index:016}"), bounded_json(&record)?);
         }
     }
+    if app.practice.answer_checkpoint.is_some() {
+        result.insert("checkpoint_compatibility/v1".into(), "1".into());
+    }
     object.remove("owner_tokens");
     object.remove("study_version_refs");
     result.insert("meta".into(), bounded_json(&value)?);
@@ -170,7 +173,7 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
     value["study_version_refs"] = serde_json::json!({});
     value["library"] = serde_json::json!({"works":{},"versions":{},"relations":{}});
     for (key, data) in rows {
-        if key == "meta" {
+        if key == "meta" || key == "checkpoint_compatibility/v1" {
             continue;
         }
         let (field, id) = key
@@ -282,6 +285,14 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
         record.insert(field, data);
     }
     let app: App = serde_json::from_value(value).map_err(serialization)?;
+    if rows.get("checkpoint_compatibility/v1").map(String::as_str)
+        != app.practice.answer_checkpoint.as_ref().map(|_| "1")
+    {
+        return Err(AppError::new(
+            500,
+            "Checkpoint compatibility marker is invalid.",
+        ));
+    }
     if app.schema != SCHEMA {
         return Err(AppError::new(500, "A compatible Scry build is required."));
     }
@@ -302,6 +313,9 @@ pub fn sha256(bytes: &[u8]) -> String {
 }
 
 fn archive_format(app: &App) -> &'static str {
+    if app.practice.answer_checkpoint.is_some() {
+        return "scry-rust-durable-sqlite-checkpoint-v1";
+    }
     if app.practice.studies.values().any(|s| s.source_quiz)
         || app
             .practice

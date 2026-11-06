@@ -6,6 +6,7 @@
     if (details) details.classList.toggle('animate-open', !details.open);
   }, { passive: true });
   document.addEventListener('keydown', () => document.querySelector('#nato-progress')?.classList.remove('animate-open'));
+  const enableDraftSave = () => { if (typeof fetch === 'function' && typeof FormData === 'function') document.querySelectorAll('[data-checkpoint-save], [data-checkpoint-discard], [data-checkpoint-custody]').forEach(node => { node.hidden = false; }); };
   const enablePickerReturn = () => document.querySelectorAll('[data-picker-close]').forEach(button => { button.hidden = false; });
   document.addEventListener('click', event => {
     const button = event.target.closest?.('[data-picker-close]');
@@ -18,7 +19,10 @@
     (document.querySelector('.lesson-stage, .nato-stage') || target)?.scrollIntoView({ block: 'start', behavior: 'instant' });
   });
   enablePickerReturn();
+  enableDraftSave();
   let pending = null;
+  const reconcileLabel = request => request.checkpoint === 'discard' ? 'Reconcile this discard' : request.checkpoint ? 'Reconcile this save' : 'Reconcile this attempt';
+  const reconcileDetail = request => request.checkpoint === 'discard' ? 'Reconciliation sends the same discard operation. It does not send or grade your answer.' : request.checkpoint ? 'Reconciliation sends the same saved operation and text. Saving does not grade your answer.' : 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.';
   let pollTimer = null;
   let pollRequest = null;
   let pageSequence = 0;
@@ -55,13 +59,15 @@
     if (!parsed || parsed.version !== 1 || typeof parsed.scope !== 'string' || !/^[a-f0-9]{64}$/.test(parsed.scope) || Object.keys(parsed).length !== 2) throw new Error('The scope check was incomplete.');
     return parsed.scope;
   };
+  let checkpointAcknowledged = false;
   const dirtyForms = new WeakSet();
   const unsentAnswer = () => [...document.querySelectorAll('form.answer-form textarea[name=answer], form.answer-form input[type=text][name=answer]')].find(input => !input.disabled && input.value.length > 0);
-  document.addEventListener('input', event => { if (event.target.form) dirtyForms.add(event.target.form); });
+  document.addEventListener('input', event => { if (event.target.form) dirtyForms.add(event.target.form); if (checkpointAcknowledged) hideStatus(); });
   document.addEventListener('change', event => { if (event.target.form) dirtyForms.add(event.target.form); });
   const status = () => document.getElementById('request-status');
-  const hideStatus = () => { const box = status(); if (box) { box.hidden = true; box.replaceChildren(); } };
+  const hideStatus = () => { checkpointAcknowledged = false; const box = status(); if (box) { box.hidden = true; box.replaceChildren(); } };
   const announce = (message, actions = [], detail = '') => {
+    checkpointAcknowledged = false;
     const box = status(); if (!box) return;
     box.replaceChildren();
     const copy = document.createElement('p'); copy.textContent = message; box.append(copy);
@@ -135,6 +141,7 @@
     }
     previousMain.replaceWith(main);
     enablePickerReturn();
+    enableDraftSave();
     if (preserveDrafts && focused?.isConnected) {
       focused.focus({ preventScroll: true });
       if (selection) focused.setSelectionRange(...selection);
@@ -239,6 +246,7 @@
       if (!doc || !valid()) return;
       pending = null;
       install(doc, response);
+      if (request.checkpoint) { announce(request.checkpoint === 'discard' ? 'Discard confirmed. The latest notebook state is shown.' : 'Save confirmed. The latest notebook state is shown.'); checkpointAcknowledged = true; }
     } catch {
       if (!valid()) return;
       // Access can redirect to another origin before the Worker returns 401.
@@ -258,9 +266,9 @@
       if (!valid()) return;
       // A lost response may follow a committed write. Freeze the exact payload.
       announce('The response did not arrive. Your draft is still here.', [
-        ['Reconcile this attempt', () => send(request)],
+        [reconcileLabel(request), () => send(request)],
         ['Open saved progress', () => location.reload()]
-      ], 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.');
+      ], reconcileDetail(request));
     } finally {
       clearTimeout(timer);
       if (request.flight === flight) { flight.active = false; request.sending = false; }
@@ -272,23 +280,30 @@
     if (suspended || inactive() || !scoped) { event.preventDefault(); return; }
     if (typeof fetch !== 'function' || typeof FormData !== 'function') return;
     event.preventDefault();
-    if (pending) { announce('An earlier response still needs to be reconciled.', [['Reconcile that attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Only one answer can be unresolved at a time.'); return; }
+    if (pending) { announce('An earlier response still needs to be reconciled.', [[pending.checkpoint ? reconcileLabel(pending) : 'Reconcile that attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Only one operation can be unresolved at a time.'); return; }
     if (!navigator.onLine) { announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); return; }
     const photo = form.querySelector('input[type=file]')?.files?.[0];
     if (photo && photo.size > 4 * 1024 * 1024) { announce('Choose a photo smaller than 4 MB. Your written draft is still here.'); return; }
     const intent = form.querySelector('textarea[name=intent]');
     if (intent && photo && new TextEncoder().encode(intent.value).length > 1024) { announce('A photo caption can contain up to 1 KB of text. Your draft is still here.'); return; }
     if (intent && new TextEncoder().encode(intent.value).length > 32768) { announce('Your request is over the 32 KB limit. Shorten it and keep the rest separately; your draft is still here.'); return; }
+    const submitter = event.submitter;
+    const discarding = !!submitter?.hasAttribute('data-checkpoint-discard');
     const answer = form.querySelector('textarea[name=answer],input[name=answer]');
     const answerLimit = Number(form.dataset.answerLimit || 4000);
-    if (form.classList.contains('answer-form') && answer && new TextEncoder().encode(answer.value).length > answerLimit) { announce(`Keep your answer under ${answerLimit.toLocaleString('en-US')} bytes. Your draft is still here.`); return; }
-    const submitter = event.submitter;
+    if (!discarding && form.classList.contains('answer-form') && answer && new TextEncoder().encode(answer.value).length > answerLimit) { announce(`Keep your answer under ${answerLimit.toLocaleString('en-US')} bytes. Your draft is still here.`); return; }
+    if (discarding) {
+      const poll = pollRequest; pollRequest = null; poll?.abort();
+      if (!window.confirm('Discard the saved draft and the text currently in this field?')) return;
+      if (disposed || suspended || inactive() || pending || !form.isConnected) return;
+      if (!navigator.onLine) { announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); return; }
+    }
     const draft = unsentAnswer();
     if (draft && draft.form !== form) {
       const poll = pollRequest;
       pollRequest = null;
       poll?.abort();
-      if (!window.confirm('Leave this answer? It will not be saved.')) return;
+      if (!window.confirm('Leave this answer? It will be discarded.')) return;
       if (disposed || suspended || inactive() || pending || !form.isConnected) return;
       if (!navigator.onLine) {
         announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.');
@@ -300,7 +315,11 @@
     previousPoll?.abort();
     const data = new FormData(form);
     if (submitter?.name) data.append(submitter.name, submitter.value);
-    pending = { form, data, action: submitter?.hasAttribute('formaction') ? submitter.formAction : form.action, departureDraft: draft && draft.form !== form ? draft : null };
+    if (discarding) data.delete('answer');
+    if (discarding || submitter?.hasAttribute('data-checkpoint-save')) {
+      data.append('generation', form.querySelector('[data-checkpoint-generation]')?.dataset.generation || '0');
+    }
+    pending = { form, data, checkpoint: discarding ? 'discard' : submitter?.hasAttribute('data-checkpoint-save') ? 'save' : null, action: submitter?.hasAttribute('formaction') ? submitter.formAction : form.action, departureDraft: draft && draft.form !== form ? draft : null };
     send(pending);
   });
   document.addEventListener('click', event => {
@@ -308,7 +327,7 @@
     const link = event.target.closest?.('a');
     if (!link || link.origin !== location.origin) return;
     event.preventDefault();
-    announce('First, reconcile the response that did not arrive.', [['Reconcile this attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Your exact answer is kept on this page until you choose what to do.');
+    announce('First, reconcile the response that did not arrive.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]], 'Your exact answer is kept on this page until you choose what to do.');
   });
   document.addEventListener('keydown', event => {
     if (pending || event.altKey || event.ctrlKey || event.metaKey || event.repeat || event.isComposing) return;
@@ -436,7 +455,7 @@
       savedFocus = null;
       savedSelection = null;
       savedTitle = '';
-      if (pending) announce('The response did not arrive. Your draft is still here.', [['Reconcile this attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.');
+      if (pending) announce('The response did not arrive. Your draft is still here.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]], reconcileDetail(pending));
       else schedulePoll();
     } catch { if (validation === controller && epoch === generation && pageSequence === sequence && !inactive()) recovery(); }
     finally { clearTimeout(timeout); if (validation === controller) validation = null; }
@@ -450,7 +469,7 @@
   window.addEventListener('offline', () => { if (!suspended) announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); });
   window.addEventListener('online', () => {
     if (suspended) { resume(); return; }
-    if (pending) announce('You are connected again. Reconcile your saved attempt.', [['Reconcile this attempt', () => send(pending)], ['Open saved progress', () => location.reload()]]);
+    if (pending) announce('You are connected again. Reconcile your saved operation.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]]);
     else { hideStatus(); schedulePoll(); }
   });
   window.addEventListener('pagehide', conceal);

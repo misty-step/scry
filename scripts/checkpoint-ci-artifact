@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Verify and extract Worker bytes from an independently authenticated CI ZIP."""
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import runpy
+import subprocess
+import sys
+import tarfile
+import zipfile
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def main():
+    if len(sys.argv) != 6:
+        raise ValueError("Usage: checkpoint-ci-artifact ZIP SHA256 COMMIT RUN_ID DESTINATION")
+    archive_path, expected_hash, commit, run_id, destination = sys.argv[1:]
+    require(len(expected_hash) == 64 and all(c in "0123456789abcdef" for c in expected_hash), "Invalid CI artifact digest.")
+    require(run_id.isascii() and run_id.isdigit(), "Invalid CI run ID.")
+    require(subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() == commit, "Checkout does not match candidate commit.")
+    require(not subprocess.check_output(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"]), "Checkout is not clean.")
+    blob = Path(archive_path).read_bytes()
+    require(len(blob) <= 200 * 1024 * 1024 and digest(blob) == expected_hash, "CI artifact ZIP digest mismatch or size limit exceeded.")
+    target = Path(destination)
+    require(not target.exists(), "Worker destination must not already exist.")
+    with zipfile.ZipFile(io.BytesIO(blob)) as z:
+        names = z.namelist()
+        require(len(names) == len(set(names)), "CI artifact has duplicate ZIP entries.")
+        metadata = json.loads(z.read("source.json"))
+        proof = json.loads(z.read("proof.json"))
+        tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], text=True).strip()
+        require(metadata.get("format") == "scry-release-source-v1" and metadata.get("source_state") == "committed" and metadata.get("git_revision") == commit and metadata.get("revision") == commit and metadata.get("git_tree") == tree, "CI source metadata does not match the committed Git tree.")
+        require(proof.get("format") == "scry-rust-worker-release-proof-v1" and proof.get("revision") == commit and proof.get("source_state") == "committed" and proof.get("source_sha256") == metadata.get("source_sha256"), "CI proof does not bind this source.")
+        files = metadata.get("files")
+        require(isinstance(files, list) and files and digest((json.dumps(files, sort_keys=True, indent=2) + "\n").encode()) == metadata.get("source_sha256"), "CI source inventory checksum mismatch.")
+        expected = {}
+        raw_tree = subprocess.check_output(["git", "ls-tree", "-r", "-z", "--full-tree", "HEAD"])
+        for record in raw_tree.split(b"\0"):
+            if record:
+                header, path = record.split(b"\t", 1)
+                mode, kind, oid = header.decode().split()
+                require(kind == "blob", "Git tree contains an unsupported entry.")
+                expected[os.fsdecode(path)] = (mode, oid)
+        ci = runpy.run_path("scripts/scry-ci")
+        paths = sorted(expected)
+        ignored = subprocess.run(["git", "check-ignore", "--no-index", "-z", "--stdin"], input=b"\0".join(os.fsencode(p) for p in paths) + b"\0", capture_output=True)
+        require(ignored.returncode in (0, 1), "Cannot determine excluded source paths.")
+        omitted = {os.fsdecode(p) for p in ignored.stdout.split(b"\0") if p}
+        expected = {p: v for p, v in expected.items() if p not in omitted and not ci["excluded"](p)}
+        indexed = {item["path"]: item for item in files}
+        require(len(indexed) == len(files) and {p: (v["mode"], v["git_blob"]) for p, v in indexed.items()} == expected, "CI source inventory differs from the Git tree.")
+        with tarfile.open(fileobj=io.BytesIO(z.read("source.tar.gz")), mode="r:gz") as tar:
+            members = tar.getmembers()
+            require(len(members) == len(indexed) and {m.name for m in members} == set(indexed), "CI source archive has missing or duplicate entries.")
+            for member in members:
+                item = indexed[member.name]
+                if member.issym():
+                    require(item["mode"] == "120000", "CI source symlink mode differs.")
+                    data = os.fsencode(member.linkname)
+                else:
+                    require(member.isfile() and item["mode"] in ("100644", "100755") and bool(member.mode & 0o111) == (item["mode"] == "100755"), "CI source file mode differs.")
+                    data = tar.extractfile(member).read()
+                require(digest(data) == item["sha256"], "CI source archive content differs.")
+                git_blob = subprocess.check_output(["git", "hash-object", "--stdin"], input=data).decode().strip()
+                require(git_blob == item["git_blob"], "CI source archive does not match Git blob.")
+        worker = proof.get("worker")
+        require(isinstance(worker, dict) and {"index.js", "index_bg.wasm", "worker/shim.mjs"}.issubset(worker), "CI Worker proof is incomplete.")
+        actual = {name[7:] for name in names if name.startswith("worker/") and not name.endswith("/")}
+        require(actual == set(worker), "CI Worker files differ from proof.")
+        for name, expected_digest in worker.items():
+            path = Path(name)
+            require(not path.is_absolute() and ".." not in path.parts and "\\" not in name, "Invalid CI Worker path.")
+            data = z.read("worker/" + name)
+            require(digest(data) == expected_digest, "CI Worker digest mismatch.")
+            output = target / path
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(data)
+    print(f"Verified CI ZIP {expected_hash}, run {run_id}, commit {commit}, tree {tree}.")
+    print("GitHub run success and the ZIP digest must be authenticated independently; this command does not authenticate their origin.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, KeyError, TypeError, zipfile.BadZipFile, tarfile.TarError, subprocess.CalledProcessError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
