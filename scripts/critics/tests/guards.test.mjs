@@ -4,6 +4,18 @@ import { classifyOrigin, Budget } from '../lib/guards.mjs';
 
 describe('guards', () => {
   for (const host of ['scry.study', 'www.scry.study', 'scry.mistystep.io']) {
+    for (const suffix of ['..', '%2e%2e', '.%2e', '%2e.']) {
+      const origin = `https://${host}${suffix}`;
+      for (const mutating of [false, true]) {
+        for (const allowOrigin of [null, new URL(origin).origin]) {
+          it(`refuses malformed ${origin}, mutating=${mutating}, allowOrigin=${allowOrigin}`, () => {
+            const result = classifyOrigin(origin, { mutating, allowOrigin });
+            strictEqual(result.ok, false);
+            strictEqual(result.kind, 'invalid');
+          });
+        }
+      }
+    }
     for (const hostname of [host, host.toUpperCase()]) {
       for (const suffix of ['', '.']) {
         const origin = `https://${hostname}${suffix}`;
@@ -22,6 +34,15 @@ describe('guards', () => {
     const r = classifyOrigin('http://127.0.0.1:18080');
     strictEqual(r.ok, true);
     strictEqual(r.kind, 'loopback');
+  });
+
+  it('rejects empty labels in synthetic hosts and preserves loopback', () => {
+    for (const host of ['.example.invalid', 'example..invalid', 'localhost..', 'localhost%2e%2e']) {
+      strictEqual(classifyOrigin(`http://${host}`, { mutating: false }).ok, false);
+    }
+    for (const host of ['localhost', '127.0.0.1']) {
+      strictEqual(classifyOrigin(`http://${host}:18080`, { mutating: true }).kind, 'loopback');
+    }
   });
 
   it('classifyOrigin requires --allow-origin for non-loopback mutating', () => {
