@@ -214,7 +214,8 @@
       if (!autoEdited || autoBlocked || disposed || suspended || inactive() || !navigator.onLine || composing || !input.form?.isConnected || pending) return;
       const form = input.form;
       const generationControl = form.querySelector('[data-checkpoint-generation]');
-      if (!generationControl || !/^(0|[1-9][0-9]{0,19})$/.test(generationControl.dataset.generation || '')) {
+      const expectedGeneration = generationControl?.dataset.generation;
+      if (!generationControl || !/^(0|[1-9][0-9]{0,19})$/.test(expectedGeneration || '')) {
         autoBlocked = 'changed';
         announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
         return;
@@ -223,9 +224,10 @@
         const snapshot = input.value;
         const data = new FormData(form);
         if (disposed || suspended || inactive() || !navigator.onLine || !form.isConnected || pending) return;
+        if (form.querySelector('[data-checkpoint-generation]') !== generationControl || generationControl.dataset.generation !== expectedGeneration) { autoBlocked = 'changed'; announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); return; }
         if (input.value !== snapshot || data.get('answer') !== snapshot) { announce('Changes are not saved. Use Save draft or keep typing.'); return; }
         data.set('operation_id', `autosave-${crypto.randomUUID()}`);
-        data.set('generation', generationControl.dataset.generation);
+        data.set('generation', expectedGeneration);
         autoEdited = false;
         const poll = pollRequest; pollRequest = null; poll?.abort();
         pending = { form, data, checkpoint: 'save', automatic: true, snapshot, input, action: new URL('/practice/draft', location.href).href };
@@ -301,6 +303,11 @@
         }
         const generationControl = request.form.querySelector('[data-checkpoint-generation]');
         if (!generationControl) throw new Error('The checkpoint generation was unavailable.');
+        if (generationControl.dataset.generation !== request.data.get('generation')) {
+          pending = null; unlock(request); autoBlocked = 'changed'; cancelAuto();
+          announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
+          return;
+        }
         pending = null; unlock(request);
         generationControl.dataset.generation = receipt.generation;
         const discardControl = request.form.querySelector('[data-checkpoint-discard]');

@@ -642,3 +642,11 @@ test('a synchronous form-data edit cannot be mistaken for the frozen snapshot',a
 test('an inconsistent acknowledged generation cannot be silently adopted',async()=>{
   const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];original.resolve(autosaveResponse(f,original,7,true));await tick();assert.equal(generation.dataset.generation,'0');assert.equal(f.calls[1].url,'/session/scope');f.calls[1].resolve(f.response(200));await tick();const reconcile=f.status.children.flatMap(x=>x.children||[]).find(x=>x.textContent==='Reconcile this save');assert.ok(reconcile);reconcile.click();assert.equal(f.calls[2].init.body,original.init.body);f.calls[2].resolve(autosaveResponse(f,f.calls[2],1));await tick();assert.equal(generation.dataset.generation,'1');
 });
+
+test('a generation changed during form serialization is never silently adopted',async()=>{
+  const f=fixture({fastAuto:true});const {form,input,generation}=autosaveForm(f);form.onFormData=()=>{generation.dataset.generation='7';};f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not saved/);input.value='more';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);
+});
+
+test('a local generation change during an automatic flight is not overwritten',async()=>{
+  const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];generation.dataset.generation='9';call.resolve(autosaveResponse(f,call,1,true));await tick();assert.equal(generation.dataset.generation,'9');assert.match(f.status.children[0].textContent,/not saved/);input.value='more';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);
+});
