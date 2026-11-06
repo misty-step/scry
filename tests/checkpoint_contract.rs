@@ -230,6 +230,13 @@ fn saved_answer_rendering_is_escaped_and_only_matches_current_prompt() {
 fn export_synthetic_compatibility_fixtures_when_requested() {
     let path = std::env::var("SCRY_CHECKPOINT_FIXTURE_DIR").expect("synthetic fixture directory");
     let mut app = presented();
+    let baseline = persistence::rows(&app).unwrap();
+    assert!(!baseline.contains_key("checkpoint_compatibility/v1"));
+    std::fs::write(
+        format!("{path}/baseline-rows.json"),
+        serde_json::to_vec(&baseline).unwrap(),
+    )
+    .unwrap();
     let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
     mutation(
         &mut app,
