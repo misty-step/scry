@@ -57,21 +57,8 @@
   };
   const dirtyForms = new WeakSet();
   const unsentAnswer = () => [...document.querySelectorAll('form.answer-form textarea[name=answer], form.answer-form input[type=text][name=answer]')].find(input => !input.disabled && input.value.length > 0);
-  const warnDeparture = event => {
-    if (disposed || pending || !unsentAnswer()) return;
-    event.preventDefault();
-    event.returnValue = 'You have an unsent answer.';
-  };
-  let departureWarningAttached = false;
-  const refreshDepartureWarning = () => {
-    const needed = !disposed && !pending && !!unsentAnswer();
-    if (needed === departureWarningAttached) return;
-    if (needed) window.addEventListener('beforeunload', warnDeparture);
-    else window.removeEventListener('beforeunload', warnDeparture);
-    departureWarningAttached = needed;
-  };
-  document.addEventListener('input', event => { if (event.target.form) dirtyForms.add(event.target.form); refreshDepartureWarning(); });
-  document.addEventListener('change', event => { if (event.target.form) dirtyForms.add(event.target.form); refreshDepartureWarning(); });
+  document.addEventListener('input', event => { if (event.target.form) dirtyForms.add(event.target.form); });
+  document.addEventListener('change', event => { if (event.target.form) dirtyForms.add(event.target.form); });
   const status = () => document.getElementById('request-status');
   const hideStatus = () => { const box = status(); if (box) { box.hidden = true; box.replaceChildren(); } };
   const announce = (message, actions = [], detail = '') => {
@@ -89,7 +76,6 @@
   const conceal = () => {
     if (disposed) return;
     disposed = true;
-    refreshDepartureWarning();
     epoch += 1;
     suspended = true;
     validation?.abort();
@@ -148,7 +134,6 @@
       if (nextSelected && oldProgress.open) nextSelected.checked = true;
     }
     previousMain.replaceWith(main);
-    refreshDepartureWarning();
     enablePickerReturn();
     if (preserveDrafts && focused?.isConnected) {
       focused.focus({ preventScroll: true });
@@ -191,7 +176,6 @@
     if (!navigator.onLine) {
       if (!request.attempted && pending === request) {
         pending = null;
-        refreshDepartureWarning();
       }
       announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.');
       return;
@@ -231,7 +215,6 @@
         }
         pending = null;
         unlock(request);
-        refreshDepartureWarning();
         announce('This changed in another tab. Your draft is still here.', [['Open saved progress', () => location.reload()]], 'Reload deliberately to see the current question or saved result.');
         return;
       }
@@ -248,7 +231,6 @@
         if (!valid()) return;
         pending = null;
         unlock(request);
-        refreshDepartureWarning();
         announce(error || 'This could not be saved. Check your draft and try again.', [['Continue editing', hideStatus]]);
         return;
       }
@@ -288,13 +270,7 @@
     const form = event.target;
     if (!(form instanceof HTMLFormElement) || form.method.toLowerCase() !== 'post') return;
     if (suspended || inactive() || !scoped) { event.preventDefault(); return; }
-    if (typeof fetch !== 'function' || typeof FormData !== 'function') {
-      if (unsentAnswer()?.form === form && departureWarningAttached) {
-        window.removeEventListener('beforeunload', warnDeparture);
-        departureWarningAttached = false;
-      }
-      return;
-    }
+    if (typeof fetch !== 'function' || typeof FormData !== 'function') return;
     event.preventDefault();
     if (pending) { announce('An earlier response still needs to be reconciled.', [['Reconcile that attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Only one answer can be unresolved at a time.'); return; }
     if (!navigator.onLine) { announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); return; }
@@ -325,7 +301,6 @@
     const data = new FormData(form);
     if (submitter?.name) data.append(submitter.name, submitter.value);
     pending = { form, data, action: submitter?.hasAttribute('formaction') ? submitter.formAction : form.action, departureDraft: draft && draft.form !== form ? draft : null };
-    refreshDepartureWarning();
     send(pending);
   });
   document.addEventListener('click', event => {
@@ -484,6 +459,5 @@
   if (!scoped) conceal();
   else if (inactive()) suspend();
   else schedulePoll();
-  refreshDepartureWarning();
   if (!navigator.onLine && !suspended) announce('You are offline. Study is paused until you reconnect.');
 })();

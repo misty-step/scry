@@ -390,35 +390,16 @@ test('a scoped HTML rejection missing its embedded scope preserves uncertainty',
   await reconcileAfterUncertainResponse(f, original);
 });
 
-test('leaving with an unsubmitted practice answer requests confirmation without changing it', () => {
-  const f = fixture(); const form = new f.Form();
-  const answer = { form, value: '  partial answer  ' };
-  form.operationId = 'synthetic-operation'; form.promptId = 'synthetic-prompt';
-  f.document.answerFields.push(answer);
-  f.emit('input', { target: answer });
-  const departure = { prevented: false, returnValue: undefined, preventDefault() { this.prevented = true; } };
-  f.emit('window:beforeunload', departure);
-  assert.equal(departure.prevented, true);
-  assert.equal(answer.value, '  partial answer  ');
-  assert.equal(form.promptId, 'synthetic-prompt'); assert.equal(form.operationId, 'synthetic-operation');
-  assert.equal(f.calls.length, 0); assert.equal(f.frame.erased, false);
-});
-
-function beforeUnload(f) {
-  const event = { prevented: false, returnValue: undefined, preventDefault() { this.prevented = true; } };
-  f.emit('window:beforeunload', event); return event.prevented;
-}
 function practiceDraft(f, value = 'unfinished synthetic answer') {
   const form = new f.Form(); form.operationId = 'operation-unchanged'; form.promptId = 'prompt-unchanged';
   const answer = { form, value, readOnly: false, disabled: false, type: 'textarea' }; f.document.answerFields.push(answer);
   f.emit('input', { target: answer }); return { form, answer };
 }
 
-test('empty or cleared answers do not warn; whitespace and nonempty answers do', () => {
-  const f = fixture(); const { answer } = practiceDraft(f, '');
-  assert.equal(beforeUnload(f), false);
-  answer.value = ' '; f.emit('input', { target: answer }); assert.equal(beforeUnload(f), true);
-  answer.value = ''; f.emit('input', { target: answer }); assert.equal(beforeUnload(f), false);
+test('unsent answers do not install an unload warning', () => {
+  const f = fixture(); practiceDraft(f);
+  const event = { prevented: false, preventDefault() { this.prevented = true; } };
+  f.emit('window:beforeunload', event); assert.equal(event.prevented, false);
 });
 
 test('canceling an in-page switch preserves answer, prompt and operation without a request', () => {
@@ -427,54 +408,53 @@ test('canceling an in-page switch preserves answer, prompt and operation without
   f.emit('submit', { target: switching, preventDefault() { prevented = true; } });
   assert.equal(prevented, true); assert.equal(f.window.confirmCount, 1); assert.equal(f.calls.length, 0);
   assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(form.promptId, 'prompt-unchanged');
-  assert.equal(form.operationId, 'operation-unchanged'); assert.equal(beforeUnload(f), true);
+  assert.equal(form.operationId, 'operation-unchanged');
 });
 
 test('confirming an in-page switch sends one deliberate request and keeps it pending', async () => {
   const f = fixture(); const { answer } = practiceDraft(f); f.window.confirmResult = true;
   f.emit('submit', { target: new f.Form(), preventDefault() {} });
   assert.equal(answer.readOnly, true, 'Freeze the answer while its switch is unresolved.');
-  assert.equal(f.window.confirmCount, 1); assert.equal(f.calls.length, 1); assert.equal(beforeUnload(f), false);
+  assert.equal(f.window.confirmCount, 1); assert.equal(f.calls.length, 1);
   f.calls[0].resolve(f.response(503)); await tick(); f.calls[1].resolve(f.response(200)); await tick();
   assert.ok(f.status.children.flatMap(n => n.children || []).some(n => n.textContent === 'Reconcile this attempt'));
   assert.equal(f.calls.length, 2, 'No automatic resubmission.');
 });
 
-test('answer submission skips the switch confirmation; a definite rejection restores departure warning', async () => {
-  const f = fixture(); const { form } = practiceDraft(f);
+test('answer submission skips the switch confirmation and a definite rejection restores editing', async () => {
+  const f = fixture(); const { form, answer } = practiceDraft(f);
   f.emit('submit', { target: form, preventDefault() {} });
-  assert.equal(f.window.confirmCount, 0); assert.equal(f.calls.length, 1); assert.equal(beforeUnload(f), false);
+  assert.equal(f.window.confirmCount, 0); assert.equal(f.calls.length, 1);
   f.calls[0].resolve(f.response(422, 'Rejected', { 'x-scry-scope': scope, 'content-type': 'text/plain' })); await tick();
-  assert.equal(beforeUnload(f), true);
+  assert.equal(answer.readOnly, false);
 });
 
-test('a successful answer no longer warns after its result replaces the form', async () => {
+test('a successful answer replaces the form without switch confirmation', async () => {
   const f = fixture(); const { form } = practiceDraft(f);
   f.emit('submit', { target: form, preventDefault() {} });
   const response = f.response(200, `<html data-notebook-scope="${scope}"><main></main></html>`, { 'x-scry-scope': scope, 'content-type': 'text/html' });
   response.url = 'https://scry.test/'; f.calls[0].resolve(response); await tick();
-  assert.equal(f.previousMain.replaced, true); assert.equal(beforeUnload(f), false); assert.equal(f.window.confirmCount, 0);
+  assert.equal(f.previousMain.replaced, true); assert.equal(f.window.confirmCount, 0);
 });
 
-test('confirmed departure still invokes privacy concealment', () => {
-  const f = fixture(); practiceDraft(f); assert.equal(beforeUnload(f), true);
+test('pagehide still invokes privacy concealment', () => {
+  const f = fixture(); practiceDraft(f);
   f.emit('window:pagehide'); assert.equal(f.frame.erased, true); assert.ok(f.classes.has('private-hidden'));
-  assert.equal(beforeUnload(f), false);
 });
 
-test('background validation preserves the in-memory answer and its departure warning', async () => {
+test('background validation preserves the in-memory answer', async () => {
   const f = fixture(); const { answer, form } = practiceDraft(f);
   f.document.hidden = true; f.emit('visibilitychange');
   f.document.hidden = false; f.emit('visibilitychange'); f.calls[0].resolve(f.response(200)); await tick();
   assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(form.operationId, 'operation-unchanged');
-  assert.equal(beforeUnload(f), true); assert.equal(f.calls.length, 1, 'Only the existing scope check ran.');
+  assert.equal(f.calls.length, 1, 'Only the existing scope check ran.');
 });
 
-test('an authentication denial conceals the page and removes the departure warning', async () => {
+test('an authentication denial conceals the page', async () => {
   const f = fixture(); const { form } = practiceDraft(f);
   f.emit('submit', { target: form, preventDefault() {} });
   f.calls[0].resolve(f.response(401)); await tick();
-  assert.equal(f.frame.erased, true); assert.ok(f.classes.has('private-hidden')); assert.equal(beforeUnload(f), false);
+  assert.equal(f.frame.erased, true); assert.ok(f.classes.has('private-hidden'));
 });
 
 test('a switch confirmation cannot send after the page becomes inactive', () => {
@@ -490,14 +470,12 @@ test('a rejected switch returns the retained answer to editable state', async ()
   f.emit('submit', { target: new f.Form(), preventDefault() {} }); assert.equal(answer.readOnly, true);
   f.calls[0].resolve(f.response(422, 'Rejected', { 'x-scry-scope': scope, 'content-type': 'text/plain' })); await tick();
   assert.equal(answer.readOnly, false); assert.equal(answer.value, 'unfinished synthetic answer');
-  assert.equal(beforeUnload(f), true);
 });
 
-test('native answer submission without fetch does not trigger an unload warning', () => {
+test('native answer submission without fetch is not intercepted', () => {
   const f = fixture({ nativeTransport: true }); const { form } = practiceDraft(f);
-  assert.equal(beforeUnload(f), true);
   let prevented = false; f.emit('submit', { target: form, preventDefault() { prevented = true; } });
-  assert.equal(prevented, false); assert.equal(beforeUnload(f), false);
+  assert.equal(prevented, false);
 });
 
 test('an in-flight poll is fenced before a switch confirmation opens', async () => {
@@ -509,13 +487,12 @@ test('an in-flight poll is fenced before a switch confirmation opens', async () 
   poll.resolve(f.response(401)); await tick(); assert.equal(f.frame.erased, false);
 });
 
-test('going offline during switch confirmation leaves the answer editable and protected', async () => {
+test('going offline during switch confirmation leaves the answer editable', async () => {
   const f = fixture(); const { form, answer } = practiceDraft(f);
   f.window.confirm = () => { f.navigator.onLine = false; return true; };
   f.emit('submit', { target: new f.Form(), preventDefault() {} });
   assert.equal(f.calls.length, 0); assert.equal(answer.readOnly, false);
   assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(form.operationId, 'operation-unchanged');
-  assert.equal(beforeUnload(f), true, 'The unsent answer remains protected.');
   f.navigator.onLine = true; f.emit('window:online');
   f.emit('submit', { target: form, preventDefault() {} });
   assert.equal(f.calls.length, 1, 'The first submission was never sent or left pending.');
@@ -526,7 +503,7 @@ test('going offline during form serialization does not create an unresolved oper
   const f = fixture(); const { form, answer } = practiceDraft(f); const switching = new f.Form();
   f.window.confirmResult = true; switching.onFormData = () => { f.navigator.onLine = false; };
   f.emit('submit', { target: switching, preventDefault() {} });
-  assert.equal(f.calls.length, 0); assert.equal(answer.readOnly, false); assert.equal(beforeUnload(f), true);
+  assert.equal(f.calls.length, 0); assert.equal(answer.readOnly, false);
   assert.equal(answer.value, 'unfinished synthetic answer'); assert.equal(form.operationId, 'operation-unchanged');
 });
 
@@ -536,7 +513,7 @@ test('offline reconciliation retains the original previously sent operation', as
   original.resolve(f.response(503)); await tick(); f.calls[1].resolve(f.response(200)); await tick();
   let actions = f.status.children.flatMap(n => n.children || []);
   f.navigator.onLine = false; actions.find(n => n.textContent === 'Reconcile this attempt').click();
-  assert.equal(f.calls.length, 2); assert.equal(beforeUnload(f), false);
+  assert.equal(f.calls.length, 2);
   f.navigator.onLine = true; f.emit('window:online');
   actions = f.status.children.flatMap(n => n.children || []); actions.find(n => n.textContent === 'Reconcile this attempt').click();
   assert.equal(f.calls.length, 3); assert.equal(f.calls[2].init.body, original.init.body);
