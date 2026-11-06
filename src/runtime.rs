@@ -477,6 +477,40 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     if api_request && principal != AccessPrincipal::Owner {
         return api_refusal();
     }
+    // This pseudonym binds a page to the authenticated notebook. It is not
+    // an authorization credential and never substitutes for Access or CSRF.
+    let scope = persistence::sha256(
+        format!(
+            "scry-notebook-scope-v1:{}:{}",
+            principal.internal_identity(),
+            principal.space_name(&env)?
+        )
+        .as_bytes(),
+    );
+    if req.path() == "/session/scope" {
+        if method != Method::Get {
+            return private(Response::error("Method not allowed.", 405)?);
+        }
+        let expected = req.headers().get("X-Scry-Expected-Scope")?;
+        if expected.as_deref().is_some_and(|value| value != scope) {
+            return private(Response::error("Notebook changed.", 409)?);
+        }
+        let mut response = Response::ok(scope)?;
+        response
+            .headers_mut()
+            .set("Content-Type", "text/plain; charset=utf-8")?;
+        return private(response);
+    }
+    if req.headers().has("X-Scry-Request")?
+        && req.headers().get("X-Scry-Expected-Scope")?.as_deref() != Some(scope.as_str())
+    {
+        if bearer {
+            return api_refusal();
+        }
+        let mut response = Response::error("Notebook changed.", 409)?;
+        response.headers_mut().set("X-Scry-Scope-Mismatch", "1")?;
+        return private(response);
+    }
     if bearer {
         // Authenticate before buffering a bearer body. Invalid credentials have
         // one refusal even when the body is oversized or cannot be parsed.
@@ -515,11 +549,15 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         }
     }
     if req.path() == "/changelog" {
-        return private(if read {
-            Response::from_html(web::changelog())?
-        } else {
-            Response::error("Method not allowed.", 405)?
-        });
+        return scoped_page(
+            if read {
+                Response::from_html(web::changelog())?
+            } else {
+                Response::error("Method not allowed.", 405)?
+            },
+            &scope,
+        )
+        .await;
     }
     let key = internal_key(&env);
     if key.len() < 32 {
@@ -539,15 +577,16 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
             .and_then(|n| n.parse::<usize>().ok())
             .is_some_and(|n| n > max)
         {
-            return private(Response::error("Input is too large.", 413)?);
+            return scoped_page(Response::error("Input is too large.", 413)?, &scope).await;
         }
         let bytes = match bounded_request_body(&req, max).await {
             Ok(bytes) => bytes,
             Err(_) => {
-                return private(Response::error(
-                    "Input is too large or could not be read safely.",
-                    413,
-                )?);
+                return scoped_page(
+                    Response::error("Input is too large or could not be read safely.", 413)?,
+                    &scope,
+                )
+                .await;
             }
         };
         Some(Uint8Array::from(bytes.as_slice()).into())
@@ -579,7 +618,31 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     let stub = env
         .durable_object("LEARNING_SPACE")?
         .get_by_name(&principal.space_name(&env)?)?;
-    private(stub.fetch_with_request(trusted).await?)
+    scoped_page(stub.fetch_with_request(trusted).await?, &scope).await
+}
+
+async fn scoped_page(mut response: Response, scope: &str) -> Result<Response> {
+    let fresh: Headers = response.headers().entries().collect();
+    response = response.with_headers(fresh);
+    let html = response
+        .headers()
+        .get("Content-Type")?
+        .is_some_and(|v| v.starts_with("text/html"));
+    if html {
+        let headers: Headers = response.headers().entries().collect();
+        headers.delete("Content-Length")?;
+        let status = response.status_code();
+        let text = response.text().await?;
+        let marker = format!("<html lang=\"en\" data-notebook-scope=\"{scope}\">");
+        if !text.is_empty() && !text.contains("<html lang=\"en\">") {
+            return private(Response::error("Private page unavailable.", 503)?);
+        }
+        response = Response::from_html(text.replacen("<html lang=\"en\">", &marker, 1))?
+            .with_status(status)
+            .with_headers(headers);
+    }
+    response.headers_mut().set("X-Scry-Scope", scope)?;
+    private(response)
 }
 
 fn valid_backup_proof(value: &str) -> bool {

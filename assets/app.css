@@ -463,3 +463,8 @@ body:has(.nato-screen) main {margin-top:24px}
 .study-context {color:var(--ink-2);font:14px/1.5 var(--sans);margin:0}
 .study-home .button {justify-content:space-between}
 .study-home .lesson-picker {border-top:1px solid var(--rule)}
+
+/* Keep an obscured private page in memory until its notebook is revalidated. */
+body.private-suspended .page-frame { visibility: hidden; }
+#scope-recovery { margin: 3rem auto; max-width: 36rem; padding: 0 1.5rem; }
+#scope-recovery button { font: inherit; padding: .75rem 1rem; }

@@ -77,6 +77,23 @@ try {
     const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
     assert.deepEqual(await storage.exec('SELECT key FROM records'),[]);
   });
+  await check('session scope and wrong-scope enhanced requests never need a Durable Object',async()=>{
+    const scopeEgress = async () => new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}});
+    const isolated = await createRuntime({bindings:{...baseBindings, INTERNAL_KEY:''},name:'scope-no-object',artifact,egress:scopeEgress,inspect:true});
+    try {
+      const call = (path, init={}) => isolated.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
+      const response = await call('/session/scope');
+      assert.equal(response.status,200);
+      const scope = await response.text(); assert.match(scope,/^[a-f0-9]{64}$/);
+      assert.match(response.headers.get('Cache-Control'),/no-store/);
+      const mismatch = await call('/settings',{method:'POST',headers:{'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64),'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},body:'x='.padEnd(5*1024*1024,'x')});
+      assert.equal(mismatch.status,409); assert.equal(mismatch.headers.get('X-Scry-Scope-Mismatch'),'1'); assert.equal(mismatch.headers.get('X-Scry-Test-Body-Used'),'false');
+      const missing = await call('/settings',{headers:{'X-Scry-Request':'poll'}});
+      assert.equal(missing.status,409);
+      const absentAuth = await call('/session/scope',{headers:{'Cf-Access-Jwt-Assertion':''}});
+      assert.equal(absentAuth.status,401);
+    } finally { await isolated.mf.dispose(); }
+  });
   await check('real RS256 owner signature and private response headers',async()=>{
     const response=await request();assert.equal(response.status,200);assert.match(await response.text(),/data-state="mixed-home"/);assert.match(response.headers.get('Cache-Control'),/no-store/);assert.match(response.headers.get('Content-Security-Policy'),/frame-ancestors 'none'/);assert.equal(response.headers.get('Referrer-Policy'),'same-origin');
   });
@@ -683,7 +700,16 @@ try {
       try {
         const home = await req('/notebook');
         assert.equal(home.status, 200);
-        assert.match(await home.text(), /<title>Your notebook · Scry<\/title>/);
+        const homeHtml = await home.text();
+        assert.match(homeHtml, /<title>Your notebook · Scry<\/title>/);
+        const qaScope = await (await req('/session/scope')).text();
+        const ownerScope = await (await req('/session/scope',jwt())).text();
+        assert.notEqual(qaScope,ownerScope);
+        assert.equal(home.headers.get('X-Scry-Scope'),qaScope);
+        assert.ok(homeHtml.includes(`data-notebook-scope="${qaScope}"`));
+        const switched = await req('/notebook',jwt(),{headers:{'X-Scry-Request':'poll','X-Scry-Expected-Scope':qaScope}});
+        assert.equal(switched.status,409);
+        assert.equal(switched.headers.get('X-Scry-Scope-Mismatch'),'1');
         const qaFields=await savedRequestFields(await req('/settings'));
         const ownerFields=await savedRequestFields(await req('/settings',jwt()));
         assert.equal((await post('/create',{...qaFields,intent:'Rejected new QA generation'})).status,410);

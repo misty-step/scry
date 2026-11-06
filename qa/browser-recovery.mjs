@@ -34,6 +34,46 @@ export async function recoveryWalk(browser,capture){
  await check('private access loss conceals current page',{},async({page,context})=>{
   await context.route('**/review/answer',route=>route.fulfill({status:401,contentType:'text/plain',body:'Owner authorization expired.'}));await page.locator('.choice').first().click();await page.locator('body.private-hidden').waitFor({state:'attached'});assert.equal(await page.locator('#main').count(),0);assert.equal(await page.locator('.question').count(),0);
  });
+ await check('background preserves a dirty form and revalidates before revealing it',{},async({page,context,url})=>{
+  await answer(page);await page.getByRole('button',{name:'Next question'}).click();
+  await page.locator('#answer').fill('A retained synthetic answer');
+  let release;const barrier=new Promise(resolve=>{release=resolve});let reached;
+  const waiting=new Promise(resolve=>{reached=resolve});
+  await context.route('**/session/scope',async route=>{reached();await barrier;await route.continue();});
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+  assert.equal(await page.locator('.page-frame').evaluate(el=>el.inert),true);
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+  await waiting;assert.equal(await page.locator('.page-frame').evaluate(el=>el.inert),true);
+  assert.equal(await page.locator('#answer').inputValue(),'A retained synthetic answer');
+  release();await page.waitForFunction(()=>!document.querySelector('.page-frame').inert);
+  assert.equal(await page.locator('#answer').inputValue(),'A retained synthetic answer');
+ });
+ await check('backgrounded mutation stays frozen until manual reconciliation',{},async({page,context,url})=>{
+  let sends=0;let release;let reached;
+  const barrier=new Promise(resolve=>{release=resolve});
+  const committed=new Promise(resolve=>{reached=resolve});
+  await context.route('**/review/answer',async route=>{
+   if(route.request().method()!=='POST')return route.continue();
+   sends++;
+   if(sends!==1)return route.continue();
+   const response=await route.fetch({maxRedirects:0});assert.equal(response.status(),303);reached();
+   await barrier;try{await route.fulfill({response});}catch{};
+  });
+  await page.locator('.choice').first().click();await committed;
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+  await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).waitFor();
+  release();assert.equal(sends,1,'No mutation is resent automatically.');
+  await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).click();
+  await page.locator('[data-state="result"]').waitFor();assert.equal(sends,2);
+  assert.equal((await exported(context,url)).app.events.length,1);
+ });
+ await check('scope mismatch on return disposes private state',{},async({page,context})=>{
+  await context.route('**/session/scope',route=>route.fulfill({status:409,body:'Notebook changed.'}));
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
+  await page.locator('body.private-hidden').waitFor({state:'attached'});
+  assert.equal(await page.locator('#main').count(),0);
+ });
  await check('320px, desktop and dark layouts',{},async({page})=>{
   for(const width of [320,1280]){await page.setViewportSize({width,height:844});await page.emulateMedia({colorScheme:width===1280?'dark':'light'});await page.evaluate(()=>document.fonts.ready);await page.waitForFunction(()=>{const l=rgb=>{const a=rgb.match(/[\d.]+/g).slice(0,3).map(x=>{x=Number(x)/255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4;});return .2126*a[0]+.7152*a[1]+.0722*a[2];};return [...document.querySelectorAll('.choice')].every(node=>{const s=getComputedStyle(node),a=l(s.color),b=l(s.backgroundColor);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05)>=4.5;});});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await capture(page,`layout-${width}.png`);}
  });
