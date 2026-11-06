@@ -246,11 +246,15 @@ fn export_synthetic_compatibility_fixtures_when_requested() {
         if suffix == "cleared" {
             mutation(
                 &mut app,
-                "/practice/answer",
-                "checkpoint-answer-0001",
-                &[("prompt_id", &prompt), ("answer", "alfa")],
+                "/practice/draft/discard",
+                "checkpoint-discard-0001",
+                &[("prompt_id", &prompt), ("generation", "1")],
             )
             .unwrap();
+            assert!(
+                app.practice.attempts.is_empty(),
+                "Only checkpoint receipts remain."
+            );
         }
         let rows = serde_json::to_vec(&persistence::rows(&app).unwrap()).unwrap();
         std::fs::write(format!("{path}/{suffix}-rows.json"), rows).unwrap();
@@ -388,4 +392,206 @@ fn archive_rejects_checkpoint_receipts_that_contain_text() {
             .encode()
             .is_err()
     );
+}
+
+#[test]
+fn browser_draft_transport_normalizes_crlf_without_relaxing_domain_rules() {
+    let mut app = presented();
+    let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let mut fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "checkpoint-newline-0001".into()),
+        ("prompt_id".into(), prompt),
+        ("generation".into(), "0".into()),
+        ("answer".into(), "\r\nfirst\r\nsecond".into()),
+    ]);
+    scry::api::normalize_draft_form(&mut fields);
+    assert_eq!(fields["answer"], "\nfirst\nsecond");
+    // The NATO fixture is a single-line mapping: the domain must still reject LF.
+    let before = app.clone();
+    assert_eq!(
+        engine::mutate(
+            &mut app,
+            "/practice/draft",
+            &fields,
+            NOW,
+            "checkpoint-newline-0001"
+        )
+        .unwrap_err()
+        .status,
+        422
+    );
+    assert_eq!(app, before);
+    fields.insert("answer".into(), "bare\rreturn".into());
+    scry::api::normalize_draft_form(&mut fields);
+    assert_eq!(fields["answer"], "bare\rreturn");
+    assert_eq!(
+        engine::mutate(
+            &mut app,
+            "/practice/draft",
+            &fields,
+            NOW,
+            "checkpoint-newline-0001"
+        )
+        .unwrap_err()
+        .status,
+        422
+    );
+}
+
+#[test]
+fn multiline_browser_transport_keeps_leading_and_internal_newlines_and_replays() {
+    let mut app = App::new("synthetic-csrf-at-least-24-characters".into());
+    mutation(
+        &mut app,
+        "/practice/lesson/start",
+        "checkpoint-rosary-start",
+        &[("starter", "rosary-joyful")],
+    )
+    .unwrap();
+    let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let mut fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "checkpoint-newline-save".into()),
+        ("prompt_id".into(), prompt),
+        ("generation".into(), "0".into()),
+        ("answer".into(), "\r\nfirst\r\nsecond".into()),
+    ]);
+    scry::api::normalize_draft_form(&mut fields);
+    let result = engine::mutate(
+        &mut app,
+        "/practice/draft",
+        &fields,
+        NOW,
+        "checkpoint-newline-save",
+    )
+    .unwrap();
+    assert_eq!(
+        app.practice
+            .answer_checkpoint
+            .as_ref()
+            .unwrap()
+            .draft
+            .as_ref()
+            .unwrap()
+            .answer,
+        "\nfirst\nsecond"
+    );
+    let saved = app.clone();
+    assert_eq!(
+        engine::mutate(
+            &mut app,
+            "/practice/draft",
+            &fields,
+            NOW,
+            "checkpoint-newline-save"
+        )
+        .unwrap(),
+        result
+    );
+    assert_eq!(app, saved);
+}
+
+#[test]
+fn discard_is_prompt_and_generation_fenced_and_replayable() {
+    let mut app = presented();
+    let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    mutation(
+        &mut app,
+        "/practice/draft",
+        "checkpoint-discard-save",
+        &[
+            ("prompt_id", &prompt),
+            ("generation", "0"),
+            ("answer", "saved text"),
+        ],
+    )
+    .unwrap();
+    let before = app.clone();
+    assert_eq!(
+        mutation(
+            &mut app,
+            "/practice/draft/discard",
+            "checkpoint-discard-stale",
+            &[("prompt_id", &prompt), ("generation", "0")]
+        )
+        .unwrap_err()
+        .status,
+        409
+    );
+    assert_eq!(app, before);
+    let fields = [("prompt_id", prompt.as_str()), ("generation", "1")];
+    let result = mutation(
+        &mut app,
+        "/practice/draft/discard",
+        "checkpoint-discard-ok",
+        &fields,
+    )
+    .unwrap();
+    let checkpoint = app.practice.answer_checkpoint.as_ref().unwrap();
+    assert_eq!(checkpoint.generation, 2);
+    assert!(checkpoint.draft.is_none());
+    assert!(app.practice.attempts.is_empty());
+    assert!(
+        persistence::rows(&app)
+            .unwrap()
+            .contains_key("checkpoint_compatibility/v1")
+    );
+    let after = app.clone();
+    assert_eq!(
+        mutation(
+            &mut app,
+            "/practice/draft/discard",
+            "checkpoint-discard-ok",
+            &fields
+        )
+        .unwrap(),
+        result
+    );
+    assert_eq!(app, after);
+    assert_eq!(
+        mutation(
+            &mut app,
+            "/practice/draft/discard",
+            "checkpoint-discard-other",
+            &fields
+        )
+        .unwrap_err()
+        .status,
+        409
+    );
+}
+
+#[test]
+fn archives_reject_checkpoint_text_that_save_would_refuse() {
+    let mut app = presented();
+    let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    mutation(
+        &mut app,
+        "/practice/draft",
+        "checkpoint-text-save-01",
+        &[
+            ("prompt_id", &prompt),
+            ("generation", "0"),
+            ("answer", "valid"),
+        ],
+    )
+    .unwrap();
+    for text in ["bad\rreturn", "bad\0null", "single\nline"] {
+        let mut damaged = app.clone();
+        damaged
+            .practice
+            .answer_checkpoint
+            .as_mut()
+            .unwrap()
+            .draft
+            .as_mut()
+            .unwrap()
+            .answer = text.into();
+        assert!(
+            persistence::Archive::new(damaged, vec![], NOW)
+                .encode()
+                .is_err()
+        );
+    }
 }

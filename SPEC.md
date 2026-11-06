@@ -209,7 +209,8 @@ not completion while eligible unseen or unfinished material exists.
   An explicit Save draft checkpoints acknowledged text for the exact unanswered
   Prompt in the notebook; anyone with that notebook's owner/token authority can
   read it. Saving never grades, advances, schedules, or invokes a provider.
-  Competing saves use a draft generation, and exact operation replay is safe.
+  Competing saves and explicit discards use a draft generation, and exact
+  operation replay is safe.
   A committed answer or deliberate Prompt replacement clears the checkpoint.
   Only acknowledged text can be relied on as durable; a lost response may have
   committed and requires reconciliation. Automatic retention of unsaved

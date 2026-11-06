@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {spawn} from 'node:child_process';
+import {createServer} from 'node:http';
 import {createHash, randomUUID} from 'node:crypto';
-import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, rm, writeFile, chmod} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 import {createRuntime, internalKey} from './runtime-helper.mjs';
 import {historicalMutation} from './historical-fixture.mjs';
@@ -39,8 +40,8 @@ async function fixture(t, twoUnits = false) {
     assert.equal(response.status, status, JSON.stringify(body));
     return body;
   };
-  const cli = (args, input = '', exit = 0) => new Promise((done, reject) => {
-    const child = spawn(cliPath, [...args, '--json', '--config', config], {env: {PATH: process.env.PATH, HOME: temp}, stdio: ['pipe', 'pipe', 'pipe']});
+  const cli = (args, input = '', exit = 0, configFile = config) => new Promise((done, reject) => {
+    const child = spawn(cliPath, [...args, '--json', '--config', configFile], {env: {PATH: process.env.PATH, HOME: temp}, stdio: ['pipe', 'pipe', 'pipe']});
     let stdout = '', stderr = '';
     child.stdout.on('data', b => stdout += b);
     child.stderr.on('data', b => stderr += b);
@@ -79,7 +80,7 @@ async function fixture(t, twoUnits = false) {
     observations.push({observation: 'Validated historical Correction setup, not a supported HTTP write', correction_id: result.practice.correction.id, replayed: result.replayed});
     return result;
   };
-  return {runtime, origin, sql, rows, record, api, cli, sid, version, next, answer, historicalCorrect};
+  return {runtime, origin, sql, rows, record, api, cli, sid, version, next, answer, historicalCorrect, temp, secret};
 }
 
 for (const scope of ['unit', 'section', 'whole']) {
@@ -272,8 +273,37 @@ test('Owner CLI explicitly saves and reads a prompt-bound draft without grading'
   assert.equal(after.filter(r=>r.key.startsWith('practice_attempts/')).length,before.filter(r=>r.key.startsWith('practice_attempts/')).length);
   await f.cli(['save-draft',pid,'--generation','0','--text-stdin','--operation-id',op],'Synthetic checkpoint');
   assert.equal((await f.cli(['draft'])).generation,1);
-  await f.cli(['save-draft',pid,'--generation','0','--text-stdin'], 'Stale text', 1);
+  await f.cli(['save-draft',pid,'--generation','0','--text-stdin','--operation-id',randomUUID()], 'Stale text', 1);
   assert.equal((await f.cli(['draft'])).draft.answer,'Synthetic checkpoint');
+  const discardOp=randomUUID();await f.cli(['discard-draft',pid,'--generation','1','--operation-id',discardOp]);
+  assert.equal((await f.cli(['draft'])).draft,null);
+  await f.cli(['discard-draft',pid,'--generation','1','--operation-id',discardOp]);
+  await f.cli(['save-draft',pid,'--generation','2','--text-stdin','--operation-id',randomUUID()],'Synthetic checkpoint');
   await f.cli(['answer',pid,'--text-stdin'], 'Actual answer');
   assert.equal((await f.cli(['draft'])).draft,null);
+});
+
+
+test('CLI requires a retained checkpoint operation ID and reconciles a lost response', async t=>{
+  const f=await fixture(t,false), initial=(await f.cli(['next','--study',f.sid])).practice, pid=initial.prompt.id;
+  const before=await f.rows();
+  const refusal=await f.cli(['save-draft',pid,'--generation','0','--text-stdin'],'synthetic text',1);
+  assert.match(refusal.error,/operation-id/);assert.deepEqual(await f.rows(),before);
+  let captured;
+  const server=createServer(async(req,res)=>{
+    try {
+      const parts=[];for await(const chunk of req)parts.push(chunk);const body=Buffer.concat(parts);
+      captured=JSON.parse(body.toString());
+      const upstream=await fetch(f.origin+req.url,{method:'POST',headers:{authorization:req.headers.authorization,'content-type':'application/json'},body});
+      assert.equal(upstream.status,200);await upstream.arrayBuffer();res.destroy();
+    } catch(error) {res.destroy(error);}
+  });
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const proxyConfig=join(f.temp,'checkpoint-proxy.json');
+  await writeFile(proxyConfig,JSON.stringify({origin:`http://127.0.0.1:${server.address().port}`,token:f.secret}));await chmod(proxyConfig,0o600);t.after(()=>rm(proxyConfig,{force:true}));
+  const op=randomUUID(),args=['save-draft',pid,'--generation','0','--text-stdin','--operation-id',op];
+  const lost=await f.cli(args,'synthetic text',1,proxyConfig);assert.match(lost.error,/retry mutations with the same operation ID/);
+  assert.equal(captured.operation_id,op);assert.equal((await f.cli(['draft'])).draft.answer,'synthetic text');
+  const replay=await f.cli(args,'synthetic text');assert.equal(replay.replayed,true);assert.equal((await f.cli(['draft'])).generation,1);
 });

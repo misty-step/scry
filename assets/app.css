@@ -470,4 +470,4 @@ body.private-suspended .page-frame { visibility: hidden; }
 #scope-recovery button { font: inherit; padding: .75rem 1rem; }
 
 /* The explicit checkpoint requires enhanced, scope-bound submission. */
-[data-checkpoint-save][hidden], [data-checkpoint-custody][hidden] {display:none}
+[data-checkpoint-save][hidden], [data-checkpoint-discard][hidden], [data-checkpoint-custody][hidden] {display:none}

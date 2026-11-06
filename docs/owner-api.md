@@ -356,12 +356,15 @@ Pace or status.
 An owner or authorized notebook token can explicitly checkpoint the current
 unanswered prompt. `scry draft` reads the saved text and generation;
 `scry save-draft PROMPT --generation N --text-stdin --operation-id ID` saves a
-new value. Retain the exact operation ID and input to reconcile a lost response.
+new value; `scry discard-draft PROMPT --generation N --operation-id ID` removes
+the saved draft. Both require an explicit operation ID; retain it and the exact
+input to reconcile a lost response.
 The generation is a compare-and-swap: a stale save conflicts. The mutation receipt
 contains no answer text. The draft belongs to the notebook, not an individual
 token, and its acknowledged text is included in complete recovery archives.
-Drafts are limited to 32 KiB; carriage returns and NUL are refused, as are line
-feeds in a single-line mapping answer, because the browser cannot preserve them.
+Drafts are limited to 32 KiB; JSON and CLI carriage returns and NUL are refused,
+as are line feeds in a single-line mapping answer. Browser form CRLF is decoded
+to the textarea’s LF representation; bare carriage returns remain invalid.
 Saving does not grade or advance. Only acknowledged text can be relied on as
 durable; a lost response may follow a commit. Typing or editing alone is not
 saved automatically.

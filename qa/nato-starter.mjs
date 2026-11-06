@@ -24,8 +24,9 @@ export async function starterFixture({nowMs}={}){
   const rows=async()=>Object.fromEntries((await sql.exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,JSON.parse(r.value)]));
   const get=async path=>{const r=await runtime.worker.fetch(origin+path);assert.equal(r.status,200);return r.text();};
   const post=(path,fields)=>runtime.worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});
+  const postScoped=(path,scope,fields)=>{const body=new FormData();for(const [key,value] of Object.entries(fields))body.set(key,value);return runtime.worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'X-Scry-Request':'page','X-Scry-Expected-Scope':scope},body});};
   const clock=async at=>{assert.notEqual(nowMs,undefined,'Clock only enabled in explicit synthetic fixtures');bindings.SCRY_TEST_NOW_MS=String(at);runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin})};sql=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});};
-  return {origin,rows,get,post,clock,get egress(){return egress;},close:()=>runtime.mf.dispose()};
+  return {origin,rows,get,post,postScoped,clock,get egress(){return egress;},close:()=>runtime.mf.dispose()};
  }catch(e){await runtime.mf.dispose();throw e;}
 }
 export async function starterJourney(){

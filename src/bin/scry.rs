@@ -259,9 +259,17 @@ mod cli {
         if args.len() == 1 && matches!(args[0].as_str(), "due" | "history" | "export") {
             return request(&client, &login, &format!("/api/v1/{}", args[0]), None);
         }
-        let operation = option(&mut args, "--operation-id")?
-            .map(Ok)
-            .unwrap_or_else(random_id)?;
+        let supplied_operation = option(&mut args, "--operation-id")?;
+        if args
+            .first()
+            .is_some_and(|a| matches!(a.as_str(), "save-draft" | "discard-draft"))
+            && supplied_operation.is_none()
+        {
+            return Err(
+                "Use --operation-id ID and retain it to reconcile an uncertain checkpoint operation.",
+            );
+        }
+        let operation = supplied_operation.map(Ok).unwrap_or_else(random_id)?;
         if args.first().is_some_and(|a| a == "lesson") {
             let mut payload = json!({"operation_id":operation});
             for (option_name, field) in [
@@ -344,6 +352,23 @@ mod cli {
                 );
             }
             return request(&client, &login, "/api/v1/next", Some(&payload));
+        }
+        if args.first().is_some_and(|a| a == "discard-draft") {
+            let generation = option(&mut args, "--generation")?
+                .ok_or("Use --generation NUMBER.")?
+                .parse::<u64>()
+                .map_err(|_| "Use a numeric draft generation.")?;
+            if args.len() != 2 {
+                return Err("Usage: scry discard-draft PROMPT --generation N --operation-id ID");
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/draft/discard",
+                Some(
+                    &json!({"operation_id":operation,"prompt_id":args[1],"generation":generation}),
+                ),
+            );
         }
         if args.first().is_some_and(|a| a == "save-draft") {
             let generation = option(&mut args, "--generation")?
@@ -562,7 +587,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|draft|save-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|draft|save-draft|discard-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

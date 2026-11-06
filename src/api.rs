@@ -30,6 +30,7 @@ pub fn mutation_path(path: &str) -> Option<&str> {
         "/api/v1/next" => Some("/practice/next"),
         "/api/v1/answer" => Some("/practice/answer"),
         "/api/v1/draft" => Some("/practice/draft"),
+        "/api/v1/draft/discard" => Some("/practice/draft/discard"),
         "/api/v1/reveal" => Some("/practice/reveal"),
         "/api/v1/quiz" => Some("/practice/quiz"),
         "/api/v1/correct" => Some("/practice/correct"),
@@ -65,6 +66,15 @@ pub fn fields(value: serde_json::Value) -> AppResult<BTreeMap<String, String>> {
             Ok((key.clone(), value))
         })
         .collect()
+}
+
+/// HTML form encoders convert textarea line feeds to CRLF. Normalize only
+/// that transport representation, leaving bare carriage returns for the domain
+/// validator to reject. JSON/CLI payloads never pass through this adapter.
+pub fn normalize_draft_form(fields: &mut BTreeMap<String, String>) {
+    if let Some(answer) = fields.get_mut("answer") {
+        *answer = answer.replace("\r\n", "\n");
+    }
 }
 
 /// Only Library draft metadata is nested. Other API field rules stay unchanged.

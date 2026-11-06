@@ -151,11 +151,11 @@ try {
       assert.match(response.headers.get('Cache-Control'),/no-store/);
       const mismatch = await call('/settings',{method:'POST',headers:{'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64),'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},body:'x='.padEnd(5*1024*1024,'x')});
       assert.equal(mismatch.status,409); assert.equal(mismatch.headers.get('X-Scry-Scope-Mismatch'),'1'); assert.equal(mismatch.headers.get('X-Scry-Test-Body-Used'),'false');
-      for (const headers of [
+      for (const path of ['/practice/draft','/practice/draft/discard']) for (const headers of [
         {'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},
         {'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64),'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},
       ]) {
-        const refused = await call('/practice/draft',{method:'POST',headers,body:'x='.padEnd(5*1024*1024,'x')});
+        const refused = await call(path,{method:'POST',headers,body:'x='.padEnd(5*1024*1024,'x')});
         assert.ok([403,409].includes(refused.status)); assert.equal(refused.headers.get('X-Scry-Test-Body-Used'),'false');
       }
       const missing = await call('/settings',{headers:{'X-Scry-Request':'poll'}});

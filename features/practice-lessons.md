@@ -7,7 +7,7 @@ native feedback. [SPEC](../SPEC.md#visual-practice-chooser-2026-11-01) owns acce
 
 - The topic shelf groups NATO, Saint Michael editions and Rosary mystery sets.
 - Current-session return preserves the prompt and typed draft.
-- With JavaScript enabled, Save draft stores acknowledged text for the current unanswered prompt in the notebook. Anyone with access to that notebook can read it.
+- With JavaScript enabled, Save draft stores acknowledged text for the current unanswered prompt in the notebook. Anyone with access to that notebook can read it. Discard saved draft explicitly removes it after confirmation.
 - With JavaScript enabled, an enhanced in-page switch away from a nonempty unsubmitted answer asks for confirmation. A confirmed switch keeps the answer read-only while its outcome is unresolved.
 - Prayer practice separates source study from hidden phrase, joined and whole-prayer quizzes.
 - A mistaken phrase shows expected wording and retries the same phrase.

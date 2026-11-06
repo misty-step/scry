@@ -518,8 +518,10 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     }
     // Saving learner text is an enhanced-only action: do not buffer a body or
     // contact the object without the page's original scope precondition.
-    if req.path() == "/practice/draft"
-        && req.headers().get("X-Scry-Request")?.as_deref() != Some("page")
+    if matches!(
+        req.path().as_str(),
+        "/practice/draft" | "/practice/draft/discard"
+    ) && req.headers().get("X-Scry-Request")?.as_deref() != Some("page")
     {
         return private(Response::error("Authenticated page required.", 403)?);
     }
@@ -1286,6 +1288,9 @@ impl DurableObject for LearningSpace {
                 fields.insert(name, value);
             }
         }
+        if path == "/practice/draft" {
+            api::normalize_draft_form(&mut fields);
+        }
         let mut app = self.load()?;
         let before = app.revision;
         if fields.get("csrf").map(String::as_str) != Some(app.csrf.as_str()) {
@@ -1427,6 +1432,7 @@ impl DurableObject for LearningSpace {
                             | "/practice/nato/start"
                             | "/practice/lesson/start"
                             | "/practice/draft"
+                            | "/practice/draft/discard"
                     ) || path.ends_with("/edit"))
                     && let Err(e) = persistence::archive_size(&app)
                 {
@@ -1448,7 +1454,9 @@ impl DurableObject for LearningSpace {
                         self.preparation_ready(),
                     );
                 }
-                if path != "/practice/draft" || !replayed {
+                if !matches!(path.as_str(), "/practice/draft" | "/practice/draft/discard")
+                    || !replayed
+                {
                     match self.save_typed(&mut app, Some(before)) {
                         Ok(()) => {}
                         Err(SaveError::Worker(error)) => return Err(error),
@@ -1762,7 +1770,11 @@ impl LearningSpace {
         if let Err(error) = persistence::archive_size(&app) {
             return api_error(error);
         }
-        if canonical_path != "/practice/draft" || !replayed {
+        if !matches!(
+            canonical_path,
+            "/practice/draft" | "/practice/draft/discard"
+        ) || !replayed
+        {
             match self.save_typed(&mut app, Some(before)) {
                 Ok(()) => {}
                 Err(SaveError::App(error)) => return api_error(error),

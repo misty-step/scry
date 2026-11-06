@@ -1965,6 +1965,12 @@ fn lesson_next(
     lesson_present(app, &sid, index, whole, now, seed)
 }
 
+fn draft_text_valid(prompt: &Prompt, answer: &str) -> bool {
+    answer.len() <= 32768
+        && !answer.contains(['\r', '\0'])
+        && (prompt.cue_level != Cue::MappingKey || !answer.contains('\n'))
+}
+
 pub fn mutate(
     app: &mut App,
     path: &str,
@@ -2003,15 +2009,10 @@ pub fn mutate(
             let answer = fields
                 .get("answer")
                 .ok_or_else(|| AppError::new(422, "An answer is required."))?;
-            if answer.len() > 32768 {
-                return Err(AppError::new(422, "Keep your answer under 32 KiB."));
-            }
-            if answer.contains(['\r', '\0'])
-                || (current.prompt.cue_level == Cue::MappingKey && answer.contains('\n'))
-            {
+            if !draft_text_valid(&current.prompt, answer) {
                 return Err(AppError::new(
                     422,
-                    "This draft contains characters the answer field cannot preserve. Your text is still editable.",
+                    "Keep your draft under 32 KiB and use characters this answer field can preserve. Your text is still editable.",
                 ));
             }
             let generation = current_generation
@@ -2027,6 +2028,45 @@ pub fn mutate(
             Ok(response(
                 None,
                 json!({"draft_generation": generation, "prompt_id": current.prompt.id}),
+            ))
+        }
+        "/practice/draft/discard" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "prompt_id" | "generation"
+                )
+            }) {
+                return Err(AppError::new(
+                    422,
+                    "Choose only the saved draft and its generation.",
+                ));
+            }
+            let current = active(app, fields, false)?;
+            let expected = field(fields, "generation")
+                .parse::<u64>()
+                .map_err(|_| AppError::new(422, "A draft generation is required."))?;
+            let checkpoint = app
+                .practice
+                .answer_checkpoint
+                .as_mut()
+                .ok_or_else(AppError::conflict)?;
+            if checkpoint.generation != expected
+                || checkpoint
+                    .draft
+                    .as_ref()
+                    .is_none_or(|draft| draft.prompt_id != current.prompt.id)
+            {
+                return Err(AppError::conflict());
+            }
+            checkpoint.generation = checkpoint
+                .generation
+                .checked_add(1)
+                .ok_or_else(AppError::conflict)?;
+            checkpoint.draft = None;
+            Ok(response(
+                None,
+                json!({"draft_generation":checkpoint.generation,"prompt_id":current.prompt.id}),
             ))
         }
         "/practice/quiz" => quiz(app, fields, now, seed),
@@ -2401,20 +2441,22 @@ pub fn validate(app: &App) -> AppResult<()> {
     if let Some(checkpoint) = &p.answer_checkpoint
         && (checkpoint.generation == 0
             || checkpoint.draft.as_ref().is_some_and(|draft| {
-                draft.answer.len() > 32768
-                    || p.current.as_ref().is_none_or(|current| {
-                        current.prompt.id != draft.prompt_id || current.attempt_id.is_some()
-                    })
+                p.current.as_ref().is_none_or(|current| {
+                    current.prompt.id != draft.prompt_id
+                        || current.attempt_id.is_some()
+                        || !draft_text_valid(&current.prompt, &draft.answer)
+                })
             }))
     {
         return Err(fail());
     }
     let mut checkpoint_generations = BTreeSet::new();
-    for receipt in app
-        .operations
-        .values()
-        .filter(|receipt| receipt.path.as_deref() == Some("/practice/draft"))
-    {
+    for receipt in app.operations.values().filter(|receipt| {
+        matches!(
+            receipt.path.as_deref(),
+            Some("/practice/draft" | "/practice/draft/discard")
+        )
+    }) {
         let data = receipt
             .result
             .data
