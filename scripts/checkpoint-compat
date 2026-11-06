@@ -2,14 +2,17 @@
 # Explicit synthetic release evidence; this is not invoked by the existing CI.
 set -eu
 : "${SCRY_CHECKPOINT_OLD_WORKER:?Set SCRY_CHECKPOINT_OLD_WORKER to the verified previous production Worker directory}"
-: "${SCRY_CHECKPOINT_SOURCE_SHA:?Set SCRY_CHECKPOINT_SOURCE_SHA to the exact candidate commit}"
+: "${SCRY_CHECKPOINT_SOURCE_SHA:?Set SCRY_CHECKPOINT_SOURCE_SHA to the exact authenticated PR merge commit}"
+: "${SCRY_CHECKPOINT_PR_BASE:?Set SCRY_CHECKPOINT_PR_BASE to the authenticated run base commit}"
+: "${SCRY_CHECKPOINT_PR_HEAD:?Set SCRY_CHECKPOINT_PR_HEAD to the authenticated run PR head commit}"
 : "${SCRY_CHECKPOINT_SOURCE_MANIFEST:?Set SCRY_CHECKPOINT_SOURCE_MANIFEST to the complete source hash manifest}"
 : "${SCRY_CHECKPOINT_CI_ZIP:?Set SCRY_CHECKPOINT_CI_ZIP to the authenticated candidate CI artifact ZIP}"
 : "${SCRY_CHECKPOINT_CI_SHA256:?Set SCRY_CHECKPOINT_CI_SHA256 to its independently authenticated SHA256}"
 : "${SCRY_CHECKPOINT_CI_RUN_ID:?Set SCRY_CHECKPOINT_CI_RUN_ID to the verified successful CI run}"
 case "$SCRY_CHECKPOINT_SOURCE_SHA" in *[!0-9a-f]*|'') echo 'Invalid source commit' >&2; exit 1;; esac
 [ "${#SCRY_CHECKPOINT_SOURCE_SHA}" -eq 40 ] || { echo 'Invalid source commit' >&2; exit 1; }
-printf 'Candidate commit: %s\n' "$SCRY_CHECKPOINT_SOURCE_SHA"
+printf 'CI merge commit: %s\n' "$SCRY_CHECKPOINT_SOURCE_SHA"
+python3 scripts/checkpoint-pr-merge "$SCRY_CHECKPOINT_SOURCE_SHA" "$SCRY_CHECKPOINT_PR_BASE" "$SCRY_CHECKPOINT_PR_HEAD"
 python3 scripts/checkpoint-manifest check "$SCRY_CHECKPOINT_SOURCE_MANIFEST" "$SCRY_CHECKPOINT_SOURCE_SHA"
 test -s "$SCRY_CHECKPOINT_OLD_WORKER/index.js"
 test -s "$SCRY_CHECKPOINT_OLD_WORKER/index_bg.wasm"

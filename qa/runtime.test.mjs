@@ -82,7 +82,9 @@ try {
     const qaClaims={sub:'checkpoint-qa-person',email:qaEmail};
     const qaToken=jwt(qaClaims), otherQaToken=jwt({...qaClaims,sub:'checkpoint-qa-other'}), ownerToken=jwt();
     const bindings={...baseBindings,QA_EMAIL:qaEmail};
-    const fixture=await createRuntime({bindings,name:'checkpoint-auth-isolation',artifact,egress,inspect:true});
+    let fixtureCertRequests=0;
+    const fixtureEgress=async request=>{assert.equal(request.url,`https://${team}/cdn-cgi/access/certs`);fixtureCertRequests++;return new Response(JSON.stringify({keys:[publicJwk]}),{status:200,headers:{'Content-Type':'application/json'}});};
+    const fixture=await createRuntime({bindings,name:'checkpoint-auth-isolation',artifact,egress:fixtureEgress,inspect:true});
     const req=(path,token,init={})=>fixture.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':token,...init.headers}});
     const post=(path,token,fields,extra={})=>req(path,token,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded',...extra},body:new URLSearchParams(fields)});
     const fields=(html,path)=>{
@@ -94,6 +96,7 @@ try {
       const qaScope=(await (await req('/session/scope',qaToken)).json()).scope;
       const otherScope=(await (await req('/session/scope',otherQaToken)).json()).scope;
       const ownerScope=(await (await req('/session/scope',ownerToken)).json()).scope;
+      assert.equal(fixtureCertRequests,1,'The isolated fixture caches its own issuer keys.');
       const start=await (await req('/?practice=nato',qaToken)).text();
       assert.equal((await post('/practice/nato/start',qaToken,fields(start,'/practice/nato/start'))).status,303);
       const question=await (await req('/?practice=nato',qaToken)).text();

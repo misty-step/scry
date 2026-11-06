@@ -63,7 +63,7 @@ class Provenance(unittest.TestCase):
         files = []
         source = io.BytesIO()
         with tarfile.open(fileobj=source, mode='w:gz') as tar:
-            for path in ('one', 'scripts/scry-ci', 'two'):
+            for path in git(self.root, 'ls-files').splitlines():
                 data = (self.root / path).read_bytes()
                 archived = b'tampered\n' if alter_source and path == 'one' else data
                 item = {'path': path, 'mode': '100644', 'git_blob': git(self.root, 'hash-object', path), 'sha256': sha(archived)}
@@ -83,6 +83,27 @@ class Provenance(unittest.TestCase):
             for name, data in workers.items():
                 z.writestr('worker/' + name, b'tampered' if alter_worker and name == 'index.js' else data)
         return archive, sha(archive.read_bytes())
+
+    def test_pr_artifact_uses_synthetic_merge_identity(self):
+        base = self.head
+        original_branch = git(self.root, 'symbolic-ref', '--short', 'HEAD')
+        git(self.root, 'checkout', '-qb', 'candidate')
+        (self.root / 'one').write_text('candidate change\n')
+        git(self.root, 'add', 'one')
+        git(self.root, '-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-qm', 'candidate')
+        head = git(self.root, 'rev-parse', 'HEAD')
+        git(self.root, 'checkout', '-q', original_branch)
+        git(self.root, '-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'merge', '--no-ff', '-qm', 'synthetic merge', 'candidate')
+        self.head = git(self.root, 'rev-parse', 'HEAD')
+        self.assertNotEqual(self.head, head)
+        result = self.call('checkpoint-pr-merge', self.head, base, head)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotEqual(self.call('checkpoint-pr-merge', self.head, head, base).returncode, 0)
+        self.assertNotEqual(self.call('checkpoint-pr-merge', head, base, head).returncode, 0)
+        archive, digest = self.artifact()
+        self.assertNotEqual(self.call('checkpoint-ci-artifact', archive, digest, head, '123', self.outside / 'wrong').returncode, 0)
+        result = self.call('checkpoint-ci-artifact', archive, digest, self.head, '123', self.outside / 'correct')
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_artifact_binds_complete_source_and_worker(self):
         archive, digest = self.artifact()
