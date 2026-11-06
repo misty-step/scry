@@ -6,7 +6,7 @@
     if (details) details.classList.toggle('animate-open', !details.open);
   }, { passive: true });
   document.addEventListener('keydown', () => document.querySelector('#nato-progress')?.classList.remove('animate-open'));
-  const enableDraftSave = () => { if (typeof fetch === 'function' && typeof FormData === 'function') document.querySelectorAll('[data-checkpoint-save], [data-checkpoint-discard], [data-checkpoint-custody]').forEach(node => { node.hidden = false; }); };
+  const enableDraftSave = () => { if (typeof fetch === 'function' && typeof FormData === 'function') { document.querySelectorAll('[data-checkpoint-save], [data-checkpoint-custody]').forEach(node => { node.hidden = false; }); document.querySelectorAll('[data-checkpoint-discard]').forEach(node => { node.hidden = node.dataset.checkpointPresent !== 'true'; }); } };
   const enablePickerReturn = () => document.querySelectorAll('[data-picker-close]').forEach(button => { button.hidden = false; });
   document.addEventListener('click', event => {
     const button = event.target.closest?.('[data-picker-close]');
@@ -60,9 +60,32 @@
     return parsed.scope;
   };
   let checkpointAcknowledged = false;
+  let autoTimer = null;
+  let autoBlocked = false;
+  let autoEdited = false;
+  let answerUnsaved = false;
+  let composing = false;
+  const cancelAuto = () => { clearTimeout(autoTimer); autoTimer = null; };
   const dirtyForms = new WeakSet();
   const unsentAnswer = () => [...document.querySelectorAll('form.answer-form textarea[name=answer], form.answer-form input[type=text][name=answer]')].find(input => !input.disabled && input.value.length > 0);
-  document.addEventListener('input', event => { if (event.target.form) dirtyForms.add(event.target.form); if (checkpointAcknowledged) hideStatus(); });
+  document.addEventListener('input', event => {
+    if (event.target.form) dirtyForms.add(event.target.form);
+    if (checkpointAcknowledged) hideStatus();
+    const input = event.target;
+    if (input.form?.classList.contains('answer-form') && input.matches?.('textarea[name=answer], input[type=text][name=answer]')) {
+      autoEdited = true;
+      answerUnsaved = true;
+      if (!pending && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
+      else if (!pending && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.');
+      else if (!pending && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.');
+      else if (!pending) announce('Changes not yet saved.');
+      else if (pending.automatic && pending.sending) announce('Saving earlier text. Newer changes are not yet saved.');
+      else if (pending.automatic) announce('An earlier save needs reconciliation. Newer changes are not saved.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]], reconcileDetail(pending));
+      if (!event.isComposing && !composing) scheduleAuto(input);
+    }
+  });
+  document.addEventListener('compositionstart', () => { composing = true; cancelAuto(); });
+  document.addEventListener('compositionend', event => { composing = false; if (autoEdited && event.target.form?.classList.contains('answer-form')) scheduleAuto(event.target); });
   document.addEventListener('change', event => { if (event.target.form) dirtyForms.add(event.target.form); });
   const status = () => document.getElementById('request-status');
   const hideStatus = () => { checkpointAcknowledged = false; const box = status(); if (box) { box.hidden = true; box.replaceChildren(); } };
@@ -86,6 +109,8 @@
     suspended = true;
     validation?.abort();
     clearTimeout(pollTimer);
+    cancelAuto();
+    autoEdited = false;
     pollRequest?.abort();
     pending?.flight?.controller.abort();
     pending = null;
@@ -140,6 +165,7 @@
       if (nextSelected && oldProgress.open) nextSelected.checked = true;
     }
     previousMain.replaceWith(main);
+    if (!preserveDrafts) { cancelAuto(); autoEdited = false; answerUnsaved = false; autoBlocked = false; }
     enablePickerReturn();
     enableDraftSave();
     if (preserveDrafts && focused?.isConnected) {
@@ -178,6 +204,49 @@
     request.form?.removeAttribute('aria-busy');
     request.inputLocks?.forEach(([input, readOnly, disabled]) => { input.readOnly = readOnly; input.disabled = disabled; });
   };
+  const scheduleAuto = input => {
+    cancelAuto();
+    if (autoBlocked || disposed || suspended || inactive() || !navigator.onLine || composing || !input?.form?.isConnected) return;
+    if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') { autoBlocked = 'unavailable'; announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); return; }
+    if (new TextEncoder().encode(input.value).length > Number(input.form.dataset.answerLimit || 4000)) return;
+    autoTimer = setTimeout(() => {
+      autoTimer = null;
+      if (!autoEdited || autoBlocked || disposed || suspended || inactive() || !navigator.onLine || composing || !input.form?.isConnected || pending) return;
+      const form = input.form;
+      const generationControl = form.querySelector('[data-checkpoint-generation]');
+      if (!generationControl || !/^(0|[1-9][0-9]{0,19})$/.test(generationControl.dataset.generation || '')) {
+        autoBlocked = 'changed';
+        announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
+        return;
+      }
+      try {
+        const snapshot = input.value;
+        const data = new FormData(form);
+        if (disposed || suspended || inactive() || !navigator.onLine || !form.isConnected || pending) return;
+        if (input.value !== snapshot || data.get('answer') !== snapshot) { announce('Changes are not saved. Use Save draft or keep typing.'); return; }
+        data.set('operation_id', `autosave-${crypto.randomUUID()}`);
+        data.set('generation', generationControl.dataset.generation);
+        autoEdited = false;
+        const poll = pollRequest; pollRequest = null; poll?.abort();
+        pending = { form, data, checkpoint: 'save', automatic: true, snapshot, input, action: new URL('/practice/draft', location.href).href };
+        send(pending);
+      } catch {
+        autoBlocked = 'unavailable';
+        announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.');
+      }
+    }, 5000);
+  };
+  const readCheckpoint = async (response, request) => {
+    if (response.status !== 200 || !(response.headers.get('content-type') || '').includes('application/json') || !response.body) throw new Error('The checkpoint response was incomplete.');
+    const reader = response.body.getReader(); const chunks = []; let length = 0;
+    try {
+      while (true) { const {done,value} = await reader.read(); if (done) break; length += value.byteLength; if (length > 2048) { reader.cancel().catch(() => {}); throw new Error('The checkpoint response was too large.'); } chunks.push(value); }
+    } finally { reader.releaseLock(); }
+    const bytes = new Uint8Array(length); let offset = 0; chunks.forEach(chunk => { bytes.set(chunk, offset); offset += chunk.byteLength; });
+    const data = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(bytes));
+    if (!data || Object.keys(data).sort().join(',') !== 'current,generation,operation_id,prompt_id,remaining,version' || data.version !== 1 || data.operation_id !== request.data.get('operation_id') || data.prompt_id !== request.data.get('prompt_id') || !/^[a-f0-9]{32}$/.test(data.prompt_id || '') || typeof data.generation !== 'string' || !/^[1-9][0-9]{0,19}$/.test(data.generation) || typeof data.current !== 'boolean' || !Number.isInteger(data.remaining) || data.remaining < 0 || data.remaining > 512) throw new Error('The checkpoint response was invalid.');
+    return data;
+  };
   const send = async request => {
     if (request.sending || suspended || inactive() || !scoped) return;
     if (!navigator.onLine) {
@@ -188,7 +257,7 @@
       return;
     }
     request.sending = true;
-    if (!request.inputLocks) {
+    if (!request.automatic && !request.inputLocks) {
       const inputs = [...(request.form?.querySelectorAll('textarea,input:not([type=hidden]),select') || [])];
       if (request.departureDraft && !inputs.includes(request.departureDraft)) inputs.push(request.departureDraft);
       request.inputLocks = inputs.map(input => [input, input.readOnly, input.disabled]);
@@ -196,7 +265,7 @@
     }
     request.form?.setAttribute('aria-busy', 'true');
     request.form?.querySelectorAll('button').forEach(button => { button.disabled = true; });
-    announce('Saving…');
+    announce(request.automatic && request.input.value !== request.snapshot ? 'Saving earlier text. Newer changes are not yet saved.' : 'Saving…');
     const controller = new AbortController();
     const flight = { controller, active: true };
     request.flight = flight;
@@ -207,12 +276,44 @@
     try {
       request.attempted = true;
       const response = await fetch(request.action, {
-        method: 'POST', body: request.data, credentials: 'same-origin', redirect: 'follow',
-        headers: { Accept: 'text/html', 'X-Scry-Request': 'page', ...expectedHeaders }, signal: controller.signal
+        method: 'POST', body: request.data, credentials: 'same-origin', redirect: request.automatic ? 'manual' : 'follow',
+        headers: { Accept: request.automatic ? 'application/json' : 'text/html', 'X-Scry-Request': 'page', ...(request.automatic ? { 'X-Scry-Checkpoint-Mode': 'auto-v1' } : {}), ...expectedHeaders }, signal: controller.signal
       });
       if (!valid()) return;
+      if (request.automatic && response.type === 'opaqueredirect') throw new Error('The automatic save was redirected.');
       if (response.status === 401 || response.status === 403 || (response.status === 409 && response.headers.get('X-Scry-Scope-Mismatch') === '1') || (response.url && new URL(response.url, location.href).origin !== location.origin)) { conceal(); return; }
       if (!verifyScope(response.headers.get('X-Scry-Scope'))) return;
+      if (request.automatic && response.status === 429) {
+        pending = null; unlock(request); autoBlocked = 'limit'; cancelAuto();
+        announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.');
+        return;
+      }
+      if (request.automatic && response.status === 200) {
+        const receipt = await readCheckpoint(response, request);
+        if (!valid()) return;
+        if (!receipt.current) {
+          pending = null; unlock(request);
+          autoBlocked = 'changed'; cancelAuto();
+          announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
+          return;
+        }
+        const generationControl = request.form.querySelector('[data-checkpoint-generation]');
+        if (!generationControl) throw new Error('The checkpoint generation was unavailable.');
+        pending = null; unlock(request);
+        generationControl.dataset.generation = receipt.generation;
+        const discardControl = request.form.querySelector('[data-checkpoint-discard]');
+        if (discardControl) { discardControl.dataset.checkpointPresent = 'true'; discardControl.hidden = false; }
+        if (receipt.remaining === 0) autoBlocked = 'limit';
+        if (request.input.value === request.snapshot) {
+          cancelAuto(); autoEdited = false; answerUnsaved = false;
+          announce(autoBlocked ? 'Saved. Automatic saving has reached its limit; use Save draft next time.' : 'Saved.');
+          checkpointAcknowledged = true;
+        } else {
+          announce(autoBlocked ? 'Earlier text saved. Newer changes are not saved; use Save draft.' : 'Earlier text saved. Newer changes are not yet saved.');
+          if (autoEdited && !autoBlocked) scheduleAuto(request.input);
+        }
+        return;
+      }
       if (response.status === 409) {
         if ((response.headers.get('content-type') || '').includes('text/html')) {
           const text = await response.text();
@@ -222,6 +323,7 @@
         }
         pending = null;
         unlock(request);
+        if (request.automatic) { autoBlocked = 'changed'; cancelAuto(); }
         announce('This changed in another tab. Your draft is still here.', [['Open saved progress', () => location.reload()]], 'Reload deliberately to see the current question or saved result.');
         return;
       }
@@ -255,6 +357,7 @@
         try {
           const probe = await fetch('/session/scope', { credentials: 'same-origin', redirect: 'manual', cache: 'no-store', headers: expectedHeaders, signal: AbortSignal.timeout(5000) });
           if (!valid()) return;
+          if (request.automatic && probe.type === 'opaqueredirect') { suspend(); recovery(); return; }
           if ([401, 403, 409].includes(probe.status) || probe.type === 'opaqueredirect' || (probe.url && new URL(probe.url, location.href).origin !== location.origin)) { conceal(); return; }
           if (probe.status === 200) {
             const actual = await readScope(probe);
@@ -268,7 +371,7 @@
       announce('The response did not arrive. Your draft is still here.', [
         [reconcileLabel(request), () => send(request)],
         ['Open saved progress', () => location.reload()]
-      ], reconcileDetail(request));
+      ], request.automatic && request.input.value !== request.snapshot ? 'Reconciliation sends the earlier snapshot. Your newer changes are not saved.' : reconcileDetail(request));
     } finally {
       clearTimeout(timer);
       if (request.flight === flight) { flight.active = false; request.sending = false; }
@@ -280,6 +383,7 @@
     if (suspended || inactive() || !scoped) { event.preventDefault(); return; }
     if (typeof fetch !== 'function' || typeof FormData !== 'function') return;
     event.preventDefault();
+    cancelAuto();
     if (pending) { announce('An earlier response still needs to be reconciled.', [[pending.checkpoint ? reconcileLabel(pending) : 'Reconcile that attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Only one operation can be unresolved at a time.'); return; }
     if (!navigator.onLine) { announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); return; }
     const photo = form.querySelector('input[type=file]')?.files?.[0];
@@ -413,6 +517,8 @@
     suspended = true;
     validation?.abort();
     clearTimeout(pollTimer);
+    cancelAuto();
+    autoEdited = false;
     pollRequest?.abort();
     if (pending?.flight) {
       pending.flight.active = false;
@@ -435,6 +541,7 @@
     try {
       const response = await fetch('/session/scope', { credentials: 'same-origin', redirect: 'manual', cache: 'no-store', headers: expectedHeaders, signal: controller.signal });
       if (validation !== controller || epoch !== generation || pageSequence !== sequence || inactive()) return;
+      if (pending?.automatic && response.type === 'opaqueredirect') { recovery(); return; }
       if ([401, 403, 409].includes(response.status) || response.type === 'opaqueredirect' || (response.url && new URL(response.url, location.href).origin !== location.origin)) { conceal(); return; }
       if (response.status !== 200) { recovery(); return; }
       const actual = await readScope(response);
@@ -466,11 +573,11 @@
   };
   document.addEventListener('visibilitychange', lifecycleChange);
   document.addEventListener('prerenderingchange', lifecycleChange);
-  window.addEventListener('offline', () => { if (!suspended) announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); });
+  window.addEventListener('offline', () => { cancelAuto(); autoEdited = false; if (!suspended) announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); });
   window.addEventListener('online', () => {
     if (suspended) { resume(); return; }
-    if (pending) announce('You are connected again. Reconcile your saved operation.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]]);
-    else { hideStatus(); schedulePoll(); }
+    if (pending) announce(pending.automatic && pending.input.value !== pending.snapshot ? 'Reconcile the earlier save. Your newer changes are not saved.' : 'You are connected again. Reconcile your saved operation.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]]);
+    else { if (answerUnsaved && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); else if (answerUnsaved && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved) announce('Changes are not saved. Use Save draft or keep typing.'); else hideStatus(); schedulePoll(); }
   });
   window.addEventListener('pagehide', conceal);
   window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });

@@ -561,6 +561,37 @@ fn active(app: &App, fields: &BTreeMap<String, String>, answered: bool) -> AppRe
     }
     Ok(p.clone())
 }
+/// Cap automatic receipts across tabs and reloads without changing receipt format.
+pub const AUTOSAVE_RECEIPT_LIMIT: usize = 512;
+pub const AUTOSAVE_OPERATION_PREFIX: &str = "autosave-";
+
+pub fn autosave_remaining(app: &App) -> usize {
+    let used = app
+        .operations
+        .iter()
+        .filter(|(id, receipt)| {
+            id.starts_with(AUTOSAVE_OPERATION_PREFIX)
+                && receipt.path.as_deref() == Some("/practice/draft")
+        })
+        .count();
+    AUTOSAVE_RECEIPT_LIMIT.saturating_sub(used)
+}
+
+pub fn checkpoint_current(app: &App, fields: &BTreeMap<String, String>, generation: u64) -> bool {
+    active(app, fields, false).is_ok_and(|current| current.phase != Some(StudyPhase::Study))
+        && app
+            .practice
+            .answer_checkpoint
+            .as_ref()
+            .is_some_and(|checkpoint| {
+                checkpoint.generation == generation
+                    && checkpoint.draft.as_ref().is_some_and(|draft| {
+                        draft.prompt_id == field(fields, "prompt_id")
+                            && draft.answer == field(fields, "answer")
+                    })
+            })
+}
+
 fn make_prompt(
     app: &App,
     study: &Study,

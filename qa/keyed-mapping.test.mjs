@@ -11,6 +11,7 @@ import {keyedMappingJourney,keyedMappingWalk,keyedMappingRecovery} from './keyed
 import {keyedMappingBoundaryJourney} from './keyed-mapping.mjs';
 import {starterWalk,progressWalk} from './nato-starter.mjs';
 import {lessonJourney,lessonWalk} from './lessons.mjs';
+import {autosaveBrowserWalk} from './autosave-browser.mjs';
 import {babyJourney,babyWalk} from './baby-readiness.mjs';
 const output='target/keyed-mapping';await mkdir(output,{recursive:true});
 buildCli();
@@ -28,7 +29,7 @@ await test('NATO mapping: actual mobile native/enhanced browser loop',async()=>{
  const browser=await playwright.chromium.launch({headless:true,...(process.env.SCRY_CRITICS_CHROMIUM_PATH?{executablePath:process.env.SCRY_CRITICS_CHROMIUM_PATH}:{}),args:['--no-sandbox']});
  try{
   const capture=async(page,name,options={})=>{const path=join(output,name);await page.screenshot({path,fullPage:true,...options});return name;};
-  const rows=[...await keyedMappingWalk(browser,capture),...await keyedMappingRecovery(browser,capture),...await starterWalk(browser,capture),...await progressWalk(browser,capture),...await lessonWalk(browser,capture),...await studyReviewWalk(browser,capture),...await mixedReviewWalk(browser,capture),...await continuousStudyWalk(browser,capture),...await babyWalk(browser,capture)];
+  const rows=[...await keyedMappingWalk(browser,capture),...await keyedMappingRecovery(browser,capture),...await starterWalk(browser,capture),...await progressWalk(browser,capture),...await lessonWalk(browser,capture),...await autosaveBrowserWalk(browser,capture),...await studyReviewWalk(browser,capture),...await mixedReviewWalk(browser,capture),...await continuousStudyWalk(browser,capture),...await babyWalk(browser,capture)];
   await writeFile(join(output,'browser.json'),JSON.stringify(rows,null,2)+'\n');
   assert.ok(rows.every(row=>row.status==='pass'),JSON.stringify(rows.filter(row=>row.status!=='pass')));
  }finally{await browser.close();}
