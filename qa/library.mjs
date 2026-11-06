@@ -103,8 +103,17 @@ export async function libraryJourney() {
    const addFields=Object.fromEntries([...addForm[1].matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
    const beforeForm=await rows();
    const formRefusal=await runtime.worker.fetch(origin+'/library/version/add',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...addFields,title:oversized.title,text:oversized.text})});
-   assert.equal(formRefusal.status,413);assert.match(await formRefusal.text(),/This record exceeds the storage limit\./);
+   assert.equal(formRefusal.status,413);const refusedHtml=await formRefusal.text();assert.match(refusedHtml,/This record exceeds the storage limit\./);
+   assert.ok(refusedHtml.includes(`name="title" value="${oversized.title}"`));
+   assert.ok(refusedHtml.includes(`name="text" rows="10" maxlength="262144" required aria-describedby="text-note">${oversized.text}</textarea>`));
    assert.deepEqual(await rows(),beforeForm,'Native form refusal preserves every row.');
+   const correctionForm=/<form[^>]*action="\/library\/version\/add"[^>]*>([\s\S]*?)<\/form>/.exec(refusedHtml);assert.ok(correctionForm);
+   const correctionFields=Object.fromEntries([...correctionForm[1].matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+   const correctedText='Corrected supplied text.\n';
+   const corrected=await runtime.worker.fetch(origin+'/library/version/add',{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...correctionFields,title:oversized.title,text:correctedText})});
+   assert.equal(corrected.status,303);
+   const correctedLocation=corrected.headers.get('Location');assert.match(correctedLocation,/^\/library\/versions\/[a-f0-9]{32}$/);
+   const correctedVersion=await(await request('/api/v1'+correctedLocation)).json();assert.equal(correctedVersion.version.text,correctedText);
    const oversizedFile=await file('oversized-record.txt',oversized.text);
    const beforeCli=await rows();const cliRefusal=await cli(addArgs(oversizedFile,oversized.title));
    assert.equal(cliRefusal.code,1);assert.deepEqual(await rows(),beforeCli,'CLI refusal preserves every row.');

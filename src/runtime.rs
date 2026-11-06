@@ -1803,7 +1803,7 @@ impl LearningSpace {
             .map_err(Error::from)?
             .and_then(|value| value.get("revision").and_then(Value::as_u64));
         if actual != expected {
-            return Err(SaveError::App(AppError::conflict()));
+            return Err(SaveError::Worker(to_worker_error(AppError::conflict())));
         }
         let sql = self.state.storage().sql();
         let storage = self.state.storage();
