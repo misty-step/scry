@@ -592,7 +592,7 @@ test('backgrounding cancels an unsent timer and foreground return does not save'
   assert.equal(f.calls.length,1);f.calls[0].resolve(f.response(200));await tick();assert.equal(f.calls.length,1);assert.equal(input.value,'first');
 });
 test('stale checkpoint acknowledgment never adopts a competing generation',async()=>{
-  const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];call.resolve(autosaveResponse(f,call,7,false));await tick();assert.equal(generation.dataset.generation,'0');assert.match(f.status.children[0].textContent,/not saved/);
+  const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];call.resolve(autosaveResponse(f,call,1,false));await tick();assert.equal(generation.dataset.generation,'0');assert.match(f.status.children[0].textContent,/not saved/);
   input.value='still unsaved';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);
 });
 
@@ -637,4 +637,8 @@ test('going offline during automatic form serialization never sends or queues a 
 });
 test('a synchronous form-data edit cannot be mistaken for the frozen snapshot',async()=>{
   const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);form.onFormData=()=>{input.value='newer';};f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not saved/);
+});
+
+test('an inconsistent acknowledged generation cannot be silently adopted',async()=>{
+  const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];original.resolve(autosaveResponse(f,original,7,true));await tick();assert.equal(generation.dataset.generation,'0');assert.equal(f.calls[1].url,'/session/scope');f.calls[1].resolve(f.response(200));await tick();const reconcile=f.status.children.flatMap(x=>x.children||[]).find(x=>x.textContent==='Reconcile this save');assert.ok(reconcile);reconcile.click();assert.equal(f.calls[2].init.body,original.init.body);f.calls[2].resolve(autosaveResponse(f,f.calls[2],1));await tick();assert.equal(generation.dataset.generation,'1');
 });

@@ -244,7 +244,9 @@
     } finally { reader.releaseLock(); }
     const bytes = new Uint8Array(length); let offset = 0; chunks.forEach(chunk => { bytes.set(chunk, offset); offset += chunk.byteLength; });
     const data = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(bytes));
-    if (!data || Object.keys(data).sort().join(',') !== 'current,generation,operation_id,prompt_id,remaining,version' || data.version !== 1 || data.operation_id !== request.data.get('operation_id') || data.prompt_id !== request.data.get('prompt_id') || !/^[a-f0-9]{32}$/.test(data.prompt_id || '') || typeof data.generation !== 'string' || !/^[1-9][0-9]{0,19}$/.test(data.generation) || typeof data.current !== 'boolean' || !Number.isInteger(data.remaining) || data.remaining < 0 || data.remaining > 512) throw new Error('The checkpoint response was invalid.');
+    const previous = request.data.get('generation');
+    if (typeof previous !== 'string' || !/^(0|[1-9][0-9]{0,19})$/.test(previous) || BigInt(previous) >= 18446744073709551615n) throw new Error('The checkpoint generation was invalid.');
+    if (!data || Object.keys(data).sort().join(',') !== 'current,generation,operation_id,prompt_id,remaining,version' || data.version !== 1 || data.operation_id !== request.data.get('operation_id') || data.prompt_id !== request.data.get('prompt_id') || !/^[a-f0-9]{32}$/.test(data.prompt_id || '') || typeof data.generation !== 'string' || !/^[1-9][0-9]{0,19}$/.test(data.generation) || data.generation !== (BigInt(previous) + 1n).toString() || typeof data.current !== 'boolean' || !Number.isInteger(data.remaining) || data.remaining < 0 || data.remaining > 512) throw new Error('The checkpoint response was invalid.');
     return data;
   };
   const send = async request => {
