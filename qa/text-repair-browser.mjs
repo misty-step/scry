@@ -39,10 +39,10 @@ export async function textRepairWalk(browser,capture){
    let response=await rt.worker.fetch(origin+'/operator/restore',{method:'POST',headers:{'x-scry-restore-token':bindings.RESTORE_TOKEN,'x-scry-sha256':hash(bytes)},body:bytes});assert.equal(response.status,200,await response.text());
    bindings={SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:space,INTERNAL_KEY:internalKey,ACCESS_TEAM:team,ACCESS_AUDIENCE:audience,OWNER_SUBJECT:owner};rt={...rt,...await rt.rebind(bindings)};
    const primary=rt;
-   const rows=async(notebook=space,engine=primary,objectName=name)=>Object.fromEntries((await(await engine.mf.unsafeGetDurableObjectStorage(objectName,'LearningSpace',{name:notebook})).exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,r.value]));
+   const rows=async(notebook=space,engine=primary,objectName=name)=>{const storage=await engine.mf.unsafeGetDurableObjectStorage(objectName,'LearningSpace',{name:notebook});const schema=await storage.exec("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name");const records=schema.some(r=>r.name==='records')?await storage.exec('SELECT key,value FROM records ORDER BY key'):[];return {...Object.fromEntries(records.map(r=>[r.key,r.value])),__qa_schema:JSON.stringify(schema)};};
    const before=await rows(),practice=JSON.parse(before.meta).practice;
    context=await browser.newContext({viewport:{width:javaScriptEnabled?390:320,height:844},javaScriptEnabled,isMobile:true,hasTouch:true,colorScheme:javaScriptEnabled?'light':'dark'});page=await context.newPage();page.setDefaultTimeout(15000);
-   let lose=javaScriptEnabled,posts=[];
+   let lose=javaScriptEnabled,posts=[];result.transport=[];
    // Browser owns native navigation, forms, JS and History. The transport-only
    // route supplies synthetic Access identity, verifies origin, and has no egress.
    await context.route('**/*',async route=>{
@@ -53,6 +53,7 @@ export async function textRepairWalk(browser,capture){
     // Never fabricate an Origin for a request that did not carry one.
     if(browserHeaders.origin!==undefined){headers['X-Scry-Test-Origin']=browserHeaders.origin;delete headers.origin;}
     const response=await rt.worker.fetch(request.url(),{method:request.method(),headers,...(request.method()==='POST'?{body:request.postDataBuffer()}:{}),redirect:'manual'});
+    if(request.method()==='POST'||new URL(request.url()).pathname==='/recall')result.transport.push({method:request.method(),path:new URL(request.url()).pathname,status:response.status,hasScope:response.headers.has('X-Scry-Scope'),location:response.headers.get('Location')});
     if(request.method()==='POST'&&new URL(request.url()).pathname==='/library/version/repair'){
      posts.push({url:request.url(),body:request.postData(),scope:browserHeaders['x-scry-expected-scope']||null,status:response.status});
      if(response.status!==303&&response.status!==409){
@@ -73,10 +74,10 @@ export async function textRepairWalk(browser,capture){
    // Retain the exact server-rendered document to represent a cached native
    // form after a lost response. No fields or application state are invented.
    const originalHtml=await page.content();
-   await page.getByRole('button',{name:'Create repaired copy',exact:true}).click();
-   if(javaScriptEnabled){await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).waitFor();assert.equal(posts.length,1);await page.waitForTimeout(250);assert.equal(posts.length,1);await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).click();}
+   result.stage='first-submit';await page.getByRole('button',{name:'Create repaired copy',exact:true}).click();
+   if(javaScriptEnabled){await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).waitFor();assert.equal(posts.length,1);await page.waitForTimeout(250);assert.equal(posts.length,1);result.stage='reconcile';await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).click();}
    await page.locator('[data-state="practice-unavailable"]').waitFor();
-   const repaired=await rows();assert.deepEqual(JSON.parse(repaired.meta).practice,practice);const repair=JSON.parse(repaired['library_repairs/'+original]);assert.equal(Object.keys(repaired).filter(k=>k.startsWith('library_versions/')).length,Object.keys(before).filter(k=>k.startsWith('library_versions/')).length+1);
+   result.stage='repair-landed';const repaired=await rows();assert.deepEqual(JSON.parse(repaired.meta).practice,practice);const repair=JSON.parse(repaired['library_repairs/'+original]);assert.equal(Object.keys(repaired).filter(k=>k.startsWith('library_versions/')).length,Object.keys(before).filter(k=>k.startsWith('library_versions/')).length+1);
    if(!javaScriptEnabled){
     // Actual no-JS browser controls submit the unchanged cached native form.
     const retained=await context.newPage();await retained.route(url,route=>route.fulfill({status:200,contentType:'text/html',body:originalHtml}));await retained.goto(url);await retained.getByRole('button',{name:'Create repaired copy',exact:true}).click();await retained.locator('[data-state="practice-unavailable"]').waitFor();await retained.close();assert.deepEqual(await rows(),repaired);result.nativeRetry='unchanged server-rendered cached document, actual no-JS submit';
@@ -92,7 +93,7 @@ export async function textRepairWalk(browser,capture){
    otherRuntime=await createRuntime({name:name+'-other',artifact,port:0,inspect:true,bindings:{...bindings,SPACE_NAME:otherSpace},egress:async request=>{assert.equal(request.url,`https://${team}/cdn-cgi/access/certs`);return new Response(JSON.stringify({keys:[jwk]}),{headers:{'Content-Type':'application/json'}});}});
    rt=otherRuntime;const otherBefore=await rows(otherSpace,otherRuntime,name+'-other');
    await page.getByRole('button',{name:'Create repaired copy',exact:true}).click();if(javaScriptEnabled)await page.locator('body.private-hidden').waitFor({state:'attached'});else await page.getByText('Notebook changed.',{exact:true}).waitFor();assert.deepEqual(await rows(),enrolled);assert.deepEqual(await rows(otherSpace,otherRuntime,name+'-other'),otherBefore);assert.equal(posts.at(-1).status,409);result.staleNotebookRefused=true;result.heldPromptAndDraftPreserved=true;
-  }catch(error){result.status='fail';result.reason=error.message;if(page)result.evidence.push(await capture(page,label+'-failure.png'));}
+  }catch(error){result.status='fail';result.reason=error.message;if(page)result.view=await page.evaluate(()=>({state:document.querySelector('[data-state]')?.getAttribute('data-state'),privateHidden:document.body.classList.contains('private-hidden')})).catch(()=>null);if(page)result.evidence.push(await capture(page,label+'-failure.png'));}
   finally{console.log('Synthetic repair case: '+JSON.stringify(result));if(context){await context.unrouteAll({behavior:'wait'});await context.close();}if(otherRuntime)await otherRuntime.mf.dispose();await primaryRuntimeDispose();}
  }
  await writeFile('target/keyed-mapping/text-repair/browser.json',JSON.stringify(report,null,2)+'\n');console.log('Synthetic repair browser results: '+JSON.stringify(report));return report;
