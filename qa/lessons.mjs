@@ -112,6 +112,9 @@ export async function lessonWalk(browser,capture){
    assert.match(await page.locator('.sequence-extras').innerText(),/Repeated/);
    assert.equal(await page.locator('.sequence-extras li').count(),2);
    await shot('ordered-long-extra');
+   await activate(page.getByText('Your submitted answer',{exact:true}));
+   await shot('ordered-long-answer-open');
+   await activate(page.getByText('Your submitted answer',{exact:true}));
    await activate(page.locator('.lesson-picker > summary'));await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="st-michael-en"]')}).locator('button'));
    assert.equal(await page.locator('#answer').count(),0);await enterMemoryPage(page);assert.match(await page.locator('.lesson-instruction').innerText(),/from memory/);assert.match(await page.locator('.lesson-position').innerText(),/Phrase 1 \/ 8/);assert.equal(await page.locator('.practice-heading h1').count(),1);assert.equal(await page.locator('.lesson-position').count(),1);assert.equal(await page.locator('.lesson-stage h1').count(),0);assert.equal(await page.locator('.practice-tools > details').count(),2);await activate(page.locator('.lesson-evidence > summary'));assert.equal(await page.locator('.lesson-evidence').getAttribute('open'),'');await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('.lesson-evidence').getAttribute('open'),null);await activate(page.locator('.lesson-picker > summary'));await shot('prayer-guided');const r=await f.rows(),p=current(r),v=version(r,p.prompt.version_id);
    // An understandable learner mistake: continuing with the following phrase.
