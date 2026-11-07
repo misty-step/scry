@@ -4,6 +4,11 @@ Stories, numbered criteria, scope, and retired IDs now live only in
 [SPEC.md](SPEC.md#user-stories). This compatibility index preserves old heading
 links, not a second specification.
 
+Current grading direction: [smart and simple grading with Jev](SPEC.md#smart-and-simple-grading-with-jev-2026-11-07),
+including [US-016](SPEC.md#us-016-learn-a-version-unit-by-unit) and
+[US-017](SPEC.md#us-017-get-an-exact-verdict-and-a-word-by-word-diff).
+This index is not evidence that the amended journey has shipped.
+
 ## US-001 Find and reuse saved understanding
 
 See [SPEC](SPEC.md#us-001-find-and-reuse-saved-understanding).
