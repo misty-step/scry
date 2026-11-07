@@ -372,7 +372,8 @@ not rewritten or deleted. This supersedes the previous generation-first intent
 for new memorization features; it does not activate paid work or retire the
 preservation requirements of the legacy concept and text paths.
 
-The first bounded delivery is a supplied NATO spelling alphabet, using existing
+Historical first delivery (2026-10-27; local-only assessment is superseded
+by JEV-01–04): a supplied NATO spelling alphabet uses existing
 Work, Version, Unit, Study and Card records (US-015/016/017/018/021), not a new
 collection model. Forward key→value recall starts with the key alone; Scry's
 server-owned expected value and pinned `exact-v2` decide Good/Again. No client
@@ -394,7 +395,7 @@ the server, is mutually exclusive with a client manifest, and accepts no
 client override of its words. Repeated Add or agent import returns the same
 Version without resetting a Study or schedule; changed starter content must
 use a new selector. The starter form contains no canonical-answer payload.
-The mapping-only `exact-v2` profile is pinned as
+The historical mapping-only `exact-v2` profile remains pinned for its results as
 `1;unicode=17.0.0;mapping=1`: Unicode NFKC/case-folding and whitespace follow
 the existing engine, but punctuation creates word boundaries rather than
 joining letters, and ampersands are not expanded to "and". Interior apostrophes
@@ -694,25 +695,19 @@ interaction teaches me something without taking away control.
 - **S02.4:** Next advances deliberately; Back, refresh, canceled gestures, and
   read-only requests do not fabricate answers. If no next item is ready, the
   learner sees an honest end/pending state.
-- **S02.5 (US-003/US-008):** Content versions distinguish short recall and
-  explain-level prose; there is no answer-form setting. Choices, the exact key,
-  and authored variants resolve locally. Every other short recall answer stages
-  one bounded Jev `short-v1` battery, whose identity judgment reads from the
-  prompt whether an exact value or form is required, and accepts only with accept
-  probability ≥0.85, identity risk ≤0.35, injection risk ≤0.20, or rejects
-  only with reject probability ≥0.90 and injection risk ≤0.20. Otherwise it
-  stays ungraded for learner self-check. Exact-recall answers are outside this
-  criterion and graded by `exact-v2` (US-017). Explain-level authored required-idea
-  rubrics retain `semantic-v1`: only independently supported correct judgments
-  become success; incomplete/incorrect shadow classes stay ungraded.
-- **S02.6 (US-002/US-007):** A close, unsure, or failed check preserves the
-  answer, opens self-check with expected answer/explanation, and offers Retry
-  check on failure. A graded result names `exact`, `jev`, `learner`, or `reveal`
-  authority. Automatic misses offer “I was right” and automatic correct grades
-  offer “Count as a miss”; one immutable correction adjusts the current
-  schedule without rewriting the original attempt. Assistance and answer
-  exposure remain fenced before display; neither a self-check nor a note read
-  becomes an unassisted success by accident.
+- **S02.5 (US-003/US-008/US-017):** Assess short recall, exact-word recall,
+  ordered identity and explain-level prose against their actual objectives
+  under JEV-01–04. There is no answer-form setting. Jev provides smart
+  server-owned judgment; a local key/variant fast path is optional, not a
+  required dispatch policy. Historical short-v1 thresholds and semantic-v1
+  rules remain evidence of those original policies, not new Jev mandates.
+- **S02.6 (US-002/US-007):** A close, unsure or failed check preserves the
+  answer ungraded without schedule credit. Retry and failure handling follow
+  the reviewed implementation policy; they must not duplicate assessment or
+  schedule effects. Record the actual Authority, never a fabricated Jev result
+  for a local decision. No new self-check, self-rating or Owner Correction is
+  offered. Historical learner/reveal/exact/Jev attribution and Corrections
+  retain their original meaning. Assistance is fenced before disclosure.
 
 Proof: actual browser interactions plus deterministic learning/SQLite boundary
 checks for ambiguous answers, semantic policy thresholds, pending/failure
@@ -1116,12 +1111,12 @@ verification commands live outside this behavioral reference.
 | --- | --- | --- |
 | US-001 | S05, S07 | Current concepts/history; criterion 1 is retained Go migration only |
 | US-002 | S01, S02 | Current study loop |
-| US-003 | S02, S06 | Current grading outside exact recall |
+| US-003 | S02, S06, JEV-01–04 | Current server-owned grading and honest uncertainty |
 | US-004 | S04, S06 | Current prepublication criticism, concept generation only |
 | US-005 | S03 | Superseded front door; historical Go explicit-mode callers only |
 | US-006 | S02, S04, S07 | Current concept reference |
 | US-007 | S02, S05, S06 | Current grade correction |
-| US-008 | S02 | Current short-answer policy outside exact recall |
+| US-008 | S02, JEV-01–04 | Smart short-answer assessment; historical battery policies retained |
 | US-009 | S07, S08 | Current Map/evidence |
 | US-010 | S07, S08 | Current focus, pause and pace for concept goals |
 | US-011 | S08 | Current prerequisites for concept goals |
@@ -1130,7 +1125,7 @@ verification commands live outside this behavioral reference.
 | US-014 | S06, S09, AG1 | Exact recall: Owner tokens, API and CLI (see criterion walks) |
 | US-015 | S07, AG1 | Exact recall: Library, find before create (evidence pending) |
 | US-016 | S01, S02, S06, S08 | Exact recall: Study, Ladder and schedule (see criterion walks) |
-| US-017 | S02, UX2 | Exact recall: `exact-v2` verdict and Diff (see criterion walks) |
+| US-017 | S02, JEV-01–04 | Current Jev grading and useful correction; historical exact-v2 evidence |
 | US-018 | S01, S02, UX4 | Exact recall on the phone (see criterion walks) |
 | US-019 | S04, S06, D5 | Exact recall: generation agent (evidence pending) |
 | US-020 | S02, S08 | Exact recall: ordered lists (evidence pending) |
@@ -1169,12 +1164,17 @@ No-gos: no auto-advance, due-count chrome, foundation routes, or hidden answer p
 
 ## US-003 Get an honest answer judgment
 
-Current applicability (2026-10-27): criteria 2/4’s learner self-check fallback is retired. Unsupported answers stay saved and ungraded; native assessment may be retried within its existing bounds. Criterion 5’s learner authority is preserved historical attribution only, never a new self-rating write.
+Current applicability (2026-11-07): JEV-01–04 govern current assessment.
+The original short-v1 thresholds in criterion 2 and semantic-v1 policy in
+criterion 3 below describe retained historical implementations, not mandatory
+new dispatch or threshold choices. Criteria 2/4's learner self-check fallback
+remains retired; unsupported answers stay saved and ungraded. Criterion 5's
+learner authority is historical attribution only, never a new self-rating write.
 
 Statement: When I answer in my own words, I want correct meaning recognized where appropriate and uncertainty handed back to me, so my history reflects what I actually knew.
 
 Criteria:
-1. WHEN a choice answer, the exact key, or an authored variant matches, THE SYSTEM SHALL resolve it locally without a network check; THE SYSTEM SHALL NOT award, mark wrong, or send to self-check any other recall answer locally, however close or far it is.
+1. WHEN I submit an answer, THE SYSTEM SHALL resolve it under JEV-01–04 against the actual learning objective. Local exact-key or authored-variant matches MAY be an optimization, never a requirement or a substitute for the Jev-backed journey; broad string similarity SHALL NOT silently determine correctness.
 2. WHEN a recall answer does not match the key or an authored variant, THE SYSTEM SHALL stage one bounded Jev `short-v1` check outside SQL; it SHALL accept only at accept probability ≥0.85, exact-identity risk ≤0.35, injection risk ≤0.20, or reject only at reject probability ≥0.90 and injection risk ≤0.20. Other outcomes SHALL remain ungraded for self-check.
 3. WHEN explain-level prose has an authored rubric, THE SYSTEM SHALL retain the `semantic-v1` required-ideas policy; incomplete and incorrect shadow classes SHALL remain ungraded, and answer-bearing cues SHALL count as assistance before display.
 4. WHEN a check is close, unsure, unavailable, malformed, or fails, THE SYSTEM SHALL preserve the answer and offer a learner self-check; a failed check SHALL also offer Retry check without sending the identical paid assessment twice.
@@ -1260,17 +1260,23 @@ No-gos: no rewriting the original attempt or pretending the correction was a new
 
 ## US-008 Answer short questions in my own words
 
+Current applicability (2026-11-07): JEV-01–04 supersede mandatory local
+dispatch and the old short-v1 threshold battery. No self-check or self-rating
+fallback remains. Original criteria are preserved in the
+[pre-amendment SPEC](https://github.com/misty-step/scry/blob/3f2a3c48d98d4247c715d43a5f1172852beba838/SPEC.md#us-008-answer-short-questions-in-my-own-words).
+
 Statement: When a short answer means the same thing in different words, I want it to count without accepting a different fact as correct.
 
 Criteria:
-1. WHEN a short response does not match the key or an authored variant locally, THE SYSTEM SHALL use the `short-v1` Jev battery with verdict, exact-identity, and injection judgments.
-2. WHEN accept probability is at least 0.85 and identity risk at most 0.35 and injection risk at most 0.20, THE SYSTEM SHALL accept; WHEN reject probability is at least 0.90 and injection risk at most 0.20, THE SYSTEM SHALL reject; otherwise it SHALL ask me to self-check.
-3. WHEN a check fails or its result cannot be trusted, THE SYSTEM SHALL keep my answer, name the learner's judgment as authority if I self-check, and SHALL NOT silently award success.
+1. WHEN I submit a short answer, THE SYSTEM SHALL use the current Jev grading direction to recognize correct meaning while preserving required identities and forms; a local exact-match optimization is optional.
+2. WHEN the assessment supports correct or incorrect recall, THE SYSTEM SHALL commit the corresponding server-owned Verdict under its reviewed policy; inconclusive results SHALL stay ungraded.
+3. WHEN a check fails or cannot be trusted, THE SYSTEM SHALL keep my answer without a grade or schedule credit and SHALL NOT ask me to self-grade.
 
 No-gos: no liberal similarity rule, hidden automatic retry, or claim that an untested holdout passed.
 
-Narrowed 2026-10-20: US-008 governs short answers outside exact recall. Its
-former requirement of holdout evidence before live activation is retired.
+Historical narrowing (2026-10-20): US-008 excluded exact recall. The current
+Jev amendment supersedes that split; its retirement of the former mandatory
+holdout gate remains unchanged. New quality claims still need actual evidence.
 
 ## US-009 See what I know
 
