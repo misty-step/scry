@@ -23,6 +23,9 @@ export async function autosaveBrowserWalk(browser,capture) {
     const imeSaved=page.waitForResponse(response=>response.url().endsWith('/practice/draft')&&response.status()===200);
     await cdp.send('Input.insertText',{text:'z'});await imeSaved;await page.getByText('Saved.',{exact:true}).waitFor();assert.equal(saves,3);assert.equal(await answer.evaluate(el=>el===window.__syntheticAnswer),true);
     result.evidence.push(await capture(page,'autosave-composition.png'));await cdp.detach();
+    const acknowledged=await answer.inputValue();await answer.fill(acknowledged+'q');await answer.fill(acknowledged);await page.waitForTimeout(5500);assert.equal(saves,3,'Undo to the acknowledged text creates no receipt.');
+    await page.reload();await answer.waitFor();await page.waitForTimeout(5500);assert.equal(saves,3,'Reload does not save.');assert.equal(await answer.inputValue(),acknowledged);
+    await answer.fill(acknowledged+'q');await answer.fill(acknowledged);await page.waitForTimeout(5500);assert.equal(saves,3,'Undo to the reloaded checkpoint creates no receipt.');
     const rows=await f.rows();assert.equal(Object.keys(rows).filter(k=>k.startsWith('practice_attempts/')).length,0);
     return [result];
   } finally {await context.close();await f.close();}

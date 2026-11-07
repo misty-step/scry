@@ -215,11 +215,12 @@ not completion while eligible unseen or unfinished material exists.
   With JavaScript, editing an answer can also checkpoint a quiet
   foreground snapshot after five seconds. The editor remains usable, and the
   status distinguishes newer unsaved text from the acknowledged snapshot.
-  Automatic saves stop after 512 automatic receipts per notebook; explicit
-  Save draft and exact replay remain available. Automatic saving does not start
-  on load, reconnect, foreground return, or unload. Only acknowledged text can
-  be relied on as durable; a lost response may have committed and requires
-  manual reconciliation. Retention of unsent keystrokes remains an open part
+  Automatic saves stop after 512 automatic receipts per notebook and pause on
+  a capacity refusal; explicit Save draft and exact replay remain available.
+  Automatic saving does not start on load, reconnect, foreground return, or
+  unload. Only acknowledged text can be relied on as durable; a lost response
+  may have committed and requires manual reconciliation. Reconciliation never
+  automatically sends edits made during uncertainty or while offline. Retention of unsent keystrokes remains an open part
   of STUDY-04.
 - **STUDY-05:** When no eligible work remains, show Rest for now and Browse, not
   invented completion or a misleading future-review countdown. Material beyond

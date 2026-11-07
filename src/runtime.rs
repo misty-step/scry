@@ -602,7 +602,7 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         let max = if mode == "restore" {
             persistence::MAX_ARCHIVE_BYTES
         } else if checkpoint_mode.as_deref() == Some("auto-v1") {
-            64 * 1024
+            128 * 1024
         } else {
             MAX_HTTP_BODY
         };

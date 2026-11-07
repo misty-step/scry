@@ -48,8 +48,8 @@ test('discard and question switch invalidate old save receipts without revealing
     const afterDiscard=await f.rows();assert.equal((await f.postScoped('/practice/draft',scope,{...first,generation:'1',operation_id:`autosave-${randomUUID()}`},headers)).status,409);assert.deepEqual(await f.rows(),afterDiscard);
     const old=await (await f.postScoped('/practice/draft',scope,first,headers)).json();assert.equal(old.current,false);assert.doesNotMatch(JSON.stringify(old),/private synthetic/);
     const second={...base,generation:'2',answer:'new private synthetic',operation_id:`autosave-${randomUUID()}`};assert.equal((await f.postScoped('/practice/draft',scope,second,headers)).status,200);
-    const lessons=await f.get('/lessons');const switchFields=nativeFields(lessons,'/practice/lesson/start');assert.equal((await f.post('/practice/lesson/start',switchFields)).status,303);
-    const after=await f.rows();assert.equal(after.meta.practice.answer_checkpoint.draft,null);
+    const lessons=await f.get('/lessons');const selected=lessons.split('<form').find(part=>part.startsWith(' method="post" action="/practice/lesson/start"')&&part.split('</form>')[0].includes('name="starter" value="rosary-joyful"'));assert.ok(selected);const switchFields=nativeFields('<form'+selected,'/practice/lesson/start');assert.equal((await f.post('/practice/lesson/start',switchFields)).status,303);
+    const after=await f.rows();assert.notEqual(after.meta.practice.current.prompt.id,second.prompt_id);assert.equal(after.meta.practice.answer_checkpoint.draft,null);
     assert.equal((await f.postScoped('/practice/draft',scope,{...second,generation:'3',operation_id:`autosave-${randomUUID()}`},headers)).status,409);assert.deepEqual(await f.rows(),after);
     const oldSecond=await (await f.postScoped('/practice/draft',scope,second,headers)).json();assert.equal(oldSecond.current,false);assert.doesNotMatch(JSON.stringify(oldSecond),/new private synthetic/);
     assert.deepEqual(await f.rows(),after);assert.equal(Object.keys(after).filter(key=>key.startsWith('practice_attempts/')).length,0);
@@ -65,7 +65,7 @@ test('automatic save requires the original scope and valid CSRF',async()=>{
     assert.equal((await f.post('/practice/draft',fields)).status,403);
     assert.equal((await f.postScoped('/practice/draft','b'.repeat(64),fields,mode)).status,409);
     assert.equal((await f.postScoped('/practice/draft',scope,{...fields,csrf:'invalid'},mode)).status,403);
-    assert.equal((await f.postScoped('/practice/draft',scope,{...fields,answer:'x'.repeat(70*1024)},mode)).status,413);
+    assert.equal((await f.postScoped('/practice/draft',scope,{...fields,answer:'x'.repeat(130*1024)},mode)).status,413);
     assert.deepEqual(await f.rows(),before);
   } finally {await f.close();}
 });
@@ -82,5 +82,15 @@ test('automatic budget is shared by reloads, rejects new saves, and permits repl
     assert.equal((await f.postScoped('/practice/draft',scope,{...blocked,csrf:'invalid'},mode)).status,403);assert.deepEqual(await f.rows(),before);
     const replay=await f.postScoped('/practice/draft',scope,last,mode);assert.equal(replay.status,200);assert.equal((await replay.json()).current,true);assert.deepEqual(await f.rows(),before);
     const manual={...blocked,operation_id:randomUUID(),answer:'manual remains available'};assert.equal((await f.postScoped('/practice/draft',scope,manual)).status,303);assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft.answer,'manual remains available');
+  } finally {await f.close();}
+});
+
+test('a maximum-length LF-heavy textarea fits the bounded multipart save',async()=>{
+  const f=await starterFixture();
+  try {
+    const lessons=await f.get('/lessons');const selected=lessons.split('<form').find(part=>part.startsWith(' method="post" action="/practice/lesson/start"')&&part.split('</form>')[0].includes('name="starter" value="rosary-joyful"'));assert.ok(selected);assert.equal((await f.post('/practice/lesson/start',nativeFields('<form'+selected,'/practice/lesson/start'))).status,303);
+    const page=await f.get('/'),scope=JSON.parse(await f.get('/session/scope')).scope,answer='\n'.repeat(32768);
+    const fields={...nativeFields(page,'/practice/answer'),generation:'0',answer,operation_id:`autosave-${randomUUID()}`};
+    const saved=await f.postScoped('/practice/draft',scope,fields,{'X-Scry-Checkpoint-Mode':'auto-v1'});assert.equal(saved.status,200,await saved.text());assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft.answer,answer);
   } finally {await f.close();}
 });

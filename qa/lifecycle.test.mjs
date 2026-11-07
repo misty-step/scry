@@ -650,3 +650,25 @@ test('a generation changed during form serialization is never silently adopted',
 test('a local generation change during an automatic flight is not overwritten',async()=>{
   const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];generation.dataset.generation='9';call.resolve(autosaveResponse(f,call,1,true));await tick();assert.equal(generation.dataset.generation,'9');assert.match(f.status.children[0].textContent,/not saved/);input.value='more';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);
 });
+
+test('an automatic save cannot install a scoped unexpected 201 HTML page',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];input.value='newer';f.emit('input',{target:input});
+  call.resolve(f.response(201,`<html data-notebook-scope="${scope}"><main id="main"></main></html>`,{'x-scry-scope':scope,'content-type':'text/html'}));await tick();assert.equal(f.previousMain.replaced,false);assert.equal(input.value,'newer');assert.equal(f.calls[1].url,'/session/scope');f.calls[1].resolve(f.response(200));await tick();assert.ok(f.status.children.flatMap(n=>n.children||[]).some(n=>n.textContent==='Reconcile this save'));
+});
+test('reconciling an uncertain snapshot does not automatically send edits made during uncertainty',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];original.resolve(f.response(503));await tick();f.calls[1].resolve(f.response(200));await tick();
+  input.value='newer';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const action=f.status.children.flatMap(n=>n.children||[]).find(n=>n.textContent==='Reconcile this save');assert.ok(action);action.click();const replay=f.calls[2];assert.equal(replay.init.body,original.init.body);replay.resolve(autosaveResponse(f,replay,1));await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,3);assert.match(f.status.children[0].textContent,/Newer changes are not/);
+});
+test('an offline edit is not sent after a delayed acknowledgment on reconnect',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];f.navigator.onLine=false;f.emit('window:offline');input.value='offline edit';f.emit('input',{target:input});f.navigator.onLine=true;f.emit('window:online');original.resolve(autosaveResponse(f,original,1));await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/Newer changes are not/);
+});
+test('an in-flight submission does not offer reconciliation before the outcome is unknown',async()=>{
+  const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];f.emit('submit',{target:form,preventDefault(){}});assert.equal(f.calls.length,1);assert.ok(!f.status.children.flatMap(n=>n.children||[]).some(n=>n.textContent.startsWith('Reconcile')));call.resolve(autosaveResponse(f,call,1));await tick();
+});
+test('returning to the last acknowledged answer creates no duplicate receipt',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];call.resolve(autosaveResponse(f,call,1));await tick();input.value='changed';f.emit('input',{target:input});input.value='first';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,1);assert.equal(f.status.children[0].textContent,'Saved.');
+});
+
+test('a capacity refusal cancels a newer armed timer and pauses automatic saves',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];input.value='newer';f.emit('input',{target:input});call.resolve(f.response(413,'archive capacity',{'x-scry-scope':scope}));await tick();await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/paused/);assert.match(f.status.children[1].textContent,/not saved/);input.value='newest';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/paused/);
+});

@@ -6,7 +6,18 @@
     if (details) details.classList.toggle('animate-open', !details.open);
   }, { passive: true });
   document.addEventListener('keydown', () => document.querySelector('#nato-progress')?.classList.remove('animate-open'));
-  const enableDraftSave = () => { if (typeof fetch === 'function' && typeof FormData === 'function') { document.querySelectorAll('[data-checkpoint-save], [data-checkpoint-custody]').forEach(node => { node.hidden = false; }); document.querySelectorAll('[data-checkpoint-discard]').forEach(node => { node.hidden = node.dataset.checkpointPresent !== 'true'; }); } };
+  const acknowledgedDrafts = new WeakMap();
+  const enableDraftSave = () => {
+    if (typeof fetch !== 'function' || typeof FormData !== 'function') return;
+    document.querySelectorAll('[data-checkpoint-save], [data-checkpoint-custody]').forEach(node => { node.hidden = false; });
+    document.querySelectorAll('[data-checkpoint-discard]').forEach(node => { node.hidden = node.dataset.checkpointPresent !== 'true'; });
+    document.querySelectorAll('form.answer-form').forEach(form => {
+      const input = form.querySelector('textarea[name=answer],input[type=text][name=answer]');
+      const marker = form.querySelector('[data-checkpoint-generation]');
+      const discard = form.querySelector('[data-checkpoint-discard]');
+      if (input && marker && discard?.dataset.checkpointPresent === 'true') acknowledgedDrafts.set(form, {value: input.value, generation: marker.dataset.generation});
+    });
+  };
   const enablePickerReturn = () => document.querySelectorAll('[data-picker-close]').forEach(button => { button.hidden = false; });
   document.addEventListener('click', event => {
     const button = event.target.closest?.('[data-picker-close]');
@@ -78,8 +89,9 @@
       if (!pending && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
       else if (!pending && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.');
       else if (!pending && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.');
+      else if (!pending && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.');
       else if (!pending) announce('Changes not yet saved.');
-      else if (pending.automatic && pending.sending) announce('Saving earlier text. Newer changes are not yet saved.');
+      else if (pending.automatic && pending.sending) announce(pending.followupAllowed ? 'Saving earlier text. Newer changes are not yet saved.' : 'Checking the earlier save. Newer changes are not saved.');
       else if (pending.automatic) announce('An earlier save needs reconciliation. Newer changes are not saved.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]], reconcileDetail(pending));
       if (!event.isComposing && !composing) scheduleAuto(input);
     }
@@ -207,6 +219,8 @@
   const scheduleAuto = input => {
     cancelAuto();
     if (autoBlocked || disposed || suspended || inactive() || !navigator.onLine || composing || !input?.form?.isConnected) return;
+    const acknowledged = acknowledgedDrafts.get(input.form);
+    if (!pending && acknowledged && input.value === acknowledged.value && input.form.querySelector('[data-checkpoint-generation]')?.dataset.generation === acknowledged.generation) { autoEdited = false; answerUnsaved = false; announce('Saved.'); checkpointAcknowledged = true; return; }
     if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') { autoBlocked = 'unavailable'; announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); return; }
     if (new TextEncoder().encode(input.value).length > Number(input.form.dataset.answerLimit || 4000)) return;
     autoTimer = setTimeout(() => {
@@ -230,7 +244,7 @@
         data.set('generation', expectedGeneration);
         autoEdited = false;
         const poll = pollRequest; pollRequest = null; poll?.abort();
-        pending = { form, data, checkpoint: 'save', automatic: true, snapshot, input, action: new URL('/practice/draft', location.href).href };
+        pending = { form, data, checkpoint: 'save', automatic: true, followupAllowed: true, snapshot, input, action: new URL('/practice/draft', location.href).href };
         send(pending);
       } catch {
         autoBlocked = 'unavailable';
@@ -308,8 +322,10 @@
           announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
           return;
         }
+        if (!request.followupAllowed) { cancelAuto(); autoEdited = false; }
         pending = null; unlock(request);
         generationControl.dataset.generation = receipt.generation;
+        acknowledgedDrafts.set(request.form, {value: request.snapshot, generation: receipt.generation});
         const discardControl = request.form.querySelector('[data-checkpoint-discard]');
         if (discardControl) { discardControl.dataset.checkpointPresent = 'true'; discardControl.hidden = false; }
         if (receipt.remaining === 0) autoBlocked = 'limit';
@@ -319,7 +335,7 @@
           checkpointAcknowledged = true;
         } else {
           announce(autoBlocked ? 'Earlier text saved. Newer changes are not saved; use Save draft.' : 'Earlier text saved. Newer changes are not yet saved.');
-          if (autoEdited && !autoBlocked) scheduleAuto(request.input);
+          if (request.followupAllowed && autoEdited && !autoBlocked) scheduleAuto(request.input);
         }
         return;
       }
@@ -349,9 +365,11 @@
         if (!valid()) return;
         pending = null;
         unlock(request);
+        if (request.automatic && response.status === 413) { autoBlocked = 'capacity'; autoEdited = false; cancelAuto(); announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.'); return; }
         announce(error || 'This could not be saved. Check your draft and try again.', [['Continue editing', hideStatus]]);
         return;
       }
+      if (request.automatic) throw new Error('The automatic save did not return its expected acknowledgment.');
       if (!response.ok) throw new Error('The response did not confirm what was saved.');
       const doc = await safePage(response, valid);
       if (!doc || !valid()) return;
@@ -360,6 +378,7 @@
       if (request.checkpoint) { announce(request.checkpoint === 'discard' ? 'Discard confirmed. The latest notebook state is shown.' : 'Save confirmed. The latest notebook state is shown.'); checkpointAcknowledged = true; }
     } catch {
       if (!valid()) return;
+      if (request.automatic) { request.followupAllowed = false; autoEdited = false; cancelAuto(); }
       // Access can redirect to another origin before the Worker returns 401.
       // A read-only manual-redirect probe distinguishes that from response loss.
       if (navigator.onLine) {
@@ -393,7 +412,7 @@
     if (typeof fetch !== 'function' || typeof FormData !== 'function') return;
     event.preventDefault();
     cancelAuto();
-    if (pending) { announce('An earlier response still needs to be reconciled.', [[pending.checkpoint ? reconcileLabel(pending) : 'Reconcile that attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Only one operation can be unresolved at a time.'); return; }
+    if (pending) { if (pending.sending) announce('Saving…', [], 'Wait for the current response before continuing.'); else announce('An earlier response still needs to be reconciled.', [[pending.checkpoint ? reconcileLabel(pending) : 'Reconcile that attempt', () => send(pending)], ['Open saved progress', () => location.reload()]], 'Only one operation can be unresolved at a time.'); return; }
     if (!navigator.onLine) { announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); return; }
     const photo = form.querySelector('input[type=file]')?.files?.[0];
     if (photo && photo.size > 4 * 1024 * 1024) { announce('Choose a photo smaller than 4 MB. Your written draft is still here.'); return; }
@@ -440,7 +459,8 @@
     const link = event.target.closest?.('a');
     if (!link || link.origin !== location.origin) return;
     event.preventDefault();
-    announce('First, reconcile the response that did not arrive.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]], 'Your exact answer is kept on this page until you choose what to do.');
+    if (pending.sending) announce('Saving…', [], 'Wait for the current response before continuing.');
+    else announce('First, reconcile the response that did not arrive.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]], 'Your exact answer is kept on this page until you choose what to do.');
   });
   document.addEventListener('keydown', event => {
     if (pending || event.altKey || event.ctrlKey || event.metaKey || event.repeat || event.isComposing) return;
@@ -529,6 +549,7 @@
     cancelAuto();
     autoEdited = false;
     pollRequest?.abort();
+    if (pending?.automatic) pending.followupAllowed = false;
     if (pending?.flight) {
       pending.flight.active = false;
       pending.flight.controller.abort();
@@ -582,11 +603,12 @@
   };
   document.addEventListener('visibilitychange', lifecycleChange);
   document.addEventListener('prerenderingchange', lifecycleChange);
-  window.addEventListener('offline', () => { cancelAuto(); autoEdited = false; if (!suspended) announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); });
+  window.addEventListener('offline', () => { cancelAuto(); autoEdited = false; if (pending?.automatic) pending.followupAllowed = false; if (!suspended) announce('You are offline. Your draft is still here.', [], 'Study pauses until you reconnect. Nothing is queued to send automatically.'); });
   window.addEventListener('online', () => {
     if (suspended) { resume(); return; }
-    if (pending) announce(pending.automatic && pending.input.value !== pending.snapshot ? 'Reconcile the earlier save. Your newer changes are not saved.' : 'You are connected again. Reconcile your saved operation.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]]);
-    else { if (answerUnsaved && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); else if (answerUnsaved && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved) announce('Changes are not saved. Use Save draft or keep typing.'); else hideStatus(); schedulePoll(); }
+    if (pending?.sending) announce('Saving…', [], 'Wait for the current response before continuing.');
+    else if (pending) announce(pending.automatic && pending.input.value !== pending.snapshot ? 'Reconcile the earlier save. Your newer changes are not saved.' : 'You are connected again. Reconcile your saved operation.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]]);
+    else { if (answerUnsaved && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); else if (answerUnsaved && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved) announce('Changes are not saved. Use Save draft or keep typing.'); else hideStatus(); schedulePoll(); }
   });
   window.addEventListener('pagehide', conceal);
   window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
