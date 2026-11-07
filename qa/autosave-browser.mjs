@@ -26,6 +26,20 @@ export async function autosaveBrowserWalk(browser,capture) {
     const acknowledged=await answer.inputValue();await answer.fill(acknowledged+'q');await answer.fill(acknowledged);await page.waitForTimeout(5500);assert.equal(saves,3,'Undo to the acknowledged text creates no receipt.');
     await page.reload();await answer.waitFor();await page.waitForTimeout(5500);assert.equal(saves,3,'Reload does not save.');assert.equal(await answer.inputValue(),acknowledged);
     await answer.fill(acknowledged+'q');await answer.fill(acknowledged);await page.waitForTimeout(5500);assert.equal(saves,3,'Undo to the reloaded checkpoint creates no receipt.');
+    const delayedContext=await browser.newContext({viewport:{width:390,height:844}});
+    let releaseScript=()=>{};
+    try {
+      const delayedPage=await delayedContext.newPage();delayedPage.setDefaultTimeout(15000);
+      let scriptSeen;const scriptStarted=new Promise(resolve=>scriptSeen=resolve),scriptGate=new Promise(resolve=>releaseScript=resolve);let delayedSaves=0;
+      await delayedPage.route('**/assets/app.js',async route=>{scriptSeen();await scriptGate;await route.continue();});
+      await delayedPage.route('**/practice/draft',async route=>{delayedSaves++;await route.continue();});
+      await delayedPage.goto(f.origin+'/?practice=nato',{waitUntil:'commit'});await scriptStarted;
+      const earlyAnswer=delayedPage.locator('#answer');await earlyAnswer.waitFor();await earlyAnswer.fill('typed before script');releaseScript();await delayedPage.waitForLoadState('load');
+      await delayedPage.getByText('Changes are not yet saved. Use Save draft or keep typing.',{exact:true}).waitFor();await delayedPage.waitForTimeout(5500);assert.equal(delayedSaves,0,'Deferred-script startup does not save the pre-script text.');
+      const earlySave=delayedPage.waitForResponse(response=>response.url().endsWith('/practice/draft')&&response.status()===200);
+      await earlyAnswer.fill('later text');await earlyAnswer.fill('typed before script');await earlySave;await delayedPage.getByText('Saved.',{exact:true}).waitFor();assert.equal(delayedSaves,1,'The pre-script edit is not treated as the server checkpoint.');
+      result.evidence.push(await capture(delayedPage,'autosave-deferred-script.png'));
+    } finally {releaseScript();await delayedContext.close();}
     const rows=await f.rows();assert.equal(Object.keys(rows).filter(k=>k.startsWith('practice_attempts/')).length,0);
     return [result];
   } finally {await context.close();await f.close();}

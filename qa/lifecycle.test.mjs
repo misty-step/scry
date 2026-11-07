@@ -8,7 +8,7 @@ const scope = 'a'.repeat(64);
 const deferred = () => { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture({ hidden = false, prerendering = false, polling = false, pollState = 'checking', immediateTimeout = false, nativeTransport = false, fastAuto = false } = {}) {
+function fixture({ hidden = false, prerendering = false, polling = false, pollState = 'checking', immediateTimeout = false, nativeTransport = false, fastAuto = false, bootstrap = null } = {}) {
   const listeners = {};
   const calls = [];
   const timerDelays = [];
@@ -20,14 +20,24 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
   const element = () => ({ children: [], className: '', textContent: '', addEventListener(type, f) { this[type] = f; }, append(...items) { this.children.push(...items); }, setAttribute() {}, focus() { this.focused = true; }, remove() { nodes.delete(this.id); } });
   class Form { constructor() { this.method = 'post'; this.action = 'https://scry.test/practice/answer'; this.isConnected = true; this.dataset = {}; this.classList = { contains: () => false }; } querySelector() { return null; } querySelectorAll() { return []; } getAttribute(name) { return name === 'action' ? this.action : null; } setAttribute() {} removeAttribute() {} }
   const document = {
-    hidden, prerendering, title: 'Private question · Scry', pollable: polling, activeElement: null, forms: [], answerFields: [], documentElement: { dataset: { notebookScope: scope } },
+    hidden, prerendering, fastAuto, readyState:bootstrap?.readyState || 'complete', title: 'Private question · Scry', pollable: polling, activeElement: null, forms: [], answerFields: [], documentElement: { dataset: { notebookScope: scope } },
     body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c) }, append(n) { nodes.set(n.id, n); } },
     addEventListener(type, f) { (listeners[type] ||= []).push(f); },
     querySelector(selector) { if (selector === '.page-frame') return frame; if (selector === '#main[data-poll], [data-poll]' && this.pollable) return {}; if (selector === '[data-state]' && this.pollable) return { getAttribute: () => pollState }; return null; },
-    querySelectorAll(selector) { return selector.startsWith('form.answer-form') ? this.answerFields : []; },
+    querySelectorAll(selector) { if (selector === 'form.answer-form') return this.forms.filter(form => form.classList.contains('answer-form')); return selector.startsWith('form.answer-form') ? this.answerFields : []; },
     getElementById(id) { return id === 'request-status' ? status : id === 'main' ? previousMain : nodes.get(id); },
     createElement: element,
   };
+  let boot = null;
+  if (bootstrap) {
+    const form = new Form(); form.classList = {contains:name => name === 'answer-form'};
+    form.fields = {csrf:'synthetic-csrf', prompt_id:'1'.repeat(32), operation_id:'manual-operation-000001'};
+    const input = {form, value:bootstrap.value, defaultValue:bootstrap.defaultValue, readOnly:false, disabled:false, isConnected:true, matches:()=>true};
+    const generation = {dataset:{generation:'1'}}; const discard = {dataset:{checkpointPresent:bootstrap.saved ? 'true' : 'false'}, hidden:true};
+    form.answerInput=input; form.querySelector=selector=>selector==='[data-checkpoint-generation]'?generation:selector==='[data-checkpoint-discard]'?discard:selector.includes('answer')?input:null;
+    document.forms.push(form); document.answerFields.push(input); boot={form,input,generation,discard};
+    if (bootstrap.retained) previousMain.querySelectorAll = selector => selector === 'form' ? [form] : [];
+  }
   const window = {
     confirmResult: false, confirmCount: 0, scrollTo() {},
     confirm() { this.confirmCount++; return this.confirmResult; },
@@ -39,11 +49,11 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
     if (immediateTimeout && url === '/session/scope') init.signal.addEventListener('abort', () => gate.reject(new Error('aborted')));
     calls.push({ url, init, ...gate }); return gate.promise;
   };
-  const clock = (fn, delay) => { timerDelays.push(delay); return setTimeout(fn, (polling && delay === 4000) || (immediateTimeout && delay === 8000) || (fastAuto && delay === 5000) ? 0 : delay); };
+  const clock = (fn, delay) => { timerDelays.push(delay); return setTimeout(fn, (polling && delay === 4000) || (immediateTimeout && delay === 8000) || (document.fastAuto && delay === 5000) ? 0 : delay); };
   class DOMParser {
     parseFromString(html) {
       const found = /data-notebook-scope=["']([^"']*)["']/.exec(html);
-      const main = { classList: { add() {} }, focus() {}, querySelector() { return null; }, querySelectorAll() { return []; } };
+      const main = { classList: { add() {} }, focus() {}, querySelector() { return null; }, querySelectorAll(selector) { return bootstrap?.retained && selector === 'form' ? [{getAttribute:()=>boot.form.getAttribute('action'),replaceWith(){}}] : []; } };
       return { title: 'Synthetic page', documentElement: { dataset: { notebookScope: found?.[1] } }, querySelector(selector) { if (selector === '#main') return main; return selector === '.notice, .empty-stage .lede' ? {textContent:'Synthetic rejection'} : {}; }, querySelectorAll() { return []; } };
     }
   }
@@ -56,7 +66,7 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
     const bytes = new TextEncoder().encode(raw); let read = false;
     return { status: statusCode, ok: statusCode >= 200 && statusCode < 300, type: 'basic', url: 'https://scry.test/session/scope', headers: { get: key => headers[key.toLowerCase()] || (key.toLowerCase() === 'content-type' ? 'application/json' : null) }, text: async () => text, body: { getReader: () => ({ read: async () => read ? {done:true} : (read = true, {done:false,value:bytes}), releaseLock() {}, cancel: async () => {} }) } };
   };
-  return { document, window, navigator: context.navigator, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form };
+  return { document, window, navigator: context.navigator, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form, boot };
 }
 
 test('background freezes an unknown request and never automatically sends it again', async () => {
@@ -671,4 +681,37 @@ test('returning to the last acknowledged answer creates no duplicate receipt',as
 
 test('a capacity refusal cancels a newer armed timer and pauses automatic saves',async()=>{
   const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];input.value='newer';f.emit('input',{target:input});call.resolve(f.response(413,'archive capacity',{'x-scry-scope':scope}));await tick();await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/paused/);assert.match(f.status.children[1].textContent,/not saved/);input.value='newest';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/paused/);
+});
+
+test('typing before deferred script execution is not acknowledged as saved',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:true,defaultValue:'server',value:'typed before script'}});const {input}=f.boot;
+  assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not yet saved/i);assert.equal(input.value,'typed before script');
+  input.value='later';f.emit('input',{target:input});input.value='typed before script';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1,'The unacknowledged pre-script value must not be called saved.');f.calls[0].resolve(autosaveResponse(f,f.calls[0],2));await tick();
+});
+test('browser-restored text is visibly unsaved and is not sent on startup or reconnect',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:false,defaultValue:'',value:'browser restored'}});const {input}=f.boot;
+  assert.equal(input.value,'browser restored');assert.match(f.status.children[0].textContent,/not yet saved/i);await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);
+  f.navigator.onLine=false;f.emit('window:offline');f.navigator.onLine=true;f.emit('window:online');await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not saved/i);
+});
+test('re-enabling a retained dirty form preserves its original acknowledgment',async()=>{
+  const f=fixture({polling:true,pollState:'goal',bootstrap:{saved:true,defaultValue:'server',value:'server',retained:true}});const {input}=f.boot;
+  input.value='dirty';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);f.document.pollable=false;
+  f.calls[0].resolve(f.response(200,`<html data-notebook-scope="${scope}"><main id="main"></main></html>`,{'x-scry-scope':scope,'content-type':'text/html'}));await tick();assert.equal(f.previousMain.replaced,true);
+  f.document.fastAuto=true;input.value='later';f.emit('input',{target:input});input.value='dirty';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,2,'The dirty retained value was never acknowledged.');f.calls[1].resolve(autosaveResponse(f,f.calls[1],2));await tick();
+});
+
+test('input before pageshow remains unsaved without starting a save on load',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:true,defaultValue:'server',value:'server',readyState:'interactive'}});const {input}=f.boot;
+  input.value='early';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);
+  f.emit('window:pageshow',{persisted:false});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not yet saved/i);
+  input.value='later';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);f.calls[0].resolve(autosaveResponse(f,f.calls[0],2));await tick();
+});
+test('a value restored after script execution is marked unsaved at pageshow',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:true,defaultValue:'server',value:'server',readyState:'interactive'}});const {input}=f.boot;
+  input.value='browser restored';f.emit('window:pageshow',{persisted:false});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not yet saved/i);assert.equal(input.value,'browser restored');
+});
+
+test('restoration immediately after pageshow remains unsaved and never starts a save',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:true,defaultValue:'server',value:'server',readyState:'interactive'}});const {input}=f.boot;
+  f.emit('window:pageshow',{persisted:false});input.value='restored after pageshow';await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not yet saved/i);
 });

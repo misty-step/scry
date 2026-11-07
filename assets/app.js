@@ -15,7 +15,12 @@
       const input = form.querySelector('textarea[name=answer],input[type=text][name=answer]');
       const marker = form.querySelector('[data-checkpoint-generation]');
       const discard = form.querySelector('[data-checkpoint-discard]');
-      if (input && marker && discard?.dataset.checkpointPresent === 'true') acknowledgedDrafts.set(form, {value: input.value, generation: marker.dataset.generation});
+      if (!input || !marker || typeof input.defaultValue !== 'string') return;
+      if (discard?.dataset.checkpointPresent === 'true' && !acknowledgedDrafts.has(form)) acknowledgedDrafts.set(form, {value: input.defaultValue, generation: marker.dataset.generation});
+      if (!dirtyForms.has(form) && input.value !== input.defaultValue) {
+        dirtyForms.add(form); answerUnsaved = true; autoEdited = false; cancelAuto();
+        if (!pending && !disposed) announce('Changes are not yet saved. Use Save draft or keep typing.');
+      }
     });
   };
   const enablePickerReturn = () => document.querySelectorAll('[data-picker-close]').forEach(button => { button.hidden = false; });
@@ -30,7 +35,6 @@
     (document.querySelector('.lesson-stage, .nato-stage') || target)?.scrollIntoView({ block: 'start', behavior: 'instant' });
   });
   enablePickerReturn();
-  enableDraftSave();
   let pending = null;
   const reconcileLabel = request => request.checkpoint === 'discard' ? 'Reconcile this discard' : request.checkpoint ? 'Reconcile this save' : 'Reconcile this attempt';
   const reconcileDetail = request => request.checkpoint === 'discard' ? 'Reconciliation sends the same discard operation. It does not send or grade your answer.' : request.checkpoint ? 'Reconciliation sends the same saved operation and text. Saving does not grade your answer.' : 'Reconciliation sends the same saved operation and answer. It cannot record a second attempt.';
@@ -70,6 +74,7 @@
     if (!parsed || parsed.version !== 1 || typeof parsed.scope !== 'string' || !/^[a-f0-9]{64}$/.test(parsed.scope) || Object.keys(parsed).length !== 2) throw new Error('The scope check was incomplete.');
     return parsed.scope;
   };
+  let pageReady = document.readyState === 'complete';
   let checkpointAcknowledged = false;
   let autoTimer = null;
   let autoBlocked = false;
@@ -208,7 +213,7 @@
         main.focus({ preventScroll: true });
       }
     }
-    hideStatus();
+    if (answerUnsaved) announce('Changes are not yet saved. Use Save draft or keep typing.'); else hideStatus();
     schedulePoll();
   };
   const unlock = request => {
@@ -218,7 +223,7 @@
   };
   const scheduleAuto = input => {
     cancelAuto();
-    if (autoBlocked || disposed || suspended || inactive() || !navigator.onLine || composing || !input?.form?.isConnected) return;
+    if (!pageReady || autoBlocked || disposed || suspended || inactive() || !navigator.onLine || composing || !input?.form?.isConnected) return;
     const acknowledged = acknowledgedDrafts.get(input.form);
     if (!pending && acknowledged && input.value === acknowledged.value && input.form.querySelector('[data-checkpoint-generation]')?.dataset.generation === acknowledged.generation) { autoEdited = false; answerUnsaved = false; announce('Saved.'); checkpointAcknowledged = true; return; }
     if (typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') { autoBlocked = 'unavailable'; announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); return; }
@@ -611,10 +616,13 @@
     else { if (answerUnsaved && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); else if (answerUnsaved && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved) announce('Changes are not saved. Use Save draft or keep typing.'); else hideStatus(); schedulePoll(); }
   });
   window.addEventListener('pagehide', conceal);
-  window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) { location.reload(); return; }
+    pageReady = false; autoEdited = false; enableDraftSave();
+    setTimeout(() => { if (disposed) return; enableDraftSave(); autoEdited = false; pageReady = true; }, 0);
+  });
   window.addEventListener('popstate', () => location.reload());
   if (!scoped) conceal();
-  else if (inactive()) suspend();
-  else schedulePoll();
-  if (!navigator.onLine && !suspended) announce('You are offline. Study is paused until you reconnect.');
+  else { enableDraftSave(); if (inactive()) suspend(); else schedulePoll(); }
+  if (!navigator.onLine && !suspended) announce(answerUnsaved ? 'You are offline. Changes are not saved.' : 'You are offline. Study is paused until you reconnect.');
 })();
