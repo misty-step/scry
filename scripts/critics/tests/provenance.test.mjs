@@ -28,7 +28,7 @@ describe('Rust source and Worker artifact provenance',()=>{
   it('freezes exact Rust runtime/assets without importing credentials or the caller development state',async()=>{
     const source=join(temporary,'checkout');await mkdir(join(source,'src'),{recursive:true});
     await mkdir(join(source,'assets'));
-    for(const name of ['Cargo.toml','Cargo.lock','rust-toolchain.toml','CHANGELOG.md'])await writeFile(join(source,name),name+'\n');
+    for(const name of ['build.rs','Cargo.toml','Cargo.lock','rust-toolchain.toml','CHANGELOG.md'])await writeFile(join(source,name),name+'\n');
     await writeFile(join(source,'src/lib.rs'),'pub fn original() {}');
     await writeFile(join(source,'assets/app.css'),'body {color:ink}');
     await mkdir(join(source,'internal/web/assets/fonts'),{recursive:true});
@@ -49,8 +49,13 @@ describe('Rust source and Worker artifact provenance',()=>{
     await writeFile(join(source,'examples/.dev.vars'),'PRIVATE_EXAMPLE_DO_NOT_COPY=secret');
     const copy=join(temporary,'snapshot');
     const identity=await snapshotSource(source,copy);
-    assert.equal(identity.files.length,12);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
+    assert.equal(identity.files.length,13);assert.ok(!identity.files.some(file=>file.path.includes('vars')));
     assert.deepEqual(identity.files.filter(file=>file.path.startsWith('examples/')).map(file=>file.path),[starter,...babyStarters].sort());
+    assert.equal(await readFile(join(copy,'build.rs'),'utf8'),'build.rs\n');
+    await writeFile(join(source,'build.rs'),'// changed compiler policy\n');
+    assert.notEqual((await snapshotSource(source,join(temporary,'changed-build-script'))).sha256,identity.sha256);
+    assert.equal(await readFile(join(copy,'build.rs'),'utf8'),'build.rs\n');
+    await writeFile(join(source,'build.rs'),'build.rs\n');
     assert.equal(await readFile(join(copy,starter),'utf8'),starterBytes);
     for(const baby of babyStarters){
       const original=await readFile(join(source,baby),'utf8');
