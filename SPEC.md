@@ -3,7 +3,7 @@
 ## What it does
 
 Scry helps its owner memorize externally authored knowledge. Agents supply
-content; Scry owns native grading, honest assistance and the memory schedule.
+content; Scry owns smart grading using Jev, honest assistance and the memory schedule.
 The first journey is one forward-NATO review canvas, backed by the existing
 Library, Versions and Studies. Existing exact-text and concept-notebook history remains
 preserved; new purpose is not permission to rewrite learning evidence.
@@ -11,7 +11,7 @@ preserved; new purpose is not permission to rewrite learning evidence.
 ## What it enables
 
 The owner can receive useful supplied material through the API/CLI, practise
-with one typed answer, see a deterministic Verdict and canonical correction,
+with one typed answer, see a server-owned Verdict and useful correction,
 and continue deliberately. Agent-ergonomic MCP and multimedia are part of the
 new direction, with their delivered scope stated below rather than inferred
 from intent. Legacy concept/reference paths remain available through secondary navigation;
@@ -31,6 +31,60 @@ verification procedures and evidence limits. [README](README.md#start-or-resume-
 is the work entrypoint. Dated receipts and proposals are not competing requirements.
 
 ## Scope and acceptance status
+
+### Smart and simple grading with Jev (2026-11-07)
+
+The owner's direction is: **"Grading should be smart and simple using Jev."**
+This is the current grading direction, not another alias expansion or a
+local-only substitute. Scry owns the Verdict and schedule; the Owner supplies
+an answer, never a grade. Native assessment means server-owned judgment, not
+a prohibition on server-side Jev.
+
+This supersedes the deterministic-only introduction, LESSON-04, US-016.11,
+US-017 and earlier exact-recall/model-free restrictions below. Supplied content,
+hidden-source quizzes, assistance, pinned scheduling rules and historical
+Attempts, Corrections and schedules remain intact. Native content generation
+remains retired. Frozen STOPs and other stopped work are not reopened.
+
+- **JEV-01:** Study supplied material, choose Try from memory, answer one
+  protected Prompt and Check. Scry uses Jev to assess the frozen Version and
+  learning objective. Valid recall must not fail solely because its expression
+  is absent from an alias list. Exact-word, Spelling-strict, ordered-identity
+  and safety-bearing objectives retain their actual distinctions.
+- **JEV-02:** Show checking, then a concise server-owned Verdict and useful
+  correction, held until deliberate Next. No self-rating, client Verdict,
+  expected-answer override or optimistic success. Assistance remains truthful
+  and cannot earn unaided schedule credit.
+- **JEV-03:** Whole ordered recall recognizes intended item identities and
+  sequence, showing canonical items and missing/repeated/misplaced feedback.
+  Accept valid expressions but distinguish related, different identities.
+  An omission must not cascade across later correctly ordered identities.
+  A duplicate or transposition cannot earn a correct whole result.
+- **JEV-04:** Bind saved answers and assessment evidence to the immutable
+  Prompt, Version and scope. Repeated submission, reload, lost responses,
+  stale completion and restart must not duplicate Attempts or schedule
+  effects, grade a replacement Prompt, or rejudge historical results. Retain
+  actual assessment Authority and policy/version evidence with each result.
+
+**Implementation choices, not additional owner mandates:** local exact-match
+fast paths, request shape, model/threshold selection, budgets, cost controls,
+timeout/retry policy and provider payload/retention/privacy design are
+engineering decisions to specify and review. They must serve this journey,
+not quietly replace it or be attributed to the Owner. Existing authorization,
+privacy, honest uncertainty and unknown-cost preservation boundaries remain.
+A failed or inconclusive check leaves the answer saved and ungraded, never
+self-graded or awarded schedule credit. This amendment does not activate a
+provider, authorize spending, transmit private study data or provision credentials.
+
+**Testable journey; not yet delivered:** with synthetic supplied content, prove
+study → hidden quiz → Check → Jev-backed judgment → correction → deliberate
+Next in native phone/no-JavaScript and enhanced desktop flows. Cover an
+unlisted valid expression, a different identity, omissions/duplicates/swaps,
+strict spelling, unsafe negation, assisted retry, malformed/unavailable/unsure
+assessment, operation replay, stale responses and restart. Independently
+inspect stored Attempts and schedules. Synthetic provider responses prove
+integration only, not real-provider quality; live Jev evidence requires its
+applicable authorization. Existing exact-v2 receipts are not Jev acceptance.
 
 ### Automatic answer evidence (2026-11-01)
 
@@ -118,11 +172,13 @@ phone Recite/Whole/Section chooser work: that earlier disposition is unchanged.
   stay secondary. Deliberate
   lesson entry introduces the selected short text without changing stored Pace
   or changing the underlying pinned memory model.
-- **LESSON-04:** Native deterministic grading owns every result. No client grade,
-  fuzzy theological equivalence, speech recognition, or pronunciation validation
-  is implied. Text follows exact-v2 case/punctuation policy; accents remain
-  significant. Latin starter wording is unaccented. The named historical English
-  edition is not silently substituted for the familiar modern translation.
+- **LESSON-04:** Scry owns every result using Jev as specified above. Supplied
+  wording and learning objectives remain authoritative; exact-word practice
+  and ordered-identity recall are not interchangeable. No client grade,
+  self-rating, speech recognition or pronunciation validation is implied.
+  Latin starter wording is unaccented; named English Versions are not silently
+  substituted. Historical exact-v2 case/punctuation/accent policy remains
+  attached to its original results.
 - **LESSON-05:** Ordinary VersionInput authoring supplies text, clause boundaries,
   Sections, edition names, sources and rights. Ordered aliases are optional,
   bounded, unambiguous after normalization and immutable with their Version.
@@ -456,7 +512,8 @@ the exact-recall Ladder is a cue scaffold, not a required activity sequence.
 ### Exact recall first (2026-10-20)
 
 Historical priority decision: navigation priority is amended above on 2026-10-24;
-the exact-recall behavior and the other dated decisions below remain binding.
+the following records the original scope. The 2026-11-07 Jev amendment
+supersedes local-only/model-free grading restrictions, not historical evidence.
 
 The owner confirmed this direction on 2026-10-20 (#296, with his changes: a
 generation agent with tools, one owner, Roman Missal 2011 wording, the slip
@@ -487,10 +544,10 @@ belong in ADRs, not this table.
 | ID | Binding policy |
 | --- | --- |
 | D1 | Build around what the learner wants to remember, not old QA datasets. Sustained usefulness needs real use. |
-| D2 | Honest grading and uncertainty follow S02 and US-003/US-008 outside exact recall; exact-recall answers follow US-017's deterministic `exact-v2`. |
+| D2 | Current assessment follows JEV-01–04 and US-017. Scry owns Verdicts; uncertainty is not a miss, success or self-grading. Historical authorities retain their original meaning. |
 | D3 | Assistance and immutable corrections follow S02/S05 and US-007; exposure is not cold recall. |
 | D4 | One question, one answer action, held feedback and deliberate Next; review-first navigation with historical concept practice preserved. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
-| D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. Exact-recall practice makes no provider call. Enabling production generation for the generation agent, and its caps, is a separate owner spend decision that arrives with US-019; until he makes it these numbers stand and production generation stays off. |
+| D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. The historical no-provider exact-recall restriction is superseded by the Jev amendment, not spend activation. Enabling production generation for the generation agent, and its caps, is a separate owner spend decision that arrives with US-019; until he makes it these numbers stand and production generation stays off. |
 | D6 | Amended 2026-10-20: the revived notebook is archived read-only with nothing deleted, its final verified backup retained and no writer attached; exact recall starts in a fresh space. The rest of this row is historical. No legacy API parity. Ordinary candidates start fresh; the authorized 2026-10-15 revival alone imports the final consistent Go dataset once, with preserved learning history and media. Preserve historical stores, source and recovery artifacts separately; no general import, deletion or simultaneous historical writer is implied. [ADR 006](docs/adr/006-one-way-revival-custody.md) owns custody and cutover decisions, not an acceptance receipt. |
 
 Health must report non-200 with reason `backup_stale` if no verified remote
@@ -1125,9 +1182,9 @@ Criteria:
 
 No-gos: no liberal string-similarity grading, model call inside a SQL transaction, learner rubric authoring, or change to pinned scheduler identity.
 
-Narrowed 2026-10-20: US-003 governs answers outside exact recall. Exact-recall
-answers are graded locally by `exact-v2` (US-017), whose single enumerated Slip
-tolerance is shown in every Diff and is not liberal similarity.
+Historical narrowing (2026-10-20): US-003 excluded exact recall in favor of
+local exact-v2. The 2026-11-07 Jev amendment supersedes that exclusion. Legacy
+thresholds are not automatically the new Jev design.
 
 ## US-004 Check generated candidates before publication
 
@@ -1361,7 +1418,7 @@ Criteria:
 8. WHEN I ask what is due, THE SYSTEM SHALL list due Cards and upcoming due times without presenting, consuming or changing any Card.
 9. WHEN I pause a Study, THE SYSTEM SHALL stop introducing its new Units while keeping its due Cards and history; WHEN I drop a Study, THE SYSTEM SHALL stop presenting its Cards and keep its Attempts.
 10. WHEN I read history or export, THE SYSTEM SHALL include each Study, its Cards with schedules and Cue levels, every Attempt with its Diff, Verdict and Authority, and the Versions they reference.
-11. WHILE I practise exact recall, THE SYSTEM SHALL make no provider call and record no spend.
+11. WHILE I practise, THE SYSTEM SHALL follow JEV-01–04 with server-owned Verdicts and preserved answer, scope, Authority and schedule evidence. The former no-provider/no-spend restriction is superseded; applicable provider and spend authorization remains required.
 
 No-gos: no separate Cards per Cue level, no prerequisite ordering, no
 concept selection, no streaks or due-count chrome.
@@ -1370,29 +1427,35 @@ Evidence: `qa/walk --stories "US-016"`, `qa/study.test.mjs`, and `tests/study.rs
 
 ## US-017 Get an exact verdict and a word-by-word diff
 
-Current applicability (2026-10-27): criterion 10’s new owner Correction write is retired globally; saved historical Corrections remain readable and immutable. Native grading, assistance and held results continue.
+Current applicability (2026-11-07): Jev grading supersedes the local-only
+contract. The heading and criterion IDs stay stable. Criterion 10 stays
+retired. Earlier criteria and evidence remain in the
+[pre-amendment SPEC](https://github.com/misty-step/scry/blob/3f2a3c48d98d4247c715d43a5f1172852beba838/SPEC.md#us-017-get-an-exact-verdict-and-a-word-by-word-diff).
 
-Statement: When I recite a Unit or a whole text, I want an instant verdict on
-every word and a diff of what I got wrong, so I know exactly what to fix and
-my schedule reflects what I actually recalled.
+Statement: When I answer a Prompt, I want smart, simple grading using Jev and
+a clear correction, so I know what to fix and my schedule reflects actual
+recall without asking me to grade myself.
 
 Criteria:
-1. WHEN I submit an exact-recall answer, THE SYSTEM SHALL grade it locally without a network call, ignoring case, punctuation, line breaks and quote or dash style.
-2. WHEN every expected word is present, in order, with nothing extra, THE SYSTEM SHALL return Good; WHEN any word is wrong, missing, extra or out of order, THE SYSTEM SHALL return Again.
-3. WHEN a typed word differs from an expected word of at least five letters by one inserted, deleted, substituted or swapped letter, and is not another word of the Version, THE SYSTEM SHALL mark it a Slip and count it correct.
-4. IF the Version is Spelling-strict, THE SYSTEM SHALL count every Slip as a wrong word.
-5. WHEN a Verdict is shown, THE SYSTEM SHALL show the Diff marking each word correct, slipped, wrong, missing or extra, with the expected text, and keep both until I choose Next.
-6. WHEN an Again answer matches another Version of the same Work more closely than the studied one, THE SYSTEM SHALL name that Version beside the Diff.
-7. WHEN a Recitation covers several Units, THE SYSTEM SHALL attribute each edit to its Unit and record a Verdict for each Unit.
-8. WHEN an answer arrives as dictated text, THE SYSTEM SHALL grade it exactly as typed text.
-9. EACH exact-recall Verdict SHALL name `exact-v2` and its grader version as Authority, and the same Version, answer and grader version SHALL always give the same Verdict and Diff.
-10. WHEN I correct an exact-recall Verdict, THE SYSTEM SHALL record one immutable Correction as US-007 does and keep the original Attempt.
+1. WHEN I submit an answer, THE SYSTEM SHALL assess it server-side using Jev against the frozen Version, Prompt scope and learning objective under JEV-01–04.
+2. WHEN an answer satisfies that objective, THE SYSTEM SHALL return Good; WHEN it demonstrably fails, THE SYSTEM SHALL return Again. Inconclusive or failed assessments SHALL stay ungraded, never become a miss or self-rating.
+3. WHEN a typing Slip does not change recalled content, THE SYSTEM SHALL distinguish it from a content error. The historical exact-v2 one-edit/five-letter heuristic is historical policy, not a ban on smart assessment.
+4. IF the Version is Spelling-strict, THE SYSTEM SHALL count misspellings as wrong; smart assessment SHALL preserve distinctions that are themselves the learning objective.
+5. WHEN a Verdict is shown, THE SYSTEM SHALL show expected content and useful correction, including word-level Diff for exact-word practice, and hold them until Next. A mechanical Diff SHALL NOT masquerade as Jev's judgment or contradict it without explanation.
+6. WHEN an answer belongs to another supplied Version of the same Work, THE SYSTEM SHALL distinguish it from the studied Version rather than silently substitute wording.
+7. WHEN a Recitation covers several Units, THE SYSTEM SHALL retain per-Unit attribution and Verdicts consistent with its whole-scope assessment; phrase success SHALL NOT become whole-text credit.
+8. WHEN an answer arrives as dictated text, THE SYSTEM SHALL assess it under the same objective as typed text, without claiming pronunciation validation.
+9. EACH new Verdict SHALL retain actual Authority and assessment policy/version evidence. Replay, display, export and recovery SHALL reproduce the stored judgment without another model judgment. Historical exact-v2 Authorities, Verdicts and Diffs SHALL remain unchanged.
+10. Retired for new writes since 2026-10-27: no Owner Correction or self-rating is offered. Saved historical Corrections remain readable and immutable.
 
-No-gos: no model judge, no tolerance beyond the Slip, no grading of punctuation
-or case, no voice-specific tolerance yet, no meaning-level variants inside a
-Version ("Holy Ghost" and "Holy Spirit" are different Versions).
+No-gos: no client grades, self-grading, silent Version substitution, rewritten
+historical assessment or native content generation. A local exact-match fast
+path is an implementation choice, not a substitute for the Jev-backed journey.
 
-Evidence: `qa/walk --stories "US-017"`, `qa/study.test.mjs`, and `tests/study.rs` exercise the compiled CLI, built Worker, SQLite, and local R2 with authored synthetic text. Phone, private canonical wording, hosted admission, and independent hosted recovery remain unverified.
+Evidence: existing `qa/walk --stories "US-017"`, `qa/study.test.mjs` and
+`tests/study.rs` receipts establish their source-bound exact-v2 behavior only.
+New JEV-01–04 integration and journey proof remains required, distinct from
+separately authorized real-provider quality and live acceptance.
 
 ## US-018 Practise exact recall on my phone
 
