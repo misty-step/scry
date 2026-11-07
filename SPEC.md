@@ -1452,7 +1452,7 @@ Criteria:
 7. WHEN a Recitation covers several Units, THE SYSTEM SHALL retain per-Unit attribution and Verdicts consistent with its whole-scope assessment; phrase success SHALL NOT become whole-text credit.
 8. WHEN an answer arrives as dictated text, THE SYSTEM SHALL assess it under the same objective as typed text, without claiming pronunciation validation.
 9. EACH new Verdict SHALL retain actual Authority and assessment policy/version evidence. Replay, display, export and recovery SHALL reproduce the stored judgment without another model judgment. Historical exact-v2 Authorities, Verdicts and Diffs SHALL remain unchanged.
-10. Retired for new writes since 2026-10-27: no Owner Correction or self-rating is offered. Saved historical Corrections remain readable and immutable.
+10. THE SYSTEM SHALL offer no new Owner Correction or self-rating, retired since 2026-10-27; saved historical Corrections SHALL remain readable and immutable.
 
 No-gos: no client grades, self-grading, silent Version substitution, rewritten
 historical assessment or native content generation. A local exact-match fast
