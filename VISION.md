@@ -1,6 +1,15 @@
 # Scry Product Vision
 
-## Current priority (2026-10-24)
+## Current direction (2026-11-07)
+
+Scry helps its Owner memorize externally supplied content with smart and simple
+grading using Jev. Scry owns assessment and scheduling; the Owner answers,
+never self-grades. The [current SPEC amendment](SPEC.md#smart-and-simple-grading-with-jev-2026-11-07)
+owns acceptance and separates intent from implementation choices. Historical
+learning evidence is preserved; native content generation remains retired.
+This is direction, not a claim of delivered Jev support.
+
+## Earlier concept priority (2026-10-24)
 
 The owner made concepts the primary learning primitive: concepts can have many
 quizzes and study/reference materials, and relate to one another. The longer-term
@@ -12,8 +21,9 @@ the bounded concept-first front door; exact text practice remains available.
 
 ## Earlier exact-recall direction (2026-10-20)
 
-The following records the earlier priority. Its exact-recall behavior is retained;
-its front-door priority is superseded above.
+The following records earlier intent, not the current contract. Later external
+authoring and Jev decisions supersede generation and local-only/free-practice
+restrictions; historical learning evidence retains its original meaning.
 
 Scry gets fixed texts and sets into phaedrus's head word for word, and keeps
 them there for the fewest minutes a day. Examples are the Apostles' Creed,
