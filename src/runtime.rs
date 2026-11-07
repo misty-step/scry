@@ -525,6 +525,15 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     {
         return private(Response::error("Authenticated page required.", 403)?);
     }
+    let checkpoint_mode = req.headers().get("X-Scry-Checkpoint-Mode")?;
+    if checkpoint_mode
+        .as_deref()
+        .is_some_and(|mode| mode != "auto-v1")
+        || (checkpoint_mode.is_some()
+            && (req.path() != "/practice/draft" || method != Method::Post))
+    {
+        return private(Response::error("Invalid checkpoint mode.", 400)?);
+    }
     if req.headers().has("X-Scry-Request")?
         && req.headers().get("X-Scry-Expected-Scope")?.as_deref() != Some(scope.as_str())
     {
@@ -592,6 +601,8 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     } else {
         let max = if mode == "restore" {
             persistence::MAX_ARCHIVE_BYTES
+        } else if checkpoint_mode.as_deref() == Some("auto-v1") {
+            128 * 1024
         } else {
             MAX_HTTP_BODY
         };
@@ -623,6 +634,7 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         "Origin",
         "Sec-Fetch-Site",
         "Accept",
+        "X-Scry-Checkpoint-Mode",
         "x-scry-operator-key",
         "x-scry-restore-token",
         "x-scry-sha256",
@@ -1403,6 +1415,35 @@ impl DurableObject for LearningSpace {
         let replayed = fields
             .get("operation_id")
             .is_some_and(|op| app.operations.contains_key(op));
+        let automatic_checkpoint = path == "/practice/draft"
+            && req.headers().get("X-Scry-Checkpoint-Mode")?.as_deref() == Some("auto-v1");
+        if automatic_checkpoint {
+            if fields.get("csrf").map(String::as_str) != Some(app.csrf.as_str())
+                || app.csrf.len() < 24
+            {
+                return render_error(
+                    &self.env,
+                    &app,
+                    &path,
+                    &fields,
+                    AppError::new(403, "Your session needs to be refreshed before saving."),
+                    self.preparation_ready(),
+                );
+            }
+            let operation = fields
+                .get("operation_id")
+                .map(String::as_str)
+                .unwrap_or_default();
+            if !operation.starts_with(crate::study::AUTOSAVE_OPERATION_PREFIX) {
+                return private(Response::error("Invalid automatic save operation.", 422)?);
+            }
+            if !replayed && crate::study::autosave_remaining(&app) == 0 {
+                return private(Response::error(
+                    "Automatic saving has reached its limit. Use Save draft.",
+                    429,
+                )?);
+            }
+        }
         let result = engine::mutate(&mut app, &path, &fields, now(), &seed);
         match result {
             Err(e) => {
@@ -1490,6 +1531,28 @@ impl DurableObject for LearningSpace {
                     ))?);
                 }
                 self.arm().await?;
+                if automatic_checkpoint {
+                    // An old receipt is not evidence that its checkpoint remains current.
+                    // Reload after the await and derive only transient, text-free fields.
+                    let latest = self.load()?;
+                    let generation = result
+                        .data
+                        .as_ref()
+                        .and_then(|data| data.get("draft_generation"))
+                        .and_then(Value::as_u64)
+                        .ok_or_else(|| Error::RustError("Invalid checkpoint receipt.".into()))?;
+                    return api_json(
+                        &json!({
+                            "version": 1,
+                            "operation_id": fields.get("operation_id"),
+                            "prompt_id": fields.get("prompt_id"),
+                            "generation": generation.to_string(),
+                            "current": crate::study::checkpoint_current(&latest, &fields, generation),
+                            "remaining": crate::study::autosave_remaining(&latest),
+                        }),
+                        200,
+                    );
+                }
                 let destination = fields
                     .get("return_to")
                     .filter(|to| path == "/practice/reveal" && web::library_destination(to));

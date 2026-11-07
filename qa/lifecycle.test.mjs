@@ -8,7 +8,7 @@ const scope = 'a'.repeat(64);
 const deferred = () => { let resolve, reject; const promise = new Promise((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; };
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture({ hidden = false, prerendering = false, polling = false, pollState = 'checking', immediateTimeout = false, nativeTransport = false } = {}) {
+function fixture({ hidden = false, prerendering = false, polling = false, pollState = 'checking', immediateTimeout = false, nativeTransport = false, fastAuto = false, bootstrap = null } = {}) {
   const listeners = {};
   const calls = [];
   const timerDelays = [];
@@ -20,14 +20,24 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
   const element = () => ({ children: [], className: '', textContent: '', addEventListener(type, f) { this[type] = f; }, append(...items) { this.children.push(...items); }, setAttribute() {}, focus() { this.focused = true; }, remove() { nodes.delete(this.id); } });
   class Form { constructor() { this.method = 'post'; this.action = 'https://scry.test/practice/answer'; this.isConnected = true; this.dataset = {}; this.classList = { contains: () => false }; } querySelector() { return null; } querySelectorAll() { return []; } getAttribute(name) { return name === 'action' ? this.action : null; } setAttribute() {} removeAttribute() {} }
   const document = {
-    hidden, prerendering, title: 'Private question · Scry', pollable: polling, activeElement: null, forms: [], answerFields: [], documentElement: { dataset: { notebookScope: scope } },
+    hidden, prerendering, fastAuto, readyState:bootstrap?.readyState || 'complete', title: 'Private question · Scry', pollable: polling, activeElement: null, forms: [], answerFields: [], documentElement: { dataset: { notebookScope: scope } },
     body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c) }, append(n) { nodes.set(n.id, n); } },
     addEventListener(type, f) { (listeners[type] ||= []).push(f); },
     querySelector(selector) { if (selector === '.page-frame') return frame; if (selector === '#main[data-poll], [data-poll]' && this.pollable) return {}; if (selector === '[data-state]' && this.pollable) return { getAttribute: () => pollState }; return null; },
-    querySelectorAll(selector) { return selector.startsWith('form.answer-form') ? this.answerFields : []; },
+    querySelectorAll(selector) { if (selector === 'form.answer-form') return this.forms.filter(form => form.classList.contains('answer-form')); return selector.startsWith('form.answer-form') ? this.answerFields : []; },
     getElementById(id) { return id === 'request-status' ? status : id === 'main' ? previousMain : nodes.get(id); },
     createElement: element,
   };
+  let boot = null;
+  if (bootstrap) {
+    const form = new Form(); form.classList = {contains:name => name === 'answer-form'};
+    form.fields = {csrf:'synthetic-csrf', prompt_id:'1'.repeat(32), operation_id:'manual-operation-000001'};
+    const input = {form, value:bootstrap.value, defaultValue:bootstrap.defaultValue, readOnly:false, disabled:false, isConnected:true, matches:()=>true};
+    const generation = {dataset:{generation:'1'}}; const discard = {dataset:{checkpointPresent:bootstrap.saved ? 'true' : 'false'}, hidden:true};
+    form.answerInput=input; form.querySelector=selector=>selector==='[data-checkpoint-generation]'?generation:selector==='[data-checkpoint-discard]'?discard:selector.includes('answer')?input:null;
+    document.forms.push(form); document.answerFields.push(input); boot={form,input,generation,discard};
+    if (bootstrap.retained) previousMain.querySelectorAll = selector => selector === 'form' ? [form] : [];
+  }
   const window = {
     confirmResult: false, confirmCount: 0, scrollTo() {},
     confirm() { this.confirmCount++; return this.confirmResult; },
@@ -39,15 +49,15 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
     if (immediateTimeout && url === '/session/scope') init.signal.addEventListener('abort', () => gate.reject(new Error('aborted')));
     calls.push({ url, init, ...gate }); return gate.promise;
   };
-  const clock = (fn, delay) => { timerDelays.push(delay); return setTimeout(fn, (polling && delay === 4000) || (immediateTimeout && delay === 8000) ? 0 : delay); };
+  const clock = (fn, delay) => { timerDelays.push(delay); return setTimeout(fn, (polling && delay === 4000) || (immediateTimeout && delay === 8000) || (document.fastAuto && delay === 5000) ? 0 : delay); };
   class DOMParser {
     parseFromString(html) {
       const found = /data-notebook-scope=["']([^"']*)["']/.exec(html);
-      const main = { classList: { add() {} }, focus() {}, querySelector() { return null; }, querySelectorAll() { return []; } };
+      const main = { classList: { add() {} }, focus() {}, querySelector() { return null; }, querySelectorAll(selector) { return bootstrap?.retained && selector === 'form' ? [{getAttribute:()=>boot.form.getAttribute('action'),replaceWith(){}}] : []; } };
       return { title: 'Synthetic page', documentElement: { dataset: { notebookScope: found?.[1] } }, querySelector(selector) { if (selector === '#main') return main; return selector === '.notice, .empty-stage .lede' ? {textContent:'Synthetic rejection'} : {}; }, querySelectorAll() { return []; } };
     }
   }
-  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; form.onFormData?.(); } append() {} delete() {} }, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: { pushState() {} }, console };
+  const context = { document, window, fetch, DOMParser, navigator: { onLine: true }, location: { href: 'https://scry.test/', origin: 'https://scry.test', pathname: '/', search: '', reload() {} }, HTMLFormElement: Form, HTMLElement: class {}, FormData: class { constructor(form) { this.form = form; this.values = new Map(Object.entries(form.fields || {})); if (form.answerInput) this.values.set('answer',form.answerInput.value); form.onFormData?.(); } append(k,v) {this.values.set(k,v);} set(k,v) {this.values.set(k,v);} get(k) {return this.values.get(k) ?? null;} delete(k) {this.values.delete(k);} }, crypto: {randomUUID: () => `00000000-0000-4000-8000-${String(++context.uuidCount).padStart(12,'0')}`}, uuidCount:0, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, setTimeout: clock, clearTimeout, matchMedia: () => ({ matches: false }), history: { pushState() {} }, console };
   if (nativeTransport) context.fetch = undefined;
   vm.runInNewContext(script, context);
   const emit = (type, event = {}) => (listeners[type] || []).forEach(f => f(event));
@@ -56,7 +66,7 @@ function fixture({ hidden = false, prerendering = false, polling = false, pollSt
     const bytes = new TextEncoder().encode(raw); let read = false;
     return { status: statusCode, ok: statusCode >= 200 && statusCode < 300, type: 'basic', url: 'https://scry.test/session/scope', headers: { get: key => headers[key.toLowerCase()] || (key.toLowerCase() === 'content-type' ? 'application/json' : null) }, text: async () => text, body: { getReader: () => ({ read: async () => read ? {done:true} : (read = true, {done:false,value:bytes}), releaseLock() {}, cancel: async () => {} }) } };
   };
-  return { document, window, navigator: context.navigator, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form };
+  return { document, window, navigator: context.navigator, frame, previousMain, status, classes, calls, timerDelays, emit, response, Form, boot };
 }
 
 test('background freezes an unknown request and never automatically sends it again', async () => {
@@ -558,4 +568,150 @@ test('discard cancellation preserves the answer and an uncertain discard reconci
   const reconcile=f.status.children.flatMap(n=>n.children||[]).find(n=>n.textContent==='Reconcile this discard');assert.ok(reconcile);
   assert.equal(f.calls.length,2);assert.match(f.status.children[1].textContent,/does not send or grade your answer/);reconcile.click();assert.equal(f.calls[2].init.body,original.init.body);assert.equal(f.calls[2].url,original.url);
   f.calls[2].resolve(f.response(401));await tick();
+});
+
+function autosaveForm(f) {
+  const form=new f.Form();form.classList={contains:name=>name==='answer-form'};form.fields={csrf:'synthetic-csrf',prompt_id:'1'.repeat(32),operation_id:'manual-operation-000001'};
+  const generation={dataset:{generation:'0'}};
+  const input={form,value:'first',readOnly:false,disabled:false,matches:()=>true};form.answerInput=input;
+  form.querySelector=selector=>selector==='[data-checkpoint-generation]'?generation:selector.includes('answer')?input:null;
+  return {form,input,generation};
+}
+function autosaveResponse(f,call,generation,current=true,remaining=511) {
+  const json=JSON.stringify({version:1,operation_id:call.init.body.get('operation_id'),prompt_id:call.init.body.get('prompt_id'),generation:String(generation),current,remaining});
+  return f.response(200,json,{'x-scry-scope':scope});
+}
+test('foreground autosave preserves the editor and distinguishes newer typing',async()=>{
+  const f=fixture({fastAuto:true});const {form,input,generation}=autosaveForm(f);
+  assert.equal(f.calls.length,0,'Loading does not save.');
+  f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));
+  assert.equal(f.calls.length,1);const first=f.calls[0];assert.equal(first.init.headers['X-Scry-Checkpoint-Mode'],'auto-v1');assert.equal(input.readOnly,false);
+  input.value='first and later';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1,'Only one snapshot can be unresolved.');
+  first.resolve(autosaveResponse(f,first,1));await tick();assert.equal(f.previousMain.replaced,false);assert.equal(input.value,'first and later');assert.equal(generation.dataset.generation,'1');assert.match(f.status.children[0].textContent,/Newer changes are not yet saved/);
+  await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,2);assert.notEqual(f.calls[1].init.body.get('operation_id'),first.init.body.get('operation_id'));assert.equal(f.calls[1].init.body.get('generation'),'1');
+  f.calls[1].resolve(autosaveResponse(f,f.calls[1],2));await tick();assert.equal(f.status.children[0].textContent,'Saved.');
+});
+test('an old-server redirect retains the exact automatic operation for manual reconciliation',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));
+  const first=f.calls[0];first.resolve({...f.response(0),type:'opaqueredirect'});await tick();assert.equal(f.calls[1].url,'/session/scope');f.calls[1].resolve(f.response(200));await tick();
+  assert.equal(f.frame.erased,false);const reconcile=f.status.children.flatMap(x=>x.children||[]).find(x=>x.textContent==='Reconcile this save');assert.ok(reconcile);assert.equal(f.calls.length,2);reconcile.click();assert.equal(f.calls[2].init.body,first.init.body);
+  f.calls[2].resolve(autosaveResponse(f,f.calls[2],1));await tick();
+});
+test('backgrounding cancels an unsent timer and foreground return does not save',async()=>{
+  const f=fixture();const {input}=autosaveForm(f);f.emit('input',{target:input});f.document.hidden=true;f.emit('visibilitychange');f.document.hidden=false;f.emit('visibilitychange');
+  assert.equal(f.calls.length,1);f.calls[0].resolve(f.response(200));await tick();assert.equal(f.calls.length,1);assert.equal(input.value,'first');
+});
+test('stale checkpoint acknowledgment never adopts a competing generation',async()=>{
+  const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];call.resolve(autosaveResponse(f,call,1,false));await tick();assert.equal(generation.dataset.generation,'0');assert.match(f.status.children[0].textContent,/not saved/);
+  input.value='still unsaved';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);
+});
+
+test('automatic save waits for composition and never starts on reconnect alone',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('compositionstart',{target:input});f.emit('input',{target:input,isComposing:true});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);
+  f.emit('compositionend',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);f.calls[0].resolve(autosaveResponse(f,f.calls[0],1));await tick();
+  f.navigator.onLine=false;f.emit('window:offline');input.value='offline edit';f.emit('input',{target:input});f.navigator.onLine=true;f.emit('window:online');await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/not saved/);
+});
+test('the automatic budget refusal leaves editing and manual saving available',async()=>{
+  const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));f.calls[0].resolve(f.response(429,'limit',{'x-scry-scope':scope}));await tick();assert.equal(input.readOnly,false);assert.match(f.status.children[0].textContent,/Use Save draft/);
+  input.value='more';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);const submitter={formAction:'https://scry.test/practice/draft',hasAttribute:key=>key==='formaction'||key==='data-checkpoint-save'};f.emit('submit',{target:form,submitter,preventDefault(){}});assert.equal(f.calls.length,2);f.calls[1].resolve(f.response(401));await tick();
+});
+
+test('backgrounded automatic save remains frozen until manual reconciliation',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];f.document.hidden=true;f.emit('visibilitychange');assert.equal(original.init.signal.aborted,true);original.resolve(f.response(503));await tick();
+  f.document.hidden=false;f.emit('visibilitychange');f.calls[1].resolve(f.response(200));await tick();assert.equal(f.calls.length,2);const action=f.status.children.flatMap(x=>x.children||[]).find(x=>x.textContent==='Reconcile this save');assert.ok(action);action.click();assert.equal(f.calls[2].init.body,original.init.body);f.calls[2].resolve(autosaveResponse(f,f.calls[2],1));await tick();
+});
+test('an identity mismatch conceals an automatic save without exposing the editor',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));f.calls[0].resolve(f.response(200,'{}',{'x-scry-scope':'b'.repeat(64)}));await tick();assert.equal(f.frame.erased,true);assert.ok(f.classes.has('private-hidden'));
+});
+test('malformed automatic acknowledgment retains the exact operation',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];original.resolve(f.response(200,'{}',{'x-scry-scope':scope}));await tick();assert.equal(f.calls[1].url,'/session/scope');f.calls[1].resolve(f.response(200));await tick();const action=f.status.children.flatMap(x=>x.children||[]).find(x=>x.textContent==='Reconcile this save');assert.ok(action);action.click();assert.equal(f.calls[2].init.body,original.init.body);f.calls[2].resolve(autosaveResponse(f,f.calls[2],1));await tick();
+});
+
+test('deleting text can checkpoint an empty answer without submitting it',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);input.value='';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);assert.equal(f.calls[0].url,'https://scry.test/practice/draft');f.calls[0].resolve(autosaveResponse(f,f.calls[0],1));await tick();assert.equal(f.status.children[0].textContent,'Saved.');
+});
+
+test('an opaque old-server scope redirect masks but retains the automatic operation',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];
+  original.resolve({...f.response(0),type:'opaqueredirect'});await tick();assert.equal(f.calls[1].url,'/session/scope');f.calls[1].resolve({...f.response(0),type:'opaqueredirect'});await tick();
+  assert.equal(f.frame.erased,false);assert.equal(f.frame.inert,true);assert.ok(f.classes.has('private-suspended'));const panel=f.document.getElementById('scope-recovery');assert.ok(panel);panel.children.find(x=>x.textContent==='Try again').click();f.calls[2].resolve({...f.response(0),type:'opaqueredirect'});await tick();assert.equal(f.frame.erased,false);assert.equal(f.frame.inert,true);assert.equal(f.calls.length,3);
+});
+
+test('automatic save refuses a missing draft-generation control',async()=>{
+  const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);form.querySelector=selector=>selector.includes('answer')?input:null;
+  f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not saved/);
+});
+
+test('going offline during automatic form serialization never sends or queues a snapshot',async()=>{
+  const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);form.onFormData=()=>{f.navigator.onLine=false;f.emit('window:offline');};f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.equal(input.value,'first');f.navigator.onLine=true;f.emit('window:online');await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);
+});
+test('a synchronous form-data edit cannot be mistaken for the frozen snapshot',async()=>{
+  const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);form.onFormData=()=>{input.value='newer';};f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not saved/);
+});
+
+test('an inconsistent acknowledged generation cannot be silently adopted',async()=>{
+  const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];original.resolve(autosaveResponse(f,original,7,true));await tick();assert.equal(generation.dataset.generation,'0');assert.equal(f.calls[1].url,'/session/scope');f.calls[1].resolve(f.response(200));await tick();const reconcile=f.status.children.flatMap(x=>x.children||[]).find(x=>x.textContent==='Reconcile this save');assert.ok(reconcile);reconcile.click();assert.equal(f.calls[2].init.body,original.init.body);f.calls[2].resolve(autosaveResponse(f,f.calls[2],1));await tick();assert.equal(generation.dataset.generation,'1');
+});
+
+test('a generation changed during form serialization is never silently adopted',async()=>{
+  const f=fixture({fastAuto:true});const {form,input,generation}=autosaveForm(f);form.onFormData=()=>{generation.dataset.generation='7';};f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not saved/);input.value='more';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);
+});
+
+test('a local generation change during an automatic flight is not overwritten',async()=>{
+  const f=fixture({fastAuto:true});const {input,generation}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];generation.dataset.generation='9';call.resolve(autosaveResponse(f,call,1,true));await tick();assert.equal(generation.dataset.generation,'9');assert.match(f.status.children[0].textContent,/not saved/);input.value='more';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);
+});
+
+test('an automatic save cannot install a scoped unexpected 201 HTML page',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];input.value='newer';f.emit('input',{target:input});
+  call.resolve(f.response(201,`<html data-notebook-scope="${scope}"><main id="main"></main></html>`,{'x-scry-scope':scope,'content-type':'text/html'}));await tick();assert.equal(f.previousMain.replaced,false);assert.equal(input.value,'newer');assert.equal(f.calls[1].url,'/session/scope');f.calls[1].resolve(f.response(200));await tick();assert.ok(f.status.children.flatMap(n=>n.children||[]).some(n=>n.textContent==='Reconcile this save'));
+});
+test('reconciling an uncertain snapshot does not automatically send edits made during uncertainty',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];original.resolve(f.response(503));await tick();f.calls[1].resolve(f.response(200));await tick();
+  input.value='newer';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const action=f.status.children.flatMap(n=>n.children||[]).find(n=>n.textContent==='Reconcile this save');assert.ok(action);action.click();const replay=f.calls[2];assert.equal(replay.init.body,original.init.body);replay.resolve(autosaveResponse(f,replay,1));await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,3);assert.match(f.status.children[0].textContent,/Newer changes are not/);
+});
+test('an offline edit is not sent after a delayed acknowledgment on reconnect',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const original=f.calls[0];f.navigator.onLine=false;f.emit('window:offline');input.value='offline edit';f.emit('input',{target:input});f.navigator.onLine=true;f.emit('window:online');original.resolve(autosaveResponse(f,original,1));await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/Newer changes are not/);
+});
+test('an in-flight submission does not offer reconciliation before the outcome is unknown',async()=>{
+  const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];f.emit('submit',{target:form,preventDefault(){}});assert.equal(f.calls.length,1);assert.ok(!f.status.children.flatMap(n=>n.children||[]).some(n=>n.textContent.startsWith('Reconcile')));call.resolve(autosaveResponse(f,call,1));await tick();
+});
+test('returning to the last acknowledged answer creates no duplicate receipt',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];call.resolve(autosaveResponse(f,call,1));await tick();input.value='changed';f.emit('input',{target:input});input.value='first';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,1);assert.equal(f.status.children[0].textContent,'Saved.');
+});
+
+test('a capacity refusal cancels a newer armed timer and pauses automatic saves',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));const call=f.calls[0];input.value='newer';f.emit('input',{target:input});call.resolve(f.response(413,'archive capacity',{'x-scry-scope':scope}));await tick();await new Promise(r=>setTimeout(r,20));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/paused/);assert.match(f.status.children[1].textContent,/not saved/);input.value='newest';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/paused/);
+});
+
+test('typing before deferred script execution is not acknowledged as saved',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:true,defaultValue:'server',value:'typed before script'}});const {input}=f.boot;
+  assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not yet saved/i);assert.equal(input.value,'typed before script');
+  input.value='later';f.emit('input',{target:input});input.value='typed before script';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1,'The unacknowledged pre-script value must not be called saved.');f.calls[0].resolve(autosaveResponse(f,f.calls[0],2));await tick();
+});
+test('browser-restored text is visibly unsaved and is not sent on startup or reconnect',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:false,defaultValue:'',value:'browser restored'}});const {input}=f.boot;
+  assert.equal(input.value,'browser restored');assert.match(f.status.children[0].textContent,/not yet saved/i);await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);
+  f.navigator.onLine=false;f.emit('window:offline');f.navigator.onLine=true;f.emit('window:online');await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not saved/i);
+});
+test('re-enabling a retained dirty form preserves its original acknowledgment',async()=>{
+  const f=fixture({polling:true,pollState:'goal',bootstrap:{saved:true,defaultValue:'server',value:'server',retained:true}});const {input}=f.boot;
+  input.value='dirty';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);f.document.pollable=false;
+  f.calls[0].resolve(f.response(200,`<html data-notebook-scope="${scope}"><main id="main"></main></html>`,{'x-scry-scope':scope,'content-type':'text/html'}));await tick();assert.equal(f.previousMain.replaced,true);
+  f.document.fastAuto=true;input.value='later';f.emit('input',{target:input});input.value='dirty';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,2,'The dirty retained value was never acknowledged.');f.calls[1].resolve(autosaveResponse(f,f.calls[1],2));await tick();
+});
+
+test('input before pageshow remains unsaved without starting a save on load',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:true,defaultValue:'server',value:'server',readyState:'interactive'}});const {input}=f.boot;
+  input.value='early';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);
+  f.emit('window:pageshow',{persisted:false});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not yet saved/i);
+  input.value='later';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);f.calls[0].resolve(autosaveResponse(f,f.calls[0],2));await tick();
+});
+test('a value restored after script execution is marked unsaved at pageshow',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:true,defaultValue:'server',value:'server',readyState:'interactive'}});const {input}=f.boot;
+  input.value='browser restored';f.emit('window:pageshow',{persisted:false});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not yet saved/i);assert.equal(input.value,'browser restored');
+});
+
+test('restoration immediately after pageshow remains unsaved and never starts a save',async()=>{
+  const f=fixture({fastAuto:true,bootstrap:{saved:true,defaultValue:'server',value:'server',readyState:'interactive'}});const {input}=f.boot;
+  f.emit('window:pageshow',{persisted:false});input.value='restored after pageshow';await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,0);assert.match(f.status.children[0].textContent,/not yet saved/i);
 });

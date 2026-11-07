@@ -181,7 +181,15 @@ impl View<'_> {
                 .answer_checkpoint
                 .as_ref()
                 .map_or(0, |checkpoint| checkpoint.generation);
-            let discard = self.app.practice.answer_checkpoint.as_ref().and_then(|checkpoint| checkpoint.draft.as_ref()).map_or("", |_| "<input type=\"submit\" class=\"button\" formaction=\"/practice/draft/discard\" formnovalidate data-checkpoint-discard value=\"Discard saved draft\" hidden>");
+            let has_draft = self
+                .app
+                .practice
+                .answer_checkpoint
+                .as_ref()
+                .is_some_and(|checkpoint| checkpoint.draft.is_some());
+            let discard = format!(
+                "<input type=\"submit\" class=\"button\" formaction=\"/practice/draft/discard\" formnovalidate data-checkpoint-discard data-checkpoint-present=\"{has_draft}\" value=\"Discard saved draft\" hidden>"
+            );
             format!(
                 "<input type=\"submit\" class=\"button\" formaction=\"/practice/draft\" data-checkpoint-save value=\"Save draft\" hidden>{discard}<p data-checkpoint-custody hidden>Saved drafts are visible to anyone with access to this notebook.</p><span hidden data-checkpoint-generation data-generation=\"{generation}\"></span>"
             )
