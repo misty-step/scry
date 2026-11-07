@@ -527,7 +527,11 @@ impl View<'_> {
         );
         let reviewable = crate::study::reviewable(v).is_ok();
         if !reviewable && v.kind == crate::library::Kind::Text {
-            out.push_str("<p role=\"status\">Practice is unavailable because a Unit has no words to recall. Saved text and history are unchanged.</p>");
+            let _ = write!(
+                out,
+                "<p role=\"status\">Practice is unavailable. {}</p>",
+                escape(&crate::study::reviewable(v).unwrap_err().message)
+            );
         }
         if let Some(study) = self
             .app
@@ -661,8 +665,13 @@ impl View<'_> {
     }
     fn unavailable_practice(&self, p: &crate::study::Presentation) -> String {
         let mut out = format!(
-            "<section class=\"empty-stage exact-study\" data-state=\"practice-unavailable\" data-prompt-id=\"{}\"><h1>Practice unavailable</h1><p>This Version has a Unit with no words to recall. Saved text and history are unchanged.</p>",
-            escape(&p.prompt.id)
+            "<section class=\"empty-stage exact-study\" data-state=\"practice-unavailable\" data-prompt-id=\"{}\"><h1>Practice unavailable</h1><p>{}</p>",
+            escape(&p.prompt.id),
+            escape(
+                &crate::study::reviewable(&self.app.library.versions[&p.prompt.version_id])
+                    .expect_err("unavailable Version")
+                    .message
+            )
         );
         let draft = self.saved_answer(&p.prompt.id);
         if !draft.is_empty() {

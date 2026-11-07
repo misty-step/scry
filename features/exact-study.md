@@ -135,3 +135,26 @@ and an explicit fenced action to study other material. Library and the lesson
 shelf do not offer a new start for affected Versions. `emptyTextWalk`, included
 in the existing keyed-mapping browser gate, covers this recovery at 320px native
 no-JavaScript and 1280px enhanced layouts without creating an Attempt.
+
+## Split-word text boundaries
+
+`tests/split_text_units.rs` and `splitTextJourney` in `qa/study.test.mjs`
+exercise US-015/016/017 and LESSON-04 with decimal, ellipsis, adjacent-punctuation
+and Unicode text. New automatic segmentation preserves every source byte and
+keeps native normalized words together. Explicit boundaries are accepted only
+when normalizing all joined Units yields the same word vector as normalizing
+the individual Units, including cuts between Sections. This does not change
+`exact-v2`, its pinned Unicode rules, Diff spans, or accepted answer aliases.
+
+The runtime receipt is `target/split-text-units-runtime.json`. The pre-fix
+synthetic fixture retains the false Again for an exact whole-text answer,
+including its schedule effect. Saved Versions remain unchanged and restorable;
+unsafe ones use the same unavailable-practice fence as empty Units. Reads,
+archives and exact committed receipts retain their historical meaning. Ordinary
+reimport still deduplicates to the saved Version and is not a boundary repair.
+No repair successor or production migration is included.
+
+`splitTextWalk`, in the existing keyed-mapping browser gate, checks the accurate
+unavailable reason, acknowledged draft, reload and fenced switch to other
+material at 320px native/no-JavaScript and 1280px enhanced layouts. These
+synthetic checks do not establish physical-phone or authenticated live acceptance.

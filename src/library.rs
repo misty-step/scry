@@ -379,10 +379,23 @@ fn segment(text: &str) -> Vec<SectionInput> {
 fn text_segments(text: &str) -> Vec<SectionInput> {
     let mut sections: Vec<SectionInput> = Vec::new();
     let mut prefix = String::new();
+    // A punctuation cut can lie inside one exact-v2 word (3.14, a,b, ...).
+    // Inspect the whole source once, rather than repeatedly normalizing an
+    // ever-growing Unit for punctuation-heavy input.
+    let spans = grading::text_word_spans(text);
+    let mut words = spans.iter().peekable();
+    let mut offset = 0;
     for section in segment(text) {
         let mut units: Vec<String> = Vec::new();
         for unit in section.units {
-            if grading::normalized_words(&unit).is_empty() {
+            while words.peek().is_some_and(|span| span.end <= offset) {
+                words.next();
+            }
+            let splits_word = words.peek().is_some_and(|span| span.start < offset);
+            offset += unit.len();
+            if splits_word && let Some(last) = units.last_mut() {
+                last.push_str(&unit);
+            } else if grading::normalized_words(&unit).is_empty() {
                 if let Some(last) = units.last_mut() {
                     last.push_str(&unit);
                 } else {
@@ -406,16 +419,28 @@ fn text_segments(text: &str) -> Vec<SectionInput> {
     }
     sections
 }
-/// New practice must have something to recall in every Unit, including each
-/// part of a Recitation. Keep this separate from historical archive validation.
+/// New practice requires nonempty Units whose concatenation preserves the
+/// pinned normalized words. Keep this separate from historical validation.
 pub(crate) fn check_text_units<'a>(units: impl Iterator<Item = &'a str>) -> AppResult<()> {
-    if units
-        .into_iter()
-        .any(|text| grading::normalized_words(text).is_empty())
-    {
+    let mut joined = String::new();
+    let mut expected = Vec::new();
+    for text in units {
+        let words = grading::normalized_words(text);
+        if words.is_empty() {
+            return Err(AppError::new(
+                422,
+                "A text Unit has no words to recall. Supply boundaries that include words; existing content and history are unchanged.",
+            ));
+        }
+        joined.push_str(text);
+        expected.extend(words);
+    }
+    // Flatten every Section too: an authored Section boundary cannot turn a
+    // single native word into two independently graded words.
+    if expected != grading::normalized_words(&joined) {
         return Err(AppError::new(
             422,
-            "A text Unit has no words to recall. Supply boundaries that include words; existing content and history are unchanged.",
+            "Text Unit boundaries split a word or change its normalization. Supply boundaries between complete words; existing content and history are unchanged.",
         ));
     }
     Ok(())

@@ -1,0 +1,2248 @@
+{
+  "answered": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-split-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-71f3ed4c516ea98902f4cfc805b58e4e": {
+          "kind": "version_of",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "versions": {
+        "71f3ed4c516ea98902f4cfc805b58e4e": {
+          "id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "098d4b480f40dc297f6820597cf06857",
+              "units": [
+                {
+                  "id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+                  "text": "Use 3."
+                },
+                {
+                  "id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+                  "text": "14 for pi."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "Use 3.14 for pi.",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "works": {
+        "473d9adec9eac1a29fe61d31173de04d": {
+          "aliases": [],
+          "context": "",
+          "id": "473d9adec9eac1a29fe61d31173de04d",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy decimal"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "split-unit-operation-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "864a17cb7a76641133356c7cdac23d5a343d21660ab2ef6a5de848025fd478fd",
+        "result": {
+          "entity_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "message": null,
+          "redirect": "/api/v1/library/versions/71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      },
+      "split-unit-operation-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "e73ce1cff015033a1894da0ff83cd916bce983951096693607de391299daa21d",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "Use 3.",
+              "cue_level": "read",
+              "id": "dabd61b40427ce1d9f0682e389c566e4",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000002": {
+        "created_ms": 1800000000000,
+        "path": "/practice/quiz",
+        "payload_hash": "ca0a96f68b5b485ac7c80e45987f7ba36a627072754582d0ae0c8c63bb13104b",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy decimal",
+              "cue_level": "whole_title",
+              "id": "49401695feb9f2d45c3b7049d3a4c374",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000003": {
+        "created_ms": 1800000000000,
+        "path": "/practice/answer",
+        "payload_hash": "d667ffbfab1c6e49b40f297b84cad7acb2776a1753d5d0e7f40bcf9f31f515ab",
+        "result": {
+          "data": {
+            "attempt_id": "8bcb938ab4d909dd92c12bc5f632cf5e"
+          },
+          "entity_id": "8bcb938ab4d909dd92c12bc5f632cf5e",
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {
+        "8bcb938ab4d909dd92c12bc5f632cf5e": {
+          "acting_token": null,
+          "algorithm": "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1;schedule=due-v1",
+          "assisted": false,
+          "created_ms": 1800000000000,
+          "effects": [
+            {
+              "after": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 2.118103970459015,
+                  "due_ms": 1800000600000,
+                  "lapses": 0,
+                  "last_review_ms": 1800000000000,
+                  "remaining_steps": 1,
+                  "reps": 1,
+                  "scheduled_days": 0,
+                  "stability": 2.3065,
+                  "state": "learning"
+                },
+                "successes": 0
+              },
+              "assisted": false,
+              "before": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 0.0,
+                  "due_ms": 1800000000000,
+                  "lapses": 0,
+                  "last_review_ms": null,
+                  "remaining_steps": 0,
+                  "reps": 0,
+                  "scheduled_days": 0,
+                  "stability": 0.0,
+                  "state": "new"
+                },
+                "successes": 0
+              },
+              "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+              "cue_level": "whole_title",
+              "extra_practice": false,
+              "revision_before": 0,
+              "scheduled": true,
+              "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+              "unit_index": 0,
+              "verdict": "Good"
+            }
+          ],
+          "grade": {
+            "authority": {
+              "grader_version": "1;unicode=17.0.0",
+              "name": "exact-v2"
+            },
+            "diff": [
+              {
+                "expected": {
+                  "span": {
+                    "end": 3,
+                    "start": 0
+                  },
+                  "text": "Use"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 3,
+                    "start": 0
+                  },
+                  "text": "Use"
+                },
+                "unit_index": 0
+              },
+              {
+                "expected": {
+                  "span": {
+                    "end": 5,
+                    "start": 4
+                  },
+                  "text": "3"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 5,
+                    "start": 4
+                  },
+                  "text": "3"
+                },
+                "unit_index": 0
+              }
+            ],
+            "units": [
+              {
+                "unit_index": 0,
+                "verdict": "Good"
+              }
+            ],
+            "verdict": "Good",
+            "wrong_version_hint": null
+          },
+          "id": "8bcb938ab4d909dd92c12bc5f632cf5e",
+          "prompt": {
+            "assisted": false,
+            "context": null,
+            "cue": "Synthetic legacy decimal",
+            "cue_level": "whole_title",
+            "id": "49401695feb9f2d45c3b7049d3a4c374",
+            "scope": {
+              "kind": "unit",
+              "position": 1,
+              "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+            },
+            "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+            "title": "Synthetic legacy decimal",
+            "unit_ids": [
+              "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+            ],
+            "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+            "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+          },
+          "raw_answer": "Use 3.",
+          "revealed": false,
+          "schedule_policy": "due",
+          "sequence": 4,
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      },
+      "cards": {
+        "6d773ef1887f0d4fbbcf12e8b501f993": {
+          "direction": "forward",
+          "id": "6d773ef1887f0d4fbbcf12e8b501f993",
+          "introduced_ms": 1800000000000,
+          "revision": 1,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 2.118103970459015,
+              "due_ms": 1800000600000,
+              "lapses": 0,
+              "last_review_ms": 1800000000000,
+              "remaining_steps": 1,
+              "reps": 1,
+              "scheduled_days": 0,
+              "stability": 2.3065,
+              "state": "learning"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+          "unit_index": 0
+        },
+        "8fbcae6ca7dc7e10fde061045ba158b1": {
+          "direction": "forward",
+          "id": "8fbcae6ca7dc7e10fde061045ba158b1",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+          "unit_index": 1
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": "8bcb938ab4d909dd92c12bc5f632cf5e",
+        "created_ms": 1800000000000,
+        "phase": "quiz",
+        "prompt": {
+          "assisted": false,
+          "context": null,
+          "cue": "Synthetic legacy decimal",
+          "cue_level": "whole_title",
+          "id": "49401695feb9f2d45c3b7049d3a4c374",
+          "scope": {
+            "kind": "unit",
+            "position": 1,
+            "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "title": "Synthetic legacy decimal",
+          "unit_ids": [
+            "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+          ],
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+            "cue": "whole_title",
+            "revision": 0,
+            "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+            "unit_index": 0
+          }
+        ]
+      },
+      "studies": {
+        "6bbcb00b26fc89368d3458b3c1f8a074": {
+          "created_ms": 1800000000000,
+          "id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 4,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "6bbcb00b26fc89368d3458b3c1f8a074": "71f3ed4c516ea98902f4cfc805b58e4e"
+    }
+  },
+  "quiz": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-split-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-71f3ed4c516ea98902f4cfc805b58e4e": {
+          "kind": "version_of",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "versions": {
+        "71f3ed4c516ea98902f4cfc805b58e4e": {
+          "id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "098d4b480f40dc297f6820597cf06857",
+              "units": [
+                {
+                  "id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+                  "text": "Use 3."
+                },
+                {
+                  "id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+                  "text": "14 for pi."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "Use 3.14 for pi.",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "works": {
+        "473d9adec9eac1a29fe61d31173de04d": {
+          "aliases": [],
+          "context": "",
+          "id": "473d9adec9eac1a29fe61d31173de04d",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy decimal"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "split-unit-operation-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "864a17cb7a76641133356c7cdac23d5a343d21660ab2ef6a5de848025fd478fd",
+        "result": {
+          "entity_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "message": null,
+          "redirect": "/api/v1/library/versions/71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      },
+      "split-unit-operation-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "e73ce1cff015033a1894da0ff83cd916bce983951096693607de391299daa21d",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "Use 3.",
+              "cue_level": "read",
+              "id": "dabd61b40427ce1d9f0682e389c566e4",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000002": {
+        "created_ms": 1800000000000,
+        "path": "/practice/quiz",
+        "payload_hash": "ca0a96f68b5b485ac7c80e45987f7ba36a627072754582d0ae0c8c63bb13104b",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy decimal",
+              "cue_level": "whole_title",
+              "id": "49401695feb9f2d45c3b7049d3a4c374",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {},
+      "cards": {
+        "6d773ef1887f0d4fbbcf12e8b501f993": {
+          "direction": "forward",
+          "id": "6d773ef1887f0d4fbbcf12e8b501f993",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+          "unit_index": 0
+        },
+        "8fbcae6ca7dc7e10fde061045ba158b1": {
+          "direction": "forward",
+          "id": "8fbcae6ca7dc7e10fde061045ba158b1",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+          "unit_index": 1
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": null,
+        "created_ms": 1800000000000,
+        "phase": "quiz",
+        "prompt": {
+          "assisted": false,
+          "context": null,
+          "cue": "Synthetic legacy decimal",
+          "cue_level": "whole_title",
+          "id": "49401695feb9f2d45c3b7049d3a4c374",
+          "scope": {
+            "kind": "unit",
+            "position": 1,
+            "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "title": "Synthetic legacy decimal",
+          "unit_ids": [
+            "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+          ],
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+            "cue": "whole_title",
+            "revision": 0,
+            "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+            "unit_index": 0
+          }
+        ]
+      },
+      "studies": {
+        "6bbcb00b26fc89368d3458b3c1f8a074": {
+          "created_ms": 1800000000000,
+          "id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 3,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "6bbcb00b26fc89368d3458b3c1f8a074": "71f3ed4c516ea98902f4cfc805b58e4e"
+    }
+  },
+  "requests": {
+    "answer": {
+      "answer": "Use 3.",
+      "csrf": "synthetic-split-unit-csrf-32-chars",
+      "operation_id": "split-unit-operation-0000000000000003",
+      "prompt_id": "49401695feb9f2d45c3b7049d3a4c374",
+      "revision": "3"
+    },
+    "import": {
+      "csrf": "synthetic-split-unit-csrf-32-chars",
+      "data": "{\"kind\":\"text\",\"text\":\"Use 3.14 for pi.\",\"title\":\"Synthetic legacy decimal\"}",
+      "operation_id": "split-unit-operation-0000000000000000",
+      "revision": "0"
+    },
+    "quiz": {
+      "csrf": "synthetic-split-unit-csrf-32-chars",
+      "operation_id": "split-unit-operation-0000000000000002",
+      "prompt_id": "dabd61b40427ce1d9f0682e389c566e4",
+      "revision": "2"
+    },
+    "start": {
+      "csrf": "synthetic-split-unit-csrf-32-chars",
+      "operation_id": "split-unit-operation-0000000000000001",
+      "revision": "1",
+      "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+    },
+    "whole": {
+      "after": "49401695feb9f2d45c3b7049d3a4c374",
+      "csrf": "synthetic-split-unit-csrf-32-chars",
+      "mode": "whole",
+      "operation_id": "split-unit-operation-0000000000000004",
+      "revision": "4"
+    },
+    "whole_answer": {
+      "answer": "Use 3.14 for pi.",
+      "csrf": "synthetic-split-unit-csrf-32-chars",
+      "operation_id": "split-unit-operation-0000000000000005",
+      "prompt_id": "d4fb3006e0f6efbcee186759a944e993",
+      "revision": "5"
+    }
+  },
+  "source": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-split-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-71f3ed4c516ea98902f4cfc805b58e4e": {
+          "kind": "version_of",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "versions": {
+        "71f3ed4c516ea98902f4cfc805b58e4e": {
+          "id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "098d4b480f40dc297f6820597cf06857",
+              "units": [
+                {
+                  "id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+                  "text": "Use 3."
+                },
+                {
+                  "id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+                  "text": "14 for pi."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "Use 3.14 for pi.",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "works": {
+        "473d9adec9eac1a29fe61d31173de04d": {
+          "aliases": [],
+          "context": "",
+          "id": "473d9adec9eac1a29fe61d31173de04d",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy decimal"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "split-unit-operation-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "864a17cb7a76641133356c7cdac23d5a343d21660ab2ef6a5de848025fd478fd",
+        "result": {
+          "entity_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "message": null,
+          "redirect": "/api/v1/library/versions/71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      },
+      "split-unit-operation-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "e73ce1cff015033a1894da0ff83cd916bce983951096693607de391299daa21d",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "Use 3.",
+              "cue_level": "read",
+              "id": "dabd61b40427ce1d9f0682e389c566e4",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {},
+      "cards": {
+        "6d773ef1887f0d4fbbcf12e8b501f993": {
+          "direction": "forward",
+          "id": "6d773ef1887f0d4fbbcf12e8b501f993",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+          "unit_index": 0
+        },
+        "8fbcae6ca7dc7e10fde061045ba158b1": {
+          "direction": "forward",
+          "id": "8fbcae6ca7dc7e10fde061045ba158b1",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+          "unit_index": 1
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": null,
+        "created_ms": 1800000000000,
+        "phase": "study",
+        "prompt": {
+          "assisted": true,
+          "context": null,
+          "cue": "Use 3.",
+          "cue_level": "read",
+          "id": "dabd61b40427ce1d9f0682e389c566e4",
+          "scope": {
+            "kind": "unit",
+            "position": 1,
+            "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "title": "Synthetic legacy decimal",
+          "unit_ids": [
+            "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+          ],
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+            "cue": "read",
+            "revision": 0,
+            "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+            "unit_index": 0
+          }
+        ]
+      },
+      "studies": {
+        "6bbcb00b26fc89368d3458b3c1f8a074": {
+          "created_ms": 1800000000000,
+          "id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 2,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "6bbcb00b26fc89368d3458b3c1f8a074": "71f3ed4c516ea98902f4cfc805b58e4e"
+    }
+  },
+  "source_commit": "7446077314dade8d2df7802bc50778cb7c84da39",
+  "unstarted": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-split-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-71f3ed4c516ea98902f4cfc805b58e4e": {
+          "kind": "version_of",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "versions": {
+        "71f3ed4c516ea98902f4cfc805b58e4e": {
+          "id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "098d4b480f40dc297f6820597cf06857",
+              "units": [
+                {
+                  "id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+                  "text": "Use 3."
+                },
+                {
+                  "id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+                  "text": "14 for pi."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "Use 3.14 for pi.",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "works": {
+        "473d9adec9eac1a29fe61d31173de04d": {
+          "aliases": [],
+          "context": "",
+          "id": "473d9adec9eac1a29fe61d31173de04d",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy decimal"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "split-unit-operation-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "864a17cb7a76641133356c7cdac23d5a343d21660ab2ef6a5de848025fd478fd",
+        "result": {
+          "entity_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "message": null,
+          "redirect": "/api/v1/library/versions/71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      }
+    },
+    "overrides": [],
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 1,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": []
+  },
+  "whole_answered": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-split-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-71f3ed4c516ea98902f4cfc805b58e4e": {
+          "kind": "version_of",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "versions": {
+        "71f3ed4c516ea98902f4cfc805b58e4e": {
+          "id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "098d4b480f40dc297f6820597cf06857",
+              "units": [
+                {
+                  "id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+                  "text": "Use 3."
+                },
+                {
+                  "id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+                  "text": "14 for pi."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "Use 3.14 for pi.",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "works": {
+        "473d9adec9eac1a29fe61d31173de04d": {
+          "aliases": [],
+          "context": "",
+          "id": "473d9adec9eac1a29fe61d31173de04d",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy decimal"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "split-unit-operation-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "864a17cb7a76641133356c7cdac23d5a343d21660ab2ef6a5de848025fd478fd",
+        "result": {
+          "entity_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "message": null,
+          "redirect": "/api/v1/library/versions/71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      },
+      "split-unit-operation-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "e73ce1cff015033a1894da0ff83cd916bce983951096693607de391299daa21d",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "Use 3.",
+              "cue_level": "read",
+              "id": "dabd61b40427ce1d9f0682e389c566e4",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000002": {
+        "created_ms": 1800000000000,
+        "path": "/practice/quiz",
+        "payload_hash": "ca0a96f68b5b485ac7c80e45987f7ba36a627072754582d0ae0c8c63bb13104b",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy decimal",
+              "cue_level": "whole_title",
+              "id": "49401695feb9f2d45c3b7049d3a4c374",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000003": {
+        "created_ms": 1800000000000,
+        "path": "/practice/answer",
+        "payload_hash": "d667ffbfab1c6e49b40f297b84cad7acb2776a1753d5d0e7f40bcf9f31f515ab",
+        "result": {
+          "data": {
+            "attempt_id": "8bcb938ab4d909dd92c12bc5f632cf5e"
+          },
+          "entity_id": "8bcb938ab4d909dd92c12bc5f632cf5e",
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000004": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/next",
+        "payload_hash": "adfa08d8e9a15b83a30819ad187557d162ace64de14fa245c2fb963f3663182a",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy decimal",
+              "cue_level": "whole_title",
+              "id": "d4fb3006e0f6efbcee186759a944e993",
+              "scope": {
+                "kind": "whole"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+                "7b1a6abc0fa76a6c6eebbaec6164a0d1"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000005": {
+        "created_ms": 1800000000000,
+        "path": "/practice/answer",
+        "payload_hash": "e0489ac5e1201387f98d9f54093ce981116426a99e062f7b57f47eb15d81bf90",
+        "result": {
+          "data": {
+            "attempt_id": "694f8b7893a14b19faeb7b7d76fe1840"
+          },
+          "entity_id": "694f8b7893a14b19faeb7b7d76fe1840",
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {
+        "694f8b7893a14b19faeb7b7d76fe1840": {
+          "acting_token": null,
+          "algorithm": "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1;schedule=due-v1",
+          "assisted": false,
+          "created_ms": 1800000000000,
+          "effects": [
+            {
+              "after": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 2.118103970459015,
+                  "due_ms": 1800000600000,
+                  "lapses": 0,
+                  "last_review_ms": 1800000000000,
+                  "remaining_steps": 1,
+                  "reps": 1,
+                  "scheduled_days": 0,
+                  "stability": 2.3065,
+                  "state": "learning"
+                },
+                "successes": 0
+              },
+              "assisted": false,
+              "before": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 2.118103970459015,
+                  "due_ms": 1800000600000,
+                  "lapses": 0,
+                  "last_review_ms": 1800000000000,
+                  "remaining_steps": 1,
+                  "reps": 1,
+                  "scheduled_days": 0,
+                  "stability": 2.3065,
+                  "state": "learning"
+                },
+                "successes": 0
+              },
+              "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+              "cue_level": "whole_title",
+              "extra_practice": true,
+              "revision_before": 1,
+              "scheduled": false,
+              "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+              "unit_index": 0,
+              "verdict": "Again"
+            },
+            {
+              "after": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 6.4133,
+                  "due_ms": 1800000060000,
+                  "lapses": 0,
+                  "last_review_ms": 1800000000000,
+                  "remaining_steps": 2,
+                  "reps": 1,
+                  "scheduled_days": 0,
+                  "stability": 0.212,
+                  "state": "learning"
+                },
+                "successes": 0
+              },
+              "assisted": false,
+              "before": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 0.0,
+                  "due_ms": 1800000000000,
+                  "lapses": 0,
+                  "last_review_ms": null,
+                  "remaining_steps": 0,
+                  "reps": 0,
+                  "scheduled_days": 0,
+                  "stability": 0.0,
+                  "state": "new"
+                },
+                "successes": 0
+              },
+              "card_id": "8fbcae6ca7dc7e10fde061045ba158b1",
+              "cue_level": "whole_title",
+              "extra_practice": false,
+              "revision_before": 0,
+              "scheduled": true,
+              "unit_id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+              "unit_index": 1,
+              "verdict": "Again"
+            }
+          ],
+          "grade": {
+            "authority": {
+              "grader_version": "1;unicode=17.0.0",
+              "name": "exact-v2"
+            },
+            "diff": [
+              {
+                "expected": {
+                  "span": {
+                    "end": 3,
+                    "start": 0
+                  },
+                  "text": "Use"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 3,
+                    "start": 0
+                  },
+                  "text": "Use"
+                },
+                "unit_index": 0
+              },
+              {
+                "expected": {
+                  "span": {
+                    "end": 5,
+                    "start": 4
+                  },
+                  "text": "3"
+                },
+                "kind": "missing",
+                "unit_index": 0
+              },
+              {
+                "expected": {
+                  "span": {
+                    "end": 2,
+                    "start": 0
+                  },
+                  "text": "14"
+                },
+                "kind": "wrong",
+                "out_of_order": false,
+                "typed": {
+                  "span": {
+                    "end": 8,
+                    "start": 4
+                  },
+                  "text": "3.14"
+                },
+                "unit_index": 1
+              },
+              {
+                "expected": {
+                  "span": {
+                    "end": 6,
+                    "start": 3
+                  },
+                  "text": "for"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 12,
+                    "start": 9
+                  },
+                  "text": "for"
+                },
+                "unit_index": 1
+              },
+              {
+                "expected": {
+                  "span": {
+                    "end": 9,
+                    "start": 7
+                  },
+                  "text": "pi"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 15,
+                    "start": 13
+                  },
+                  "text": "pi"
+                },
+                "unit_index": 1
+              }
+            ],
+            "units": [
+              {
+                "unit_index": 0,
+                "verdict": "Again"
+              },
+              {
+                "unit_index": 1,
+                "verdict": "Again"
+              }
+            ],
+            "verdict": "Again",
+            "wrong_version_hint": null
+          },
+          "id": "694f8b7893a14b19faeb7b7d76fe1840",
+          "prompt": {
+            "assisted": false,
+            "context": null,
+            "cue": "Synthetic legacy decimal",
+            "cue_level": "whole_title",
+            "id": "d4fb3006e0f6efbcee186759a944e993",
+            "scope": {
+              "kind": "whole"
+            },
+            "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+            "title": "Synthetic legacy decimal",
+            "unit_ids": [
+              "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+              "7b1a6abc0fa76a6c6eebbaec6164a0d1"
+            ],
+            "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+            "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+          },
+          "raw_answer": "Use 3.14 for pi.",
+          "revealed": false,
+          "schedule_policy": "due",
+          "sequence": 6,
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        },
+        "8bcb938ab4d909dd92c12bc5f632cf5e": {
+          "acting_token": null,
+          "algorithm": "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1;schedule=due-v1",
+          "assisted": false,
+          "created_ms": 1800000000000,
+          "effects": [
+            {
+              "after": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 2.118103970459015,
+                  "due_ms": 1800000600000,
+                  "lapses": 0,
+                  "last_review_ms": 1800000000000,
+                  "remaining_steps": 1,
+                  "reps": 1,
+                  "scheduled_days": 0,
+                  "stability": 2.3065,
+                  "state": "learning"
+                },
+                "successes": 0
+              },
+              "assisted": false,
+              "before": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 0.0,
+                  "due_ms": 1800000000000,
+                  "lapses": 0,
+                  "last_review_ms": null,
+                  "remaining_steps": 0,
+                  "reps": 0,
+                  "scheduled_days": 0,
+                  "stability": 0.0,
+                  "state": "new"
+                },
+                "successes": 0
+              },
+              "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+              "cue_level": "whole_title",
+              "extra_practice": false,
+              "revision_before": 0,
+              "scheduled": true,
+              "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+              "unit_index": 0,
+              "verdict": "Good"
+            }
+          ],
+          "grade": {
+            "authority": {
+              "grader_version": "1;unicode=17.0.0",
+              "name": "exact-v2"
+            },
+            "diff": [
+              {
+                "expected": {
+                  "span": {
+                    "end": 3,
+                    "start": 0
+                  },
+                  "text": "Use"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 3,
+                    "start": 0
+                  },
+                  "text": "Use"
+                },
+                "unit_index": 0
+              },
+              {
+                "expected": {
+                  "span": {
+                    "end": 5,
+                    "start": 4
+                  },
+                  "text": "3"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 5,
+                    "start": 4
+                  },
+                  "text": "3"
+                },
+                "unit_index": 0
+              }
+            ],
+            "units": [
+              {
+                "unit_index": 0,
+                "verdict": "Good"
+              }
+            ],
+            "verdict": "Good",
+            "wrong_version_hint": null
+          },
+          "id": "8bcb938ab4d909dd92c12bc5f632cf5e",
+          "prompt": {
+            "assisted": false,
+            "context": null,
+            "cue": "Synthetic legacy decimal",
+            "cue_level": "whole_title",
+            "id": "49401695feb9f2d45c3b7049d3a4c374",
+            "scope": {
+              "kind": "unit",
+              "position": 1,
+              "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+            },
+            "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+            "title": "Synthetic legacy decimal",
+            "unit_ids": [
+              "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+            ],
+            "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+            "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+          },
+          "raw_answer": "Use 3.",
+          "revealed": false,
+          "schedule_policy": "due",
+          "sequence": 4,
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      },
+      "cards": {
+        "6d773ef1887f0d4fbbcf12e8b501f993": {
+          "direction": "forward",
+          "id": "6d773ef1887f0d4fbbcf12e8b501f993",
+          "introduced_ms": 1800000000000,
+          "revision": 2,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 2.118103970459015,
+              "due_ms": 1800000600000,
+              "lapses": 0,
+              "last_review_ms": 1800000000000,
+              "remaining_steps": 1,
+              "reps": 1,
+              "scheduled_days": 0,
+              "stability": 2.3065,
+              "state": "learning"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+          "unit_index": 0
+        },
+        "8fbcae6ca7dc7e10fde061045ba158b1": {
+          "direction": "forward",
+          "id": "8fbcae6ca7dc7e10fde061045ba158b1",
+          "introduced_ms": 1800000000000,
+          "revision": 1,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 6.4133,
+              "due_ms": 1800000060000,
+              "lapses": 0,
+              "last_review_ms": 1800000000000,
+              "remaining_steps": 2,
+              "reps": 1,
+              "scheduled_days": 0,
+              "stability": 0.212,
+              "state": "learning"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+          "unit_index": 1
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": "694f8b7893a14b19faeb7b7d76fe1840",
+        "created_ms": 1800000000000,
+        "phase": "quiz",
+        "prompt": {
+          "assisted": false,
+          "context": null,
+          "cue": "Synthetic legacy decimal",
+          "cue_level": "whole_title",
+          "id": "d4fb3006e0f6efbcee186759a944e993",
+          "scope": {
+            "kind": "whole"
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "title": "Synthetic legacy decimal",
+          "unit_ids": [
+            "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+            "7b1a6abc0fa76a6c6eebbaec6164a0d1"
+          ],
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 2.118103970459015,
+                "due_ms": 1800000600000,
+                "lapses": 0,
+                "last_review_ms": 1800000000000,
+                "remaining_steps": 1,
+                "reps": 1,
+                "scheduled_days": 0,
+                "stability": 2.3065,
+                "state": "learning"
+              },
+              "successes": 0
+            },
+            "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+            "cue": "whole_title",
+            "revision": 1,
+            "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+            "unit_index": 0
+          },
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "8fbcae6ca7dc7e10fde061045ba158b1",
+            "cue": "whole_title",
+            "revision": 0,
+            "unit_id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+            "unit_index": 1
+          }
+        ]
+      },
+      "studies": {
+        "6bbcb00b26fc89368d3458b3c1f8a074": {
+          "created_ms": 1800000000000,
+          "id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 6,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "6bbcb00b26fc89368d3458b3c1f8a074": "71f3ed4c516ea98902f4cfc805b58e4e"
+    }
+  },
+  "whole_quiz": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-split-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-71f3ed4c516ea98902f4cfc805b58e4e": {
+          "kind": "version_of",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "versions": {
+        "71f3ed4c516ea98902f4cfc805b58e4e": {
+          "id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Section 1",
+              "id": "098d4b480f40dc297f6820597cf06857",
+              "units": [
+                {
+                  "id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+                  "text": "Use 3."
+                },
+                {
+                  "id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+                  "text": "14 for pi."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "Use 3.14 for pi.",
+          "work_id": "473d9adec9eac1a29fe61d31173de04d"
+        }
+      },
+      "works": {
+        "473d9adec9eac1a29fe61d31173de04d": {
+          "aliases": [],
+          "context": "",
+          "id": "473d9adec9eac1a29fe61d31173de04d",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy decimal"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "split-unit-operation-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "864a17cb7a76641133356c7cdac23d5a343d21660ab2ef6a5de848025fd478fd",
+        "result": {
+          "entity_id": "71f3ed4c516ea98902f4cfc805b58e4e",
+          "message": null,
+          "redirect": "/api/v1/library/versions/71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      },
+      "split-unit-operation-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "e73ce1cff015033a1894da0ff83cd916bce983951096693607de391299daa21d",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "Use 3.",
+              "cue_level": "read",
+              "id": "dabd61b40427ce1d9f0682e389c566e4",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000002": {
+        "created_ms": 1800000000000,
+        "path": "/practice/quiz",
+        "payload_hash": "ca0a96f68b5b485ac7c80e45987f7ba36a627072754582d0ae0c8c63bb13104b",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy decimal",
+              "cue_level": "whole_title",
+              "id": "49401695feb9f2d45c3b7049d3a4c374",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000003": {
+        "created_ms": 1800000000000,
+        "path": "/practice/answer",
+        "payload_hash": "d667ffbfab1c6e49b40f297b84cad7acb2776a1753d5d0e7f40bcf9f31f515ab",
+        "result": {
+          "data": {
+            "attempt_id": "8bcb938ab4d909dd92c12bc5f632cf5e"
+          },
+          "entity_id": "8bcb938ab4d909dd92c12bc5f632cf5e",
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "split-unit-operation-0000000000000004": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/next",
+        "payload_hash": "adfa08d8e9a15b83a30819ad187557d162ace64de14fa245c2fb963f3663182a",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy decimal",
+              "cue_level": "whole_title",
+              "id": "d4fb3006e0f6efbcee186759a944e993",
+              "scope": {
+                "kind": "whole"
+              },
+              "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+              "title": "Synthetic legacy decimal",
+              "unit_ids": [
+                "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+                "7b1a6abc0fa76a6c6eebbaec6164a0d1"
+              ],
+              "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+              "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {
+        "8bcb938ab4d909dd92c12bc5f632cf5e": {
+          "acting_token": null,
+          "algorithm": "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1;schedule=due-v1",
+          "assisted": false,
+          "created_ms": 1800000000000,
+          "effects": [
+            {
+              "after": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 2.118103970459015,
+                  "due_ms": 1800000600000,
+                  "lapses": 0,
+                  "last_review_ms": 1800000000000,
+                  "remaining_steps": 1,
+                  "reps": 1,
+                  "scheduled_days": 0,
+                  "stability": 2.3065,
+                  "state": "learning"
+                },
+                "successes": 0
+              },
+              "assisted": false,
+              "before": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 0.0,
+                  "due_ms": 1800000000000,
+                  "lapses": 0,
+                  "last_review_ms": null,
+                  "remaining_steps": 0,
+                  "reps": 0,
+                  "scheduled_days": 0,
+                  "stability": 0.0,
+                  "state": "new"
+                },
+                "successes": 0
+              },
+              "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+              "cue_level": "whole_title",
+              "extra_practice": false,
+              "revision_before": 0,
+              "scheduled": true,
+              "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+              "unit_index": 0,
+              "verdict": "Good"
+            }
+          ],
+          "grade": {
+            "authority": {
+              "grader_version": "1;unicode=17.0.0",
+              "name": "exact-v2"
+            },
+            "diff": [
+              {
+                "expected": {
+                  "span": {
+                    "end": 3,
+                    "start": 0
+                  },
+                  "text": "Use"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 3,
+                    "start": 0
+                  },
+                  "text": "Use"
+                },
+                "unit_index": 0
+              },
+              {
+                "expected": {
+                  "span": {
+                    "end": 5,
+                    "start": 4
+                  },
+                  "text": "3"
+                },
+                "kind": "correct",
+                "typed": {
+                  "span": {
+                    "end": 5,
+                    "start": 4
+                  },
+                  "text": "3"
+                },
+                "unit_index": 0
+              }
+            ],
+            "units": [
+              {
+                "unit_index": 0,
+                "verdict": "Good"
+              }
+            ],
+            "verdict": "Good",
+            "wrong_version_hint": null
+          },
+          "id": "8bcb938ab4d909dd92c12bc5f632cf5e",
+          "prompt": {
+            "assisted": false,
+            "context": null,
+            "cue": "Synthetic legacy decimal",
+            "cue_level": "whole_title",
+            "id": "49401695feb9f2d45c3b7049d3a4c374",
+            "scope": {
+              "kind": "unit",
+              "position": 1,
+              "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+            },
+            "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+            "title": "Synthetic legacy decimal",
+            "unit_ids": [
+              "7dc4e7fd9de1a0e1afe369a00f92fbc6"
+            ],
+            "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+            "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+          },
+          "raw_answer": "Use 3.",
+          "revealed": false,
+          "schedule_policy": "due",
+          "sequence": 4,
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      },
+      "cards": {
+        "6d773ef1887f0d4fbbcf12e8b501f993": {
+          "direction": "forward",
+          "id": "6d773ef1887f0d4fbbcf12e8b501f993",
+          "introduced_ms": 1800000000000,
+          "revision": 1,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 2.118103970459015,
+              "due_ms": 1800000600000,
+              "lapses": 0,
+              "last_review_ms": 1800000000000,
+              "remaining_steps": 1,
+              "reps": 1,
+              "scheduled_days": 0,
+              "stability": 2.3065,
+              "state": "learning"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+          "unit_index": 0
+        },
+        "8fbcae6ca7dc7e10fde061045ba158b1": {
+          "direction": "forward",
+          "id": "8fbcae6ca7dc7e10fde061045ba158b1",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "unit_id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+          "unit_index": 1
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": null,
+        "created_ms": 1800000000000,
+        "phase": "quiz",
+        "prompt": {
+          "assisted": false,
+          "context": null,
+          "cue": "Synthetic legacy decimal",
+          "cue_level": "whole_title",
+          "id": "d4fb3006e0f6efbcee186759a944e993",
+          "scope": {
+            "kind": "whole"
+          },
+          "study_id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "title": "Synthetic legacy decimal",
+          "unit_ids": [
+            "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+            "7b1a6abc0fa76a6c6eebbaec6164a0d1"
+          ],
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 2.118103970459015,
+                "due_ms": 1800000600000,
+                "lapses": 0,
+                "last_review_ms": 1800000000000,
+                "remaining_steps": 1,
+                "reps": 1,
+                "scheduled_days": 0,
+                "stability": 2.3065,
+                "state": "learning"
+              },
+              "successes": 0
+            },
+            "card_id": "6d773ef1887f0d4fbbcf12e8b501f993",
+            "cue": "whole_title",
+            "revision": 1,
+            "unit_id": "7dc4e7fd9de1a0e1afe369a00f92fbc6",
+            "unit_index": 0
+          },
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "8fbcae6ca7dc7e10fde061045ba158b1",
+            "cue": "whole_title",
+            "revision": 0,
+            "unit_id": "7b1a6abc0fa76a6c6eebbaec6164a0d1",
+            "unit_index": 1
+          }
+        ]
+      },
+      "studies": {
+        "6bbcb00b26fc89368d3458b3c1f8a074": {
+          "created_ms": 1800000000000,
+          "id": "6bbcb00b26fc89368d3458b3c1f8a074",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "3f9a755e3cfb5c4d336706be25e615a5552eb37d32af842344331229e8a2b254",
+          "version_id": "71f3ed4c516ea98902f4cfc805b58e4e"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 5,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "6bbcb00b26fc89368d3458b3c1f8a074": "71f3ed4c516ea98902f4cfc805b58e4e"
+    }
+  }
+}

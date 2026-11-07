@@ -39,7 +39,8 @@ fn add(app: &mut App, op: &str, data: Value) -> String {
 #[test]
 fn valid_version_can_exceed_the_serialized_record_limit() {
     let mut app = app();
-    let text = format!("{},a.\n", "a".repeat(57)).repeat(4096);
+    // Keep two complete words per Section, at the same total source size.
+    let text = format!("{}, a.\n", "a".repeat(56)).repeat(4096);
     mutate(
         &mut app,
         "/api/v1/library/versions",
@@ -364,7 +365,7 @@ fn segmentation_capacity_errors_preserve_all_records_at_default_and_explicit_bou
     for explicit in [false, true] {
         for (limit, separator, message) in [
             (4096, "\n", "A Version supports at most 4096 Sections."),
-            (8192, ",", "A Version supports at most 8192 Units."),
+            (8192, ", ", "A Version supports at most 8192 Units."),
         ] {
             let data = |count: usize| {
                 let unit = format!("x{separator}");

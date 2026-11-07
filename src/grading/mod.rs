@@ -15,6 +15,15 @@ pub fn normalized_words(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Source spans from the pinned text tokenizer, for new automatic segmentation.
+/// This does not change tokenization, alignment, grading or historical replay.
+pub(crate) fn text_word_spans(text: &str) -> Vec<Range<usize>> {
+    unicode::tokens(text)
+        .into_iter()
+        .map(|token| token.word.span)
+        .collect()
+}
+
 /// Version-pinned mapping normalization for key identity and answer feedback.
 pub fn mapping_words(text: &str) -> Vec<String> {
     unicode::mapping_tokens(text)

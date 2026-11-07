@@ -322,8 +322,8 @@ pub(crate) fn studyable(version: &Version) -> AppResult<()> {
     }
 }
 /// Admission for new work, not validation of immutable historical evidence.
-/// A retained Version with an empty-normalized Unit is kept readable/restorable
-/// but cannot produce new Attempts or progress in any of its scopes.
+/// A retained Version with an empty-normalized Unit or a split normalized word
+/// is readable/restorable but cannot produce new Attempts in any of its scopes.
 pub(crate) fn reviewable(version: &Version) -> AppResult<()> {
     studyable(version)?;
     if version.kind == Kind::Text {
