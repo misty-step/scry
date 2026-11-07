@@ -88,8 +88,10 @@ export async function libraryJourney() {
     assert.deepEqual(await rows(),before,'Worker refusal changes no SQLite row, operation receipt or last-use time.');
     transcript.push({observation:'Direct built Worker refusal; every SQLite row unchanged, including receipts and token last-use',status:response.status,body,text_bytes:Buffer.byteLength(data.text),supplied_sections:data.sections?.length??null,supplied_units:data.sections?.reduce((n,s)=>n+s.units.length,0)??null});
    };
-   // Valid input whose serialized Version row exceeds the existing 1 MiB bound.
-   const oversized={title:'Synthetic oversized row',kind:'text',text:('a'.repeat(58)+',.\n').repeat(4096)};
+   // Two word-bearing Units per Section keep the actual serialized Version
+   // above 1 MiB after separator folding. Same fixture as tests/library.rs,
+   // which asserts the serialized byte count exceeds MAX_RECORD_BYTES.
+   const oversized={title:'Synthetic oversized row',kind:'text',text:('a'.repeat(57)+',a.\n').repeat(4096)};
    const rejectedOperation='library-serialized-record-limit';
    const beforeOversized=await rows();
    for(let attempt=0;attempt<2;attempt++) {

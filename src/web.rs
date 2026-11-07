@@ -525,6 +525,10 @@ impl View<'_> {
             out,
             "<p class=\"fineprint\">Supplied text · {rights}</p></details>"
         );
+        let reviewable = crate::study::reviewable(v).is_ok();
+        if !reviewable && v.kind == crate::library::Kind::Text {
+            out.push_str("<p role=\"status\">Practice is unavailable because a Unit has no words to recall. Saved text and history are unchanged.</p>");
+        }
         if let Some(study) = self
             .app
             .practice
@@ -562,13 +566,13 @@ impl View<'_> {
                 ));
             }
             out.push_str("</div></details>");
-        } else if crate::study::studyable(v).is_ok() {
+        } else if reviewable {
             let body = format!(
                 "{}<details class=\"library-details\"><summary>Pace: 6 new Units a day</summary><fieldset><legend>New Units each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
                 hidden("version_id", id)
             );
             out.push_str(&self.form("/practice/study/start", "learn", "library-learn", "", &body));
-        } else {
+        } else if v.kind != crate::library::Kind::Text {
             out.push_str("<p class=\"fineprint\">Practice for this kind is not available yet.</p>");
         }
         let mapping = v.kind == crate::library::Kind::KeyedMapping
@@ -655,6 +659,45 @@ impl View<'_> {
         out.push_str("</section>");
         out
     }
+    fn unavailable_practice(&self, p: &crate::study::Presentation) -> String {
+        let mut out = format!(
+            "<section class=\"empty-stage exact-study\" data-state=\"practice-unavailable\" data-prompt-id=\"{}\"><h1>Practice unavailable</h1><p>This Version has a Unit with no words to recall. Saved text and history are unchanged.</p>",
+            escape(&p.prompt.id)
+        );
+        let draft = self.saved_answer(&p.prompt.id);
+        if !draft.is_empty() {
+            let _ = write!(
+                out,
+                "<label for=\"unavailable-draft\">Saved answer</label><textarea id=\"unavailable-draft\" readonly>{}</textarea><p>Copy your saved answer before switching.</p>",
+                escape(draft)
+            );
+        }
+        if p.attempt_id.is_none() {
+            out.push_str("<p>Switching leaves this question ungraded.</p>");
+        }
+        out.push_str(&self.form(
+            "/practice/review/start",
+            "unavailable-next",
+            "",
+            "",
+            &format!(
+                "{}<button class=\"button primary\">Study other material</button>",
+                hidden(
+                    if p.attempt_id.is_some() {
+                        "after"
+                    } else {
+                        "leave"
+                    },
+                    &p.prompt.id
+                )
+            ),
+        ));
+        if p.attempt_id.is_some() {
+            out.push_str("<a class=\"text-link\" href=\"/history\">View saved history</a>");
+        }
+        out.push_str("</section>");
+        out
+    }
     fn exact_stream(&self) -> String {
         use crate::study::Status;
         let Some(p) = &self.app.practice.current else {
@@ -669,6 +712,9 @@ impl View<'_> {
                 escape(&message)
             );
         };
+        if crate::study::reviewable(&self.app.library.versions[&p.prompt.version_id]).is_err() {
+            return self.unavailable_practice(p);
+        }
         let prompt = &p.prompt;
         let attempt = p
             .attempt_id
@@ -1457,7 +1503,14 @@ impl View<'_> {
                 "review-all",
                 "",
                 "",
-                "<button class=\"text-button\">Review all subjects</button>",
+                &format!(
+                    "{}<button class=\"text-button\">Review all subjects</button>",
+                    if current_version.is_some_and(|v| crate::study::reviewable(v).is_err()) {
+                        after.as_str()
+                    } else {
+                        ""
+                    }
+                ),
             ));
         }
         out.push_str("<div class=\"lesson-groups\">");
@@ -1577,7 +1630,13 @@ impl View<'_> {
                         escape(&work.title),
                         escape(&version.name)
                     );
-                    if current_version.is_some_and(|v| v.id == version.id) {
+                    if crate::study::reviewable(version).is_err() {
+                        let _ = write!(
+                            out,
+                            "<a class=\"lesson-choice\" href=\"/library/versions/{}\">{copy}<span class=\"lesson-choice-state\">Practice unavailable</span></a>",
+                            escape(&version.id)
+                        );
+                    } else if current_version.is_some_and(|v| v.id == version.id) {
                         let _ = write!(
                             out,
                             "<div class=\"lesson-choice is-current\">{copy}<span class=\"lesson-choice-state\">Current</span></div>"
@@ -1636,6 +1695,9 @@ impl View<'_> {
             );
         };
         let v = &self.app.library.versions[&p.prompt.version_id];
+        if crate::study::reviewable(v).is_err() {
+            return self.unavailable_practice(p);
+        }
         let work = &self.app.library.works[&v.work_id];
         let all = v.sections.iter().flat_map(|s| &s.units).collect::<Vec<_>>();
         let ordered = v.kind == Kind::OrderedList;

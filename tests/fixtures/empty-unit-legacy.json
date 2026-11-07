@@ -1,0 +1,1462 @@
+{
+  "answered": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-empty-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-37bbf97e8d972bc0b07cc98f718a21b2": {
+          "kind": "version_of",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "versions": {
+        "37bbf97e8d972bc0b07cc98f718a21b2": {
+          "id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Passage",
+              "id": "5d105bcc689d0720cae04731278ea2fe",
+              "units": [
+                {
+                  "id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+                  "text": "\n"
+                },
+                {
+                  "id": "e5393ad3854355b48bc59a487b257712",
+                  "text": "Alpha beta."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "\nAlpha beta.",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "works": {
+        "a07bcb3794894b1f1afdb4e85aaa7af9": {
+          "aliases": [],
+          "context": "",
+          "id": "a07bcb3794894b1f1afdb4e85aaa7af9",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy separators"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "legacy-empty-unit-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "b1206e6cf5abb3a431217f1c1173b8a246c1dd9840f545f03464812bb73b5856",
+        "result": {
+          "entity_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "message": null,
+          "redirect": "/api/v1/library/versions/37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      },
+      "legacy-empty-unit-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "036b066ddbf36d70ee6dc8f2111473fdd04b38778bb4abe5bd1305ea2838dfec",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "\n",
+              "cue_level": "read",
+              "id": "69bead8e87fd1f80d5a70f968048d3c1",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              },
+              "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+              "title": "Synthetic legacy separators",
+              "unit_ids": [
+                "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              ],
+              "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+              "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "legacy-empty-unit-0000000000000002": {
+        "created_ms": 1800000000000,
+        "path": "/practice/quiz",
+        "payload_hash": "b091b1774384282aeccbb4a118f3484c4e0dc94d5dea52fb78dc3a484306e5dc",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy separators",
+              "cue_level": "whole_title",
+              "id": "9ef3581089d2771315b2f72b767b2f69",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              },
+              "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+              "title": "Synthetic legacy separators",
+              "unit_ids": [
+                "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              ],
+              "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+              "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "legacy-empty-unit-0000000000000003": {
+        "created_ms": 1800000000000,
+        "path": "/practice/answer",
+        "payload_hash": "ae3ec1a7c6f0220e346040187a42ecb176e3a8e0f0e4988b8a69607ed21ffcbf",
+        "result": {
+          "data": {
+            "attempt_id": "4fbb349f82b210f70a9464a3518cd7c6"
+          },
+          "entity_id": "4fbb349f82b210f70a9464a3518cd7c6",
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {
+        "4fbb349f82b210f70a9464a3518cd7c6": {
+          "acting_token": null,
+          "algorithm": "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1;schedule=due-v1",
+          "assisted": false,
+          "created_ms": 1800000000000,
+          "effects": [
+            {
+              "after": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 2.118103970459015,
+                  "due_ms": 1800000600000,
+                  "lapses": 0,
+                  "last_review_ms": 1800000000000,
+                  "remaining_steps": 1,
+                  "reps": 1,
+                  "scheduled_days": 0,
+                  "stability": 2.3065,
+                  "state": "learning"
+                },
+                "successes": 0
+              },
+              "assisted": false,
+              "before": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 0.0,
+                  "due_ms": 1800000000000,
+                  "lapses": 0,
+                  "last_review_ms": null,
+                  "remaining_steps": 0,
+                  "reps": 0,
+                  "scheduled_days": 0,
+                  "stability": 0.0,
+                  "state": "new"
+                },
+                "successes": 0
+              },
+              "card_id": "46b459cde591d5323ce1c217350e99f2",
+              "cue_level": "whole_title",
+              "extra_practice": false,
+              "revision_before": 0,
+              "scheduled": true,
+              "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+              "unit_index": 0,
+              "verdict": "Good"
+            }
+          ],
+          "grade": {
+            "authority": {
+              "grader_version": "1;unicode=17.0.0",
+              "name": "exact-v2"
+            },
+            "diff": [],
+            "units": [
+              {
+                "unit_index": 0,
+                "verdict": "Good"
+              }
+            ],
+            "verdict": "Good",
+            "wrong_version_hint": null
+          },
+          "id": "4fbb349f82b210f70a9464a3518cd7c6",
+          "prompt": {
+            "assisted": false,
+            "context": null,
+            "cue": "Synthetic legacy separators",
+            "cue_level": "whole_title",
+            "id": "9ef3581089d2771315b2f72b767b2f69",
+            "scope": {
+              "kind": "unit",
+              "position": 1,
+              "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+            },
+            "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+            "title": "Synthetic legacy separators",
+            "unit_ids": [
+              "de7a50a50223e7bf8f7aca8dc6ff06f7"
+            ],
+            "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+            "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+          },
+          "raw_answer": "",
+          "revealed": false,
+          "schedule_policy": "due",
+          "sequence": 4,
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      },
+      "cards": {
+        "2b79fcee79c20bb54cc55f994a0541c1": {
+          "direction": "forward",
+          "id": "2b79fcee79c20bb54cc55f994a0541c1",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "unit_id": "e5393ad3854355b48bc59a487b257712",
+          "unit_index": 1
+        },
+        "46b459cde591d5323ce1c217350e99f2": {
+          "direction": "forward",
+          "id": "46b459cde591d5323ce1c217350e99f2",
+          "introduced_ms": 1800000000000,
+          "revision": 1,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 2.118103970459015,
+              "due_ms": 1800000600000,
+              "lapses": 0,
+              "last_review_ms": 1800000000000,
+              "remaining_steps": 1,
+              "reps": 1,
+              "scheduled_days": 0,
+              "stability": 2.3065,
+              "state": "learning"
+            },
+            "successes": 0
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+          "unit_index": 0
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": "4fbb349f82b210f70a9464a3518cd7c6",
+        "created_ms": 1800000000000,
+        "phase": "quiz",
+        "prompt": {
+          "assisted": false,
+          "context": null,
+          "cue": "Synthetic legacy separators",
+          "cue_level": "whole_title",
+          "id": "9ef3581089d2771315b2f72b767b2f69",
+          "scope": {
+            "kind": "unit",
+            "position": 1,
+            "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "title": "Synthetic legacy separators",
+          "unit_ids": [
+            "de7a50a50223e7bf8f7aca8dc6ff06f7"
+          ],
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "46b459cde591d5323ce1c217350e99f2",
+            "cue": "whole_title",
+            "revision": 0,
+            "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+            "unit_index": 0
+          }
+        ]
+      },
+      "studies": {
+        "e52cb9aa1e814690ea95b9636aa679cc": {
+          "created_ms": 1800000000000,
+          "id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 4,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "e52cb9aa1e814690ea95b9636aa679cc": "37bbf97e8d972bc0b07cc98f718a21b2"
+    }
+  },
+  "quiz": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-empty-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-37bbf97e8d972bc0b07cc98f718a21b2": {
+          "kind": "version_of",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "versions": {
+        "37bbf97e8d972bc0b07cc98f718a21b2": {
+          "id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Passage",
+              "id": "5d105bcc689d0720cae04731278ea2fe",
+              "units": [
+                {
+                  "id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+                  "text": "\n"
+                },
+                {
+                  "id": "e5393ad3854355b48bc59a487b257712",
+                  "text": "Alpha beta."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "\nAlpha beta.",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "works": {
+        "a07bcb3794894b1f1afdb4e85aaa7af9": {
+          "aliases": [],
+          "context": "",
+          "id": "a07bcb3794894b1f1afdb4e85aaa7af9",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy separators"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "legacy-empty-unit-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "b1206e6cf5abb3a431217f1c1173b8a246c1dd9840f545f03464812bb73b5856",
+        "result": {
+          "entity_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "message": null,
+          "redirect": "/api/v1/library/versions/37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      },
+      "legacy-empty-unit-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "036b066ddbf36d70ee6dc8f2111473fdd04b38778bb4abe5bd1305ea2838dfec",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "\n",
+              "cue_level": "read",
+              "id": "69bead8e87fd1f80d5a70f968048d3c1",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              },
+              "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+              "title": "Synthetic legacy separators",
+              "unit_ids": [
+                "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              ],
+              "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+              "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "legacy-empty-unit-0000000000000002": {
+        "created_ms": 1800000000000,
+        "path": "/practice/quiz",
+        "payload_hash": "b091b1774384282aeccbb4a118f3484c4e0dc94d5dea52fb78dc3a484306e5dc",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy separators",
+              "cue_level": "whole_title",
+              "id": "9ef3581089d2771315b2f72b767b2f69",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              },
+              "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+              "title": "Synthetic legacy separators",
+              "unit_ids": [
+                "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              ],
+              "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+              "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {},
+      "cards": {
+        "2b79fcee79c20bb54cc55f994a0541c1": {
+          "direction": "forward",
+          "id": "2b79fcee79c20bb54cc55f994a0541c1",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "unit_id": "e5393ad3854355b48bc59a487b257712",
+          "unit_index": 1
+        },
+        "46b459cde591d5323ce1c217350e99f2": {
+          "direction": "forward",
+          "id": "46b459cde591d5323ce1c217350e99f2",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+          "unit_index": 0
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": null,
+        "created_ms": 1800000000000,
+        "phase": "quiz",
+        "prompt": {
+          "assisted": false,
+          "context": null,
+          "cue": "Synthetic legacy separators",
+          "cue_level": "whole_title",
+          "id": "9ef3581089d2771315b2f72b767b2f69",
+          "scope": {
+            "kind": "unit",
+            "position": 1,
+            "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "title": "Synthetic legacy separators",
+          "unit_ids": [
+            "de7a50a50223e7bf8f7aca8dc6ff06f7"
+          ],
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "46b459cde591d5323ce1c217350e99f2",
+            "cue": "whole_title",
+            "revision": 0,
+            "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+            "unit_index": 0
+          }
+        ]
+      },
+      "studies": {
+        "e52cb9aa1e814690ea95b9636aa679cc": {
+          "created_ms": 1800000000000,
+          "id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 3,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "e52cb9aa1e814690ea95b9636aa679cc": "37bbf97e8d972bc0b07cc98f718a21b2"
+    }
+  },
+  "requests": {
+    "answer": {
+      "answer": "",
+      "csrf": "synthetic-empty-unit-csrf-32-chars",
+      "operation_id": "legacy-empty-unit-0000000000000003",
+      "prompt_id": "9ef3581089d2771315b2f72b767b2f69",
+      "revision": "3"
+    },
+    "import": {
+      "csrf": "synthetic-empty-unit-csrf-32-chars",
+      "data": "{\"kind\":\"text\",\"sections\":[{\"heading\":\"Passage\",\"units\":[\"\\n\",\"Alpha beta.\"]}],\"text\":\"\\nAlpha beta.\",\"title\":\"Synthetic legacy separators\"}",
+      "operation_id": "legacy-empty-unit-0000000000000000",
+      "revision": "0"
+    },
+    "quiz": {
+      "csrf": "synthetic-empty-unit-csrf-32-chars",
+      "operation_id": "legacy-empty-unit-0000000000000002",
+      "prompt_id": "69bead8e87fd1f80d5a70f968048d3c1",
+      "revision": "2"
+    },
+    "start": {
+      "csrf": "synthetic-empty-unit-csrf-32-chars",
+      "operation_id": "legacy-empty-unit-0000000000000001",
+      "revision": "1",
+      "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+    },
+    "whole": {
+      "after": "9ef3581089d2771315b2f72b767b2f69",
+      "csrf": "synthetic-empty-unit-csrf-32-chars",
+      "mode": "whole",
+      "operation_id": "legacy-empty-unit-0000000000000004",
+      "revision": "4"
+    }
+  },
+  "source": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-empty-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-37bbf97e8d972bc0b07cc98f718a21b2": {
+          "kind": "version_of",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "versions": {
+        "37bbf97e8d972bc0b07cc98f718a21b2": {
+          "id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Passage",
+              "id": "5d105bcc689d0720cae04731278ea2fe",
+              "units": [
+                {
+                  "id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+                  "text": "\n"
+                },
+                {
+                  "id": "e5393ad3854355b48bc59a487b257712",
+                  "text": "Alpha beta."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "\nAlpha beta.",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "works": {
+        "a07bcb3794894b1f1afdb4e85aaa7af9": {
+          "aliases": [],
+          "context": "",
+          "id": "a07bcb3794894b1f1afdb4e85aaa7af9",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy separators"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "legacy-empty-unit-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "b1206e6cf5abb3a431217f1c1173b8a246c1dd9840f545f03464812bb73b5856",
+        "result": {
+          "entity_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "message": null,
+          "redirect": "/api/v1/library/versions/37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      },
+      "legacy-empty-unit-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "036b066ddbf36d70ee6dc8f2111473fdd04b38778bb4abe5bd1305ea2838dfec",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "\n",
+              "cue_level": "read",
+              "id": "69bead8e87fd1f80d5a70f968048d3c1",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              },
+              "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+              "title": "Synthetic legacy separators",
+              "unit_ids": [
+                "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              ],
+              "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+              "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {},
+      "cards": {
+        "2b79fcee79c20bb54cc55f994a0541c1": {
+          "direction": "forward",
+          "id": "2b79fcee79c20bb54cc55f994a0541c1",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "unit_id": "e5393ad3854355b48bc59a487b257712",
+          "unit_index": 1
+        },
+        "46b459cde591d5323ce1c217350e99f2": {
+          "direction": "forward",
+          "id": "46b459cde591d5323ce1c217350e99f2",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+          "unit_index": 0
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": null,
+        "created_ms": 1800000000000,
+        "phase": "study",
+        "prompt": {
+          "assisted": true,
+          "context": null,
+          "cue": "\n",
+          "cue_level": "read",
+          "id": "69bead8e87fd1f80d5a70f968048d3c1",
+          "scope": {
+            "kind": "unit",
+            "position": 1,
+            "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "title": "Synthetic legacy separators",
+          "unit_ids": [
+            "de7a50a50223e7bf8f7aca8dc6ff06f7"
+          ],
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "46b459cde591d5323ce1c217350e99f2",
+            "cue": "read",
+            "revision": 0,
+            "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+            "unit_index": 0
+          }
+        ]
+      },
+      "studies": {
+        "e52cb9aa1e814690ea95b9636aa679cc": {
+          "created_ms": 1800000000000,
+          "id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 2,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "e52cb9aa1e814690ea95b9636aa679cc": "37bbf97e8d972bc0b07cc98f718a21b2"
+    }
+  },
+  "source_commit": "fc3378f9e03e99a5b7bfbcbc7168ededefb7301c",
+  "unstarted": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-empty-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-37bbf97e8d972bc0b07cc98f718a21b2": {
+          "kind": "version_of",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "versions": {
+        "37bbf97e8d972bc0b07cc98f718a21b2": {
+          "id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Passage",
+              "id": "5d105bcc689d0720cae04731278ea2fe",
+              "units": [
+                {
+                  "id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+                  "text": "\n"
+                },
+                {
+                  "id": "e5393ad3854355b48bc59a487b257712",
+                  "text": "Alpha beta."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "\nAlpha beta.",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "works": {
+        "a07bcb3794894b1f1afdb4e85aaa7af9": {
+          "aliases": [],
+          "context": "",
+          "id": "a07bcb3794894b1f1afdb4e85aaa7af9",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy separators"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "legacy-empty-unit-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "b1206e6cf5abb3a431217f1c1173b8a246c1dd9840f545f03464812bb73b5856",
+        "result": {
+          "entity_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "message": null,
+          "redirect": "/api/v1/library/versions/37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      }
+    },
+    "overrides": [],
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 1,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": []
+  },
+  "whole_quiz": {
+    "assessments": {},
+    "backup": {
+      "completed_ms": null,
+      "error": null,
+      "key": null,
+      "sha256": null
+    },
+    "concepts": {},
+    "csrf": "synthetic-empty-unit-csrf-32-chars",
+    "events": [],
+    "feedback": [],
+    "goals": {},
+    "jobs": {},
+    "library": {
+      "relations": {
+        "version-of-37bbf97e8d972bc0b07cc98f718a21b2": {
+          "kind": "version_of",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "versions": {
+        "37bbf97e8d972bc0b07cc98f718a21b2": {
+          "id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "kind": "text",
+          "name": "",
+          "normalized_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "provenance": "supplied",
+          "rights": "private_only",
+          "sections": [
+            {
+              "heading": "Passage",
+              "id": "5d105bcc689d0720cae04731278ea2fe",
+              "units": [
+                {
+                  "id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+                  "text": "\n"
+                },
+                {
+                  "id": "e5393ad3854355b48bc59a487b257712",
+                  "text": "Alpha beta."
+                }
+              ]
+            }
+          ],
+          "sources": [],
+          "spelling_strict": false,
+          "text": "\nAlpha beta.",
+          "work_id": "a07bcb3794894b1f1afdb4e85aaa7af9"
+        }
+      },
+      "works": {
+        "a07bcb3794894b1f1afdb4e85aaa7af9": {
+          "aliases": [],
+          "context": "",
+          "id": "a07bcb3794894b1f1afdb4e85aaa7af9",
+          "kind": "text",
+          "revision": 1,
+          "title": "Synthetic legacy separators"
+        }
+      }
+    },
+    "occurrence": null,
+    "operations": {
+      "legacy-empty-unit-0000000000000000": {
+        "created_ms": 1800000000000,
+        "path": "/library/version/add",
+        "payload_hash": "b1206e6cf5abb3a431217f1c1173b8a246c1dd9840f545f03464812bb73b5856",
+        "result": {
+          "entity_id": "37bbf97e8d972bc0b07cc98f718a21b2",
+          "message": null,
+          "redirect": "/api/v1/library/versions/37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      },
+      "legacy-empty-unit-0000000000000001": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/start",
+        "payload_hash": "036b066ddbf36d70ee6dc8f2111473fdd04b38778bb4abe5bd1305ea2838dfec",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "study",
+            "prompt": {
+              "assisted": true,
+              "context": null,
+              "cue": "\n",
+              "cue_level": "read",
+              "id": "69bead8e87fd1f80d5a70f968048d3c1",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              },
+              "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+              "title": "Synthetic legacy separators",
+              "unit_ids": [
+                "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              ],
+              "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+              "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "legacy-empty-unit-0000000000000002": {
+        "created_ms": 1800000000000,
+        "path": "/practice/quiz",
+        "payload_hash": "b091b1774384282aeccbb4a118f3484c4e0dc94d5dea52fb78dc3a484306e5dc",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy separators",
+              "cue_level": "whole_title",
+              "id": "9ef3581089d2771315b2f72b767b2f69",
+              "scope": {
+                "kind": "unit",
+                "position": 1,
+                "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              },
+              "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+              "title": "Synthetic legacy separators",
+              "unit_ids": [
+                "de7a50a50223e7bf8f7aca8dc6ff06f7"
+              ],
+              "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+              "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "legacy-empty-unit-0000000000000003": {
+        "created_ms": 1800000000000,
+        "path": "/practice/answer",
+        "payload_hash": "ae3ec1a7c6f0220e346040187a42ecb176e3a8e0f0e4988b8a69607ed21ffcbf",
+        "result": {
+          "data": {
+            "attempt_id": "4fbb349f82b210f70a9464a3518cd7c6"
+          },
+          "entity_id": "4fbb349f82b210f70a9464a3518cd7c6",
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      },
+      "legacy-empty-unit-0000000000000004": {
+        "created_ms": 1800000000000,
+        "path": "/practice/lesson/next",
+        "payload_hash": "6aa850e3d753e2d4d4b55524dceb6c540efb73f7f6bcf7a4b51de3e7472727c8",
+        "result": {
+          "data": {
+            "attempt_id": null,
+            "correction_ids": [],
+            "phase": "quiz",
+            "prompt": {
+              "assisted": false,
+              "context": null,
+              "cue": "Synthetic legacy separators",
+              "cue_level": "whole_title",
+              "id": "727c8980e2752f124ca20eaeea447529",
+              "scope": {
+                "kind": "whole"
+              },
+              "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+              "title": "Synthetic legacy separators",
+              "unit_ids": [
+                "de7a50a50223e7bf8f7aca8dc6ff06f7",
+                "e5393ad3854355b48bc59a487b257712"
+              ],
+              "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+              "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+            },
+            "revealed": false
+          },
+          "entity_id": null,
+          "message": null,
+          "redirect": "/api/v1/practice"
+        }
+      }
+    },
+    "overrides": [],
+    "practice": {
+      "attempts": {
+        "4fbb349f82b210f70a9464a3518cd7c6": {
+          "acting_token": null,
+          "algorithm": "go-fsrs/v4.0.0;defaults-v1;retention=.9;fuzz=false;steps=1m,10m;relearn=10m;grading=exact-v1;schedule=due-v1",
+          "assisted": false,
+          "created_ms": 1800000000000,
+          "effects": [
+            {
+              "after": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 2.118103970459015,
+                  "due_ms": 1800000600000,
+                  "lapses": 0,
+                  "last_review_ms": 1800000000000,
+                  "remaining_steps": 1,
+                  "reps": 1,
+                  "scheduled_days": 0,
+                  "stability": 2.3065,
+                  "state": "learning"
+                },
+                "successes": 0
+              },
+              "assisted": false,
+              "before": {
+                "cue": "read",
+                "schedule": {
+                  "difficulty": 0.0,
+                  "due_ms": 1800000000000,
+                  "lapses": 0,
+                  "last_review_ms": null,
+                  "remaining_steps": 0,
+                  "reps": 0,
+                  "scheduled_days": 0,
+                  "stability": 0.0,
+                  "state": "new"
+                },
+                "successes": 0
+              },
+              "card_id": "46b459cde591d5323ce1c217350e99f2",
+              "cue_level": "whole_title",
+              "extra_practice": false,
+              "revision_before": 0,
+              "scheduled": true,
+              "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+              "unit_index": 0,
+              "verdict": "Good"
+            }
+          ],
+          "grade": {
+            "authority": {
+              "grader_version": "1;unicode=17.0.0",
+              "name": "exact-v2"
+            },
+            "diff": [],
+            "units": [
+              {
+                "unit_index": 0,
+                "verdict": "Good"
+              }
+            ],
+            "verdict": "Good",
+            "wrong_version_hint": null
+          },
+          "id": "4fbb349f82b210f70a9464a3518cd7c6",
+          "prompt": {
+            "assisted": false,
+            "context": null,
+            "cue": "Synthetic legacy separators",
+            "cue_level": "whole_title",
+            "id": "9ef3581089d2771315b2f72b767b2f69",
+            "scope": {
+              "kind": "unit",
+              "position": 1,
+              "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7"
+            },
+            "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+            "title": "Synthetic legacy separators",
+            "unit_ids": [
+              "de7a50a50223e7bf8f7aca8dc6ff06f7"
+            ],
+            "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+            "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+          },
+          "raw_answer": "",
+          "revealed": false,
+          "schedule_policy": "due",
+          "sequence": 4,
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      },
+      "cards": {
+        "2b79fcee79c20bb54cc55f994a0541c1": {
+          "direction": "forward",
+          "id": "2b79fcee79c20bb54cc55f994a0541c1",
+          "introduced_ms": 1800000000000,
+          "revision": 0,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 0.0,
+              "due_ms": 1800000000000,
+              "lapses": 0,
+              "last_review_ms": null,
+              "remaining_steps": 0,
+              "reps": 0,
+              "scheduled_days": 0,
+              "stability": 0.0,
+              "state": "new"
+            },
+            "successes": 0
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "unit_id": "e5393ad3854355b48bc59a487b257712",
+          "unit_index": 1
+        },
+        "46b459cde591d5323ce1c217350e99f2": {
+          "direction": "forward",
+          "id": "46b459cde591d5323ce1c217350e99f2",
+          "introduced_ms": 1800000000000,
+          "revision": 1,
+          "state": {
+            "cue": "read",
+            "schedule": {
+              "difficulty": 2.118103970459015,
+              "due_ms": 1800000600000,
+              "lapses": 0,
+              "last_review_ms": 1800000000000,
+              "remaining_steps": 1,
+              "reps": 1,
+              "scheduled_days": 0,
+              "stability": 2.3065,
+              "state": "learning"
+            },
+            "successes": 0
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+          "unit_index": 0
+        }
+      },
+      "corrections": {},
+      "current": {
+        "attempt_id": null,
+        "created_ms": 1800000000000,
+        "phase": "quiz",
+        "prompt": {
+          "assisted": false,
+          "context": null,
+          "cue": "Synthetic legacy separators",
+          "cue_level": "whole_title",
+          "id": "727c8980e2752f124ca20eaeea447529",
+          "scope": {
+            "kind": "whole"
+          },
+          "study_id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "title": "Synthetic legacy separators",
+          "unit_ids": [
+            "de7a50a50223e7bf8f7aca8dc6ff06f7",
+            "e5393ad3854355b48bc59a487b257712"
+          ],
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        },
+        "revealed": false,
+        "targets": [
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 2.118103970459015,
+                "due_ms": 1800000600000,
+                "lapses": 0,
+                "last_review_ms": 1800000000000,
+                "remaining_steps": 1,
+                "reps": 1,
+                "scheduled_days": 0,
+                "stability": 2.3065,
+                "state": "learning"
+              },
+              "successes": 0
+            },
+            "card_id": "46b459cde591d5323ce1c217350e99f2",
+            "cue": "whole_title",
+            "revision": 1,
+            "unit_id": "de7a50a50223e7bf8f7aca8dc6ff06f7",
+            "unit_index": 0
+          },
+          {
+            "before": {
+              "cue": "read",
+              "schedule": {
+                "difficulty": 0.0,
+                "due_ms": 1800000000000,
+                "lapses": 0,
+                "last_review_ms": null,
+                "remaining_steps": 0,
+                "reps": 0,
+                "scheduled_days": 0,
+                "stability": 0.0,
+                "state": "new"
+              },
+              "successes": 0
+            },
+            "card_id": "2b79fcee79c20bb54cc55f994a0541c1",
+            "cue": "whole_title",
+            "revision": 0,
+            "unit_id": "e5393ad3854355b48bc59a487b257712",
+            "unit_index": 1
+          }
+        ]
+      },
+      "studies": {
+        "e52cb9aa1e814690ea95b9636aa679cc": {
+          "created_ms": 1800000000000,
+          "id": "e52cb9aa1e814690ea95b9636aa679cc",
+          "lesson": true,
+          "pace": "steady",
+          "source_quiz": true,
+          "status": "active",
+          "version_hash": "a4c4aeb92c20500f364b12b3771ef3a11193e2cf04d0f28956a829749993b39f",
+          "version_id": "37bbf97e8d972bc0b07cc98f718a21b2"
+        }
+      }
+    },
+    "preferences": {
+      "pace": "steady"
+    },
+    "questions": {},
+    "resets": [],
+    "restored_paused": false,
+    "revision": 5,
+    "revival_go": {},
+    "revival_schedule_origins": {},
+    "schema": 1,
+    "spend": [],
+    "study_version_refs": {
+      "e52cb9aa1e814690ea95b9636aa679cc": "37bbf97e8d972bc0b07cc98f718a21b2"
+    }
+  }
+}

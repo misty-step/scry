@@ -321,6 +321,27 @@ pub(crate) fn studyable(version: &Version) -> AppResult<()> {
         Kind::OrderedList => crate::ordered::validate(version),
     }
 }
+/// Admission for new work, not validation of immutable historical evidence.
+/// A retained Version with an empty-normalized Unit is kept readable/restorable
+/// but cannot produce new Attempts or progress in any of its scopes.
+pub(crate) fn reviewable(version: &Version) -> AppResult<()> {
+    studyable(version)?;
+    if version.kind == Kind::Text {
+        crate::library::check_text_units(units(version).iter().map(|u| u.text.as_str()))?;
+    }
+    Ok(())
+}
+fn study_reviewable(app: &App, study: &Study) -> bool {
+    reviewable(&app.library.versions[&study.version_id]).is_ok()
+}
+fn reviewable_studies(app: &App) -> BTreeSet<&str> {
+    app.practice
+        .studies
+        .values()
+        .filter(|s| study_reviewable(app, s))
+        .map(|s| s.id.as_str())
+        .collect()
+}
 fn units(version: &Version) -> Vec<&crate::library::Unit> {
     version.sections.iter().flat_map(|s| &s.units).collect()
 }
@@ -788,6 +809,7 @@ fn quiz(
         ));
     }
     let old = active(app, fields, false)?;
+    reviewable(&app.library.versions[&old.prompt.version_id])?;
     if !old.source_visible() {
         return Err(AppError::conflict());
     }
@@ -843,6 +865,7 @@ fn introduce_card(app: &mut App, study: &Study, index: usize, now: i64, seed: &s
 /// Mixed review admits only content the learner has actually practised.
 /// Lesson entry may introduce a whole Version, but that is not review evidence.
 pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
+    let eligible = reviewable_studies(app);
     let practised = app
         .practice
         .attempts
@@ -855,6 +878,7 @@ pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
         .values()
         .filter(|c| {
             app.practice.studies[&c.study_id].status != Status::Dropped
+                && eligible.contains(c.study_id.as_str())
                 && c.state.schedule.last_review_ms.is_some()
                 && c.state.schedule.due_ms <= now
                 && practised.contains(c.id.as_str())
@@ -882,7 +906,7 @@ fn continuous_limit(app: &App, s: &Study, now: i64) -> bool {
 }
 
 fn continuous_version_eligible(app: &App, v: &Version) -> bool {
-    if studyable(v).is_err() || units(v).is_empty() {
+    if reviewable(v).is_err() || units(v).is_empty() {
         return false;
     }
     let all = units(v);
@@ -967,7 +991,7 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         .practice
         .studies
         .values()
-        .filter(|s| s.status == Status::Active)
+        .filter(|s| s.status == Status::Active && study_reviewable(app, s))
     {
         // Guided learning has no scheduled review yet, but still needs a next
         // step. Finish the earliest unfinished phrase before introducing more.
@@ -1234,6 +1258,9 @@ fn mixed_next(
     if let Some(p) = &app.practice.current {
         if after.is_empty() && leave.is_empty() {
             // Choosing all subjects does not discard the held question or result.
+            if p.attempt_id.is_none() {
+                reviewable(&app.library.versions[&p.prompt.version_id])?;
+            }
             app.practice.mixed_review = true;
             return Ok(response(None, held(app)?));
         }
@@ -1261,6 +1288,7 @@ fn mixed_next(
 }
 fn can_introduce(app: &App, s: &Study, now: i64) -> bool {
     s.status == Status::Active
+        && study_reviewable(app, s)
         && app
             .practice
             .cards
@@ -1283,6 +1311,7 @@ fn can_introduce(app: &App, s: &Study, now: i64) -> bool {
 /// Read-only availability uses the same pace and due conditions as scoped next.
 pub fn study_ready(app: &App, s: &Study, now: i64) -> bool {
     s.status != Status::Dropped
+        && study_reviewable(app, s)
         && (can_introduce(app, s, now)
             || app
                 .practice
@@ -1313,6 +1342,9 @@ fn next(
     let after = field(fields, "after");
     if let Some(p) = &app.practice.current {
         if after.is_empty() {
+            if p.attempt_id.is_none() {
+                reviewable(&app.library.versions[&p.prompt.version_id])?;
+            }
             if (!field(fields, "study_id").is_empty()
                 && field(fields, "study_id") != p.prompt.study_id)
                 || (!field(fields, "card_id").is_empty()
@@ -1357,8 +1389,13 @@ fn next(
     });
     app.practice.current = None;
     let sid = field(fields, "study_id");
-    if !sid.is_empty() && !app.practice.studies.contains_key(sid) {
-        return Err(AppError::new(404, "Study not found."));
+    if !sid.is_empty() {
+        let study = app
+            .practice
+            .studies
+            .get(sid)
+            .ok_or_else(|| AppError::new(404, "Study not found."))?;
+        reviewable(&app.library.versions[&study.version_id])?;
     }
     let recite = field(fields, "recite");
     if !recite.is_empty() {
@@ -1427,6 +1464,7 @@ fn next(
         app.practice.current = Some(presentation);
     } else {
         let explicit = field(fields, "card_id");
+        let eligible = reviewable_studies(app);
         let chosen = if !explicit.is_empty() {
             let card = app
                 .practice
@@ -1438,6 +1476,7 @@ fn next(
             {
                 return Err(AppError::conflict());
             }
+            reviewable(&app.library.versions[&app.practice.studies[&card.study_id].version_id])?;
             Some(card.id.clone())
         } else {
             app.practice
@@ -1446,6 +1485,7 @@ fn next(
                 .filter(|c| {
                     (sid.is_empty() || c.study_id == sid)
                         && app.practice.studies[&c.study_id].status != Status::Dropped
+                        && eligible.contains(c.study_id.as_str())
                         && c.state.schedule.due_ms <= now
                         && nato_previous.as_ref() != Some(&c.id)
                 })
@@ -1707,7 +1747,7 @@ fn lesson_start(
         .versions
         .get(&vid)
         .ok_or_else(|| AppError::new(404, "Version not found."))?;
-    studyable(version)?;
+    reviewable(version)?;
     if version.kind == Kind::KeyedMapping
         && !crate::library::is_nato(version)
         && crate::lessons::mapping_route(version).is_none()
@@ -1891,6 +1931,7 @@ fn lesson_next(
         return Err(AppError::conflict());
     }
     let v = &app.library.versions[&study.version_id];
+    reviewable(v)?;
     let mode = field(fields, "mode");
     if !matches!(mode, "" | "phrases" | "retry" | "join" | "whole" | "middle") {
         return Err(AppError::new(
@@ -2157,7 +2198,7 @@ pub fn mutate(
                 .versions
                 .get(vid)
                 .ok_or_else(|| AppError::new(404, "Version not found."))?;
-            studyable(v)?;
+            reviewable(v)?;
             let pace = Pace::parse(field(fields, "pace"))?;
             let study = if let Some(s) = app.practice.studies.values().find(|s| s.version_id == vid)
             {
@@ -2211,6 +2252,7 @@ pub fn mutate(
         "/practice/next" => next(app, fields, now, seed),
         "/practice/reveal" => {
             let p = active(app, fields, false)?;
+            reviewable(&app.library.versions[&p.prompt.version_id])?;
             let v = &app.library.versions[&p.prompt.version_id];
             let all = units(v);
             let expected = p
@@ -2268,6 +2310,7 @@ pub fn mutate(
         }
         "/practice/answer" => {
             let p = active(app, fields, false)?;
+            reviewable(&app.library.versions[&p.prompt.version_id])?;
             if p.phase == Some(StudyPhase::Study) {
                 return Err(AppError::new(
                     409,
@@ -2414,11 +2457,15 @@ pub fn attribute(app: &mut App, previous: &App, actor: Option<String>) {
     }
 }
 pub fn due(app: &App, now: i64) -> Value {
+    let eligible = reviewable_studies(app);
     let mut cards = app
         .practice
         .cards
         .values()
-        .filter(|c| app.practice.studies[&c.study_id].status != Status::Dropped)
+        .filter(|c| {
+            let study = &app.practice.studies[&c.study_id];
+            study.status != Status::Dropped && eligible.contains(study.id.as_str())
+        })
         .collect::<Vec<_>>();
     cards.sort_by_key(|c| (c.state.schedule.due_ms, &c.study_id, c.unit_index));
     json!({"cards":cards,"due":cards.iter().filter(|c|c.state.schedule.due_ms<=now).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":cards.iter().map(|c|c.state.schedule.due_ms).min()})
