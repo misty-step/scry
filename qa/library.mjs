@@ -91,7 +91,7 @@ export async function libraryJourney() {
    // Two word-bearing Units per Section keep the actual serialized Version
    // above 1 MiB after separator folding. Same fixture as tests/library.rs,
    // which asserts the serialized byte count exceeds MAX_RECORD_BYTES.
-   const oversized={title:'Synthetic oversized row',kind:'text',text:('a'.repeat(57)+',a.\n').repeat(4096)};
+   const oversized={title:'Synthetic oversized row',kind:'text',text:('a'.repeat(56)+', a.\n').repeat(4096)};
    const rejectedOperation='library-serialized-record-limit';
    const beforeOversized=await rows();
    for(let attempt=0;attempt<2;attempt++) {
@@ -136,7 +136,7 @@ export async function libraryJourney() {
    assert.equal(changedAfterSuccess.status,409);
    transcript.push({observation:'Oversized serialized row returns 413 without writes; operation can be reused after refusal and then replays/conflicts normally.'});
    await refusal({title:'Must never be stored',kind:'text',text,sections:[{heading:'Article',units:['Missing exact bytes.']}]},'Version Units must join to the submitted text exactly.');
-   for(const explicit of [false,true])for(const [limit,separator,error]of [[4096,'\n','A Version supports at most 4096 Sections.'],[8192,',','A Version supports at most 8192 Units.']]) {
+   for(const explicit of [false,true])for(const [limit,separator,error]of [[4096,'\n','A Version supports at most 4096 Sections.'],[8192,', ','A Version supports at most 8192 Units.']]) {
     const draft=count=>{
      const unit='x'+separator;
      return {title:'Boundary '+limit,kind:'text',text:unit.repeat(count),...(explicit?{sections:separator==='\n'?Array.from({length:count},()=>({heading:'',units:[unit]})):[{heading:'',units:Array(count).fill(unit)}]}:{})};

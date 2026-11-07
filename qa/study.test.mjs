@@ -1,3 +1,4 @@
+import {splitTextJourney} from './split-text-units.mjs';
 import {emptyTextJourney} from './empty-text-units.mjs';
 import test from 'node:test';
 import {mkdir,writeFile} from 'node:fs/promises';
@@ -18,4 +19,8 @@ for(const story of ['US-016','US-017']){
 
 await test('Empty-normalized text Units never earn new grades; historical archives remain readable',async()=>{
  await writeFile('target/empty-text-units-runtime.json',JSON.stringify(await emptyTextJourney(),null,2)+'\n');
+});
+
+await test('Text Unit boundaries preserve native words without rewriting historical grades',async()=>{
+ await writeFile('target/split-text-units-runtime.json',JSON.stringify(await splitTextJourney(),null,2)+'\n');
 });
