@@ -100,8 +100,10 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
         }
     }
     if let Some(library) = object.remove("library") {
-        for field in ["works", "versions", "relations"] {
-            for (id, record) in library[field]
+        for field in ["works", "versions", "relations", "repairs"] {
+            for (id, record) in library
+                .get(field)
+                .unwrap_or(&serde_json::json!({}))
                 .as_object()
                 .ok_or_else(|| serialization("Library"))?
             {
@@ -156,6 +158,9 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
     if app.practice.answer_checkpoint.is_some() {
         result.insert("checkpoint_compatibility/v1".into(), "1".into());
     }
+    if repair_capability(app) {
+        result.insert("text_repair_compatibility/v1".into(), "1".into());
+    }
     object.remove("owner_tokens");
     object.remove("study_version_refs");
     result.insert("meta".into(), bounded_json(&value)?);
@@ -171,9 +176,12 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
         value["owner_tokens"] = serde_json::json!({});
     }
     value["study_version_refs"] = serde_json::json!({});
-    value["library"] = serde_json::json!({"works":{},"versions":{},"relations":{}});
+    value["library"] = serde_json::json!({"works":{},"versions":{},"relations":{},"repairs":{}});
     for (key, data) in rows {
-        if key == "meta" || key == "checkpoint_compatibility/v1" {
+        if key == "meta"
+            || key == "checkpoint_compatibility/v1"
+            || key == "text_repair_compatibility/v1"
+        {
             continue;
         }
         let (field, id) = key
@@ -293,6 +301,14 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             "Checkpoint compatibility marker is invalid.",
         ));
     }
+    if rows.get("text_repair_compatibility/v1").map(String::as_str)
+        != repair_capability(&app).then_some("1")
+    {
+        return Err(AppError::new(
+            500,
+            "Repair compatibility marker is invalid.",
+        ));
+    }
     if app.schema != SCHEMA {
         return Err(AppError::new(500, "A compatible Scry build is required."));
     }
@@ -312,7 +328,22 @@ pub fn sha256(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+fn repair_capability(app: &App) -> bool {
+    !app.library.repairs.is_empty()
+        || app
+            .operations
+            .values()
+            .any(|r| r.path.as_deref() == Some("/library/version/repair"))
+}
 fn archive_format(app: &App) -> &'static str {
+    if !app.library.repairs.is_empty()
+        || app
+            .operations
+            .values()
+            .any(|r| r.path.as_deref() == Some("/library/version/repair"))
+    {
+        return "scry-rust-durable-sqlite-text-repair-v1";
+    }
     if app.practice.answer_checkpoint.is_some() {
         return "scry-rust-durable-sqlite-checkpoint-v1";
     }

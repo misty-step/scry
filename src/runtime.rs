@@ -158,6 +158,9 @@ fn view_query(
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     query.insert("__nonce".into(), random_id()?);
+    if admit_runtime_mutation(env, "/library/version/repair").is_ok() {
+        query.insert("__repair_enabled".into(), "true".into());
+    }
     query.insert("__preparation_ready".into(), preparation_ready.to_string());
     if development(env) || variable(env, "SCRY_ENV") == "synthetic-preview" {
         query.insert("__synthetic".into(), "true".into());
@@ -289,6 +292,26 @@ fn loopback(url: &Url) -> bool {
             Some("127.0.0.1" | "localhost" | "[::1]" | "::1")
         )
 }
+// No normal Cargo/release build enables this cfg. Test build also requires a
+// fixed synthetic-only configuration; production can never opt in via a flag.
+fn admit_runtime_mutation(env: &Env, path: &str) -> AppResult<()> {
+    #[cfg(scry_synthetic_repair_http)]
+    if path == "/library/version/repair"
+        && variable(env, "SCRY_ENV") == "preview"
+        && variable(env, "CANONICAL_ORIGIN") == "https://repair-http.invalid"
+        && variable(env, "SPACE_NAME") == "synthetic-repair-http-only"
+        && variable(env, "ACCESS_TEAM") == "repair-synthetic.cloudflareaccess.com"
+        && variable(env, "ACCESS_AUDIENCE") == "synthetic-repair-audience"
+        && secret(env, "OWNER_SUBJECT") == "synthetic-repair-owner"
+        && !provider_secrets_present(env)
+        && secret(env, "RESTORE_TOKEN").is_empty()
+    {
+        return Ok(());
+    }
+    let _ = env;
+    engine::admit_current_mutation(path)
+}
+
 fn configured_origin(env: &Env) -> Result<Url> {
     let raw = variable(env, "CANONICAL_ORIGIN");
     let url = Url::parse(&raw)
@@ -534,8 +557,39 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     {
         return private(Response::error("Invalid checkpoint mode.", 400)?);
     }
-    if req.headers().has("X-Scry-Request")?
-        && req.headers().get("X-Scry-Expected-Scope")?.as_deref() != Some(scope.as_str())
+    // Native forms cannot set custom headers. Only this browser repair action
+    // may carry its rendered scope in the action URL; API/bearer callers still
+    // require the header. Origin and CSRF checks remain independently required.
+    let scope_header = req.headers().get("X-Scry-Expected-Scope")?;
+    let form_scopes: Vec<_> = url
+        .query_pairs()
+        .filter(|(key, _)| key == "repair_scope")
+        .map(|(_, value)| value.into_owned())
+        .collect();
+    let browser_repair =
+        !bearer && method == Method::Post && req.path() == "/library/version/repair";
+    let native_repair = browser_repair
+        && req.headers().get("Content-Type")?.is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|mime| mime.trim() == "application/x-www-form-urlencoded")
+        });
+    let query_scope_valid = form_scopes.len() == 1 && form_scopes[0] == scope;
+    let scope_valid = match scope_header.as_deref() {
+        Some(header) => {
+            header == scope && (form_scopes.is_empty() || (browser_repair && query_scope_valid))
+        }
+        None => native_repair && query_scope_valid,
+    };
+    if (req.headers().has("X-Scry-Request")?
+        || matches!(
+            req.path().as_str(),
+            "/library/version/repair"
+                | "/api/v1/library/versions/repair"
+                | "/api/v1/library/repair-preview"
+        ))
+        && !scope_valid
     {
         if bearer {
             return api_refusal();
@@ -673,6 +727,12 @@ async fn scoped_page(mut response: Response, scope: &str) -> Result<Response> {
         if !text.is_empty() && !text.contains("<html lang=\"en\">") {
             return private(Response::error("Private page unavailable.", 503)?);
         }
+        // Rewrite only the hard-coded recovery form action. Scope is a
+        // lowercase digest, not a credential or a replacement for CSRF.
+        let text = text.replace(
+            "action=\"/library/version/repair\" data-repair-form",
+            &format!("action=\"/library/version/repair?repair_scope={scope}\" data-repair-form"),
+        );
         response = Response::from_html(text.replacen("<html lang=\"en\">", &marker, 1))?
             .with_status(status)
             .with_headers(headers);
@@ -1063,6 +1123,11 @@ impl DurableObject for LearningSpace {
                 response.headers_mut().set("Content-Type", mime)?;
                 return private(response);
             }
+            if path == "/library/repair"
+                && let Err(error) = admit_runtime_mutation(&self.env, "/library/version/repair")
+            {
+                return api_error(error);
+            }
             let mut app = self.load()?;
             let previous = app.clone();
             engine::recover_grading(&mut app, now());
@@ -1309,7 +1374,7 @@ impl DurableObject for LearningSpace {
             return private(Response::error("Reload before submitting.", 403)?);
         }
         // Refuse before photo bytes, R2 puts, operation receipts or new jobs.
-        if let Err(error) = engine::admit_current_mutation(&path) {
+        if let Err(error) = admit_runtime_mutation(&self.env, &path) {
             return render_error(&self.env, &app, &path, &fields, error, false);
         }
         if path == "/__fixture" {
@@ -1469,6 +1534,7 @@ impl DurableObject for LearningSpace {
                         "/create"
                             | "/add"
                             | "/library/version/add"
+                            | "/library/version/repair"
                             | "/library/mapping/add"
                             | "/practice/nato/start"
                             | "/practice/lesson/start"
@@ -1495,8 +1561,10 @@ impl DurableObject for LearningSpace {
                         self.preparation_ready(),
                     );
                 }
-                if !matches!(path.as_str(), "/practice/draft" | "/practice/draft/discard")
-                    || !replayed
+                if !matches!(
+                    path.as_str(),
+                    "/practice/draft" | "/practice/draft/discard" | "/library/version/repair"
+                ) || !replayed
                 {
                     match self.save_typed(&mut app, Some(before)) {
                         Ok(()) => {}
@@ -1787,6 +1855,28 @@ impl LearningSpace {
                     &json!({"tokens": app.owner_tokens.values().map(|t| &t.info).collect::<Vec<_>>()}),
                     200,
                 ),
+                "/api/v1/library/repair-preview" => {
+                    if let Err(error) = admit_runtime_mutation(&self.env, "/library/version/repair")
+                    {
+                        return api_error(error);
+                    }
+                    let url = req.url()?;
+                    let id = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "version_id")
+                        .map(|(_, v)| v.into_owned())
+                        .unwrap_or_default();
+                    let fingerprint = match crate::text_repair::preview(&app.library, &id) {
+                        Ok(v) => v,
+                        Err(e) => return api_error(e),
+                    };
+                    let version = &app.library.versions[&id];
+                    let work = &app.library.works[&version.work_id];
+                    api_json(
+                        &json!({"version_id":id,"revision":work.revision,"fingerprint":fingerprint,"policy":crate::text_repair::POLICY}),
+                        200,
+                    )
+                }
                 _ if path.starts_with("/api/v1/library/") => {
                     if app.practice.protected() {
                         return api_error(AppError::new(
@@ -1815,7 +1905,7 @@ impl LearningSpace {
         let Some(canonical_path) = api::mutation_path(&path) else {
             return api_error(AppError::new(404, "API action not found."));
         };
-        if let Err(error) = engine::admit_current_mutation(canonical_path) {
+        if let Err(error) = admit_runtime_mutation(&self.env, canonical_path) {
             return api_error(error);
         }
         let replayed = fields
@@ -1835,7 +1925,7 @@ impl LearningSpace {
         }
         if !matches!(
             canonical_path,
-            "/practice/draft" | "/practice/draft/discard"
+            "/practice/draft" | "/practice/draft/discard" | "/library/version/repair"
         ) || !replayed
         {
             match self.save_typed(&mut app, Some(before)) {
@@ -1858,7 +1948,11 @@ impl LearningSpace {
         self.arm().await?;
         api_json(
             &api::MutationResponse {
-                practice: crate::study::wire_response(&app, &result),
+                practice: if canonical_path == "/library/version/repair" {
+                    None
+                } else {
+                    crate::study::wire_response(&app, &result)
+                },
                 result,
                 replayed,
                 token,

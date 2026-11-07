@@ -22,3 +22,8 @@ mod runtime;
 
 pub mod lessons;
 pub mod ordered;
+
+pub mod text_repair;
+
+#[doc(hidden)]
+pub mod text_repair_policy_v1;

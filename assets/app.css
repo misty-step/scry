@@ -471,3 +471,6 @@ body.private-suspended .page-frame { visibility: hidden; }
 
 /* The explicit checkpoint requires enhanced, scope-bound submission. */
 [data-checkpoint-save][hidden], [data-checkpoint-discard][hidden], [data-checkpoint-custody][hidden] {display:none}
+/* Isolated repair metadata must fit narrow screens without truncating identity. */
+[data-state="repair-recovery"] dd{margin:0 0 1rem;overflow-wrap:anywhere}
+[data-state="repair-recovery"] form{margin:1.5rem 0}

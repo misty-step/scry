@@ -85,6 +85,8 @@ pub enum Relation {
 }
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Library {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub repairs: BTreeMap<String, crate::text_repair::Repair>,
     pub works: BTreeMap<String, Work>,
     pub versions: BTreeMap<String, Version>,
     pub relations: BTreeMap<String, Relation>,
@@ -298,12 +300,16 @@ pub struct WorkEdit {
 }
 #[derive(Serialize)]
 pub struct WorkView<'a> {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub repairs: Vec<&'a crate::text_repair::Repair>,
     pub work: &'a Work,
     pub versions: Vec<&'a Version>,
     pub relations: Vec<&'a Relation>,
 }
 #[derive(Serialize)]
 pub struct VersionView<'a> {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub repairs: Vec<&'a crate::text_repair::Repair>,
     pub work: &'a Work,
     pub version: &'a Version,
     pub relations: Vec<&'a Relation>,
@@ -533,7 +539,10 @@ fn content_hash(
 
 impl Library {
     pub fn is_empty(&self) -> bool {
-        self.works.is_empty() && self.versions.is_empty() && self.relations.is_empty()
+        self.works.is_empty()
+            && self.versions.is_empty()
+            && self.relations.is_empty()
+            && self.repairs.is_empty()
     }
     pub fn show_work(&self, id: &str) -> AppResult<WorkView<'_>> {
         let work = self.works.get(id).ok_or_else(missing)?;
@@ -557,6 +566,15 @@ impl Library {
             })
             .collect();
         Ok(WorkView {
+            repairs: self
+                .repairs
+                .values()
+                .filter(|r| {
+                    self.versions
+                        .get(&r.original)
+                        .is_some_and(|v| v.work_id == id)
+                })
+                .collect(),
             work,
             versions,
             relations,
@@ -578,6 +596,11 @@ impl Library {
             })
             .collect();
         Ok(VersionView {
+            repairs: self
+                .repairs
+                .values()
+                .filter(|r| r.original == id || r.copy == id)
+                .collect(),
             work,
             version,
             relations,
@@ -686,7 +709,10 @@ impl Library {
         let pairs = (input.kind == Kind::KeyedMapping)
             .then(|| mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str)))
             .flatten();
-        let hash_match = self.versions.values().find(|v| v.normalized_hash == hash);
+        let hash_match = self
+            .versions
+            .values()
+            .find(|v| v.normalized_hash == hash && !self.repairs.values().any(|r| r.copy == v.id));
         if let Some(v) = hash_match {
             if (input.kind == Kind::OrderedList || v.kind == Kind::OrderedList)
                 && (input.kind != v.kind
@@ -867,6 +893,13 @@ impl Library {
             .filter(|v| if work { v.work_id == id } else { v.id == id })
             .map(|v| v.id.clone())
             .collect();
+        if self
+            .repairs
+            .values()
+            .any(|r| removed.contains(&r.original) || removed.contains(&r.copy))
+        {
+            return Err(AppError::new(409, "Repair lineage requires both Versions."));
+        }
         if study_versions.values().any(|v| removed.contains(v)) {
             return Err(AppError::new(
                 409,
@@ -897,6 +930,7 @@ impl Library {
         Ok(id.into())
     }
     pub fn validate(&self) -> AppResult<()> {
+        crate::text_repair::validate(self)?;
         let mut all_names = BTreeSet::new();
         let mut hashes = BTreeSet::new();
         let mut ids = BTreeSet::new();
@@ -914,7 +948,8 @@ impl Library {
             if id != &v.id
                 || !valid_id(id)
                 || self.works.get(&v.work_id).is_none_or(|w| w.kind != v.kind)
-                || !hashes.insert(&v.normalized_hash)
+                || (!self.repairs.values().any(|r| r.copy == v.id)
+                    && !hashes.insert(&v.normalized_hash))
             {
                 return Err(invalid());
             }
@@ -1067,6 +1102,23 @@ pub fn mutate(
             seed,
             None,
         )?,
+        "/library/version/repair" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "version_id" | "fingerprint"
+                )
+            }) {
+                return Err(invalid());
+            }
+            crate::text_repair::repair(
+                &mut app.library,
+                field("version_id"),
+                revision()?,
+                field("fingerprint"),
+                seed,
+            )?
+        }
         "/library/version/supersede" => {
             let old = app
                 .library
@@ -1105,7 +1157,11 @@ pub fn mutate(
     };
     Ok(MutationResult {
         data: None,
-        redirect: format!("/api/v1/library/{resource}/{id}"),
+        redirect: if path == "/library/version/repair" {
+            "/recall".into()
+        } else {
+            format!("/api/v1/library/{resource}/{id}")
+        },
         entity_id: Some(id),
         message: None,
     })
@@ -1119,6 +1175,9 @@ fn valid_id(id: &str) -> bool {
 }
 /// Deletion retains its immutable receipt even when its Library entity is gone.
 pub(crate) fn receipt_entity(receipt: &Receipt, id: &str) -> bool {
+    if receipt.path.as_deref() == Some("/library/version/repair") {
+        return valid_id(id) && receipt.result.redirect == "/recall";
+    }
     let resource = match receipt.path.as_deref() {
         Some(
             "/library/mapping/add"

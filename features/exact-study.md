@@ -158,3 +158,12 @@ No repair successor or production migration is included.
 unavailable reason, acknowledged draft, reload and fenced switch to other
 material at 320px native/no-JavaScript and 1280px enhanced layouts. These
 synthetic checks do not establish physical-phone or authenticated live acceptance.
+
+## Isolated repaired-copy qualification
+
+The draft-only unsafe-text repair candidate is documented in
+[the repair qualification contract](../docs/qa/text-repair-candidate.md).
+`tests/text_repair.rs` and `textRepairWalk` in the existing keyed-mapping gate
+exercise additive copies, preserved historical/draft custody, native/CLI
+preconditions and phone-width recovery. Normal HTTP admission stays closed;
+these synthetic checks are not production activation or physical-phone acceptance.

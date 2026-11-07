@@ -663,6 +663,113 @@ impl View<'_> {
         out.push_str("</section>");
         out
     }
+    fn repair_link(&self, original: &str) -> String {
+        if self
+            .query
+            .get("__repair_enabled")
+            .is_none_or(|v| v != "true")
+            || crate::text_repair::preview(&self.app.library, original).is_err()
+        {
+            return String::new();
+        }
+        let label = if self.app.library.repairs.contains_key(original) {
+            "Review repaired copy"
+        } else {
+            "Create a repaired copy"
+        };
+        format!(
+            "<a class=\"button quiet\" data-repair-link href=\"/library/repair?version_id={}\">{label}</a>",
+            escape(original)
+        )
+    }
+    fn repair_page(&self) -> String {
+        if self
+            .query
+            .get("__repair_enabled")
+            .is_none_or(|v| v != "true")
+        {
+            return self.not_found();
+        }
+        let Some(original) = self.query.get("version_id") else {
+            return self.not_found();
+        };
+        let Ok(fingerprint) = crate::text_repair::preview(&self.app.library, original) else {
+            return self.not_found();
+        };
+        let Some(version) = self.app.library.versions.get(original) else {
+            return self.not_found();
+        };
+        let Some(work) = self.app.library.works.get(&version.work_id) else {
+            return self.not_found();
+        };
+        if self.app.practice.current.is_none() {
+            return "<section class=\"library-page\" data-state=\"repair-no-held-prompt\"><h1>No saved prompt to recover</h1><p>This recovery screen is only available while a prompt is held. Opening it does not create a copy, enroll a Study or start practice.</p><a class=\"text-link\" href=\"/library\" data-repair-close>Close to Library</a></section>".into();
+        }
+        let mut out = format!(
+            "<section class=\"library-page\" data-state=\"repair-recovery\"><a class=\"text-link\" href=\"/recall\" data-repair-close>Close and return to saved prompt</a><h1>Repair a saved text</h1><p>This creates a separate copy with safe practice boundaries. Exact text, the original, history and schedules stay unchanged. Nothing starts automatically.</p><dl><dt>Original Version</dt><dd>{}</dd><dt>Work revision</dt><dd>{}</dd></dl>",
+            escape(original),
+            work.revision
+        );
+        if let Some(current) = &self.app.practice.current
+            && current.prompt.version_id != *original
+        {
+            let _ = write!(
+                out,
+                "<p data-repair-other-prompt>Your held prompt belongs to a different Version ({}). This repair and enrollment leave that prompt and its saved answer unchanged.</p>",
+                escape(&current.prompt.version_id)
+            );
+        }
+        if let Some(checkpoint) = &self.app.practice.answer_checkpoint
+            && checkpoint.draft.is_some()
+        {
+            let _ = write!(
+                out,
+                "<p role=\"status\" data-repair-draft>Saved answer acknowledged at generation {}. It stays with its original prompt; repair and enrollment do not move or discard it.</p>",
+                checkpoint.generation
+            );
+        }
+        if self.app.practice.protected() {
+            out.push_str("<p data-repair-protected>Source text is hidden during your saved question. Repair needs no source disclosure. Viewing source would require separately recorded assistance; that action is unavailable for this unsafe original.</p>");
+        }
+        if let Some(repair) = self.app.library.repairs.get(original) {
+            let _ = write!(
+                out,
+                "<h2>Copy saved</h2><p>Your current prompt and its saved answer are unchanged.</p><dl><dt>Repaired Version</dt><dd data-repair-copy>{}</dd></dl>",
+                escape(&repair.copy)
+            );
+            if self
+                .app
+                .practice
+                .studies
+                .values()
+                .any(|s| s.version_id == repair.copy)
+            {
+                out.push_str("<p role=\"status\" data-repair-enrolled>Copy enrolled. Your current prompt has not switched.</p>");
+            } else {
+                out.push_str(&self.form("/practice/learn","repair-enroll","","",&format!("{}<button class=\"button primary\" data-repair-enroll>Enroll copy without switching</button>",hidden("version_id",&repair.copy))));
+            }
+        } else {
+            let nonce = self.query.get("__nonce").map(String::as_str).unwrap_or("");
+            let operation = hex::encode(Sha256::digest(
+                format!(
+                    "repair:{nonce}:{}:{}:{original}:{fingerprint}",
+                    self.now, self.app.revision
+                )
+                .as_bytes(),
+            ));
+            let _ = write!(
+                out,
+                "<form method=\"post\" action=\"/library/version/repair\" data-repair-form>{}{}{}{}{}<button class=\"button primary\" data-repair-create>Create repaired copy</button></form>",
+                hidden("csrf", &self.app.csrf),
+                hidden("operation_id", &operation),
+                hidden("revision", &work.revision.to_string()),
+                hidden("version_id", original),
+                hidden("fingerprint", &fingerprint)
+            );
+        }
+        out.push_str("<p class=\"fineprint\">If a save response is interrupted, use the existing retry control with the same operation. Do not start a new save. Reloading this page shows whether the copy exists.</p></section>");
+        out
+    }
     fn unavailable_practice(&self, p: &crate::study::Presentation) -> String {
         let mut out = format!(
             "<section class=\"empty-stage exact-study\" data-state=\"practice-unavailable\" data-prompt-id=\"{}\"><h1>Practice unavailable</h1><p>{}</p>",
@@ -673,6 +780,7 @@ impl View<'_> {
                     .message
             )
         );
+        out.push_str(&self.repair_link(&p.prompt.version_id));
         let draft = self.saved_answer(&p.prompt.id);
         if !draft.is_empty() {
             let _ = write!(
@@ -3427,7 +3535,9 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
 }
 
 pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
-    if path == "/library/mapping/add" {
+    if path == "/library/version/repair" {
+        "/library/repair"
+    } else if path == "/library/mapping/add" {
         "/library"
     } else if path == "/library/version/add" {
         "/library/add"
@@ -3481,6 +3591,7 @@ pub fn render(
         {
             view.exact_stream()
         }
+        "/library/repair" => view.repair_page(),
         "/lessons" => format!(
             "<section class=\"nato-screen lesson-screen\"><h1>Practice</h1>{}</section>",
             view.lesson_picker(true)

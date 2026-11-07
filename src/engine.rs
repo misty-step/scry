@@ -59,6 +59,12 @@ fn result(redirect: impl Into<String>, entity_id: Option<String>) -> MutationRes
 /// Current product admission; historical state-machine transitions below remain
 /// available for archive compatibility tests, never as runtime generation APIs.
 pub fn admit_current_mutation(path: &str) -> AppResult<()> {
+    if path == "/library/version/repair" {
+        return Err(AppError::new(
+            410,
+            "Text repair is an isolated prototype and is not available over HTTP.",
+        ));
+    }
     if matches!(
         path,
         "/review/self" | "/review/override" | "/practice/correct"
@@ -174,6 +180,11 @@ pub fn mutate_as(
         },
     );
     next.revision += 1;
+    if path == "/library/version/repair" {
+        validate_app(&next)?;
+        crate::persistence::rows(&next)?;
+        crate::persistence::archive_size(&next)?;
+    }
     *app = next;
     Ok(response)
 }

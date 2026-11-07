@@ -103,6 +103,17 @@ pub fn request_detailed(
     path: &str,
     payload: Option<&Value>,
 ) -> std::result::Result<Value, ApiError> {
+    request_scoped_detailed(client, login, path, payload, None)
+}
+
+/// Explicit scope pinned by the caller; never refreshed during a mutation retry.
+pub fn request_scoped_detailed(
+    client: &Client,
+    login: &Login,
+    path: &str,
+    payload: Option<&Value>,
+    scope: Option<&str>,
+) -> std::result::Result<Value, ApiError> {
     let uncertain = |code, message| ApiError {
         code,
         message,
@@ -113,6 +124,11 @@ pub fn request_detailed(
     let request = match payload {
         Some(payload) => client.post(url).json(payload),
         None => client.get(url),
+    };
+    let request = if let Some(scope) = scope {
+        request.header("X-Scry-Expected-Scope", scope)
+    } else {
+        request
     };
     let response = request.bearer_auth(&login.token).send().map_err(|_| {
         uncertain(
@@ -166,4 +182,28 @@ pub fn request(
     payload: Option<&Value>,
 ) -> Result<Value> {
     request_detailed(client, login, path, payload).map_err(|error| error.message)
+}
+
+/// Read the authenticated bearer scope for a new deliberate repair preview.
+pub fn repair_scope(client: &Client, login: &Login) -> Result<String> {
+    let response = client
+        .get(format!("{}/api/v1/whoami", login.origin))
+        .bearer_auth(&login.token)
+        .send()
+        .map_err(|_| "Cannot read owner scope.")?;
+    if !response.status().is_success() {
+        return Err("Owner authorization required.");
+    }
+    let scope = response
+        .headers()
+        .get("X-Scry-Scope")
+        .and_then(|s| s.to_str().ok())
+        .filter(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                && !s.contains(&login.token)
+        })
+        .ok_or("Invalid owner scope.")?;
+    Ok(scope.to_string())
 }

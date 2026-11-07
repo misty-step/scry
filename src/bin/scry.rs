@@ -24,7 +24,11 @@ fn main() {
                 let _ = writeln!(
                     std::io::stdout().lock(),
                     "{}",
-                    serde_json::json!({"error":message})
+                    if message == cli::REPAIR_OUTCOME_UNKNOWN {
+                        serde_json::json!({"error":message,"outcome_unknown":true})
+                    } else {
+                        serde_json::json!({"error":message})
+                    }
                 );
             } else {
                 let _ = writeln!(std::io::stderr().lock(), "{message}");
@@ -49,6 +53,13 @@ mod cli {
         os::unix::fs::{OpenOptionsExt, PermissionsExt},
         path::{Path, PathBuf},
     };
+    pub const REPAIR_OUTCOME_UNKNOWN: &str = "Repair outcome unknown; retry with the same complete arguments: Version, revision, fingerprint, scope and operation ID. Do not create a new operation.";
+    fn canonical_hex(value: &str, length: usize) -> bool {
+        value.len() == length
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    }
     type Result<T> = std::result::Result<T, &'static str>;
     fn option(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
         if let Some(i) = args.iter().position(|arg| arg == name) {
@@ -211,6 +222,93 @@ mod cli {
         let login = owner_client::load(&path)?;
         if url.is_some_and(|url| url != login.origin) {
             return Err("Log in separately for this origin.");
+        }
+        if args.first().is_some_and(|a| a == "repair-preview") {
+            if args.len() != 2 || !canonical_hex(&args[1], 32) {
+                return Err("Usage: scry repair-preview VERSION --json");
+            }
+            resource_path("versions", &args[1])?;
+            let scope = owner_client::repair_scope(&client, &login)?;
+            let mut url = Url::parse(&format!("{}/api/v1/library/repair-preview", login.origin))
+                .map_err(|_| "Invalid origin.")?;
+            url.query_pairs_mut().append_pair("version_id", &args[1]);
+            let value = owner_client::request_scoped_detailed(
+                &client,
+                &login,
+                &format!("{}?{}", url.path(), url.query().unwrap_or_default()),
+                None,
+                Some(&scope),
+            )
+            .map_err(|e| e.message)?;
+            if value["version_id"] != args[1]
+                || !value["revision"].is_u64()
+                || value["revision"].as_u64() == Some(0)
+                || !value["fingerprint"]
+                    .as_str()
+                    .is_some_and(|s| canonical_hex(s, 64))
+                || value["policy"] != scry::text_repair::POLICY
+                || !canonical_hex(&scope, 64)
+            {
+                return Err("Invalid repair preview.");
+            }
+            return Ok(
+                json!({"version_id":value["version_id"],"revision":value["revision"],"fingerprint":value["fingerprint"],"policy":value["policy"],"expected_scope":scope}),
+            );
+        }
+        if args.first().is_some_and(|a| a == "repair") {
+            let operation = option(&mut args, "--operation-id")?
+                .ok_or("Retain --operation-id ID and the exact repair arguments for retries.")?;
+            let revision = option(&mut args, "--revision")?
+                .ok_or("Use the preview's --revision N.")?
+                .parse::<u64>()
+                .map_err(|_| "Invalid repair revision.")?;
+            let fingerprint = option(&mut args, "--fingerprint")?
+                .ok_or("Use the preview's --fingerprint HASH.")?;
+            let scope = option(&mut args, "--scope")?
+                .ok_or("Use the preview's --scope SCOPE; retain it for retries.")?;
+            if args.len() != 2
+                || !(16..=128).contains(&operation.len())
+                || !operation
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                || revision == 0
+                || !canonical_hex(&args[1], 32)
+                || !canonical_hex(&scope, 64)
+                || !canonical_hex(&fingerprint, 64)
+            {
+                return Err(
+                    "Usage: scry repair VERSION --revision N --fingerprint HASH --scope SCOPE --operation-id ID --json",
+                );
+            }
+            resource_path("versions", &args[1])?;
+            let payload = json!({"operation_id":operation,"version_id":args[1],"revision":revision,"fingerprint":fingerprint});
+            let value = owner_client::request_scoped_detailed(
+                &client,
+                &login,
+                "/api/v1/library/versions/repair",
+                Some(&payload),
+                Some(&scope),
+            )
+            .map_err(|e| {
+                if e.outcome_unknown {
+                    REPAIR_OUTCOME_UNKNOWN
+                } else {
+                    e.message
+                }
+            })?;
+            if !value["result"]["entity_id"]
+                .as_str()
+                .is_some_and(|id| canonical_hex(id, 32) && id != args[1])
+                || !value["replayed"].is_boolean()
+                || value["result"]["redirect"] != "/recall"
+                || !value["result"]["data"].is_null()
+                || !value["practice"].is_null()
+            {
+                return Err(REPAIR_OUTCOME_UNKNOWN);
+            }
+            return Ok(
+                json!({"original_version_id":args[1],"copy_version_id":value["result"]["entity_id"],"operation_id":operation,"replayed":value["replayed"]}),
+            );
         }
         if args.as_slice() == ["whoami"] {
             return request(&client, &login, "/api/v1/whoami", None);

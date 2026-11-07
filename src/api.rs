@@ -36,6 +36,7 @@ pub fn mutation_path(path: &str) -> Option<&str> {
         "/api/v1/correct" => Some("/practice/correct"),
         "/api/v1/library/mappings" => Some("/library/mapping/add"),
         "/api/v1/library/versions" => Some("/library/version/add"),
+        "/api/v1/library/versions/repair" => Some("/library/version/repair"),
         "/api/v1/library/versions/supersede" => Some("/library/version/supersede"),
         "/api/v1/library/versions/delete" => Some("/library/version/delete"),
         "/api/v1/library/works/edit" => Some("/library/work/edit"),
@@ -93,7 +94,7 @@ pub fn library_read(app: &App, path: &str, query: &str) -> AppResult<serde_json:
     let value = if path == "/api/v1/library/search" {
         serde_json::to_value(library.search(query))
     } else if path == "/api/v1/library/export" {
-        serde_json::to_value(library)
+        return crate::text_repair::export_library(library);
     } else if let Some(id) = path.strip_prefix("/api/v1/library/works/") {
         serde_json::to_value(library.show_work(id)?)
     } else if let Some(id) = path.strip_prefix("/api/v1/library/versions/") {
