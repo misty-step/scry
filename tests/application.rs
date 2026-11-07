@@ -336,7 +336,7 @@ fn allowance_is_shared_and_unknown_cost_is_never_free() {
     );
     assert_eq!(a.spend.len(), 7);
     assert_eq!(a.occurrence.as_ref().unwrap().phase, "self-check");
-    assert_eq!(a.spent(NOW + DAY_MS + 1), 0);
+    assert_eq!(a.spent(NOW + DAY_MS + 1), 7 * RESERVATION);
 }
 
 #[test]
