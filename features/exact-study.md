@@ -114,3 +114,18 @@ duplicates, ambiguity and immutable identity. `qa/lessons.mjs` is called by the
 existing keyed-mapping Worker/browser gate: real native forms, CRLF, actual
 phone/desktop/dark/no-JavaScript flows, draft preservation and source-bound images.
 Local source tests and synthetic screenshots are not authenticated live acceptance.
+
+## Empty-normalized text boundaries
+
+`tests/empty_text_units.rs` and the `emptyTextJourney` in
+`qa/study.test.mjs` exercise US-015/016/017 and LESSON-04: import a leading
+newline or ellipsis, source → quiz → empty answer, and restore pre-fix
+synthetic source/quiz/result/whole-text history before trying new actions.
+The runtime receipt is `target/empty-text-units-runtime.json`; inspect its
+SQLite no-write refusal and replay results alongside the native archive tests.
+Automatic segmentation keeps every source byte but attaches separators to a
+word-bearing Unit. Explicit empty-normalized boundaries are refused. Retained
+Versions with such boundaries remain readable and restorable, but are excluded
+from new practice in every scope. A normalized reimport returns the original
+Version, not repaired boundaries. Original grades, schedules and exact receipts
+remain historical evidence; no production content was inspected or migrated.

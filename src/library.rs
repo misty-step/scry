@@ -373,6 +373,53 @@ fn segment(text: &str) -> Vec<SectionInput> {
     }
     sections
 }
+/// Attach non-recallable separators to adjacent text, retaining every byte.
+/// Only new automatic text segmentation uses this; stored/authored boundaries
+/// are immutable and never repaired while loading or deduplicating a Version.
+fn text_segments(text: &str) -> Vec<SectionInput> {
+    let mut sections: Vec<SectionInput> = Vec::new();
+    let mut prefix = String::new();
+    for section in segment(text) {
+        let mut units: Vec<String> = Vec::new();
+        for unit in section.units {
+            if grading::normalized_words(&unit).is_empty() {
+                if let Some(last) = units.last_mut() {
+                    last.push_str(&unit);
+                } else {
+                    prefix.push_str(&unit);
+                }
+            } else {
+                units.push(std::mem::take(&mut prefix) + &unit);
+            }
+        }
+        if units.is_empty() {
+            if let Some(last) = sections.last_mut() {
+                last.units.last_mut().unwrap().push_str(&prefix);
+                prefix.clear();
+            }
+        } else {
+            sections.push(SectionInput {
+                heading: format!("Section {}", sections.len() + 1),
+                units,
+            });
+        }
+    }
+    sections
+}
+/// New practice must have something to recall in every Unit, including each
+/// part of a Recitation. Keep this separate from historical archive validation.
+pub(crate) fn check_text_units<'a>(units: impl Iterator<Item = &'a str>) -> AppResult<()> {
+    if units
+        .into_iter()
+        .any(|text| grading::normalized_words(text).is_empty())
+    {
+        return Err(AppError::new(
+            422,
+            "A text Unit has no words to recall. Supply boundaries that include words; existing content and history are unchanged.",
+        ));
+    }
+    Ok(())
+}
 fn checked_sections(input: &VersionInput) -> AppResult<Vec<SectionInput>> {
     if input.text.trim().is_empty()
         || input.text.len() > TEXT_BYTES
@@ -393,6 +440,8 @@ fn checked_sections(input: &VersionInput) -> AppResult<Vec<SectionInput>> {
                     .map(str::to_owned)
                     .collect(),
             }]
+        } else if input.kind == Kind::Text {
+            text_segments(&input.text)
         } else {
             segment(&input.text)
         }
@@ -561,6 +610,9 @@ impl Library {
         previous: Option<&str>,
     ) -> AppResult<String> {
         let sections = checked_sections(&input)?;
+        if input.kind == Kind::Text {
+            check_text_units(sections.iter().flat_map(|s| &s.units).map(String::as_str))?;
+        }
         if input.kind == Kind::OrderedList {
             crate::ordered::validate_names(
                 &sections

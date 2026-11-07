@@ -39,7 +39,7 @@ fn add(app: &mut App, op: &str, data: Value) -> String {
 #[test]
 fn valid_version_can_exceed_the_serialized_record_limit() {
     let mut app = app();
-    let text = format!("{},.\n", "a".repeat(58)).repeat(4096);
+    let text = format!("{},a.\n", "a".repeat(57)).repeat(4096);
     mutate(
         &mut app,
         "/api/v1/library/versions",
