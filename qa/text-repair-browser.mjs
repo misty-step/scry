@@ -33,11 +33,13 @@ export async function textRepairWalk(browser,capture){
   const b64=v=>Buffer.from(JSON.stringify(v)).toString('base64url');const jwt=()=>{const now=Math.floor(Date.now()/1000),value=b64({alg:'RS256',kid:jwk.kid,typ:'JWT'})+'.'+b64({iss:`https://${team}`,sub:owner,aud:[audience],iat:now,nbf:now-1,exp:now+600});return value+'.'+sign('RSA-SHA256',Buffer.from(value),privateKey).toString('base64url');};
   let bindings={SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:space,INTERNAL_KEY:internalKey,RESTORE_TOKEN:'synthetic-repair-browser-restore-32chars'};
   let rt=await createRuntime({name,artifact,port:0,inspect:true,bindings,egress:async request=>{assert.equal(request.url,`https://${team}/cdn-cgi/access/certs`);return new Response(JSON.stringify({keys:[jwk]}),{headers:{'Content-Type':'application/json'}});}});
-  const result={name:label,status:'pass',javaScriptEnabled,otherVersion:other,evidence:[]};report.push(result);let context,page;
+  const initialMf=rt.mf,primaryRuntimeDispose=()=>initialMf.dispose();
+  const result={name:label,status:'pass',javaScriptEnabled,otherVersion:other,evidence:[]};report.push(result);let context,page,otherRuntime;
   try{
    let response=await rt.worker.fetch(origin+'/operator/restore',{method:'POST',headers:{'x-scry-restore-token':bindings.RESTORE_TOKEN,'x-scry-sha256':hash(bytes)},body:bytes});assert.equal(response.status,200,await response.text());
    bindings={SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:space,INTERNAL_KEY:internalKey,ACCESS_TEAM:team,ACCESS_AUDIENCE:audience,OWNER_SUBJECT:owner};rt={...rt,...await rt.rebind(bindings)};
-   const rows=async(notebook=space)=>Object.fromEntries((await(await rt.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:notebook})).exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,r.value]));
+   const primary=rt;
+   const rows=async(notebook=space,engine=primary,objectName=name)=>Object.fromEntries((await(await engine.mf.unsafeGetDurableObjectStorage(objectName,'LearningSpace',{name:notebook})).exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,r.value]));
    const before=await rows(),practice=JSON.parse(before.meta).practice;
    context=await browser.newContext({viewport:{width:javaScriptEnabled?390:320,height:844},javaScriptEnabled,isMobile:true,hasTouch:true,colorScheme:javaScriptEnabled?'light':'dark'});page=await context.newPage();page.setDefaultTimeout(15000);
    let lose=javaScriptEnabled,posts=[];
@@ -84,10 +86,14 @@ export async function textRepairWalk(browser,capture){
    await page.getByRole('button',{name:'Enroll copy without switching'}).click();await page.locator('[data-state="practice-unavailable"]').waitFor();const enrolled=await rows();assert.deepEqual(JSON.parse(enrolled.meta).practice,practice);assert.equal(Object.entries(enrolled).filter(([k,v])=>k.startsWith('practice_studies/')&&JSON.parse(v).version_id===repair.copy).length,1);
    await page.goto(url);await page.locator('[data-repair-enrolled]').waitFor();assert.equal(await page.locator('[data-repair-other-prompt]').count(),other?1:0);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));result.evidence.push(await capture(page,label+'-enrolled.png'));
    // A retained old document must not cross notebook identity after routing changes.
-   await page.route(url,route=>route.fulfill({status:200,contentType:'text/html',body:originalHtml}));await page.goto(url);const otherSpace='synthetic-repair-other-notebook';rt={...rt,...await rt.rebind({...bindings,SPACE_NAME:otherSpace})};const otherBefore=await rows(otherSpace);
-   await page.getByRole('button',{name:'Create repaired copy',exact:true}).click();if(javaScriptEnabled)await page.locator('body.private-hidden').waitFor({state:'attached'});else await page.getByText('Notebook changed.',{exact:true}).waitFor();assert.deepEqual(await rows(),enrolled);assert.deepEqual(await rows(otherSpace),otherBefore);assert.equal(posts.at(-1).status,409);result.staleNotebookRefused=true;result.heldPromptAndDraftPreserved=true;
+   await page.route(url,route=>route.fulfill({status:200,contentType:'text/html',body:originalHtml}));await page.goto(url);await page.waitForLoadState('networkidle');const otherSpace='synthetic-repair-other-notebook';
+   // Keep the first runtime alive: in-flight browser requests must never use
+   // poisoned Miniflare stubs during a setOptions/rebind transition.
+   otherRuntime=await createRuntime({name:name+'-other',artifact,port:0,inspect:true,bindings:{...bindings,SPACE_NAME:otherSpace},egress:async request=>{assert.equal(request.url,`https://${team}/cdn-cgi/access/certs`);return new Response(JSON.stringify({keys:[jwk]}),{headers:{'Content-Type':'application/json'}});}});
+   rt=otherRuntime;const otherBefore=await rows(otherSpace,otherRuntime,name+'-other');
+   await page.getByRole('button',{name:'Create repaired copy',exact:true}).click();if(javaScriptEnabled)await page.locator('body.private-hidden').waitFor({state:'attached'});else await page.getByText('Notebook changed.',{exact:true}).waitFor();assert.deepEqual(await rows(),enrolled);assert.deepEqual(await rows(otherSpace,otherRuntime,name+'-other'),otherBefore);assert.equal(posts.at(-1).status,409);result.staleNotebookRefused=true;result.heldPromptAndDraftPreserved=true;
   }catch(error){result.status='fail';result.reason=error.message;if(page)result.evidence.push(await capture(page,label+'-failure.png'));}
-  finally{if(context)await context.close();await rt.mf.dispose();}
+  finally{console.log('Synthetic repair case: '+JSON.stringify(result));if(context){await context.unrouteAll({behavior:'wait'});await context.close();}if(otherRuntime)await otherRuntime.mf.dispose();await primaryRuntimeDispose();}
  }
  await writeFile('target/keyed-mapping/text-repair/browser.json',JSON.stringify(report,null,2)+'\n');console.log('Synthetic repair browser results: '+JSON.stringify(report));return report;
 }
