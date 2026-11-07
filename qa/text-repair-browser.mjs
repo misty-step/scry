@@ -46,6 +46,10 @@ export async function textRepairWalk(browser,capture){
    await context.route('**/*',async route=>{
     const request=route.request();if(!request.url().startsWith(origin+'/')){await route.abort();throw Error('Unexpected browser egress');}
     const browserHeaders=await request.allHeaders();const headers={...browserHeaders,'Cf-Access-Jwt-Assertion':jwt()};delete headers['content-length'];
+    // Preserve the browser's actual Origin through Miniflare's loopback-only
+    // Origin guard. runtime-helper restores it before Rust sees the request.
+    // Never fabricate an Origin for a request that did not carry one.
+    if(browserHeaders.origin!==undefined){headers['X-Scry-Test-Origin']=browserHeaders.origin;delete headers.origin;}
     const response=await rt.worker.fetch(request.url(),{method:request.method(),headers,...(request.method()==='POST'?{body:request.postDataBuffer()}:{}),redirect:'manual'});
     if(request.method()==='POST'&&new URL(request.url()).pathname==='/library/version/repair'){
      posts.push({url:request.url(),body:request.postData(),scope:browserHeaders['x-scry-expected-scope']||null,status:response.status});
