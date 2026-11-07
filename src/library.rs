@@ -161,20 +161,30 @@ pub fn is_nato(version: &Version) -> bool {
     let Ok(canonical) = nato_input() else {
         return false;
     };
-    version.kind == Kind::KeyedMapping
-        && version.spelling_strict
-        && version.text == canonical.text
-        && version
+    let units = || {
+        version
             .sections
             .iter()
             .flat_map(|s| &s.units)
             .map(|u| u.text.as_str())
-            .eq(canonical
-                .sections
-                .iter()
-                .flatten()
-                .flat_map(|s| &s.units)
-                .map(String::as_str))
+    };
+    version.kind == Kind::KeyedMapping
+        && version.spelling_strict
+        && version.text == units().collect::<String>()
+        && check_mapping_units(units()).is_ok()
+        // Dedupe retains the original bytes. Recognize the same ordered pairs,
+        // using mapping normalization without any spelling or Slip tolerance.
+        && mapping_identity(units()).is_some_and(|pairs| {
+            Some(pairs)
+                == mapping_identity(
+                    canonical
+                        .sections
+                        .iter()
+                        .flatten()
+                        .flat_map(|s| &s.units)
+                        .map(String::as_str),
+                )
+        })
 }
 fn strict_mapping() -> bool {
     true

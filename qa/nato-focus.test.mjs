@@ -1,3 +1,4 @@
+import {normalizedNatoJourney} from './nato-import-identity.mjs';
 import {studyReviewJourney} from './study-review.mjs';
 import {continuousLibraryJourney} from './continuous-library.mjs';
 import {mixedReviewJourney,continuousStudyJourney} from './mixed-review.mjs';
@@ -23,3 +24,5 @@ await test('Default Study continues all canonical subjects through graded learni
 await test('Default Study admits external Library once and preserves paused and dropped subjects',async()=>{await writeFile(join(output,'continuous-library-runtime.json'),JSON.stringify(await continuousLibraryJourney(),null,2)+'\n');});
 
 await test('Study shows sources without copy grading; Review hides answers and preserves assistance',async()=>{await writeFile(join(output,'study-review-runtime.json'),JSON.stringify(await studyReviewJourney(),null,2)+'\n');});
+
+await test('Normalized Owner API NATO imports retain identity, history and strict grading through both starters',async()=>{await writeFile(join(output,'normalized-import-runtime.json'),JSON.stringify(await normalizedNatoJourney(),null,2)+'\n');});
