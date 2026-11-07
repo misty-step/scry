@@ -667,3 +667,51 @@ fn simplified_practice_has_one_identity_and_secondary_tools_without_losing_actio
     assert!(result.contains("name=\"mode\" value=\"join\""));
     assert!(result.contains("<summary>More</summary>"));
 }
+
+#[test]
+fn sequence_feedback_distinguishes_positions_from_unmatched_wording_without_regrading() {
+    let mut a = app();
+    mutate(
+        &mut a,
+        "/practice/lesson/start",
+        &[("starter", "rosary-joyful")],
+    );
+    answer(
+        &mut a,
+        "The Visitation\nThe Annunciation\nThe Nativity\nThe Presentation in the Temple\nThe Finding in the Temple",
+    );
+    let before = a.clone();
+    let page = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(page.contains("4 of 5 items matched · 2 in order."));
+    assert!(page.contains("Annunciation</span><small>You put #2</small>"));
+    assert!(page.contains("Visitation</span><small>You put #1</small>"));
+    assert!(page.contains("Presentation</span><small>Not matched</small>"));
+    assert!(page.contains("4. The Presentation in the Temple</span><small>Not recognized</small>"));
+    assert!(page.contains("<summary>Your submitted answer</summary>"));
+    assert!(!page.contains("Compare the text"));
+    assert!(!page.contains("<h2>Selected wording</h2>"));
+    assert!(!page.contains("<small>Missing</small>"));
+    assert_eq!(a, before);
+    let recovered = persistence::app_from_rows(&persistence::rows(&a).unwrap()).unwrap();
+    assert_eq!(recovered, before);
+    assert_eq!(
+        page,
+        scry::web::render(&recovered, "/recall", &BTreeMap::new(), NOW, None)
+    );
+}
+
+#[test]
+fn sequence_feedback_identifies_repeated_and_escaped_unknown_entries() {
+    let mut a = app();
+    mutate(
+        &mut a,
+        "/practice/lesson/start",
+        &[("starter", "rosary-joyful")],
+    );
+    answer(&mut a, "\nAnnunciation\n\nAnnunciation\n<unknown>\n");
+    let page = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(page.contains("Annunciation</span><small>Repeated 2 times</small>"));
+    assert!(page.contains("2. Annunciation</span><small>Repeated</small>"));
+    assert!(page.contains("3. &lt;unknown&gt;</span><small>Not recognized</small>"));
+    assert!(!page.contains("<unknown>"));
+}

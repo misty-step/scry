@@ -27,11 +27,11 @@ export async function lessonJourney(){
   prompt=await f.get('/');assert.match(prompt,/\n\nFirst line\nSecond line<\/textarea>/);
   const browse=await f.get('/lessons');assert.doesNotMatch(browse,/Annunciation|Visitation/);assert.deepEqual((await f.rows()).meta.practice,held.meta.practice);assert.deepEqual(domain(await f.rows()),domain(held));
   await submit(f,'/practice/answer',{...nativeFields(prompt,'/practice/answer'),answer:'Annunciation\nNativity\nPresentation\nFinding in the Temple'});
-  let result=await f.get('/');assert.match(result,/data-verdict="Again"/);assert.match(result,/4 of 5 (?:mysteries|items) recalled/);
+  let result=await f.get('/');assert.match(result,/data-verdict="Again"/);assert.match(result,/4 of 5 items matched/);
   const afterMiss=await f.rows();await f.get('/');assert.deepEqual(domain(await f.rows()),domain(afterMiss),'Result reload creates no new evidence.');
   await submit(f,'/practice/lesson/next',selectedFields(result,'/practice/lesson/next','mode','whole'));
   await submit(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:'The Annunciation\nVisitation\nBirth of Jesus\nPresentation\nFinding of Jesus in the Temple'});
-  result=await f.get('/');assert.match(result,/data-verdict="Good"/);assert.match(result,/5 of 5 (?:mysteries|items) recalled/);
+  result=await f.get('/');assert.match(result,/data-verdict="Good"/);assert.match(result,/5 of 5 items matched/);
   const prayerStart=selectedFields(result,'/practice/lesson/start','starter','st-michael-en');await submit(f,'/practice/lesson/start',prayerStart);
   const study=await f.get('/'),sourceRows=await f.rows(),sourcePrompt=current(sourceRows),v=version(sourceRows,sourcePrompt.prompt.version_id),line=v.sections.flatMap(section=>section.units)[0].text;
   assertStudySource(study,line);assert.match(study,/Phrase 1 \/ 8/);assert.match(study,/English · supplied wording/);
@@ -92,6 +92,29 @@ export async function lessonWalk(browser,capture){
    if(!noJS)assert.equal(await page.locator('#answer').evaluate(el=>el===document.activeElement),true,'Returning restores answer focus without navigation.');
    if(!noJS&&width===1280){await page.locator('#answer').press('End');await page.locator('#answer').press('Enter');assert.equal(await page.locator('[data-state="exact-result"]').count(),0,'Enter inserts a line, not a grade.');}
    await page.locator('#answer').fill('Annunciation\nNativity\nPresentation\nFinding in the Temple');await activate(page.locator('form[action="/practice/answer"] button'));await page.locator('[data-verdict="Again"]').waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);assert.equal(await page.locator('[data-result-metric="recall"]').innerText(),'0 / 1');assert.match(await page.locator('[data-result-progress]').innerText(),/This sequence/);await shot('ordered-missing');
+   assert.equal(await page.locator('.sequence-feedback li').count(),5);
+   assert.match(await page.locator('.sequence-feedback [data-item-status="missing"]').innerText(),/Visitation\s*Not matched/);
+   assert.equal(await page.getByText('Selected wording',{exact:true}).count(),0,'Canonical sequence is not repeated beneath the result.');
+   const sequenceRows=domain(await f.rows());
+   await activate(page.getByText('Your submitted answer',{exact:true}));
+   assert.equal(await page.locator('.lesson-answer .reading').isVisible(),true);
+   await shot('ordered-answer-open');
+   await activate(page.getByText('Your submitted answer',{exact:true}));
+   assert.equal(await page.locator('.lesson-answer .reading').isVisible(),false);
+   await page.reload();
+   assert.deepEqual(domain(await f.rows()),sequenceRows,'Opening, dismissing and reloading feedback preserves learning evidence.');
+   await activate(page.locator('form[data-next] button'));
+   const longUnknown='Unrecognized'+ 'word'.repeat(60);
+   await page.locator('#answer').fill('Visitation\nAnnunciation\nNativity\n'+longUnknown+'\nFinding in the Temple\nAnnunciation');
+   await activate(page.locator('form[action="/practice/answer"] button'));
+   await page.locator('[data-verdict="Again"]').waitFor();
+   assert.match(await page.locator('.sequence-extras').innerText(),/Not recognized/);
+   assert.match(await page.locator('.sequence-extras').innerText(),/Repeated/);
+   assert.equal(await page.locator('.sequence-extras li').count(),2);
+   await shot('ordered-long-extra');
+   await activate(page.getByText('Your submitted answer',{exact:true}));
+   await shot('ordered-long-answer-open');
+   await activate(page.getByText('Your submitted answer',{exact:true}));
    await activate(page.locator('.lesson-picker > summary'));await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="st-michael-en"]')}).locator('button'));
    assert.equal(await page.locator('#answer').count(),0);await enterMemoryPage(page);assert.match(await page.locator('.lesson-instruction').innerText(),/from memory/);assert.match(await page.locator('.lesson-position').innerText(),/Phrase 1 \/ 8/);assert.equal(await page.locator('.practice-heading h1').count(),1);assert.equal(await page.locator('.lesson-position').count(),1);assert.equal(await page.locator('.lesson-stage h1').count(),0);assert.equal(await page.locator('.practice-tools > details').count(),2);await activate(page.locator('.lesson-evidence > summary'));assert.equal(await page.locator('.lesson-evidence').getAttribute('open'),'');await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('.lesson-evidence').getAttribute('open'),null);await activate(page.locator('.lesson-picker > summary'));await shot('prayer-guided');const r=await f.rows(),p=current(r),v=version(r,p.prompt.version_id);
    // An understandable learner mistake: continuing with the following phrase.

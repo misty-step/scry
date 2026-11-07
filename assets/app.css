@@ -471,3 +471,19 @@ body.private-suspended .page-frame { visibility: hidden; }
 
 /* The explicit checkpoint requires enhanced, scope-bound submission. */
 [data-checkpoint-save][hidden], [data-checkpoint-discard][hidden], [data-checkpoint-custody][hidden] {display:none}
+
+/* One canonical sequence, with submitted positions beside it. */
+.sequence-feedback {margin:12px 0;padding-left:22px}
+.sequence-feedback li {padding:7px 0 7px 2px;font-size:15px;line-height:1.4}
+.sequence-feedback li>span {display:inline;font-size:15px;overflow-wrap:anywhere}
+.sequence-feedback small {display:inline-block;margin-left:10px;font:12px/1.4 var(--sans);color:var(--ink-2)}
+.sequence-feedback [data-item-status="misplaced"] small,.sequence-feedback [data-item-status="missing"] small,.sequence-feedback [data-item-status="repeated"] small {color:var(--miss)}
+.sequence-extras {margin:10px 0;font-size:12px;line-height:1.5}
+.sequence-extras p {margin:0 0 4px;color:var(--ink-2)}
+.sequence-extras ul {list-style:none;padding:0;margin:0}
+.sequence-extras li {overflow-wrap:anywhere}
+.sequence-extras small {margin-left:8px;color:var(--ink-2)}
+.lesson-stage:has(.sequence-feedback) .result-progress {margin:12px 0;padding:10px 0;gap:12px}
+.lesson-stage:has(.sequence-feedback) .result-progress strong {font-size:16px;letter-spacing:0}
+.lesson-answer summary::after {content:'⌄';margin-left:auto}
+.lesson-answer[open]>summary::after {content:'⌃'}

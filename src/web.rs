@@ -1766,28 +1766,52 @@ impl View<'_> {
                 if let Ok(feedback) = crate::ordered::feedback(v, 0..all.len(), &a.raw_answer) {
                     let _ = write!(
                         out,
-                        "<p class=\"lesson-note\">{} of {} items recalled. {} in order.</p><ol class=\"sequence-feedback\">",
+                        "<p class=\"lesson-note\">{} of {} items matched · {} in order.</p><ol class=\"sequence-feedback\" aria-label=\"Expected order\">",
                         feedback.recalled,
                         all.len(),
                         feedback.in_order
                     );
                     for item in &feedback.items {
                         use crate::ordered::ItemStatus;
-                        let label = match item.status {
-                            ItemStatus::Correct => "In order",
-                            ItemStatus::Misplaced => "Out of order",
-                            ItemStatus::Missing => "Missing",
-                            ItemStatus::Repeated => "Repeated",
+                        let (state, label) = match item.status {
+                            ItemStatus::Correct => ("correct", "In order".to_string()),
+                            ItemStatus::Misplaced => (
+                                "misplaced",
+                                format!("You put #{}", item.answered_positions[0]),
+                            ),
+                            ItemStatus::Missing => ("missing", "Not matched".to_string()),
+                            ItemStatus::Repeated => (
+                                "repeated",
+                                format!("Repeated {} times", item.answered_positions.len()),
+                            ),
                         };
                         let _ = write!(
                             out,
-                            "<li><span>{}</span><small>{label}</small></li>",
+                            "<li data-item-status=\"{state}\"><span>{}</span><small>{label}</small></li>",
                             escape(all[item.unit_index].text.trim())
                         );
                     }
                     out.push_str("</ol>");
                     if !feedback.extras.is_empty() {
-                        out.push_str("<p class=\"lesson-note\">Your answer also contained an unrecognized or repeated entry.</p>");
+                        let lines = a
+                            .raw_answer
+                            .lines()
+                            .filter(|line| !line.trim().is_empty())
+                            .collect::<Vec<_>>();
+                        out.push_str("<div class=\"sequence-extras\"><p>Entries to check</p><ul>");
+                        for extra in &feedback.extras {
+                            let label = match extra.kind {
+                                crate::ordered::ExtraKind::Unknown => "Not recognized",
+                                crate::ordered::ExtraKind::Repeated => "Repeated",
+                            };
+                            let _ = write!(
+                                out,
+                                "<li><span>{}. {}</span><small>{label}</small></li>",
+                                extra.position,
+                                escape(lines[extra.position - 1].trim())
+                            );
+                        }
+                        out.push_str("</ul></div>");
                     }
                 }
             } else if !good {
@@ -1912,7 +1936,13 @@ impl View<'_> {
             if !ordered && !self.app.practice.mixed_review {
                 extras.push_str("</div>");
             }
-            if ordered || good {
+            if ordered {
+                let _ = write!(
+                    out,
+                    "<details class=\"lesson-answer\"><summary>Your submitted answer</summary><p class=\"reading\">{}</p></details>",
+                    escape(&a.raw_answer)
+                );
+            } else if good {
                 let _ = write!(
                     out,
                     "<details class=\"lesson-answer\"><summary>Compare the text</summary><h2>Your answer</h2><p class=\"reading\">{}</p><h2>Selected wording</h2>{}</details>",
