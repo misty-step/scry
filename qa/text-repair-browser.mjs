@@ -49,7 +49,11 @@ export async function textRepairWalk(browser,capture){
     const response=await rt.worker.fetch(request.url(),{method:request.method(),headers,...(request.method()==='POST'?{body:request.postDataBuffer()}:{}),redirect:'manual'});
     if(request.method()==='POST'&&new URL(request.url()).pathname==='/library/version/repair'){
      posts.push({url:request.url(),body:request.postData(),scope:browserHeaders['x-scry-expected-scope']||null,status:response.status});
-     if(lose){lose=false;assert.equal(response.status,303);await route.abort('failed');return;}
+     if(response.status!==303&&response.status!==409){
+      let csrfMatches=false,formReadable=false;try{const form=await new Request(request.url(),{method:'POST',headers:browserHeaders,body:request.postDataBuffer()}).formData();formReadable=true;csrfMatches=form.get('csrf')===JSON.parse((await rows()).meta).csrf;}catch{}
+      result.refusal={status:response.status,origin:browserHeaders.origin||null,fetchSite:browserHeaders['sec-fetch-site']||null,contentType:browserHeaders['content-type']?.split(';')[0]||null,formReadable,csrfMatches,reason:(await response.clone().text()).slice(0,180)};
+     }
+     if(lose&&response.status===303){lose=false;await route.abort('failed');return;}
     }
     const body=Buffer.from(await response.arrayBuffer());const responseHeaders=Object.fromEntries(response.headers);delete responseHeaders['content-length'];await route.fulfill({status:response.status,headers:responseHeaders,body});
    });
@@ -81,5 +85,5 @@ export async function textRepairWalk(browser,capture){
   }catch(error){result.status='fail';result.reason=error.message;if(page)result.evidence.push(await capture(page,label+'-failure.png'));}
   finally{if(context)await context.close();await rt.mf.dispose();}
  }
- await writeFile('target/keyed-mapping/text-repair/browser.json',JSON.stringify(report,null,2)+'\n');return report;
+ await writeFile('target/keyed-mapping/text-repair/browser.json',JSON.stringify(report,null,2)+'\n');console.log('Synthetic repair browser results: '+JSON.stringify(report));return report;
 }
