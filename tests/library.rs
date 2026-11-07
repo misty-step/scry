@@ -48,6 +48,15 @@ fn valid_version_can_exceed_the_serialized_record_limit() {
     )
     .unwrap();
     engine::validate_app(&app).unwrap();
+    let version = app.library.versions.values().next().unwrap();
+    assert_eq!(version.sections.len(), 4096);
+    assert!(
+        version
+            .sections
+            .iter()
+            .all(|section| section.units.len() == 2)
+    );
+    assert!(serde_json::to_vec(version).unwrap().len() > persistence::MAX_RECORD_BYTES);
     let error = persistence::rows(&app).unwrap_err();
     assert_eq!(error.status, 413);
     assert!(error.message.contains("storage limit"));

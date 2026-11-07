@@ -24,10 +24,27 @@ async function fixture(state,run){
   }
   const store=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
   const rows=()=>store.exec('SELECT key,value FROM records ORDER BY key');
-  const post=(path,fields)=>runtime.worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});
+  const post=(path,fields,headers={})=>runtime.worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded',...headers},body:new URLSearchParams(fields)});
   const get=async path=>{const response=await runtime.worker.fetch(origin+path);assert.equal(response.status,200);return response.text();};
   await run({runtime,origin,rows,post,get});
  }finally{await runtime.mf.dispose();assert.equal(egress,0);}
+}
+// Use the same real, scoped checkpoint setup in runtime and browser proof.
+// An unavailable legacy question may retain learner text, but cannot grade it.
+async function saveLegacyDraft({rows,post,get}){
+ const before=await rows(),meta=JSON.parse(before.find(r=>r.key==='meta').value),prompt=meta.practice.current.prompt;
+ const draft='Keep my saved answer before switching.';
+ const fields={csrf:meta.csrf,operation_id:randomUUID(),prompt_id:prompt.id,generation:'0',answer:draft};
+ const scope=JSON.parse(await get('/session/scope')).scope;
+ assert.equal((await post('/practice/draft',fields)).status,403,'Checkpoint save requires an authenticated page.');
+ assert.equal((await post('/practice/draft',fields,{'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64)})).status,409,'Checkpoint save requires the original notebook scope.');
+ assert.deepEqual(await rows(),before,'Unscoped or wrong-scope draft saves cannot write.');
+ const saved=await post('/practice/draft',fields,{'X-Scry-Request':'page','X-Scry-Expected-Scope':scope});
+ assert.equal(saved.status,303,await saved.text());
+ const after=await rows(),checkpoint=JSON.parse(after.find(r=>r.key==='meta').value).practice.answer_checkpoint;
+ assert.equal(checkpoint.draft.answer,draft);assert.equal(checkpoint.draft.prompt_id,prompt.id);
+ assert.equal(after.filter(r=>r.key.startsWith('practice_attempts/')).length,0,'Saving a draft never grades the unavailable question.');
+ return draft;
 }
 export async function emptyTextJourney(){
  const report=[];
@@ -62,10 +79,12 @@ export async function emptyTextJourney(){
  }
  for(const state of ['source','quiz','whole_quiz','answered']){
   await fixture(state,async({rows,post,get})=>{
+   const draft=state==='quiz'?await saveLegacyDraft({rows,post,get}):null;
    const before=await rows(),meta=JSON.parse(before.find(r=>r.key==='meta').value),prompt=meta.practice.current.prompt;
    const heldPage=await get('/recall');
    assert.match(heldPage,/data-state="practice-unavailable"/);assert.ok(heldPage.includes(prompt.id));
    assert.doesNotMatch(heldPage,/action="\/practice\/(answer|quiz)"/);
+   if(draft)assert.ok(heldPage.includes(`<textarea id="unavailable-draft" readonly>${draft}</textarea>`));
    assert.deepEqual(await rows(),before,'Reading the restored held prompt does not repair it.');
    const fields={csrf:meta.csrf,operation_id:randomUUID(),revision:String(meta.revision),prompt_id:prompt.id};
    const checks=state==='source'?[
@@ -94,7 +113,7 @@ export async function emptyTextJourney(){
    const after=await rows(),current=JSON.parse(after.find(r=>r.key==='meta').value).practice.current;
    assert.notEqual(current.prompt.version_id,prompt.version_id);
    for(const row of saved.filter(r=>r.key.startsWith('library_')||r.key.startsWith('practice_attempts/')||r.key.startsWith('practice_payload/')||r.key.startsWith('practice_cards/')))assert.deepEqual(after.find(r=>r.key===row.key),row,'Escape preserves old content, cards and attempts.');
-   report.push({legacyState:state,restored:true,rejectedWithoutWrites:checks.length,historicalReplay:state==='answered',nativeEscape:true});
+   report.push({legacyState:state,restored:true,rejectedWithoutWrites:checks.length,historicalReplay:state==='answered',nativeEscape:true,...(draft?{scopedDraftPreserved:true,unscopedDraftRejected:true}:{})});
   });
  }
  return {sourceFixture:legacy.source_commit,cases:report,externalCalls:0};
@@ -103,10 +122,9 @@ export async function emptyTextJourney(){
 export async function emptyTextWalk(browser,capture){
  const report=[];
  for(const [width,noJS]of [[320,true],[1280,false]]){
-  await fixture('quiz',async({origin,rows,post})=>{
+  await fixture('quiz',async({origin,rows,post,get})=>{
    const meta=JSON.parse((await rows()).find(r=>r.key==='meta').value),prompt=meta.practice.current.prompt;
-   const draft='Keep my saved answer before switching.';
-   assert.equal((await post('/practice/draft',{csrf:meta.csrf,operation_id:randomUUID(),prompt_id:prompt.id,generation:'0',answer:draft})).status,303);
+   const draft=await saveLegacyDraft({rows,post,get});
    const before=await rows(),context=await browser.newContext({viewport:{width,height:844},javaScriptEnabled:!noJS,isMobile:noJS,hasTouch:noJS,colorScheme:noJS?'dark':'light'});
    try{
     const page=await context.newPage();page.setDefaultTimeout(12000);
