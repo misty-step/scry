@@ -129,3 +129,9 @@ Versions with such boundaries remain readable and restorable, but are excluded
 from new practice in every scope. A normalized reimport returns the original
 Version, not repaired boundaries. Original grades, schedules and exact receipts
 remain historical evidence; no production content was inspected or migrated.
+
+Quarantined prompts show an unavailable state, a copyable acknowledged draft,
+and an explicit fenced action to study other material. Library and the lesson
+shelf do not offer a new start for affected Versions. `emptyTextWalk`, included
+in the existing keyed-mapping browser gate, covers this recovery at 320px native
+no-JavaScript and 1280px enhanced layouts without creating an Attempt.

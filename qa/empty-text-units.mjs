@@ -63,7 +63,9 @@ export async function emptyTextJourney(){
  for(const state of ['source','quiz','whole_quiz','answered']){
   await fixture(state,async({rows,post,get})=>{
    const before=await rows(),meta=JSON.parse(before.find(r=>r.key==='meta').value),prompt=meta.practice.current.prompt;
-   assert.equal((await get('/recall')).includes(prompt.id),true);
+   const heldPage=await get('/recall');
+   assert.match(heldPage,/data-state="practice-unavailable"/);assert.ok(heldPage.includes(prompt.id));
+   assert.doesNotMatch(heldPage,/action="\/practice\/(answer|quiz)"/);
    assert.deepEqual(await rows(),before,'Reading the restored held prompt does not repair it.');
    const fields={csrf:meta.csrf,operation_id:randomUUID(),revision:String(meta.revision),prompt_id:prompt.id};
    const checks=state==='source'?[
@@ -85,8 +87,49 @@ export async function emptyTextJourney(){
     assert.deepEqual(after.filter(r=>r.key!=='meta'),before.filter(r=>r.key!=='meta'));
     const nextMeta=JSON.parse(after.find(r=>r.key==='meta').value);assert.equal(nextMeta.revision,meta.revision+1);nextMeta.revision=meta.revision;assert.deepEqual(nextMeta,meta);
    }
-   report.push({legacyState:state,restored:true,rejectedWithoutWrites:checks.length,historicalReplay:state==='answered'});
+   const saved=await rows();
+   const escape=nativeFields(await get('/recall'),'/practice/review/start');
+   assert.equal(escape[state==='answered'?'after':'leave'],prompt.id);
+   const escaped=await post('/practice/review/start',escape);assert.equal(escaped.status,303);
+   const after=await rows(),current=JSON.parse(after.find(r=>r.key==='meta').value).practice.current;
+   assert.notEqual(current.prompt.version_id,prompt.version_id);
+   for(const row of saved.filter(r=>r.key.startsWith('library_')||r.key.startsWith('practice_attempts/')||r.key.startsWith('practice_payload/')||r.key.startsWith('practice_cards/')))assert.deepEqual(after.find(r=>r.key===row.key),row,'Escape preserves old content, cards and attempts.');
+   report.push({legacyState:state,restored:true,rejectedWithoutWrites:checks.length,historicalReplay:state==='answered',nativeEscape:true});
   });
  }
  return {sourceFixture:legacy.source_commit,cases:report,externalCalls:0};
+}
+
+export async function emptyTextWalk(browser,capture){
+ const report=[];
+ for(const [width,noJS]of [[320,true],[1280,false]]){
+  await fixture('quiz',async({origin,rows,post})=>{
+   const meta=JSON.parse((await rows()).find(r=>r.key==='meta').value),prompt=meta.practice.current.prompt;
+   const draft='Keep my saved answer before switching.';
+   assert.equal((await post('/practice/draft',{csrf:meta.csrf,operation_id:randomUUID(),prompt_id:prompt.id,generation:'0',answer:draft})).status,303);
+   const before=await rows(),context=await browser.newContext({viewport:{width,height:844},javaScriptEnabled:!noJS,isMobile:noJS,hasTouch:noJS,colorScheme:noJS?'dark':'light'});
+   try{
+    const page=await context.newPage();page.setDefaultTimeout(12000);
+    await page.goto(origin+'/recall');
+    await page.locator('[data-state="practice-unavailable"]').waitFor();
+    assert.equal(await page.locator('form[action="/practice/answer"],form[action="/practice/quiz"]').count(),0);
+    assert.equal(await page.locator('#unavailable-draft').inputValue(),draft);
+    assert.equal(await page.locator('#unavailable-draft').getAttribute('readonly'),'');
+    assert.equal(await page.locator('form[action="/practice/review/start"] input[name="leave"]').inputValue(),prompt.id);
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal overflow.');
+    await capture(page,`empty-unit-unavailable-${width}${noJS?'-native':''}.png`);
+    const button=page.getByRole('button',{name:'Study other material'});
+    if(noJS)await button.tap();else{await button.focus();await page.keyboard.press('Enter');}
+    await page.waitForFunction(()=>!document.querySelector('[data-state="practice-unavailable"]'));
+    const after=await rows();
+    assert.notEqual(JSON.parse(after.find(r=>r.key==='meta').value).practice.current.prompt.id,prompt.id);
+    for(const row of before.filter(r=>r.key.startsWith('library_')||r.key.startsWith('practice_attempts/')||r.key.startsWith('practice_payload/')||r.key.startsWith('practice_cards/')))assert.deepEqual(after.find(r=>r.key===row.key),row);
+    assert.equal(after.filter(r=>r.key.startsWith('practice_attempts/')).length,0);
+    await page.reload();assert.equal(await page.locator('[data-state="practice-unavailable"]').count(),0);
+    await capture(page,`empty-unit-escaped-${width}${noJS?'-native':''}.png`);
+    report.push({status:'pass',width,noJS,copyableDraft:true,nativeFence:true,escapeWithoutAttempt:true,reload:true});
+   }finally{await context.close();}
+  });
+ }
+ return report;
 }

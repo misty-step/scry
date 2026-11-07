@@ -334,6 +334,9 @@ fn rejection_retains_an_acknowledged_draft_for_a_legacy_quiz() {
             ("answer", "Keep this acknowledged answer.".into()),
         ],
     );
+    let page = scry::web::render(&a, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(page.contains("id=\"unavailable-draft\" readonly"));
+    assert!(page.contains("Keep this acknowledged answer."));
     reject(
         &mut a,
         "/practice/answer",
@@ -350,4 +353,64 @@ fn rejection_retains_an_acknowledged_draft_for_a_legacy_quiz() {
             .answer,
         "Keep this acknowledged answer."
     );
+}
+
+#[test]
+fn quarantined_versions_render_honest_unavailability_and_fenced_escape() {
+    let a = legacy("unstarted");
+    let page = scry::web::render(
+        &a,
+        &format!("/library/versions/{}", vid(&a)),
+        &BTreeMap::new(),
+        NOW,
+        None,
+    );
+    assert!(page.contains("Practice is unavailable"));
+    assert!(!page.contains("action=\"/practice/study/start\""));
+    assert!(
+        page.contains("Alpha beta."),
+        "Saved text is still readable."
+    );
+    let shelf = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
+    assert!(shelf.contains("Practice unavailable"));
+    assert!(!shelf.contains(&format!("name=\"version_id\" value=\"{}\"", vid(&a))));
+
+    for state in ["source", "quiz", "whole_quiz", "answered"] {
+        let mut a = legacy(state);
+        let before = persistence::rows(&a).unwrap();
+        let prompt = pid(&a);
+        let fence = if state == "answered" {
+            "after"
+        } else {
+            "leave"
+        };
+        for route in ["/", "/recall"] {
+            let page = scry::web::render(&a, route, &BTreeMap::new(), NOW, None);
+            assert!(
+                page.contains("data-state=\"practice-unavailable\""),
+                "{state} {route}"
+            );
+            assert!(!page.contains("action=\"/practice/answer\""));
+            assert!(!page.contains("action=\"/practice/quiz\""));
+            assert!(page.contains(&format!("name=\"{fence}\" value=\"{prompt}\"")));
+            assert!(page.contains("Study other material"));
+        }
+        let shelf = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
+        let form = shelf
+            .split("action=\"/practice/review/start\"")
+            .nth(1)
+            .unwrap()
+            .split("</form>")
+            .next()
+            .unwrap();
+        assert!(form.contains(&format!("name=\"{fence}\" value=\"{prompt}\"")));
+        assert_eq!(persistence::rows(&a).unwrap(), before);
+        let history = a.practice.attempts.clone();
+        call(&mut a, "/practice/review/start", &[(fence, prompt)]);
+        assert_ne!(
+            vid(&legacy(state)),
+            a.practice.current.as_ref().unwrap().prompt.version_id
+        );
+        assert_eq!(a.practice.attempts, history);
+    }
 }

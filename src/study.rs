@@ -324,7 +324,7 @@ pub(crate) fn studyable(version: &Version) -> AppResult<()> {
 /// Admission for new work, not validation of immutable historical evidence.
 /// A retained Version with an empty-normalized Unit is kept readable/restorable
 /// but cannot produce new Attempts or progress in any of its scopes.
-fn reviewable(version: &Version) -> AppResult<()> {
+pub(crate) fn reviewable(version: &Version) -> AppResult<()> {
     studyable(version)?;
     if version.kind == Kind::Text {
         crate::library::check_text_units(units(version).iter().map(|u| u.text.as_str()))?;
