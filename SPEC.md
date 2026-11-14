@@ -442,8 +442,8 @@ horizontal clipping, including with long questions and explanations.
   that is not yet due as ordinary review. It prefers a different letter from
   the one just answered, returning to that one only when it is due and
   nothing else is eligible, and does not restart at A.
-- The practised count is the number of distinct letters with an unaided,
-  graded Attempt, labelled "practised", never "correct" or "mastered".
+- The practiced count is the number of distinct letters with an unaided,
+  graded Attempt, labelled "practiced", never "correct" or "mastered".
   Importing, revealing and repeating cannot inflate it.
 - A read-only progress disclosure on the same screen shows all 26 letters.
   For each: answered Prompts, including assisted and early practice; accuracy
