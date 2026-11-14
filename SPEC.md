@@ -310,6 +310,10 @@ horizontal clipping, including with long questions and explanations.
 - Each Verdict keeps its actual Authority and the policy it was decided
   under. Replay, display, export and recovery reproduce the stored judgment
   without judging again.
+- While Jev is judging an answer, Scry says that the answer is saved and
+  being checked. Its Card is not offered again until the check resolves, and
+  where nothing else is due Scry shows the answer being checked, not rest. A
+  Card an agent asks for by name is still presented.
 - When Jev is unavailable, fails or is inconclusive, the answer stays saved
   as an Attempt with no Verdict, Scry says so honestly, and the saved
   material and history stay reachable. Next moves on and the Card's schedule
