@@ -46,7 +46,8 @@ async function fixture(t, twoUnits = false) {
     child.stdout.on('data', b => stdout += b);
     child.stderr.on('data', b => stderr += b);
     child.on('error', reject);
-    child.on('exit', code => {try {
+    // exit can precede the last stdout bytes; close waits for both pipes.
+    child.on('close', code => {try {
       assert.ok(!stdout.includes(secret) && !stderr.includes(secret), 'CLI never prints the credential.');
       const body = JSON.parse(stdout);
       assert.equal(code, exit, JSON.stringify(body));

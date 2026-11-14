@@ -168,7 +168,8 @@ export async function ownerJourney() {
         let out='',err='';proc.stdout.on('data',data=>out+=data);proc.stderr.on('data',data=>err+=data);proc.on('error',reject);
         // A CLI may exit before reading stdin (a refused --url); its exit code and JSON stay the result.
         proc.stdin.on('error',error=>{if(error.code!=='EPIPE')reject(error);});
-        proc.on('exit',code=>{assert.ok(!out.includes(root.secret)&&!err.includes(root.secret),'CLI never echoes login secret.');try{const value=JSON.parse(out);const safe=structuredClone(value);delete safe.secret;transcript.push({command:['scry',...args,'--json'].join(' '),exit:code,output:safe});resolveResult({code,value,err});}catch{reject(Error('CLI must return JSON.'));}});proc.stdin.end(input);
+        // exit can precede the last stdout bytes; close waits for both pipes.
+        proc.on('close',code=>{assert.ok(!out.includes(root.secret)&&!err.includes(root.secret),'CLI never echoes login secret.');try{const value=JSON.parse(out);const safe=structuredClone(value);delete safe.secret;transcript.push({command:['scry',...args,'--json'].join(' '),exit:code,output:safe});resolveResult({code,value,err});}catch{reject(Error('CLI must return JSON.'));}});proc.stdin.end(input);
       });
       assert.equal((await cli(['login','--url',local,'--token-stdin'],root.secret+'\n')).code,0);
       assert.equal((await stat(config)).mode&0o777,0o600);

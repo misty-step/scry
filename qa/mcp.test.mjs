@@ -338,7 +338,7 @@ test('Extracted shared client preserves compiled CLI login, errors and one trans
     child.stdout.on('data',part=>stdout+=part); child.stderr.on('data',part=>stderr+=part);
     // A refused command can exit without reading stdin; exit code and output below decide.
     let stdinError=null; child.stdin.on('error',error=>{if(error.code!=='EPIPE')stdinError=error;});
-    const exit=once(child,'exit'); child.stdin.end(input); const [code]=await exit;
+    const exit=once(child,'close'); child.stdin.end(input); const [code]=await exit;
     assert.ifError(stdinError);
     assert.ok(!stdout.includes(secret) && !stderr.includes(secret),'CLI never reflects the Owner credential.');
     assert.ok(!stdout.includes(privateAnswer) && !stderr.includes(privateAnswer),'CLI errors never reflect the answer.');
