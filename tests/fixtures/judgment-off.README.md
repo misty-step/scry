@@ -44,3 +44,8 @@ To rewrite the fixture, check out the source named above, copy
 with a `CARGO_TARGET_DIR` of its own. Two checkouts that share a target
 directory share compiled artifacts, so the test would link the later library
 and the fixture would prove nothing.
+
+The synthetic Owner token's identifier appears as `TOKEN_ID` in the readable
+parts (`rows`, `wire`, `pages`): the test masks it on both sides of the
+comparison so the fixture holds nothing shaped like a credential. `sha256` and
+`bytes` are of the unmasked archive.

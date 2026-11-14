@@ -373,11 +373,22 @@ fn snapshot(o: &Owner) -> Value {
     })
 }
 
+/// A synthetic Owner token's identifier is masked in the readable parts, so the
+/// fixture holds nothing shaped like a credential. `sha256` and `bytes` still
+/// cover the unmasked archive.
+fn masked(o: &Owner, v: Value) -> Value {
+    let mut text = serde_json::to_string(&v).unwrap();
+    for id in o.app.owner_tokens.keys() {
+        text = text.replace(id.as_str(), "TOKEN_ID");
+    }
+    serde_json::from_str(&text).unwrap()
+}
+
 fn current() -> Value {
     Value::Object(
         notebooks()
             .iter()
-            .map(|o| (o.name.to_string(), snapshot(o)))
+            .map(|o| (o.name.to_string(), masked(o, snapshot(o))))
             .collect(),
     )
 }
