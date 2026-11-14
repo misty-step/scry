@@ -632,13 +632,21 @@ impl View<'_> {
                 .min()
         });
         let ready = study.is_none_or(|s| crate::study::study_ready(self.app, s, self.now));
+        if !ready {
+            let sid = study.map(|s| s.id.as_str());
+            return self.rest(
+                &lesson.input.title,
+                self.next_review(|s| Some(s.id.as_str()) == sid),
+                "",
+            );
+        }
         let timing = next.map_or_else(
             || "Start with a few short questions.".into(),
             |at| {
                 if at <= self.now {
                     "Ready to review.".into()
                 } else {
-                    format!("Next review {} (UTC).", date(at))
+                    next_review_line(at)
                 }
             },
         );
@@ -647,18 +655,16 @@ impl View<'_> {
             escape(&lesson.input.title),
             escape(&timing)
         );
-        if ready {
-            out.push_str(&self.form(
-                "/practice/lesson/start",
-                "mapping-starter-start",
-                "",
-                "",
-                &format!(
-                    "{}<button class=\"button primary\">Continue</button>",
-                    hidden("starter", starter)
-                ),
-            ));
-        }
+        out.push_str(&self.form(
+            "/practice/lesson/start",
+            "mapping-starter-start",
+            "",
+            "",
+            &format!(
+                "{}<button class=\"button primary\">Continue</button>",
+                hidden("starter", starter)
+            ),
+        ));
         out.push_str(&self.lesson_picker(false));
         out.push_str("</section>");
         out
@@ -710,16 +716,7 @@ impl View<'_> {
     fn exact_stream(&self) -> String {
         use crate::study::Status;
         let Some(p) = &self.app.practice.current else {
-            let due = crate::study::due(self.app, self.now);
-            let next = due["next_due_ms"].as_i64();
-            let message = next.map_or_else(
-                || "No next due time is scheduled. Resume a Study to introduce more Units.".into(),
-                |at| format!("Next due at {} (UTC).", date(at)),
-            );
-            return format!(
-                "<section class=\"empty-stage exact-study\" data-state=\"exact-caught-up\"><p class=\"eyebrow\">Exact recall</p><h1>A good place to pause.</h1><p class=\"lede\">No Unit is due. {}</p><a class=\"button primary\" href=\"/library\">Open Library</a></section>",
-                escape(&message)
-            );
+            return self.mixed_home();
         };
         if crate::study::reviewable(&self.app.library.versions[&p.prompt.version_id]).is_err() {
             return self.unavailable_practice(p);
@@ -2271,14 +2268,55 @@ impl View<'_> {
                 "<button class=\"button primary\"><span>Study</span><span aria-hidden=\"true\">→</span></button>",
             ));
         } else {
-            out.push_str("<p class=\"study-context\">All subjects</p><h1>Rest for now</h1>");
+            return self.rest("All subjects", self.next_review(|_| true), "");
         }
         out.push_str("</div>");
-        out.push_str(&self.lesson_picker(false).replacen(
+        out.push_str(&self.browse());
+        out.push_str("</section>");
+        out
+    }
+    fn browse(&self) -> String {
+        self.lesson_picker(false).replacen(
             "<summary><span>Lessons</span>",
             "<summary><span>Browse</span>",
             1,
-        ));
+        )
+    }
+    /// The earliest future review among Studies that still serve reviews.
+    fn next_review(&self, in_scope: impl Fn(&crate::study::Study) -> bool) -> Option<i64> {
+        self.app
+            .practice
+            .cards
+            .values()
+            .filter(|c| {
+                c.state.schedule.due_ms > self.now
+                    && self.app.practice.studies.get(&c.study_id).is_some_and(|s| {
+                        s.status != crate::study::Status::Dropped
+                            && crate::study::reviewable(&self.app.library.versions[&s.version_id])
+                                .is_ok()
+                            && in_scope(s)
+                    })
+            })
+            .map(|c| c.state.schedule.due_ms)
+            .min()
+    }
+    /// The one nothing-due state, under Study and inside a focused lesson.
+    /// `tools` are the lesson's own disclosures, shown after Browse.
+    fn rest(&self, context: &str, next_review: Option<i64>, tools: &str) -> String {
+        let mut out = format!(
+            "<section class=\"nato-screen study-home\" data-state=\"rest\"><div class=\"study-entry\"><p class=\"study-context\">{}</p><h1>Rest for now</h1>",
+            escape(context)
+        );
+        if let Some(at) = next_review {
+            let _ = write!(
+                out,
+                "<p class=\"study-context\" data-next-review>{}</p>",
+                escape(&next_review_line(at))
+            );
+        }
+        out.push_str("</div>");
+        out.push_str(&self.browse());
+        out.push_str(tools);
         out.push_str("</section>");
         out
     }
@@ -2426,10 +2464,7 @@ impl View<'_> {
             }
             if other_prompt {
                 out.push_str("<h1>Your review is waiting.</h1><p>Finish your saved question before starting NATO.</p><a class=\"button primary\" href=\"/recall\">Resume review</a>");
-            } else if has_study
-                && (self.path == "/recall"
-                    || self.query.get("practice").is_some_and(|v| v == "nato"))
-            {
+            } else if has_study && self.query.get("practice").is_some_and(|v| v == "nato") {
                 let has_eligible = self.app.practice.studies.values().any(|s| {
                     nato_versions.contains(s.version_id.as_str())
                         && s.status != crate::study::Status::Dropped
@@ -2459,24 +2494,15 @@ impl View<'_> {
                         "<button class=\"button primary\">Continue practice</button>",
                     ));
                 } else {
-                    let next_due = self
-                        .app
-                        .practice
-                        .cards
-                        .values()
-                        .filter(|c| {
-                            self.app.practice.studies.get(&c.study_id).is_some_and(|s| {
-                                s.status != crate::study::Status::Dropped
-                                    && nato_versions.contains(s.version_id.as_str())
-                            }) && c.state.schedule.due_ms > self.now
-                        })
-                        .map(|c| c.state.schedule.due_ms)
-                        .min();
-                    out.push_str("<h1>All set for now.</h1>");
-                    if let Some(ms) = next_due {
-                        let _ = write!(out, "<p>Next review {}.</p>", relative(ms, self.now));
-                    }
-                    out.push_str("<a class=\"text-link\" href=\"/\">Back to start</a>");
+                    return self.rest(
+                        "NATO alphabet",
+                        self.next_review(|s| nato_versions.contains(s.version_id.as_str())),
+                        &format!(
+                            "<div class=\"practice-tools\">{}{}</div>",
+                            self.nato_progress(),
+                            self.nato_reference()
+                        ),
+                    );
                 }
             } else {
                 let (title, desc, action) = if has_study {
@@ -3537,19 +3563,12 @@ pub fn render(
         {
             view.nato_screen()
         }
-        "/recall" if app.practice.current.is_none() && app.practice.mixed_review => {
-            view.mixed_home()
-        }
+        // Opening practice with nothing held selects nothing: it offers Study.
         "/recall"
             if app.practice.current.is_none()
-                && app.practice.studies.values().any(|s| {
-                    app.library
-                        .versions
-                        .get(&s.version_id)
-                        .is_some_and(crate::library::is_nato)
-                }) =>
+                && (app.practice.mixed_review || exact_stream_active(app)) =>
         {
-            view.nato_screen()
+            view.mixed_home()
         }
         "/recall" if exact_stream_active(app) => view.exact_stream(),
         "/recall" | "/library" => view.library(),
@@ -3920,6 +3939,9 @@ fn date(ms: i64) -> String {
     chrono::DateTime::from_timestamp_millis(ms)
         .map(|d| d.format("%b %-d, %Y · %H:%M UTC").to_string())
         .unwrap_or_else(|| "at an unknown time".into())
+}
+fn next_review_line(at: i64) -> String {
+    format!("Next review {}.", date(at))
 }
 fn relative(ms: i64, now: i64) -> String {
     let diff = ms - now;

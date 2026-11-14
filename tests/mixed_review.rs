@@ -140,7 +140,8 @@ fn mixed_rotates_subjects_due_only_without_import_or_new_units() {
     let html = web::render(&o.app, "/", &BTreeMap::new(), NOW + 141_000, None);
     assert!(!html.contains("Value"));
     assert_eq!(o.app, before);
-    study::ensure_stream(&mut o.app, NOW + 142_000, "refresh").unwrap();
+    let reopened = web::render(&o.app, "/recall", &BTreeMap::new(), NOW + 142_000, None);
+    assert!(reopened.contains(&format!("data-prompt-id=\"{}\"", o.prompt().id)));
     assert_eq!(held, o.app.practice.current);
     let archive = persistence::Archive::new(o.app.clone(), vec![], NOW + 142_000);
     let bytes = archive.encode().unwrap();
@@ -602,14 +603,19 @@ fn empty_mixed_get_is_read_only_and_explicit_study_admits_one_subject() {
     o.app.practice.mixed_review = true;
     let before = o.app.clone();
     assert!(study::continuous_preview(&o.app, NOW).is_some());
-    study::ensure_stream(&mut o.app, NOW, "read").unwrap();
+    for path in ["/", "/recall"] {
+        let page = web::render(&o.app, path, &BTreeMap::new(), NOW, None);
+        assert_eq!(page.matches("action=\"/practice/review/start\"").count(), 1);
+        assert!(!page.contains("data-prompt-id"));
+    }
     assert_eq!(o.app, before);
     o.mixed(NOW);
     assert_eq!(o.app.practice.studies.len(), 1);
     assert_eq!(o.app.practice.cards.len(), 1);
     assert_eq!(o.prompt().cue, "A");
     let saved = o.app.clone();
-    study::ensure_stream(&mut o.app, NOW, "read-held").unwrap();
+    let held = web::render(&o.app, "/recall", &BTreeMap::new(), NOW, None);
+    assert!(held.contains(&format!("data-prompt-id=\"{}\"", o.prompt().id)));
     assert_eq!(o.app, saved);
 }
 
@@ -626,6 +632,117 @@ fn paused_catalog_is_not_reenrolled_or_reactivated_and_rest_is_honest() {
     let page = web::render(&o.app, "/", &BTreeMap::new(), NOW, None);
     assert!(page.contains("Rest for now"));
     assert!(!page.contains("No reviews due"));
+    assert!(
+        !page.contains("data-next-review"),
+        "No review is scheduled, so none is stated"
+    );
+}
+
+fn rest_section(page: &str) -> &str {
+    let start = page
+        .find("<section class=\"nato-screen study-home\"")
+        .unwrap();
+    // Through the Browse summary; the shelf's forms carry per-path operation ids.
+    &page[start..page[start..].find("</summary>").unwrap() + start]
+}
+fn next_review_line(due: i64) -> String {
+    format!(
+        "data-next-review>Next review {}.</p>",
+        chrono::DateTime::from_timestamp_millis(due)
+            .unwrap()
+            .format("%b %-d, %Y · %H:%M UTC")
+    )
+}
+
+#[test]
+fn opening_practice_with_nothing_held_selects_nothing_and_offers_one_action_or_rest() {
+    let mut o = Owner::new();
+    park_catalog(&mut o);
+    let sid = o.mapping("Only", "A", NOW);
+    o.focus(&sid, NOW);
+    o.answer("Value", NOW);
+    o.focus(&sid, NOW);
+    assert!(o.app.practice.current.is_none());
+    assert!(!o.app.practice.mixed_review);
+    let cid = o.app.practice.cards.keys().next().unwrap().clone();
+    let due = o.app.practice.cards[&cid].state.schedule.due_ms;
+    assert!(due > NOW);
+    let before = o.app.clone();
+
+    // A due Card and nothing held: one explicit native action, nothing selected.
+    for path in ["/", "/recall"] {
+        let page = web::render(&o.app, path, &BTreeMap::new(), due, None);
+        assert_eq!(
+            page.matches("<form method=\"post\" action=\"/practice/review/start\"")
+                .count(),
+            1,
+            "{path}"
+        );
+        assert!(!page.contains("data-prompt-id"), "{path}");
+        assert!(!page.contains("Rest for now"), "{path}");
+    }
+    assert_eq!(o.app, before, "Opening practice changes nothing");
+
+    // Nothing due: the same rest state at Home and on opening practice.
+    let home = web::render(&o.app, "/", &BTreeMap::new(), due - 1, None);
+    let recall = web::render(&o.app, "/recall", &BTreeMap::new(), due - 1, None);
+    assert_eq!(rest_section(&home), rest_section(&recall));
+    let rest = rest_section(&recall);
+    assert!(rest.contains("data-state=\"rest\""));
+    assert!(rest.contains("<h1>Rest for now</h1>"));
+    assert!(rest.contains(&next_review_line(due)));
+    assert!(rest.contains("<summary><span>Browse</span>"));
+    assert!(!rest.contains("action=\"/practice/review/start\""));
+    assert!(!rest.contains("Open Library") && !rest.contains("Next due at"));
+    assert_eq!(o.app, before);
+
+    // The deliberate action takes the due Card.
+    o.mixed(due);
+    assert_eq!(
+        o.app.practice.current.as_ref().unwrap().targets[0].card_id,
+        cid
+    );
+}
+
+#[test]
+fn rest_states_the_earliest_review_of_studies_that_still_serve_reviews() {
+    let mut o = Owner::new();
+    park_catalog(&mut o);
+    let later = o.mapping("Later", "A", NOW);
+    o.focus(&later, NOW);
+    o.answer("Value", NOW);
+    o.focus(&later, NOW);
+    let sooner = o.mapping("Sooner", "B", NOW);
+    o.focus(&sooner, NOW);
+    o.answer("wrong", NOW);
+    o.focus(&sooner, NOW);
+    assert!(o.app.practice.current.is_none());
+    let due = |o: &Owner, sid: &str| {
+        o.app
+            .practice
+            .cards
+            .values()
+            .find(|c| c.study_id == sid)
+            .unwrap()
+            .state
+            .schedule
+            .due_ms
+    };
+    let (soon, late) = (due(&o, &sooner), due(&o, &later));
+    assert!(NOW < soon && soon < late);
+    let rest = |o: &Owner| web::render(&o.app, "/", &BTreeMap::new(), NOW, None);
+    assert!(rest(&o).contains(&next_review_line(soon)));
+    o.call("/practice/pause", &[("study_id", sooner.clone())], NOW);
+    assert!(
+        rest(&o).contains(&next_review_line(soon)),
+        "A paused Study keeps its due reviews"
+    );
+    o.call("/practice/drop", &[("study_id", sooner)], NOW);
+    assert!(
+        rest(&o).contains(&next_review_line(late)),
+        "A dropped Study has no next review"
+    );
+    assert_eq!(rest(&o).matches("data-next-review").count(), 1);
 }
 
 #[test]

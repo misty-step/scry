@@ -543,8 +543,29 @@ fn all_future_letters_caught_up_without_grading_or_cross_lesson_selection() {
         NOW,
         None,
     );
-    assert!(page.contains("All set for now."));
-    assert!(page.contains("Next review"));
+    // The lesson states its own Study's next review, not another Study's.
+    let due = a
+        .practice
+        .cards
+        .values()
+        .filter(|c| {
+            library::is_nato(&a.library.versions[&a.practice.studies[&c.study_id].version_id])
+        })
+        .map(|c| c.state.schedule.due_ms)
+        .min()
+        .unwrap();
+    assert!(page.contains("data-state=\"rest\""));
+    assert!(page.contains("<h1>Rest for now</h1>"));
+    assert!(page.contains(&format!(
+        "data-next-review>Next review {}.</p>",
+        chrono::DateTime::from_timestamp_millis(due)
+            .unwrap()
+            .format("%b %-d, %Y · %H:%M UTC")
+    )));
+    assert!(page.contains("<summary><span>Browse</span>"));
+    assert!(page.contains("class=\"nato-progress\""));
+    assert!(!page.contains("All set for now") && !page.contains("Back to start"));
+    assert!(!page.contains("action=\"/practice/nato/start\""));
     assert!(!page.contains("data-state=\"exact-prompt\""));
     engine::validate_app(&a).unwrap();
 }
@@ -560,7 +581,7 @@ fn scheduled_boundary_tie_and_sole_due_retry_use_same_lesson_policy() {
         .unwrap();
     let before = a.practice.clone();
     let query = BTreeMap::from([("practice".into(), "nato".into())]);
-    assert!(scry::web::render(&a, "/", &query, due - 1, None).contains("All set for now."));
+    assert!(scry::web::render(&a, "/", &query, due - 1, None).contains("<h1>Rest for now</h1>"));
     assert!(scry::web::render(&a, "/", &query, due, None).contains("Ready to review."));
     assert_eq!(a.practice, before, "Read does not select a prompt");
     select_lesson(&mut a, "nato", due - 1, "boundary-before-operation");

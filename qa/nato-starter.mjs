@@ -187,7 +187,7 @@ export async function seedProgressFixture(f){
     assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer:natoWords[String.fromCharCode(65+i)]})).status,303);
     html=await f.get('/');assert.equal((await f.post('/practice/next',nativeFields(html,'/practice/next'))).status,303);
    }
-   assert.match(await f.get('/?practice=nato'),/All set for now\./);
+   assert.match(await f.get('/?practice=nato'),/<h1>Rest for now<\/h1>/);
    // Rich evidence includes deliberate extra practice through the existing
    // explicit-card API; ordinary selection must not manufacture future reviews.
    const explicit=async index=>{
@@ -297,11 +297,11 @@ export async function scheduledJourney(){
    assert.equal((await f.post('/practice/next',nativeFields(result,'/practice/next'))).status,303);
    page=await f.get('/?practice=nato');
   }
-  assert.match(page,/All set for now\./);assert.match(page,/Next review/);assert.doesNotMatch(page,/data-state="exact-prompt"/);
+  assert.match(page,/<h1>Rest for now<\/h1>/);assert.match(page,/data-next-review>Next review [A-Z][a-z]{2} \d{1,2}, \d{4} · \d{2}:\d{2} UTC\.<\/p>/);assert.match(page,/<summary><span>Browse<\/span>/);assert.doesNotMatch(page,/All set for now|Back to start|Next review in/);assert.doesNotMatch(page,/data-state="exact-prompt"/);
   const before=await f.rows();await f.get('/?practice=nato');assert.deepEqual(await f.rows(),before);
   // A different due lesson must not steal the empty NATO stream on redirect.
   assert.equal((await choose('nato')).headers.get('location'),'/?practice=nato');
-  assert.match(await f.get('/?practice=nato'),/All set for now\./);
+  assert.match(await f.get('/?practice=nato'),/<h1>Rest for now<\/h1>/);
   const after=await f.rows();assert.equal(after.meta.practice.current,null);
   assert.deepEqual(Object.fromEntries(Object.entries(after).filter(([k])=>k.startsWith('practice_attempts/'))),Object.fromEntries(Object.entries(before).filter(([k])=>k.startsWith('practice_attempts/'))));
   assert.equal(f.egress,0);

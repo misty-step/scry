@@ -364,7 +364,11 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
         "Self-rating UI is retired; historical engine receipts remain readable"
     );
     let held = o.app.clone();
-    study::ensure_stream(&mut o.app, NOW, "refresh").unwrap();
+    assert_eq!(
+        scry::web::render(&o.app, "/recall", &query, NOW, None),
+        page,
+        "Reopening shows the same held result"
+    );
     assert_eq!(o.app, held);
     let aid = a["attempt"]["id"].as_str().unwrap();
     let corrected = o
@@ -382,9 +386,10 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
     o.next(None);
     assert!(o.app.practice.current.is_none());
     let page = scry::web::render(&o.app, "/recall", &query, NOW, None);
-    assert!(page.contains("Next due at"));
+    assert_eq!(page.matches("action=\"/practice/review/start\"").count(), 1);
+    assert!(!page.contains("data-prompt-id"));
     assert!(!page.contains("<textarea"));
-    assert!(page.contains("Open Library"));
+    assert!(page.contains("<summary><span>Browse</span>"));
     assert!(page.contains("href=\"/recall\" >Practice</a>"));
     assert!(!page.contains("<footer"));
 }
@@ -473,7 +478,6 @@ fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
         assert!(actions.contains("action=\"/practice/next\""));
         assert!(!actions.contains("action=\"/practice/correct\""));
         assert!(actions.contains("name=\"operation_id\""));
-        study::ensure_stream(&mut o.app, NOW, "held-feedback-refresh").unwrap();
         assert_eq!(o.app, before);
         assert_eq!(notebook_page(&o, "/recall"), page);
     }
@@ -1245,7 +1249,7 @@ fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
                 "/questions/synthetic/edit"
             );
             o.app.practice.current = None;
-            assert!(notebook_page(&o, "/recall").contains("data-state=\"exact-caught-up\""));
+            assert!(notebook_page(&o, "/recall").contains("data-state=\"mixed-home\""));
             assert_eq!(
                 scry::web::mutation_error_path(&o.app, "/review/answer"),
                 "/notebook"
@@ -1363,7 +1367,7 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
                 assert!(root.contains(if exact == "prompt" {
                     "data-state=\"exact-prompt\""
                 } else {
-                    "data-state=\"exact-caught-up\""
+                    "data-state=\"mixed-home\""
                 }));
             }
             let before = o.app.clone();

@@ -134,7 +134,7 @@ try{
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
   if(overflow)throw Error('horizontal overflow at phone width');
   await page.getByRole('button',{name:'Next',exact:true}).click();
-  await page.locator('[data-state="exact-prompt"],[data-state="exact-caught-up"]').first().waitFor();
+  await page.locator('[data-state="exact-prompt"],[data-state="mixed-home"],[data-state="rest"]').first().waitFor();
   log('study.phone','PASS',`scry learn → /recall opens source Study (no field) → Try from memory opens hidden quiz (one field); typed answer → ${verdict} with Diff [${[...new Set(kinds)].join(', ')}] held across reload and equal to scry next; Next advances. On arrival the first changed word and replacement are fully visible and unoccluded`,{evidence:[prompt,arrival,diff,await shot('study-next')]});
  });
  await step('notebook.legacy-link',async()=>{

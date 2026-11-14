@@ -10,7 +10,7 @@ The current product rules are in [SPEC § NATO alphabet](../SPEC.md#nato-alphabe
 - Start/lesson selection and Next choose due/new letters, interleaving away from
   the just-completed letter when another eligible letter exists. Future-due A
   must not reappear just because the learner reselects NATO. With all letters
-  future-due, show caught-up and the next scheduled time; reads do not select.
+  future-due, show Rest for now, Browse and the next scheduled review; reads do not select.
 - Reveal records assistance separately from independent recall.
 - Per-letter count, accuracy and next-review visibility reflect stored evidence.
 

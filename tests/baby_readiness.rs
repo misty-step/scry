@@ -294,7 +294,10 @@ fn focused_starter_finishes_its_paced_batch_without_future_repeats() {
         NOW,
         None,
     );
-    assert!(page.contains("Next review"));
+    assert!(page.contains("<h1>Rest for now</h1>"));
+    assert!(page.contains("data-next-review>Next review "));
+    assert!(page.contains("<summary><span>Browse</span>"));
+    assert!(!page.contains("(UTC)"));
     assert!(!page.contains(">Continue</button>"));
     assert_eq!(a, before);
 }

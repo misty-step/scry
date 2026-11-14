@@ -1,4 +1,4 @@
-use scry::{api, engine, model::*, persistence, study, web};
+use scry::{api, engine, model::*, persistence, web};
 use std::collections::BTreeMap;
 
 const NOW: i64 = 1_800_000_000_000;
@@ -139,7 +139,6 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
         learned.entity_id
     );
     assert_eq!(app.practice.studies.len(), 1);
-    study::ensure_stream(&mut app, NOW, "first-prompt").unwrap();
     assert!(page(&app, "/recall").contains("data-state=\"exact-prompt\""));
     let source_pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
     let source_page = page(&app, "/recall");
@@ -251,7 +250,12 @@ fn phone_library_never_renders_protected_text_before_durable_help() {
         "phone-library-learn-01",
         &[("version_id", &vid)],
     );
-    study::ensure_stream(&mut app, NOW, "initial-prompt").unwrap();
+    let opened = app.clone();
+    let open = page(&app, "/recall");
+    assert!(open.contains("action=\"/practice/review/start\""));
+    assert!(!open.contains("data-prompt-id"));
+    assert_eq!(app, opened, "Opening practice selects nothing");
+    action(&mut app, "/practice/next", "phone-library-first-next", &[]);
     let cid = app.practice.current.as_ref().unwrap().targets[0]
         .card_id
         .clone();

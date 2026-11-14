@@ -211,6 +211,8 @@ async function nativeMappingForms(transcript){
   return fields;
  };
  try{
+  // Opening practice selects nothing; the Owner's CLI takes the first Prompt deliberately.
+  const idle=await f.worker.fetch(f.origin+'/recall');assert.doesNotMatch(await idle.text(),/data-prompt-id/);await f.ok(['next']);
   const front=await get();assert.match(front,/data-state="exact-prompt"/);assert.doesNotMatch(front,/Alfa|Bravo/);assert.match(front,/<input id="answer" name="answer" type="text"/);
   const first=await post(front,'/practice/answer',{answer:'Alpha'}),miss=(await f.ok(['next'])).practice;
   assert.equal(miss.prompt.id,first.prompt_id);assert.equal(miss.attempt.grade.verdict,'Again');assert.equal(miss.attempt.assisted,false);assert.equal(miss.attempt.effects[0].scheduled,true);
@@ -269,7 +271,7 @@ export async function keyedMappingWalk(browser,capture){
   const page=await context.newPage();page.setDefaultTimeout(12000);const row={width,scheme,noJS,text_zoom:zoom?'200%':'100%',status:'pass',evidence:[]};rows.push(row);
   const shot=async label=>row.evidence.push(await capture(page,`mapping-${width}-${scheme}-${noJS?'native':'enhanced'}-${zoom?200:100}-${label}.png`));
   try{
-   await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
+   await f.ok(['next']);await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
    assert.equal(await page.locator('input[name="answer"]').count(),1);assert.equal(await page.locator('textarea').count(),0);
    assert.equal((await page.locator('.nato-letter').innerText()).trim(),'A');
    assert.doesNotMatch(await page.content(),/Alfa|Bravo/,'The whole unanswered HTML, including hidden inputs and metadata, carries no canonical answer.');
@@ -317,7 +319,7 @@ export async function keyedMappingRecovery(browser,capture){
  const check=async(name,run)=>{
   const f=await keyedMappingFixture(),context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true}),page=await context.newPage();page.setDefaultTimeout(12000);
   const row={name,status:'pass'};results.push(row);
-  try{await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();await run({f,context,page,row});assert.equal(f.egress,0);}
+  try{await f.ok(['next']);await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();await run({f,context,page,row});assert.equal(f.egress,0);}
   catch(error){row.status='fail';row.reason=error.message;}
   finally{row.evidence=await capture(page,`mapping-recovery-${results.length}.png`);await context.close();await f.close();}
  };

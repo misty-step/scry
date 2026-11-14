@@ -2470,22 +2470,6 @@ pub fn due(app: &App, now: i64) -> Value {
     cards.sort_by_key(|c| (c.state.schedule.due_ms, &c.study_id, c.unit_index));
     json!({"cards":cards,"due":cards.iter().filter(|c|c.state.schedule.due_ms<=now).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":cards.iter().map(|c|c.state.schedule.due_ms).min()})
 }
-/// The Stream presents through the same selection policy as API `next`.
-/// Reads retain an existing Prompt/result and never advance it.
-pub fn ensure_stream(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
-    if app.practice.current.is_none() {
-        let previous = app.practice.clone();
-        if app.practice.mixed_review {
-            // Continuous admission is an explicit Study/Next write, never GET.
-            return Ok(());
-        }
-        next(app, &BTreeMap::new(), now, seed)?;
-        if app.practice != previous {
-            app.revision += 1;
-        }
-    }
-    Ok(())
-}
 pub fn history(app: &App) -> AppResult<Value> {
     if app.practice.protected() || app.protected_goal().is_some() {
         return Err(AppError::new(
