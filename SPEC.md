@@ -283,11 +283,14 @@ horizontal clipping, including with long questions and explanations.
 ### Grading
 
 - Scry assesses each submitted answer on the server against the frozen
-  Version, the Prompt's scope and the Learning objective, in this order. An
-  answer that matches the expected content or an authored alias is Good, once
-  case, spacing and a hyphen or space inside a word are set aside. For
-  Spelling-strict content any other answer is Again. Every other answer is
-  judged by Jev.
+  Version, the Prompt's scope and the Learning objective. An answer that
+  matches the expected content or an authored alias is Good, once case,
+  spacing and a hyphen or space inside a word are set aside. An empty answer,
+  and any other answer to Spelling-strict content, is Again.
+- With paid judgment off, any other answer is Again. With it on, any other
+  answer is saved with no Verdict and judged by Jev: its accept is Good, its
+  reject is Again, and anything else leaves the answer saved and ungraded. An
+  answer too long to send is graded as if paid judgment were off.
 - Valid recall is never failed merely because its wording is absent from a
   list of accepted answers. A related but different identity is never
   accepted as a match, and broad string similarity never decides
@@ -312,10 +315,10 @@ horizontal clipping, including with long questions and explanations.
   material and history stay reachable. Next moves on and the Card's schedule
   is untouched, so it comes round again.
 - The Owner can ask for an ungraded Attempt to be checked again. That is a
-  new, deliberate check of the same saved answer, not a second Attempt. Scry
-  never retries by itself. A check that resolves gives the Attempt its
-  Verdict once; it changes the schedule only if the Card has no newer
-  Attempt.
+  new, deliberate check of the same saved answer, not a second Attempt. An
+  answer is checked at most three times. Scry never retries by itself. A check
+  that resolves gives the Attempt its Verdict once; it changes the schedule
+  only if the Card has no newer Attempt.
 - A Verdict cannot be overturned. Where the content was at fault, an agent
   supplies a corrected Version, with any alias it lacked; later practice
   uses it, and the recorded Attempt stays as it was.
@@ -527,12 +530,12 @@ horizontal clipping, including with long questions and explanations.
   remote source to admit it.
 - An agent can start and continue a lesson for any supplied Version, not only
   the Starter shelf: learn, ask what is due, take the next Prompt, move from
-  study to Quiz, submit a raw answer, reveal, and pause, resume or drop a
-  Study.
+  study to Quiz, submit a raw answer, reveal, ask for an ungraded answer to be
+  checked again, and pause, resume or drop a Study.
 - A bounded local tool server for agents exposes the same validation, import,
-  search, show, learn, due, next, Quiz, answer and reveal actions under the
-  same rules. It offers no generation, self-rating, Correction, credential
-  creation or arbitrary network tool.
+  search, show, learn, due, next, Quiz, answer, reveal and check-again actions
+  under the same rules. It offers no generation, self-rating, Correction,
+  credential creation or arbitrary network tool.
 
 ### Owner tokens
 
@@ -657,14 +660,14 @@ horizontal clipping, including with long questions and explanations.
 
 ### Spend
 
-- Jev is paid judgment. It runs, and an answer leaves Scry to be judged,
-  only where the Owner has turned paid judgment on and the request carries
-  paid permission. Otherwise an answer that would need Jev stays saved and
-  ungraded.
+- Jev is paid judgment. It runs, and an answer leaves Scry to be judged, only
+  where the Owner has turned paid judgment on and the request carries paid
+  permission. A request without paid permission is graded as if paid judgment
+  were off.
 - Two caps both apply: at most 3.50 US dollars in any rolling 24 hours,
-  enforced by Scry, and at most 25 US dollars a week, enforced on the
-  provider account. When a cap is reached, Scry says so and answers are
-  handled as they are without Jev until the cap allows more.
+  enforced by Scry, and at most 25 US dollars a week, enforced on the provider
+  account. When a cap is reached nothing is sent: an answer that needed Jev
+  stays saved and ungraded, and Scry says why.
 - Each paid request reserves against the allowance before it is sent. A
   request that was sent with an unknown outcome keeps its reservation until
   the Owner settles it as spent or released; it is never retried for free.

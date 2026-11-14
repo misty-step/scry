@@ -97,6 +97,8 @@ pub fn report(app: &App, by: SpendBy) -> AppResult<SpendReport> {
                 "concept_job"
             } else if assessment.is_some() {
                 "assessment"
+            } else if app.practice.checks.contains_key(&spend.work_id) {
+                "study_check"
             } else {
                 "unattributed"
             }

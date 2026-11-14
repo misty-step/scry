@@ -98,7 +98,8 @@ pub fn summarize(app: &App) -> Progress {
             }
             continue;
         }
-        if !answered.insert(a.prompt.id.as_str()) {
+        // An answer with no Verdict is neither a review nor a miss.
+        if a.verdict().is_none() || !answered.insert(a.prompt.id.as_str()) {
             continue;
         }
         row.reviews += 1;
@@ -108,7 +109,7 @@ pub fn summarize(app: &App) -> Progress {
             Outcome::Assisted
         } else {
             row.unassisted += 1;
-            if a.grade.verdict == Verdict::Good {
+            if a.verdict() == Some(Verdict::Good) {
                 row.correct += 1;
                 Outcome::Correct
             } else {

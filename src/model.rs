@@ -398,11 +398,16 @@ pub struct Feedback {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Preferences {
     pub pace: String,
+    /// The Owner has turned paid judgment on: an answer that is not an exact or
+    /// alias match may leave Scry to be judged by Jev. Absent means off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub paid_judgment: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
         Self {
             pace: "steady".into(),
+            paid_judgment: false,
         }
     }
 }

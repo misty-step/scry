@@ -1439,7 +1439,14 @@ impl DurableObject for LearningSpace {
                 )?);
             }
         }
-        let result = engine::mutate(&mut app, &path, &fields, now(), &seed);
+        let result = engine::mutate_browser(
+            &mut app,
+            &path,
+            &fields,
+            now(),
+            &seed,
+            self.judgment_capable(),
+        );
         match result {
             Err(e) => {
                 if let Some(key) = photo_key {
@@ -1820,8 +1827,15 @@ impl LearningSpace {
             .as_ref()
             .map_or(MutationActor::Browser, |t| MutationActor::Token(&t.info));
         let seed = random_id()?;
-        let result = match engine::mutate_as(&mut app, canonical_path, &fields, now(), &seed, actor)
-        {
+        let result = match engine::mutate_judged(
+            &mut app,
+            canonical_path,
+            &fields,
+            now(),
+            &seed,
+            actor,
+            self.judgment_capable(),
+        ) {
             Ok(result) => result,
             Err(error) => return api_error(error),
         };
@@ -2046,6 +2060,12 @@ impl LearningSpace {
         }
     }
     fn preparation_ready(&self) -> bool {
+        false
+    }
+    /// Whether an answer may be left for Jev to judge. Nothing sends a Check
+    /// yet, so this is false and every answer is graded locally, whatever is
+    /// bound or stored. The sender turns it into `work_config().jev`.
+    fn judgment_capable(&self) -> bool {
         false
     }
     async fn arm(&self) -> Result<()> {

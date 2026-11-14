@@ -473,6 +473,17 @@ payload under an operation ID conflicts. Every new Attempt names `exact-v2`
 and its grader version, the acting token, Version identity and normalized hash,
 the Prompt as presented, raw answer, Diff, Verdict and per-Card scheduling effects.
 
+An Attempt whose answer was left for Jev also carries `judgment`. Its `grade`
+is then the local comparison only: the Diff, never the Verdict. The Verdict and
+its Authority are `judgment.decided`, absent while the answer is being checked
+or is saved and not graded, and an Attempt with no Verdict has no scheduling
+effect. Each check of that answer is a `checks` record in history and export. A
+practice response that names such an Attempt adds `practice.judgment`: `state`
+(`checking`, `ungraded` or `decided`), `verdict`, `authority`, `reason` and
+`check_id`. An archive that holds any of these records is named
+`scry-rust-durable-sqlite-study-judged-v4`, and earlier readers refuse it. No
+route turns paid judgment on yet, so served notebooks hold none of them.
+
 Free recall schedules once per UTC calendar day. Extra practice records an
 Attempt but leaves FSRS unchanged. New introductions use
 a rolling 24-hour window. The existing FSRS adapter identity remains pinned;
