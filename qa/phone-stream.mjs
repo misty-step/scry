@@ -190,6 +190,23 @@ export async function phoneRecovery(browser,capture) {
   assert.equal(sends,0);assert.equal(await page.getByLabel('Your answer',{exact:true}).inputValue(),phoneAnswer);await context.setOffline(false);await page.waitForTimeout(400);assert.equal(sends,0);
   await page.getByRole('button',{name:'Check my answer',exact:true}).click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(sends,1);row.observed={offline_sends:0,reconnect_sends:0,deliberate_sends:1};
  });
+ await check('Enter submits one phrase and starts a new line in a Recitation',async({f,page,row})=>{
+  const field=page.getByLabel('Your answer',{exact:true});
+  assert.equal(await field.getAttribute('data-multiline'),null,'A one-Unit answer is a one-line answer.');
+  await field.fill(phoneText.trim());await field.press('Enter');await page.locator('[data-state="exact-result"]').waitFor();
+  const phrase=(await f.cli(['next'])).practice.attempt;assert.equal(phrase.raw_answer,phoneText.trim());
+  for(const scope of [['--recite','section','--section',(await f.cli(['version','show',f.vid])).version.sections[0].id],['--recite','whole']]){
+   const held=(await f.record('meta')).practice.current;
+   const prompt=(await f.cli(['next','--after',held.prompt.id,'--study',f.sid,...scope])).practice.prompt;assert.equal(prompt.unit_ids.length,2);
+   await page.reload();await page.locator('[data-state="exact-prompt"]').waitFor();const before=await count(f);
+   assert.notEqual(await field.getAttribute('data-multiline'),null,'A Recitation is a several-line answer.');
+   await field.fill('First line');await field.press('Enter');await field.pressSequentially('Second line');
+   assert.equal(await field.inputValue(),'First line\nSecond line');await page.waitForTimeout(400);
+   assert.equal(await page.locator('[data-state="exact-result"]').count(),0,'Enter starts a new line in a Recitation.');assert.equal(await count(f),before);
+   await page.getByRole('button',{name:'Check my answer',exact:true}).click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await count(f),before+1,'Check submits the Recitation.');
+  }
+  row.observed={one_unit_enter_submits:true,recitation_enter_new_line:['section','whole'],check_submits:true};
+ });
  await check('automatic Good refuses new self-rating and retains a historical Correction fixture',async({f,page,row})=>{
   await page.getByLabel('Your answer',{exact:true}).fill(phoneText);await page.getByRole('button',{name:'Check my answer',exact:true}).click();await page.locator('[data-verdict="Good"]').waitFor();
   const original=(await f.cli(['next'])).practice.attempt;

@@ -337,6 +337,52 @@ impl View<'_> {
             format!("<aside class=\"preparations\" aria-label=\"Saved preparations\">{out}</aside>")
         }
     }
+    /// Review evidence exists for a Card only once it has an unaided Attempt.
+    fn attempted_unaided(&self, card_id: &str) -> bool {
+        self.app
+            .practice
+            .attempts
+            .values()
+            .any(|a| !a.disclosure && !a.assisted && a.effects.iter().any(|e| e.card_id == card_id))
+    }
+    /// A due review asks only for Units answered unaided before and due when asked.
+    fn due_review(&self, p: &crate::study::Presentation) -> bool {
+        p.targets
+            .iter()
+            .all(|t| t.before.schedule.due_ms <= p.created_ms && self.attempted_unaided(&t.card_id))
+    }
+    /// Whether a previously answered Card of an in-scope Study is due now.
+    fn review_due(&self, in_scope: impl Fn(&crate::study::Study) -> bool) -> bool {
+        self.app.practice.cards.values().any(|c| {
+            c.state.schedule.due_ms <= self.now
+                && self
+                    .app
+                    .practice
+                    .studies
+                    .get(&c.study_id)
+                    .is_some_and(|s| s.status != crate::study::Status::Dropped && in_scope(s))
+                && self.attempted_unaided(&c.id)
+        })
+    }
+    /// Context for a phrase Quiz: closed until asked for, and never the answer.
+    fn previous_phrase(&self, p: &crate::study::Presentation) -> String {
+        let v = &self.app.library.versions[&p.prompt.version_id];
+        if v.kind != crate::library::Kind::Text
+            || !matches!(p.prompt.scope, crate::study::Scope::Unit { .. })
+        {
+            return String::new();
+        }
+        p.targets[0]
+            .unit_index
+            .checked_sub(1)
+            .and_then(|i| v.sections.iter().flat_map(|s| &s.units).nth(i))
+            .map_or(String::new(), |u| {
+                format!(
+                    "<details class=\"lesson-context\"><summary>Previous phrase</summary><p>{}</p></details>",
+                    escape(&u.text)
+                )
+            })
+    }
     fn practice_form(&self, action: &str, suffix: &str, extra: &str, body: &str) -> String {
         let id = self
             .app
@@ -640,16 +686,12 @@ impl View<'_> {
                 "",
             );
         }
-        let timing = next.map_or_else(
-            || "Start with a few short questions.".into(),
-            |at| {
-                if at <= self.now {
-                    "Ready to review.".into()
-                } else {
-                    next_review_line(at)
-                }
-            },
-        );
+        let sid = study.map(|s| s.id.as_str());
+        let timing = match next {
+            Some(at) if at > self.now => next_review_line(at),
+            Some(_) if self.review_due(|s| Some(s.id.as_str()) == sid) => "Ready to review.".into(),
+            _ => "Start with a few short questions.".into(),
+        };
         let mut out = format!(
             "<section class=\"nato-screen\" data-state=\"mapping-starter-home\"><h1>{}</h1><p>{}</p>",
             escape(&lesson.input.title),
@@ -777,6 +819,9 @@ impl View<'_> {
                     escape(crate::study::visible_prompt_title(prompt))
                 );
                 out.push_str(&Self::exact_prompt_context(prompt));
+                if prompt.context.is_none() {
+                    out.push_str(&self.previous_phrase(p));
+                }
             }
             if prompt.assisted || p.revealed {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
@@ -794,7 +839,13 @@ impl View<'_> {
                 )
             } else {
                 format!(
-                    "<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\">\n{saved}</textarea>"
+                    "<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\"{}>\n{saved}</textarea>",
+                    // Enter starts a new line in an answer of several Units.
+                    if matches!(prompt.scope, crate::study::Scope::Unit { .. }) {
+                        ""
+                    } else {
+                        " data-multiline"
+                    }
                 )
             };
             out.push_str(&self.form(
@@ -966,6 +1017,17 @@ impl View<'_> {
                 escape(&hint.name)
             );
         }
+        // A missed phrase shows its expected wording at once and offers a guided retry.
+        let retry = !good
+            && self.app.library.versions[&a.version_id].kind == crate::library::Kind::Text
+            && matches!(a.prompt.scope, crate::study::Scope::Unit { .. });
+        if retry {
+            let _ = write!(
+                out,
+                "<div class=\"lesson-target\"><h2>The phrase to practise</h2>{}</div>",
+                self.exact_expected()
+            );
+        }
         if a.assisted {
             out.push_str(
                 "<p class=\"helped-label\">Assisted practice · the schedule stayed unchanged.</p>",
@@ -992,6 +1054,19 @@ impl View<'_> {
         );
         out.push_str(&self.result_progress(a));
         out.push_str("<div class=\"result-actions\">");
+        if retry {
+            out.push_str(&self.form(
+                "/practice/lesson/next",
+                "exact-retry",
+                "exact-form",
+                "data-next",
+                &format!(
+                    "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                    hidden("after", &a.prompt.id),
+                    hidden("mode", "retry")
+                ),
+            ));
+        }
         out.push_str(&self.form(
             if self.app.practice.mixed_review {
                 "/practice/review/next"
@@ -1000,9 +1075,9 @@ impl View<'_> {
             },
             "exact-next",
             "exact-form",
-            "data-next",
+            if retry { "" } else { "data-next" },
             &format!(
-                    "{}{}<button class=\"button primary\">Next</button>",
+                    "{}{}<button class=\"{}\">Next</button>",
                     hidden("after", &a.prompt.id),
                     if !self.app.practice.mixed_review
                         && crate::lessons::mapping_route(&self.app.library.versions[&a.version_id])
@@ -1011,7 +1086,8 @@ impl View<'_> {
                         hidden("study_id", &a.prompt.study_id)
                     } else {
                         String::new()
-                    }
+                    },
+                    if retry { "text-button" } else { "button primary" }
                 ),
         ));
         for e in &a.effects {
@@ -1832,36 +1908,67 @@ impl View<'_> {
                     out.push_str(&Self::exact_diff_word(d, true, a.grade.units.len() > 1));
                 }
                 out.push_str("</ol></details>");
+            } else if a
+                .grade
+                .diff
+                .iter()
+                .any(|d| !matches!(d.change, crate::grading::Change::Correct { .. }))
+            {
+                // An accepted Slip is still shown.
+                out.push_str(
+                    "<ol class=\"exact-diff exact-changes\" aria-label=\"Words to revisit\">",
+                );
+                for d in a
+                    .grade
+                    .diff
+                    .iter()
+                    .filter(|d| !matches!(d.change, crate::grading::Change::Correct { .. }))
+                {
+                    out.push_str(&Self::exact_diff_word(d, true, a.grade.units.len() > 1));
+                }
+                out.push_str("</ol>");
+            }
+            if let Some(hint) = a.grade.wrong_version_hint.as_ref().filter(|_| !ordered) {
+                let _ = write!(
+                    out,
+                    "<p class=\"notice\">Your answer is closer to Version {}.</p>",
+                    escape(&hint.name)
+                );
             }
             if a.assisted {
                 out.push_str("<p class=\"lesson-note\">With help · schedule unchanged.</p>");
             }
             out.push_str(&self.result_progress(a));
+            if phrase && !good {
+                out.push_str(&self.form(
+                    "/practice/lesson/next",
+                    "lesson-retry",
+                    "lesson-action",
+                    "data-next",
+                    &format!(
+                        "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                        hidden("after", &p.prompt.id),
+                        hidden("mode", "retry")
+                    ),
+                ));
+            }
             if self.app.practice.mixed_review {
                 out.push_str(&self.form(
                     "/practice/review/next",
                     "mixed-next",
                     "lesson-action",
-                    "data-next",
+                    if phrase && !good { "" } else { "data-next" },
                     &format!(
-                        "{}<button class=\"button primary\">Next</button>",
-                        hidden("after", &p.prompt.id)
+                        "{}<button class=\"{}\">Next</button>",
+                        hidden("after", &p.prompt.id),
+                        if phrase && !good {
+                            "text-button"
+                        } else {
+                            "button primary"
+                        }
                     ),
                 ));
             } else {
-                if phrase && !good {
-                    out.push_str(&self.form(
-                        "/practice/lesson/next",
-                        "lesson-retry",
-                        "lesson-action",
-                        "data-next",
-                        &format!(
-                            "{}{}<button class=\"button primary\">Try this phrase again</button>",
-                            hidden("after", &p.prompt.id),
-                            hidden("mode", "retry")
-                        ),
-                    ));
-                }
                 out.push_str(&self.form(
                     "/practice/lesson/next",
                     "lesson-next",
@@ -1942,15 +2049,24 @@ impl View<'_> {
             } else if good {
                 let _ = write!(
                     out,
-                    "<details class=\"lesson-answer\"><summary>Compare the text</summary><h2>Your answer</h2><p class=\"reading\">{}</p><h2>Selected wording</h2>{}</details>",
+                    "<details class=\"lesson-answer\"><summary>Compare the text</summary><h2>Your answer</h2><p class=\"reading\">{}</p><h2>Selected wording</h2>{}<h2>Word by word</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
                     escape(&a.raw_answer),
                     self.exact_expected()
                 );
+                for d in &a.grade.diff {
+                    out.push_str(&Self::exact_diff_word(d, false, a.grade.units.len() > 1));
+                }
+                out.push_str("</ol></details>");
             }
         } else if p.source_visible() {
             out.push_str(&self.source_study(p));
         } else {
-            out.push_str("<p class=\"eyebrow\" data-study-phase=\"quiz\">Review</p>");
+            // An introduction is never labelled as review.
+            let _ = write!(
+                out,
+                "<p class=\"eyebrow\" data-study-phase=\"quiz\">{}</p>",
+                if self.due_review(p) { "Review" } else { "Quiz" }
+            );
             if ordered {
                 let _ = write!(
                     out,
@@ -1959,18 +2075,24 @@ impl View<'_> {
                 );
             } else if whole {
                 out.push_str("<p class=\"lesson-instruction\">Type the full text from memory.</p>");
-            } else if matches!(p.prompt.scope, Scope::Section { .. }) {
+            } else if let Scope::Section { section_id } = &p.prompt.scope {
                 out.push_str(
                     "<p class=\"lesson-instruction\">Join these phrases from memory, in order.</p>",
                 );
-            } else {
-                if let Some(context) = &p.prompt.context {
+                // A Section Recitation is prompted by its heading.
+                if let Some(section) = v
+                    .sections
+                    .iter()
+                    .find(|s| &s.id == section_id && !s.heading.trim().is_empty())
+                {
                     let _ = write!(
                         out,
-                        "<details class=\"lesson-context\"><summary>Previous phrase</summary><p>{}</p></details>",
-                        escape(context)
+                        "<p class=\"lesson-cue\">{}</p>",
+                        escape(&section.heading)
                     );
                 }
+            } else {
+                out.push_str(&self.previous_phrase(p));
                 let cue_label = match p.prompt.cue_level {
                     Cue::Read => "Study",
                     Cue::FirstLetters => "Type this phrase using the initials",
@@ -2276,11 +2398,17 @@ impl View<'_> {
         out
     }
     fn browse(&self) -> String {
-        self.lesson_picker(false).replacen(
+        let mut out = self.lesson_picker(false).replacen(
             "<summary><span>Lessons</span>",
             "<summary><span>Browse</span>",
             1,
-        )
+        );
+        // Browse opens the Library as well as the lesson shelf.
+        out.insert_str(
+            out.len() - "</details>".len(),
+            "<a class=\"text-link\" href=\"/library\">Library</a>",
+        );
+        out
     }
     /// The earliest future review among Studies that still serve reviews.
     fn next_review(&self, in_scope: impl Fn(&crate::study::Study) -> bool) -> Option<i64> {
@@ -2485,7 +2613,14 @@ impl View<'_> {
                                     < 26))
                 });
                 if has_eligible {
-                    out.push_str("<h1>Ready to review.</h1>");
+                    // Only answered letters that are due again are review.
+                    out.push_str(
+                        if self.review_due(|s| nato_versions.contains(s.version_id.as_str())) {
+                            "<h1>Ready to review.</h1>"
+                        } else {
+                            "<h1>A little, often.</h1>"
+                        },
+                    );
                     out.push_str(&self.form(
                         "/practice/nato/start",
                         "nato-continue",
