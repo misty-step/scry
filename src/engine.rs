@@ -163,6 +163,13 @@ pub fn mutate_judged(
     if path == "/tokens/create" && field(fields, "paid") == "true" && !actor.paid() {
         return Err(owner_token::paid_refusal());
     }
+    // The switch that lets answers leave Scry is the signed-in Owner's alone.
+    if path == "/settings/judgment" && actor.token_id().is_some() {
+        return Err(AppError::new(
+            403,
+            "Only the signed-in Owner can turn paid judgment on or off.",
+        ));
+    }
     let mut next = app.clone();
     let judging = crate::study::Judging {
         capable: jev,
@@ -618,6 +625,31 @@ fn apply(
                 ));
             }
             app.preferences.pace = pace.into();
+            Ok(result("/settings", None))
+        }
+        // The Owner's switch for paid judgment. Turning it on needs a Scry that
+        // can reach Jev; turning it off is always possible.
+        "/settings/judgment" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "paid_judgment"
+                )
+            }) {
+                return Err(AppError::new(422, "Choose only paid judgment on or off."));
+            }
+            let on = match field(fields, "paid_judgment") {
+                "on" => true,
+                "off" => false,
+                _ => return Err(AppError::new(422, "Choose paid judgment on or off.")),
+            };
+            if on && !judging.capable {
+                return Err(AppError::new(
+                    409,
+                    "Paid judgment is not available here. Nothing was changed.",
+                ));
+            }
+            app.preferences.paid_judgment = on;
             Ok(result("/settings", None))
         }
         "/settings/backup" => Ok(result("/settings", None)),
@@ -1704,6 +1736,11 @@ fn close_check(app: &mut App, id: &str, status: crate::study::CheckStatus, reaso
         check.status = status;
         check.reason = Some(reason.into());
     }
+}
+/// Whether this work may still be sent: its Check is the one this lease
+/// claimed and has no outcome yet. Other work kinds have their own fences.
+pub fn awaits_send(app: &App, work: &Work) -> bool {
+    work.kind != CHECK_WORK || sent_check(app, work).is_some()
 }
 /// The sent Check this work belongs to, if it still awaits this lease.
 fn sent_check<'a>(app: &'a App, work: &Work) -> Option<&'a crate::study::Check> {

@@ -426,7 +426,8 @@ learner-supplied Verdict is accepted.
 | POST | `/api/v1/reveal` | `operation_id`, `prompt_id` |
 | POST | `/api/v1/quiz` | `operation_id`, `prompt_id`; explicitly hide source and begin a memory quiz |
 | POST | `/api/v1/correct` | Retired: 410; existing Corrections remain readable through history/export |
-| GET | `/api/v1/due` | Presented and upcoming Card schedules, due identities and next due time |
+| POST | `/api/v1/check` | `operation_id`, `attempt_id`; one more paid check of a saved answer that has no Verdict |
+| GET | `/api/v1/due` | Presented and upcoming Card schedules, due identities and next due time; `checking` names Cards whose answer is still with Jev |
 | GET | `/api/v1/history` | Studies, Cards, immutable Attempts and Corrections, referenced Versions and operation receipts |
 | GET | `/api/v1/export` | Complete compatible private archive, including the understanding notebook and historical custody |
 
@@ -481,8 +482,56 @@ effect. Each check of that answer is a `checks` record in history and export. A
 practice response that names such an Attempt adds `practice.judgment`: `state`
 (`checking`, `ungraded` or `decided`), `verdict`, `authority`, `reason` and
 `check_id`. An archive that holds any of these records is named
-`scry-rust-durable-sqlite-study-judged-v4`, and earlier readers refuse it. No
-route turns paid judgment on yet, so served notebooks hold none of them.
+`scry-rust-durable-sqlite-study-judged-v4`, and earlier readers refuse it.
+
+### Paid judgment (Jev)
+
+Paid judgment is off in every notebook until the signed-in Owner turns it on in
+Settings. That switch is a browser form (`POST /settings/judgment`); no API
+route, CLI command or tool reaches it, and an Owner token is refused whatever
+permission it carries. Settings offers it only where this Scry has Jev's key,
+model and endpoint bound; elsewhere it says paid judgment is not available.
+
+An answer leaves Scry to be judged only when all three hold: this Scry can
+reach Jev, the switch is on, and the request carries paid permission (the
+signed-in Owner, or an Owner token created with `--paid`). Otherwise it is
+graded by the local comparison exactly as before and nothing is sent or
+reserved. An exact or alias match, an empty answer, any answer to
+Spelling-strict content and an answer too large to send (32 KiB with its
+expected content) are always graded locally.
+
+When an answer is left for Jev, `answer` returns at once with
+`practice.judgment.state: "checking"` and `scry answer` exits 0: the answer is
+saved, it has no Verdict yet and its Card is unchanged. One request is sent,
+about a second later. Read the outcome by repeating the same operation, or from
+history:
+
+| `state` | Meaning |
+| --- | --- |
+| `checking` | A Check is queued or sent. `verdict` and `authority` are null. |
+| `decided` | Jev accepted (`Good`) or rejected (`Again`). `authority.name` is `jev`. |
+| `ungraded` | Saved, not graded. `reason` says why: Jev was unsure, failed, was refused, could not be reached, or the allowance was used. |
+
+An ungraded answer keeps its Card due, so Next serves that Card again. While a
+Check is queued or sent, `next`, a lesson's Next and Study do not choose that
+Card (`due.checking` lists it and `due.due` omits it); when nothing else is
+eligible they return the held result still being checked. A Card or Recitation
+named outright (`--card`, `--recite`) is still presented; a Verdict that then
+arrives for the earlier answer is recorded with `superseded: true` on its
+effect and leaves the schedule as the newer Attempt set it.
+
+```sh
+./target/debug/scry check ATTEMPT --json
+```
+
+`check` asks for one more check of the same saved answer. It never creates a
+second Attempt. It needs paid permission (403 without), and is refused with
+nothing written when the switch is off or Jev is not reachable (409), a check
+is already open (409), the answer already has its Verdict (409), the Study was
+dropped (409), the daily allowance is used (429) or three checks are already
+saved for that answer (422). Each Check is sent at most once. A send that is
+interrupted becomes `ungraded` with its 0.50 reservation kept as unknown spend;
+Scry never retries by itself.
 
 Free recall schedules once per UTC calendar day. Extra practice records an
 Attempt but leaves FSRS unchanged. New introductions use

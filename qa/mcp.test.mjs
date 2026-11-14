@@ -105,8 +105,8 @@ test('MCP lifecycle, version negotiation, discovery, IDs and notifications', {ti
   assert.equal((await f.request('tools/list')).error.code,-32000);
   f.send({jsonrpc:'2.0',method:'notifications/initialized'});
   const list = await f.request('tools/list');
-  assert.equal(list.result.tools.length,14);
-  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,14);
+  assert.equal(list.result.tools.length,15);
+  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,15);
   for(const tool of list.result.tools) {
     assert.equal(tool.inputSchema.type,'object');
     assert.equal(tool.inputSchema.additionalProperties,false);

@@ -2090,3 +2090,524 @@ fn a_local_attempt_is_validated_exactly_as_before() {
         }
     }
 }
+
+// --- The Owner's switch -----------------------------------------------------
+
+/// `/settings` as the runtime renders it: `judgment` is its answer to whether
+/// this Scry can reach Jev.
+fn settings(o: &Owner, judgment: Option<bool>) -> String {
+    let mut query = BTreeMap::from([("__nonce".to_string(), "judgment-nonce".to_string())]);
+    if let Some(capable) = judgment {
+        query.insert("__judgment".into(), capable.to_string());
+    }
+    web::render(&o.app, "/settings", &query, o.now, None)
+}
+
+#[test]
+fn the_switch_is_set_once_by_the_signed_in_owner_and_names_the_notebook_judged() {
+    let mut o = Owner::off();
+    o.jev = true;
+    let before = o.app.clone();
+    assert!(!persistence::judged(&o.app));
+    // On, once: the same operation again changes nothing and a changed payload conflicts.
+    let on = o
+        .op(
+            "judgment-switch-on-000001",
+            "/settings/judgment",
+            &[("paid_judgment", "on")],
+        )
+        .unwrap();
+    assert_eq!(on.redirect, "/settings");
+    assert!(o.app.preferences.paid_judgment);
+    assert!(persistence::judged(&o.app));
+    assert_eq!(o.archive().format, JUDGED);
+    let switched = o.app.clone();
+    let replay = o
+        .op(
+            "judgment-switch-on-000001",
+            "/settings/judgment",
+            &[("paid_judgment", "on")],
+        )
+        .unwrap();
+    assert_eq!(replay, on);
+    assert_eq!(o.app, switched, "a replay writes nothing");
+    let conflict = o
+        .op(
+            "judgment-switch-on-000001",
+            "/settings/judgment",
+            &[("paid_judgment", "off")],
+        )
+        .unwrap_err();
+    assert_eq!(conflict.status, 409);
+    assert_eq!(o.app, switched);
+    // Anything but on or off, and anything beside it, is refused whole.
+    for pairs in [
+        vec![("paid_judgment", "yes")],
+        vec![],
+        vec![("paid_judgment", "off"), ("verdict", "Good")],
+    ] {
+        assert_eq!(
+            o.try_call("/settings/judgment", &pairs).unwrap_err().status,
+            422
+        );
+        assert_eq!(o.app, switched);
+    }
+    // The browser's own fence still applies: a forged session token is refused.
+    let mut forged = o.fields("judgment-switch-forged-01", &[("paid_judgment", "off")]);
+    forged.insert("csrf".into(), "not-this-notebooks-session-token".into());
+    let refused = engine::mutate_browser(
+        &mut o.app,
+        "/settings/judgment",
+        &forged,
+        o.now,
+        "judgment-seed-forged",
+        true,
+    )
+    .unwrap_err();
+    assert_eq!(refused.status, 403);
+    assert_eq!(o.app, switched);
+    // Off again. The notebook used the switch, so it keeps its own format name.
+    o.call("/settings/judgment", &[("paid_judgment", "off")]);
+    assert!(!o.app.preferences.paid_judgment);
+    assert!(persistence::judged(&o.app));
+    assert_eq!(o.archive().format, JUDGED);
+    let mut plain = o.app.clone();
+    plain.operations.clear();
+    plain.revision = before.revision;
+    assert_eq!(plain, before, "only the receipts and the revision remain");
+}
+
+#[test]
+fn an_owner_token_never_sets_the_switch_whatever_permission_it_carries() {
+    for paid in [false, true] {
+        let mut o = Owner::off().with_token(paid);
+        o.jev = true;
+        let before = o.app.clone();
+        for value in ["on", "off"] {
+            let refused = o
+                .try_call("/settings/judgment", &[("paid_judgment", value)])
+                .unwrap_err();
+            assert_eq!(refused.status, 403);
+            assert!(refused.message.contains("signed-in Owner"));
+            assert_eq!(o.app, before, "nothing is written");
+        }
+    }
+    // The API offers no route to it at all.
+    assert!(scry::api::mutation_path("/api/v1/settings/judgment").is_none());
+    assert_eq!(
+        scry::api::mutation_path("/api/v1/check"),
+        Some("/practice/check")
+    );
+}
+
+#[test]
+fn the_switch_cannot_be_turned_on_where_scry_cannot_reach_jev() {
+    let mut o = Owner::off();
+    let before = o.app.clone();
+    let refused = o
+        .try_call("/settings/judgment", &[("paid_judgment", "on")])
+        .unwrap_err();
+    assert_eq!(refused.status, 409);
+    assert!(refused.message.contains("not available here"));
+    assert_eq!(o.app, before);
+    // A switch left on from elsewhere can always be turned off.
+    o.app.preferences.paid_judgment = true;
+    o.call("/settings/judgment", &[("paid_judgment", "off")]);
+    assert!(!o.app.preferences.paid_judgment);
+}
+
+#[test]
+fn settings_says_what_leaves_scry_and_offers_the_switch_only_where_jev_is_reachable() {
+    let mut o = Owner::off();
+    // Rendered without the runtime's answer, the page is the one before paid judgment.
+    let plain = settings(&o, None);
+    assert!(!plain.contains("Paid judgment") && !plain.contains("/settings/judgment"));
+    // Not reachable: said plainly, with no control, whatever is stored.
+    for stored in [false, true] {
+        o.app.preferences.paid_judgment = stored;
+        let page = settings(&o, Some(false));
+        assert!(page.contains("Paid judgment is not available here."));
+        assert!(page.contains("data-paid-judgment=\"unavailable\""));
+        assert!(!page.contains("action=\"/settings/judgment\""));
+        assert!(!page.contains("name=\"paid_judgment\""));
+    }
+    // Reachable and off: what leaves, what it reserves, and one native form to turn it on.
+    o.app.preferences.paid_judgment = false;
+    let off = settings(&o, Some(true));
+    assert!(off.contains("data-paid-judgment=\"off\""));
+    assert!(off.contains("Your answer and the expected text leave Scry"));
+    assert!(off.contains("Each check reserves $0.50 of the $3.50 daily allowance"));
+    assert!(off.contains("<form method=\"post\" action=\"/settings/judgment\""));
+    assert!(off.contains("name=\"paid_judgment\" value=\"on\""));
+    assert!(off.contains("Turn paid judgment on"));
+    assert!(!off.contains("name=\"paid_judgment\" value=\"off\""));
+    // Reachable and on: the same statement and the way back.
+    o.app.preferences.paid_judgment = true;
+    let on = settings(&o, Some(true));
+    assert!(on.contains("data-paid-judgment=\"on\""));
+    assert!(on.contains("Your answer and the expected text leave Scry"));
+    assert!(on.contains("name=\"paid_judgment\" value=\"off\""));
+    assert!(on.contains("Turn paid judgment off"));
+    assert!(!on.contains("name=\"paid_judgment\" value=\"on\""));
+}
+
+// --- A Card whose answer is still with Jev is not asked again ---------------
+
+fn one_pair(mut o: Owner) -> Owner {
+    let vid = o
+        .call(
+            "/library/mapping/add",
+            &[(
+                "data",
+                &json!({"title":"Synthetic single practice","direction":"forward","spelling_strict":false,"pairs":[
+                    {"key":"Before leaving the berth","value":"check the bilge pump"}
+                ]})
+                .to_string(),
+            )],
+        )
+        .entity_id
+        .unwrap();
+    o.call("/practice/study/start", &[("version_id", &vid)]);
+    o
+}
+/// A notebook whose Starter shelf has all been begun and dropped, so that
+/// Study has no new subject of its own to open and no other Card to serve.
+fn shelved(mut o: Owner) -> Owner {
+    for starter in [
+        "nato",
+        "st-michael-en",
+        "rosary-joyful",
+        "rosary-luminous",
+        "rosary-sorrowful",
+        "rosary-glorious",
+        "baby-soothing",
+        "baby-everyday",
+        "baby-montessori",
+    ] {
+        o.call("/practice/lesson/start", &[("starter", starter)]);
+        let sid = o.held().prompt.study_id;
+        o.call("/practice/drop", &[("study_id", &sid)]);
+    }
+    o.call("/practice/review/start", &[]);
+    assert!(o.app.practice.current.is_none(), "nothing left to open");
+    o
+}
+fn due_ids(o: &Owner, key: &str) -> Vec<String> {
+    study::due(&o.app, o.now)
+        .get(key)
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn next_keeps_the_held_result_while_its_only_card_is_being_checked() {
+    for path in ["/practice/next", "/practice/review/next"] {
+        let mut o = one_pair(shelved(Owner::new()));
+        let card = o.target();
+        let aid = o.answer("test the bilge pump");
+        assert_eq!(o.state(&aid), JudgmentState::Checking);
+        assert_eq!(
+            study::awaiting_verdict(&o.app)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            std::slice::from_ref(&card)
+        );
+        // The Card is still due by its schedule, and is named apart, not served.
+        assert!(o.card(&card).state.schedule.due_ms <= o.now);
+        assert!(due_ids(&o, "due").is_empty());
+        assert_eq!(due_ids(&o, "checking"), std::slice::from_ref(&card));
+        let held = o.held();
+        // Queued, then sent: Next shows the same held result both times.
+        for sent in [false, true] {
+            if sent {
+                o.claim().unwrap();
+            }
+            let pid = o.held().prompt.id;
+            let result = o.call(path, &[("after", &pid)]);
+            assert_eq!(o.held(), held, "nothing new is presented");
+            assert_eq!(result.data.unwrap()["attempt_id"], aid.as_str());
+            assert_eq!(o.app.practice.attempts.len(), 1);
+            let page = o.page("/recall");
+            assert!(page.contains("data-state=\"exact-checking\" data-prompt-id"));
+            assert!(page.contains("data-poll"));
+            assert!(!page.contains("Rest for now"));
+        }
+        // Rejected: the Card has its Verdict, is due again and is served again.
+        let work = Work {
+            id: o.check(&aid).id.clone(),
+            lease: o.check(&aid).lease.clone().unwrap(),
+            kind: engine::CHECK_WORK.into(),
+            request: json!({}),
+            photo_key: None,
+        };
+        o.finish(&work, reject()).unwrap();
+        assert!(study::awaiting_verdict(&o.app).is_empty());
+        assert_eq!(due_ids(&o, "due"), std::slice::from_ref(&card));
+        assert!(study::due(&o.app, o.now).get("checking").is_none());
+        let pid = o.held().prompt.id;
+        o.call(path, &[("after", &pid)]);
+        assert_ne!(o.held().prompt.id, held.prompt.id);
+        assert_eq!(o.held().targets[0].card_id, card);
+        assert!(o.held().attempt_id.is_none());
+    }
+}
+
+#[test]
+fn study_serves_other_cards_and_never_the_one_being_checked() {
+    let mut o = shelved(Owner::new()).mapping();
+    let first = o.target();
+    let pending = o.answer("test the bilge pump");
+    // Next introduces the second pair, then the third: never the waiting first.
+    for exact in ["sound the horn", "never lose sight of them"] {
+        let pid = o.held().prompt.id;
+        o.call("/practice/next", &[("after", &pid)]);
+        assert_ne!(o.target(), first);
+        let aid = o.answer(exact);
+        assert_eq!(o.attempt(&aid).verdict(), Some(Verdict::Good));
+    }
+    // Nothing else is due. The held result is a decided one, so it is released,
+    // and the page says an answer is being checked instead of resting.
+    let pid = o.held().prompt.id;
+    let result = o.call("/practice/next", &[("after", &pid)]);
+    assert!(o.app.practice.current.is_none());
+    assert_eq!(result.data.as_ref().unwrap()["prompt"], Value::Null);
+    assert_eq!(result.data.unwrap()["due"]["checking"], json!([first]));
+    for path in ["/recall", "/"] {
+        let page = o.shown(path, "study-checking-nothing-else");
+        assert!(page.contains("data-state=\"exact-checking\" data-poll"));
+        assert!(page.contains("Checking it."));
+        assert!(page.contains("test the bilge pump"));
+        assert!(!page.contains("Rest for now"));
+        assert!(!page.contains("action=\"/practice/review/start\""));
+    }
+    // Study from the home page chooses nothing either.
+    o.call("/practice/review/start", &[]);
+    assert!(o.app.practice.current.is_none());
+    assert!(study::continuous_preview(&o.app, o.now).is_none());
+    // A Card the Owner names outright is still presented: that is his choice.
+    o.call("/practice/next", &[("card_id", &first)]);
+    assert_eq!(o.target(), first);
+    let pid = o.held().prompt.id;
+    o.call("/practice/review/start", &[("leave", &pid)]);
+    assert!(o.app.practice.current.is_none());
+    // Accepted: the Card is scheduled, nothing is due and the page rests.
+    o.judge(accept());
+    assert_eq!(o.attempt(&pending).verdict(), Some(Verdict::Good));
+    let page = o.page("/recall");
+    assert!(page.contains("data-state=\"rest\""));
+    assert!(page.contains("Rest for now"));
+}
+
+#[test]
+fn study_opens_another_subject_rather_than_the_card_being_checked() {
+    // A new notebook still has its Starter shelf to open.
+    let mut o = one_pair(Owner::new());
+    let card = o.target();
+    o.answer("test the bilge pump");
+    let pid = o.held().prompt.id;
+    o.call("/practice/review/next", &[("after", &pid)]);
+    assert_ne!(o.target(), card);
+    assert_ne!(o.held().prompt.study_id, o.card(&card).study_id);
+    assert!(o.held().attempt_id.is_none());
+}
+
+#[test]
+fn an_ungraded_card_stays_due_and_is_served_again() {
+    let mut o = one_pair(Owner::new());
+    let card = o.target();
+    let aid = o.answer("test the bilge pump");
+    o.judge(unsure());
+    assert_eq!(o.state(&aid), JudgmentState::Ungraded);
+    assert!(study::awaiting_verdict(&o.app).is_empty());
+    assert_eq!(due_ids(&o, "due"), std::slice::from_ref(&card));
+    let pid = o.held().prompt.id;
+    o.call("/practice/next", &[("after", &pid)]);
+    assert_eq!(o.target(), card);
+    assert!(o.held().attempt_id.is_none());
+}
+
+#[test]
+fn a_lesson_passes_over_a_phrase_being_checked_and_holds_when_every_phrase_is() {
+    let mut o = Owner::new().text();
+    let first = o.target();
+    let pending = o.answer("I believe in a single God");
+    let held = o.held();
+    // A guided retry, a joined passage and the whole text would each ask the
+    // waiting phrase again: the held result stays instead.
+    for mode in ["retry", "join", "whole"] {
+        let result = o.call(
+            "/practice/lesson/next",
+            &[("after", &held.prompt.id), ("mode", mode)],
+        );
+        assert_eq!(o.held(), held, "{mode}");
+        assert_eq!(result.data.unwrap()["attempt_id"], pending.as_str());
+    }
+    let page = o.page("/recall");
+    assert!(page.contains("data-state=\"lesson-home\""));
+    assert!(page.contains("data-state=\"exact-checking\" data-prompt-id"));
+    // The next phrases are served in order.
+    for (index, phrase) in CREED.lines().enumerate().skip(1) {
+        let pid = o.held().prompt.id;
+        o.call(
+            "/practice/lesson/next",
+            &[("after", &pid), ("mode", "phrases")],
+        );
+        assert_eq!(o.held().targets[0].unit_index, index);
+        o.answer(phrase);
+    }
+    // Wrapping round passes over the first phrase, still with Jev.
+    let pid = o.held().prompt.id;
+    o.call(
+        "/practice/lesson/next",
+        &[("after", &pid), ("mode", "phrases")],
+    );
+    assert_eq!(o.held().targets[0].unit_index, 1);
+    assert_ne!(o.target(), first);
+    // Starting the same lesson again begins at the first phrase not waiting.
+    let vid = o.held().prompt.version_id;
+    let pid = o.held().prompt.id;
+    o.call(
+        "/practice/lesson/start",
+        &[("version_id", &vid), ("leave", &pid)],
+    );
+    assert_eq!(o.held().targets[0].unit_index, 1);
+    // Once Jev has decided, the phrase is asked again in its turn.
+    o.judge(reject());
+    o.answer("the Father almighty");
+    for index in [2, 3, 0] {
+        let pid = o.held().prompt.id;
+        o.call(
+            "/practice/lesson/next",
+            &[("after", &pid), ("mode", "phrases")],
+        );
+        assert_eq!(o.held().targets[0].unit_index, index);
+        if index != 0 {
+            o.answer(CREED.lines().nth(index).unwrap());
+        }
+    }
+    assert_eq!(o.target(), first);
+}
+
+#[test]
+fn a_list_being_checked_is_not_asked_again_until_it_has_a_verdict() {
+    let mut o = shelved(Owner::new()).list();
+    let pending = o.answer(
+        "Annunciation\nVisitation\nThe birth of Christ\nPresentation\nFinding in the Temple",
+    );
+    assert_eq!(o.state(&pending), JudgmentState::Checking);
+    // One Prompt covers the whole list, so every item waits with it.
+    assert_eq!(study::awaiting_verdict(&o.app).len(), 5);
+    let held = o.held();
+    for (path, pairs) in [
+        ("/practice/lesson/next", vec![("mode", "whole")]),
+        ("/practice/lesson/next", vec![("mode", "phrases")]),
+        ("/practice/review/next", vec![]),
+        ("/practice/next", vec![]),
+        ("/practice/lesson/start", vec![("starter", "rosary-joyful")]),
+    ] {
+        let mut pairs = pairs;
+        pairs.push(("after", &held.prompt.id));
+        o.call(path, &pairs);
+        assert_eq!(o.held(), held, "{path}");
+        assert_eq!(o.app.practice.attempts.len(), 1);
+    }
+    o.judge(reject());
+    assert_eq!(o.attempt(&pending).verdict(), Some(Verdict::Again));
+    o.call(
+        "/practice/lesson/next",
+        &[("after", &held.prompt.id), ("mode", "whole")],
+    );
+    assert_ne!(o.held().prompt.id, held.prompt.id);
+    assert_eq!(o.held().targets.len(), 5);
+}
+
+#[test]
+fn only_the_claimed_check_may_still_be_sent() {
+    let mut o = one_pair(Owner::new());
+    o.answer("test the bilge pump");
+    let work = o.claim().unwrap();
+    assert!(engine::awaits_send(&o.app, &work));
+    let mut other = work.clone();
+    other.lease = "judgment-lease-of-another-claim".into();
+    assert!(!engine::awaits_send(&o.app, &other));
+    // Recovered as unknown: a send that had not started must not start now.
+    o.now += 2 * MINUTE;
+    assert!(engine::recover_grading(&mut o.app, o.now));
+    assert!(!engine::awaits_send(&o.app, &work));
+}
+
+// --- The comparison shown is the one that was graded ------------------------
+
+#[test]
+fn a_section_of_a_list_is_compared_over_its_own_items() {
+    let mut o = Owner::new();
+    let vid = o
+        .call(
+            "/library/version/add",
+            &[(
+                "data",
+                &json!({"title":"Synthetic harbour route","name":"Authored order","kind":"ordered_list",
+                    "text":"Red gate\nBlue bridge\nGreen field\nWhite tower\nBlack lake\n",
+                    "sections":[
+                        {"heading":"Outward","units":["Red gate\n","Blue bridge\n"]},
+                        {"heading":"Return","units":["Green field\n","White tower\n","Black lake\n"]}]})
+                .to_string(),
+            )],
+        )
+        .entity_id
+        .unwrap();
+    o.call("/practice/lesson/start", &[("version_id", &vid)]);
+    let whole = o.answer("Red gate\nBlue bridge\nGreen field\nWhite tower\nBlack lake");
+    assert_eq!(o.attempt(&whole).verdict(), Some(Verdict::Good));
+    // Recite the second Section alone: its scope begins at the third item.
+    let held = o.held();
+    let section = o.app.library.versions[&vid].sections[1].id.clone();
+    o.call(
+        "/practice/next",
+        &[
+            ("after", &held.prompt.id),
+            ("study_id", &held.prompt.study_id),
+            ("recite", "section"),
+            ("section_id", &section),
+        ],
+    );
+    assert_eq!(
+        o.held()
+            .targets
+            .iter()
+            .map(|t| t.unit_index)
+            .collect::<Vec<_>>(),
+        [2, 3, 4]
+    );
+    let aid = o.answer("Green field\nThe pale tower\nBlack lake");
+    let a = o.attempt(&aid).clone();
+    assert_eq!(a.verdict(), None);
+    assert_eq!(
+        a.grade.units.iter().map(|u| u.verdict).collect::<Vec<_>>(),
+        [Verdict::Good, Verdict::Again, Verdict::Good],
+        "the comparison that was graded"
+    );
+    let request = o.claim().unwrap().request;
+    assert_eq!(
+        request["state"]["expected_answer"],
+        "Green field\nWhite tower\nBlack lake"
+    );
+    let work = Work {
+        id: o.check(&aid).id.clone(),
+        lease: o.check(&aid).lease.clone().unwrap(),
+        kind: engine::CHECK_WORK.into(),
+        request,
+        photo_key: None,
+    };
+    o.finish(&work, unsure()).unwrap();
+    // The page counts the same three items the grade compared, not the list's first three.
+    let page = o.shown("/recall", "list-section-ungraded");
+    assert!(page.contains("Item-by-item comparison, not the Verdict"));
+    assert!(
+        page.contains("2 of 3 items matched · 2 in order."),
+        "the comparison covers the Section that was asked"
+    );
+}

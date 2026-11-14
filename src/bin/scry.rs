@@ -427,6 +427,18 @@ mod cli {
                 Some(&json!({"operation_id":operation,"prompt_id":args[1],"answer":answer})),
             );
         }
+        // A new, deliberate paid check of a saved answer that has no Verdict.
+        if args.first().is_some_and(|a| a == "check") {
+            if args.len() != 2 {
+                return Err("Usage: scry check ATTEMPT [--operation-id ID]");
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/check",
+                Some(&json!({"operation_id":operation,"attempt_id":args[1]})),
+            );
+        }
         if args
             .first()
             .is_some_and(|a| matches!(a.as_str(), "reveal" | "quiz"))
@@ -587,7 +599,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|draft|save-draft|discard-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|check|draft|save-draft|discard-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }
