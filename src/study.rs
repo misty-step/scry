@@ -1927,19 +1927,23 @@ fn lesson_next(
     }
     let sid = p.prompt.study_id.clone();
     let study = &app.practice.studies[&sid];
-    if !study.lesson || study.status == Status::Dropped {
+    let mode = field(fields, "mode");
+    // A guided retry of a missed phrase is offered wherever it was missed.
+    if (!study.lesson && mode != "retry") || study.status == Status::Dropped {
         return Err(AppError::conflict());
     }
     let v = &app.library.versions[&study.version_id];
     reviewable(v)?;
-    let mode = field(fields, "mode");
     if !matches!(mode, "" | "phrases" | "retry" | "join" | "whole" | "middle") {
         return Err(AppError::new(
             422,
             "Use phrases, retry, join, whole or middle lesson mode.",
         ));
     }
-    app.practice.mixed_review = false;
+    // The retry stays where it was asked for: under Study's mix or in the Lesson.
+    if mode != "retry" {
+        app.practice.mixed_review = false;
+    }
     if crate::library::is_nato(v) {
         if !matches!(mode, "" | "phrases") {
             return Err(AppError::new(

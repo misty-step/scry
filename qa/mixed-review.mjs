@@ -134,14 +134,42 @@ export async function continuousStudyWalk(browser,capture){
    assert.equal(await home.getByRole('heading',{name:'No reviews due',exact:true}).count(),0);
    const before=await f.rows();await page.reload();assert.deepEqual(await f.rows(),before);
    row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-entry.png`));
+   // Browse opens the lesson shelf and the Library, and changes nothing.
+   await home.locator('.lesson-picker>summary').click();assert.equal(await home.locator('.lesson-picker .lesson-shelf').isVisible(),true);
+   const library=home.locator('.lesson-picker a[href="/library"]');assert.equal(await library.count(),1);assert.equal(await library.isVisible(),true);assert.equal((await library.innerText()).trim(),'Library');
+   row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-browse.png`));
+   await library.click();await page.locator('h1').first().waitFor();assert.equal(new URL(page.url()).pathname,'/library');assert.deepEqual(await f.rows(),before,'Browsing to the Library writes nothing');
+   await page.goto(f.origin+'/');await home.waitFor();assert.equal(await home.locator('.lesson-picker').getAttribute('open'),null);
    await home.getByRole('button',{name:'Study',exact:true}).click();await page.locator('#answer').waitFor();
    const first=current(await f.rows());await page.locator('#answer').fill('My held draft');await page.locator('.lesson-picker>summary').click();assert.equal(await page.locator('#answer').inputValue(),'My held draft');await page.locator('.lesson-picker>summary').click();assert.deepEqual(current(await f.rows()),first);
+   let retried=false;
    for(let n=0;n<10;n++){
-    const rows=await f.rows(),p=current(rows);await page.locator('#answer').fill(expected(rows,p));await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);
+    let rows=await f.rows(),p=current(rows);
+    if(n>0&&!retried&&rows['library_versions/'+p.prompt.version_id].kind==='text'&&p.prompt.scope.kind==='unit'){
+     // A missed phrase under Study's mix: expected phrase at once, guided retry first, Next second.
+     retried=true;const phrase=expected(rows,p);
+     await page.locator('#answer').fill('Not the phrase that was asked for');await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-verdict="Again"]').waitFor();
+     const missed=await f.rows();assert.equal(missed.meta.practice.mixed_review,true);
+     assert.equal((await page.locator('.lesson-target .exact-expected').innerText()).trim(),phrase.trim());assert.equal(await page.locator('.lesson-target').isVisible(),true);
+     assert.equal(await page.locator('form[data-next] button').count(),1);assert.equal((await page.locator('form[data-next] button').innerText()).trim(),'Try this phrase again');
+     const onward=page.locator('form[action="/practice/review/next"] button');assert.equal(await onward.count(),1);assert.equal((await onward.innerText()).trim(),'Next');assert.equal(await onward.evaluate(node=>node.classList.contains('primary')),false,'Continuing is the secondary choice');
+     row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-missed-phrase.png`));
+     await page.locator('form[data-next] button').click();await page.locator('[data-study-phase="study"]').waitFor();
+     const offered=await f.rows();assert.deepEqual(Object.keys(offered).filter(k=>k.startsWith('practice_attempts/')),Object.keys(missed).filter(k=>k.startsWith('practice_attempts/')),'A retry records nothing until it is submitted');
+     assert.equal(offered.meta.practice.mixed_review,true,'The retry stays under Study');assert.deepEqual(current(offered).prompt.unit_ids,p.prompt.unit_ids);
+     await enterMemoryPage(page);assert.ok(!(await page.locator('main').innerText()).includes(phrase.trim()),'The retry is answered with the source hidden again');
+     await page.locator('#answer').fill(phrase);await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-verdict="Good"]').waitFor();
+     const helped=await f.rows(),attempt=helped['practice_attempts/'+current(helped).attempt_id];assert.equal(attempt.assisted,true,'A guided retry is never unaided credit');
+     for(const t of p.targets)assert.deepEqual(helped['practice_cards/'+t.card_id].state,missed['practice_cards/'+t.card_id].state,'A guided retry leaves the schedule alone');
+     assert.equal((await page.locator('form[data-next] button').innerText()).trim(),'Next');
+     await page.locator('form[action="/practice/review/next"] button').click();await enterMemoryPage(page);continue;
+    }
+    await page.locator('#answer').fill(expected(rows,p));await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);
     if(n===0)row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-graded.png`));
     await page.locator('form[action="/practice/review/next"] button').click();await enterMemoryPage(page);
     if(n===0){assert.notEqual(current(await f.rows()).prompt.study_id,first.prompt.study_id);row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-next-subject.png`));}
    }
+   assert.equal(retried,true,'Study served a text phrase to miss and retry');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(f.egress,0);
   }catch(error){row.status='fail';row.reason=error.stack||error.message;}
   finally{await context.close();await f.close();}
