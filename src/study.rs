@@ -1,6 +1,7 @@
 //! Exact text practice policy. The engine owns receipts; runtime owns commits.
 use crate::{
-    grading::{self, Grade, Verdict},
+    generation::{RECALL_LIMIT, RecallAliases, RecallInput, RecallKind, RecallScope},
+    grading::{self, Authority, Grade, UnitVerdict, Verdict},
     learning,
     library::{Kind, Version},
     model::*,
@@ -201,6 +202,10 @@ pub struct Effect {
     pub revision_before: u64,
     pub before: CardState,
     pub after: CardState,
+    /// A Verdict that arrived after a newer Attempt on this Card. It is recorded
+    /// and leaves the Card as that newer Attempt left it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub superseded: bool,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -239,6 +244,162 @@ pub struct Attempt {
     #[serde(default, skip_serializing_if = "SchedulePolicy::is_legacy")]
     pub schedule_policy: SchedulePolicy,
     pub effects: Vec<Effect>,
+    /// Present only where the answer was left for Jev to judge. `grade` is then
+    /// the local comparison alone and the Verdict is the one decided here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judgment: Option<Judgment>,
+}
+impl Attempt {
+    /// The Verdict, from whoever decided it. An answer that awaits Jev, or that
+    /// Jev could not judge, has none: it is neither a miss nor a success.
+    pub fn verdict(&self) -> Option<Verdict> {
+        match &self.judgment {
+            None => Some(self.grade.verdict),
+            Some(j) => j.decided.as_ref().map(|d| d.verdict),
+        }
+    }
+    /// Who decided the Verdict, where there is one.
+    pub fn authority(&self) -> Option<&Authority> {
+        match &self.judgment {
+            None => Some(&self.grade.authority),
+            Some(j) => j.decided.as_ref().map(|d| &d.authority),
+        }
+    }
+    /// Each Card this answer was given for, with its Unit, decided or not.
+    pub fn card_units(&self) -> Vec<(&str, &str)> {
+        match &self.judgment {
+            None => self
+                .effects
+                .iter()
+                .map(|e| (e.card_id.as_str(), e.unit_id.as_str()))
+                .collect(),
+            Some(j) => j
+                .targets
+                .iter()
+                .map(|t| (t.card_id.as_str(), t.unit_id.as_str()))
+                .collect(),
+        }
+    }
+    pub fn card_ids(&self) -> impl Iterator<Item = &str> {
+        self.card_units().into_iter().map(|(card, _)| card)
+    }
+    fn first_unit_index(&self) -> usize {
+        match &self.judgment {
+            None => self.effects[0].unit_index,
+            Some(j) => j.targets[0].unit_index,
+        }
+    }
+}
+pub const RECALL_POLICY: &str = "recall-v1";
+pub const JEV_AUTHORITY: &str = "jev";
+/// One answer is checked at most three times, as the earlier concept flow allows.
+pub const CHECK_LIMIT: usize = 3;
+/// A paid judgment of one Attempt. `targets` freeze each Card as the answer
+/// found it; `decided` is absent until Jev accepts or rejects the answer.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Judgment {
+    pub policy: String,
+    pub targets: Vec<Target>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided: Option<Decided>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Decided {
+    pub check_id: String,
+    pub sequence: u64,
+    pub decided_ms: i64,
+    pub verdict: Verdict,
+    pub units: Vec<UnitVerdict>,
+    pub authority: Authority,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckStatus {
+    Queued,
+    Sent,
+    Accepted,
+    Rejected,
+    Unsure,
+    Failed,
+    Unknown,
+    Refused,
+    Superseded,
+}
+impl CheckStatus {
+    /// Waiting to be sent, or sent with no outcome yet.
+    pub fn open(self) -> bool {
+        matches!(self, Self::Queued | Self::Sent)
+    }
+}
+/// One deliberate request that Jev judge an Attempt's saved answer. Its raw
+/// response and cost live in the Spend ledger under `lease`.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Check {
+    pub id: String,
+    pub attempt_id: String,
+    pub sequence: u64,
+    pub status: CheckStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_ms: Option<i64>,
+    pub created_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_token: Option<String>,
+}
+/// What this request may ask of Jev. Both are false wherever paid judgment is
+/// not offered, and then every answer is graded locally.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Judging {
+    /// The serving Scry can reach Jev.
+    pub capable: bool,
+    /// The request carries paid permission.
+    pub paid: bool,
+}
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JudgmentState {
+    Checking,
+    Ungraded,
+    Decided,
+}
+/// Where an Attempt's paid judgment stands, from its newest Check.
+#[derive(Clone, Debug)]
+pub struct JudgmentView<'a> {
+    pub state: JudgmentState,
+    pub decided: Option<&'a Decided>,
+    pub check: Option<&'a Check>,
+    /// Whether the Owner may still ask for another check of this answer.
+    pub checks_left: bool,
+}
+pub fn judgment_view<'a>(app: &'a App, attempt: &'a Attempt) -> Option<JudgmentView<'a>> {
+    let judgment = attempt.judgment.as_ref()?;
+    let checks = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| c.attempt_id == attempt.id)
+        .collect::<Vec<_>>();
+    let decided = judgment.decided.as_ref();
+    let check = match decided {
+        Some(d) => app.practice.checks.get(&d.check_id),
+        None => checks.iter().copied().max_by_key(|c| (c.sequence, &c.id)),
+    };
+    let state = if decided.is_some() {
+        JudgmentState::Decided
+    } else if check.is_some_and(|c| c.status.open()) {
+        JudgmentState::Checking
+    } else {
+        JudgmentState::Ungraded
+    };
+    Some(JudgmentView {
+        state,
+        decided,
+        check,
+        checks_left: state == JudgmentState::Ungraded && checks.len() < CHECK_LIMIT,
+    })
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Correction {
@@ -274,6 +435,9 @@ pub struct Practice {
     pub cards: BTreeMap<String, Card>,
     pub attempts: BTreeMap<String, Attempt>,
     pub corrections: BTreeMap<String, Correction>,
+    /// Checks of Attempts left for Jev to judge. Absent wherever none exists.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub checks: BTreeMap<String, Check>,
     pub current: Option<Presentation>,
 }
 impl Practice {
@@ -284,6 +448,7 @@ impl Practice {
             && self.cards.is_empty()
             && self.attempts.is_empty()
             && self.corrections.is_empty()
+            && self.checks.is_empty()
             && self.current.is_none()
     }
     pub fn protected(&self) -> bool {
@@ -397,10 +562,11 @@ pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback>
     if version.kind != Kind::KeyedMapping {
         return None;
     }
-    let unit = units(version)[attempt.effects[0].unit_index];
+    let unit = units(version)[attempt.first_unit_index()];
     let (key, expected) = crate::library::mapping_pair(&unit.text)?;
     let answer = grading::mapping_words(&attempt.raw_answer);
-    let answered_key = (attempt.grade.verdict == Verdict::Again)
+    let verdict = attempt.verdict();
+    let answered_key = (verdict == Some(Verdict::Again))
         .then(|| {
             units(version)
                 .into_iter()
@@ -410,8 +576,11 @@ pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback>
                 .map(|(key, _)| key.to_string())
         })
         .flatten();
-    let kind = if attempt.grade.verdict == Verdict::Good {
+    let kind = if verdict == Some(Verdict::Good) {
         "correct"
+    } else if verdict.is_none() {
+        // Jev has not decided: the local comparison alone names no outcome.
+        "ungraded"
     } else if answered_key.is_some() {
         "wrong_key"
     } else if attempt
@@ -440,6 +609,17 @@ pub fn wire_response(app: &App, result: &MutationResult) -> Option<Value> {
         data["attempt"] = json!(attempt);
         if let Some(feedback) = feedback {
             data["mapping_feedback"] = json!(feedback);
+        }
+        // `attempt.grade` is the local comparison. Where Jev was asked, the
+        // Verdict and its Authority are here, or absent while there is none.
+        if let Some(view) = attempt.and_then(|a| judgment_view(app, a)) {
+            data["judgment"] = json!({
+                "state": view.state,
+                "verdict": view.decided.map(|d| d.verdict),
+                "authority": view.decided.map(|d| &d.authority),
+                "reason": view.check.and_then(|c| c.reason.as_ref()),
+                "check_id": view.check.map(|c| &c.id),
+            });
         }
     }
     if let Some(id) = data.get("correction_id").and_then(Value::as_str) {
@@ -538,7 +718,46 @@ fn effect(
         revision_before: target.revision,
         before: target.before.clone(),
         after,
+        superseded: false,
     })
+}
+/// The effect of a Verdict that arrives after its answer, on a Card no later
+/// Attempt has touched. It is computed at the moment of recall, as a Correction
+/// is, so replay needs stored data only. The pending Attempt took one revision.
+fn late_effect(target: &Target, verdict: Verdict, a: &Attempt) -> AppResult<Effect> {
+    effect(
+        &Target {
+            revision: target.revision + 1,
+            ..target.clone()
+        },
+        verdict,
+        a.revealed,
+        a.created_ms,
+        a.schedule_policy,
+    )
+}
+/// The Card has a newer Attempt: record the Verdict and leave the Card alone.
+fn superseded_effect(
+    target: &Target,
+    verdict: Verdict,
+    a: &Attempt,
+    state: &CardState,
+    revision: u64,
+) -> Effect {
+    Effect {
+        card_id: target.card_id.clone(),
+        unit_id: target.unit_id.clone(),
+        unit_index: target.unit_index,
+        cue_level: target.cue,
+        verdict,
+        assisted: a.assisted,
+        extra_practice: false,
+        scheduled: false,
+        revision_before: revision,
+        before: state.clone(),
+        after: state.clone(),
+        superseded: true,
+    }
 }
 fn disclosure_effect(target: &Target) -> Effect {
     Effect {
@@ -553,6 +772,7 @@ fn disclosure_effect(target: &Target) -> Effect {
         revision_before: target.revision,
         before: target.before.clone(),
         after: target.before.clone(),
+        superseded: false,
     }
 }
 fn target(card: &Card, cue: Cue) -> Target {
@@ -714,7 +934,7 @@ fn practised(app: &App, card: &Card) -> bool {
             .practice
             .attempts
             .values()
-            .any(|a| !a.disclosure && a.effects.iter().any(|e| e.card_id == card.id))
+            .any(|a| !a.disclosure && a.card_ids().any(|id| id == card.id))
 }
 /// Every new Prompt is Source study or a Quiz. A Unit or whole list not yet
 /// practised is studied first; a text Recitation is a chosen challenge, prompted
@@ -915,7 +1135,7 @@ pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
         .attempts
         .values()
         .filter(|a| !a.disclosure)
-        .flat_map(|a| a.effects.iter().map(|e| e.card_id.as_str()))
+        .flat_map(|a| a.card_ids())
         .collect::<BTreeSet<_>>();
     app.practice
         .cards
@@ -2006,6 +2226,260 @@ pub fn mutate(
     now: i64,
     seed: &str,
 ) -> AppResult<MutationResult> {
+    mutate_judged(app, path, fields, now, seed, Judging::default())
+}
+
+const ALLOWANCE_USED: &str = "Today's checking allowance is used. Your answer is saved and not graded. Check it again later.";
+const RESTORE_PAUSED: &str =
+    "Checks are paused in this restored notebook. Your answer is saved and not graded.";
+/// Why a check cannot be queued now, though paid judgment is on. Nothing is
+/// reserved or sent; the same test applies again when the check is claimed.
+fn check_blocked(app: &App, now: i64) -> Option<AppError> {
+    if app.restored_paused {
+        Some(AppError::new(409, RESTORE_PAUSED))
+    } else if app.spent(now).saturating_add(RESERVATION) > DAILY_ALLOWANCE {
+        Some(AppError::new(429, ALLOWANCE_USED))
+    } else {
+        None
+    }
+}
+fn queue_check(app: &mut App, attempt_id: &str, refused: Option<String>, now: i64, seed: &str) {
+    let cid = id(seed, "check");
+    app.practice.checks.insert(
+        cid.clone(),
+        Check {
+            id: cid,
+            attempt_id: attempt_id.into(),
+            sequence: app.revision + 1,
+            status: if refused.is_some() {
+                CheckStatus::Refused
+            } else {
+                CheckStatus::Queued
+            },
+            reason: refused,
+            lease: None,
+            started_ms: None,
+            created_ms: now,
+            acting_token: None,
+        },
+    );
+}
+/// What Jev is asked about one answer, from the frozen Version alone. Nothing
+/// outside the Prompt's own scope enters it.
+pub(crate) fn recall_input(app: &App, prompt: &Prompt, answer: &str) -> AppResult<RecallInput> {
+    let v = app
+        .library
+        .versions
+        .get(&prompt.version_id)
+        .ok_or_else(AppError::conflict)?;
+    let scoped = units(v)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, u)| prompt.unit_ids.contains(&u.id))
+        .collect::<Vec<_>>();
+    let (first, unit) = scoped.first().copied().ok_or_else(AppError::conflict)?;
+    let scope = match &prompt.scope {
+        Scope::Unit { .. } => RecallScope::Unit {
+            position: first + 1,
+        },
+        Scope::Section { section_id } => {
+            let (index, section) = v
+                .sections
+                .iter()
+                .enumerate()
+                .find(|(_, s)| &s.id == section_id)
+                .ok_or_else(AppError::conflict)?;
+            RecallScope::Section {
+                position: index + 1,
+                heading: section.heading.clone(),
+            }
+        }
+        Scope::Whole => RecallScope::Whole,
+    };
+    let (kind, asked, expected_answer, aliases) = match v.kind {
+        Kind::KeyedMapping => {
+            let (key, value) =
+                crate::library::mapping_pair(&unit.text).ok_or_else(AppError::conflict)?;
+            (
+                RecallKind::Mapping,
+                key.to_string(),
+                value.to_string(),
+                vec![],
+            )
+        }
+        Kind::OrderedList => (
+            RecallKind::OrderedList,
+            prompt.title.clone(),
+            scoped
+                .iter()
+                .map(|(_, u)| u.text.trim())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            scoped
+                .iter()
+                .enumerate()
+                .filter_map(|(position, (index, u))| {
+                    Some(RecallAliases {
+                        position: position + 1,
+                        item: u.text.trim().into(),
+                        aliases: v.ordered_aliases.get(index)?.clone(),
+                    })
+                })
+                .collect(),
+        ),
+        Kind::Text => (
+            RecallKind::Text,
+            format!(
+                "{}, {}",
+                prompt.title,
+                match &scope {
+                    RecallScope::Unit { position } => format!("phrase {position}"),
+                    RecallScope::Section { position, heading } if heading.trim().is_empty() =>
+                        format!("section {position}"),
+                    RecallScope::Section { heading, .. } => format!("section: {}", heading.trim()),
+                    RecallScope::Whole => "whole text".into(),
+                }
+            ),
+            scoped.iter().map(|(_, u)| u.text.as_str()).collect(),
+            vec![],
+        ),
+    };
+    Ok(RecallInput {
+        kind,
+        prompt: asked,
+        scope,
+        expected_answer,
+        aliases,
+        answer: answer.into(),
+    })
+}
+/// A mismatch Jev may judge. An exact or alias match is already Good; on
+/// Spelling-strict content any other answer is Again; an empty answer is a
+/// miss; and an answer too large to send is graded by the comparison alone.
+fn judgeable(app: &App, prompt: &Prompt, answer: &str, grade: &Grade) -> bool {
+    grade.verdict == Verdict::Again
+        && !app.library.versions[&prompt.version_id].spelling_strict
+        && !answer.trim().is_empty()
+        && recall_input(app, prompt, answer).is_ok_and(|input| input.bytes() <= RECALL_LIMIT)
+}
+/// Give an Attempt the Verdict Jev decided, once. Each Card is scheduled only
+/// if no later Attempt has touched it: the pending Attempt took one revision
+/// and left the state alone, and anything later took another.
+pub(crate) fn decide(
+    app: &mut App,
+    check_id: &str,
+    accept: bool,
+    model: &str,
+    now: i64,
+) -> AppResult<()> {
+    let aid = app
+        .practice
+        .checks
+        .get(check_id)
+        .ok_or_else(AppError::conflict)?
+        .attempt_id
+        .clone();
+    let a = app
+        .practice
+        .attempts
+        .get(&aid)
+        .ok_or_else(AppError::conflict)?
+        .clone();
+    let targets = &a
+        .judgment
+        .as_ref()
+        .filter(|j| j.decided.is_none())
+        .ok_or_else(AppError::conflict)?
+        .targets;
+    // Accepted: every Unit is Good. Rejected: the Units the comparison found
+    // mismatched are Again, and so is the Attempt.
+    let units = if accept {
+        targets
+            .iter()
+            .map(|t| UnitVerdict {
+                unit_index: t.unit_index,
+                verdict: Verdict::Good,
+            })
+            .collect()
+    } else {
+        a.grade.units.clone()
+    };
+    if units.len() != targets.len() {
+        return Err(AppError::conflict());
+    }
+    let mut effects = Vec::new();
+    for (t, u) in targets.iter().zip(&units) {
+        let c = app
+            .practice
+            .cards
+            .get_mut(&t.card_id)
+            .ok_or_else(AppError::conflict)?;
+        if c.revision != t.revision + 1 || c.state != t.before {
+            effects.push(superseded_effect(t, u.verdict, &a, &c.state, c.revision));
+            continue;
+        }
+        let e = late_effect(t, u.verdict, &a)?;
+        c.state = e.after.clone();
+        c.revision += 1;
+        // A Prompt held unanswered for this Card stays answerable.
+        if let Some(held) = app
+            .practice
+            .current
+            .as_mut()
+            .filter(|p| p.attempt_id.is_none())
+        {
+            for target in held.targets.iter_mut().filter(|h| h.card_id == t.card_id) {
+                target.revision = c.revision;
+                target.before = c.state.clone();
+            }
+        }
+        effects.push(e);
+    }
+    let sequence = app.revision + 1;
+    let attempt = app
+        .practice
+        .attempts
+        .get_mut(&aid)
+        .expect("checked Attempt");
+    attempt.effects = effects;
+    attempt.judgment.as_mut().expect("checked judgment").decided = Some(Decided {
+        check_id: check_id.into(),
+        sequence,
+        decided_ms: now,
+        verdict: if accept {
+            Verdict::Good
+        } else {
+            Verdict::Again
+        },
+        units,
+        authority: jev_authority(model),
+    });
+    app.practice
+        .checks
+        .get_mut(check_id)
+        .expect("checked Check")
+        .status = if accept {
+        CheckStatus::Accepted
+    } else {
+        CheckStatus::Rejected
+    };
+    Ok(())
+}
+fn jev_authority(model: &str) -> Authority {
+    Authority {
+        name: JEV_AUTHORITY.into(),
+        grader_version: format!("{RECALL_POLICY};model={model}"),
+    }
+}
+
+pub fn mutate_judged(
+    app: &mut App,
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+    judging: Judging,
+) -> AppResult<MutationResult> {
     match path {
         "/practice/draft" => {
             if fields.keys().any(|k| {
@@ -2247,6 +2721,7 @@ pub fn mutate(
                         algorithm: SchedulePolicy::Due.algorithm(),
                         schedule_policy: SchedulePolicy::Due,
                         effects,
+                        judgment: None,
                     },
                 );
                 for t in &mut app.practice.current.as_mut().unwrap().targets {
@@ -2296,6 +2771,48 @@ pub fn mutate(
             }
             let grade = grade(app, &p, answer, true)?;
             let assisted = p.prompt.assisted || p.revealed;
+            if judging.capable
+                && judging.paid
+                && app.preferences.paid_judgment
+                && judgeable(app, &p.prompt, answer, &grade)
+            {
+                // The answer is saved with the comparison and no Verdict. Each
+                // Card takes a revision and keeps its state, so a Verdict that
+                // arrives later can tell whether a newer Attempt came first.
+                for t in &p.targets {
+                    app.practice.cards.get_mut(&t.card_id).unwrap().revision += 1;
+                }
+                let aid = id(seed, "attempt");
+                app.practice.attempts.insert(
+                    aid.clone(),
+                    Attempt {
+                        id: aid.clone(),
+                        sequence: app.revision + 1,
+                        prompt: p.prompt.clone(),
+                        version_id: p.prompt.version_id,
+                        version_hash: p.prompt.version_hash,
+                        raw_answer: answer.clone(),
+                        grade,
+                        acting_token: None,
+                        assisted,
+                        disclosure: false,
+                        revealed: p.revealed,
+                        created_ms: now,
+                        algorithm: SchedulePolicy::Due.algorithm(),
+                        schedule_policy: SchedulePolicy::Due,
+                        effects: Vec::new(),
+                        judgment: Some(Judgment {
+                            policy: RECALL_POLICY.into(),
+                            targets: p.targets,
+                            decided: None,
+                        }),
+                    },
+                );
+                let refused = check_blocked(app, now).map(|e| e.message);
+                queue_check(app, &aid, refused, now, seed);
+                app.practice.current.as_mut().unwrap().attempt_id = Some(aid.clone());
+                return Ok(response(Some(aid.clone()), json!({"attempt_id":aid})));
+            }
             let effects = p
                 .targets
                 .iter()
@@ -2326,10 +2843,89 @@ pub fn mutate(
                     algorithm: SchedulePolicy::Due.algorithm(),
                     schedule_policy: SchedulePolicy::Due,
                     effects,
+                    judgment: None,
                 },
             );
             app.practice.current.as_mut().unwrap().attempt_id = Some(aid.clone());
             Ok(response(Some(aid.clone()), json!({"attempt_id":aid})))
+        }
+        // A new, deliberate check of the same saved answer: never a second
+        // Attempt, never a Card change. Every refusal leaves nothing written.
+        "/practice/check" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "attempt_id"
+                )
+            }) {
+                return Err(AppError::new(
+                    422,
+                    "Choose only the saved answer to check again.",
+                ));
+            }
+            if !judging.paid {
+                return Err(crate::owner_token::paid_refusal());
+            }
+            if !judging.capable || !app.preferences.paid_judgment {
+                return Err(AppError::new(
+                    409,
+                    "Paid judgment is off. Your answer stays saved and not graded.",
+                ));
+            }
+            let aid = field(fields, "attempt_id");
+            let a = app
+                .practice
+                .attempts
+                .get(aid)
+                .ok_or_else(|| AppError::new(404, "Attempt not found."))?;
+            let judgment = a.judgment.as_ref().ok_or_else(|| {
+                AppError::new(409, "Scry graded this answer. It has no check to repeat.")
+            })?;
+            // The saved answer and its comparison are answer-bearing.
+            if app.practice.protected() {
+                return Err(AppError::new(
+                    409,
+                    "Answer the held Prompt before checking an earlier answer again.",
+                ));
+            }
+            if let Some(blocked) = check_blocked(app, now) {
+                return Err(blocked);
+            }
+            let checks = app
+                .practice
+                .checks
+                .values()
+                .filter(|c| c.attempt_id == aid)
+                .collect::<Vec<_>>();
+            if checks.iter().any(|c| c.status.open()) {
+                return Err(AppError::new(409, "This answer is already being checked."));
+            }
+            if judgment.decided.is_some() {
+                return Err(AppError::new(409, "This answer already has its Verdict."));
+            }
+            if app.practice.studies[&a.prompt.study_id].status == Status::Dropped {
+                return Err(AppError::new(
+                    409,
+                    "This Study was dropped. Its saved answer stays not graded.",
+                ));
+            }
+            if checks.len() >= CHECK_LIMIT {
+                return Err(AppError::new(
+                    422,
+                    "Three checks are saved for this answer. It stays saved and not graded.",
+                ));
+            }
+            let held = app
+                .practice
+                .current
+                .as_ref()
+                .is_some_and(|p| p.attempt_id.as_deref() == Some(aid));
+            queue_check(app, aid, None, now, seed);
+            let mut result = response(Some(aid.into()), json!({"attempt_id":aid}));
+            if !held {
+                result.redirect = "/history".into();
+            }
+            Ok(result)
         }
         "/practice/correct" => {
             let p = active(app, fields, true)?;
@@ -2344,6 +2940,9 @@ pub fn mutate(
                 return Err(AppError::conflict());
             }
             let a = &app.practice.attempts[aid];
+            if a.judgment.is_some() {
+                return Err(AppError::new(422, "A Verdict from Jev is not self-graded."));
+            }
             let uid = field(fields, "unit_id");
             let e = a
                 .effects
@@ -2412,6 +3011,11 @@ pub fn attribute(app: &mut App, previous: &App, actor: Option<String>) {
             c.acting_token = actor.clone();
         }
     }
+    for (id, c) in &mut app.practice.checks {
+        if !previous.practice.checks.contains_key(id) {
+            c.acting_token = actor.clone();
+        }
+    }
 }
 pub fn due(app: &App, now: i64) -> Value {
     let eligible = reviewable_studies(app);
@@ -2445,9 +3049,11 @@ pub fn history(app: &App) -> AppResult<Value> {
         .values()
         .map(|s| (&s.version_id, &app.library.versions[&s.version_id]))
         .collect::<BTreeMap<_, _>>();
-    Ok(
-        json!({"studies":app.practice.studies,"cards":app.practice.cards,"attempts":app.practice.attempts,"corrections":app.practice.corrections,"versions":versions,"operations":app.operations}),
-    )
+    let mut history = json!({"studies":app.practice.studies,"cards":app.practice.cards,"attempts":app.practice.attempts,"corrections":app.practice.corrections,"versions":versions,"operations":app.operations});
+    if !app.practice.checks.is_empty() {
+        history["checks"] = json!(app.practice.checks);
+    }
+    Ok(history)
 }
 pub fn receipt_entity(app: &App, r: &Receipt, id: &str) -> bool {
     r.path
@@ -2561,6 +3167,8 @@ pub fn validate(app: &App) -> AppResult<()> {
     enum Entry<'a> {
         Attempt(&'a Attempt),
         Correction(&'a Correction),
+        /// The moment Jev's Verdict was recorded on an Attempt left for it.
+        Decision(&'a Attempt),
     }
     let mut entries = Vec::new();
     for (aid, a) in &p.attempts {
@@ -2576,29 +3184,37 @@ pub fn validate(app: &App) -> AppResult<()> {
             return Err(fail());
         }
         let v = app.library.versions.get(&a.version_id).ok_or_else(fail)?;
-        if v.normalized_hash != a.version_hash
-            || a.effects.is_empty()
-            || (!a.disclosure && source_only(v, &a.prompt))
-            || a.prompt.unit_ids
-                != a.effects
-                    .iter()
-                    .map(|e| e.unit_id.clone())
-                    .collect::<Vec<_>>()
-        {
-            return Err(fail());
-        }
-        let targets = a
-            .effects
-            .iter()
-            .map(|e| Target {
-                card_id: e.card_id.clone(),
-                unit_id: e.unit_id.clone(),
-                unit_index: e.unit_index,
-                cue: e.cue_level,
-                revision: e.revision_before,
-                before: e.before.clone(),
-            })
-            .collect::<Vec<_>>();
+        // An Attempt left for Jev froze its targets itself: it has no effect
+        // until a Verdict arrives, and a late effect may describe a newer state.
+        let targets = if let Some(judgment) = &a.judgment {
+            if v.normalized_hash != a.version_hash || source_only(v, &a.prompt) {
+                return Err(fail());
+            }
+            judgment.targets.clone()
+        } else {
+            if v.normalized_hash != a.version_hash
+                || a.effects.is_empty()
+                || (!a.disclosure && source_only(v, &a.prompt))
+                || a.prompt.unit_ids
+                    != a.effects
+                        .iter()
+                        .map(|e| e.unit_id.clone())
+                        .collect::<Vec<_>>()
+            {
+                return Err(fail());
+            }
+            a.effects
+                .iter()
+                .map(|e| Target {
+                    card_id: e.card_id.clone(),
+                    unit_id: e.unit_id.clone(),
+                    unit_index: e.unit_index,
+                    cue: e.cue_level,
+                    revision: e.revision_before,
+                    before: e.before.clone(),
+                })
+                .collect::<Vec<_>>()
+        };
         validate_targets(app, &a.prompt, &targets)?;
         // Sibling Versions can be added later. The deterministic base grade is
         // immutable; hints retain the sibling name even if that unused Version
@@ -2621,6 +3237,12 @@ pub fn validate(app: &App) -> AppResult<()> {
             return Err(fail());
         }
         entries.push((a.sequence, Entry::Attempt(a)));
+        if let Some(judgment) = &a.judgment {
+            validate_judgment(app, a, judgment, v).ok_or_else(fail)?;
+            if let Some(decided) = &judgment.decided {
+                entries.push((decided.sequence, Entry::Decision(a)));
+            }
+        }
     }
     for (cid, c) in &p.corrections {
         if cid != &c.id
@@ -2643,6 +3265,43 @@ pub fn validate(app: &App) -> AppResult<()> {
         }
         last = Some(seq);
         match entry {
+            // Saved for Jev: each Card takes a revision and keeps its state.
+            Entry::Attempt(a) if a.judgment.is_some() => {
+                for t in &a.judgment.as_ref().unwrap().targets {
+                    let c = p.cards.get(&t.card_id).ok_or_else(fail)?;
+                    let (state, revision) = projection.get_mut(&t.card_id).ok_or_else(fail)?;
+                    if c.study_id != a.prompt.study_id
+                        || *state != t.before
+                        || *revision != t.revision
+                        || a.created_ms < c.introduced_ms
+                    {
+                        return Err(fail());
+                    }
+                    *revision += 1;
+                }
+            }
+            // Jev's Verdict: scheduled where no later Attempt touched the Card,
+            // otherwise recorded as superseded against the Card as it then was.
+            Entry::Decision(a) => {
+                let judgment = a.judgment.as_ref().unwrap();
+                let decided = judgment.decided.as_ref().unwrap();
+                for ((t, e), u) in judgment.targets.iter().zip(&a.effects).zip(&decided.units) {
+                    let (state, revision) = projection.get_mut(&t.card_id).ok_or_else(fail)?;
+                    let unchanged = *state == t.before && *revision == t.revision + 1;
+                    let expected = if unchanged {
+                        late_effect(t, u.verdict, a)?
+                    } else {
+                        superseded_effect(t, u.verdict, a, state, *revision)
+                    };
+                    if expected != *e {
+                        return Err(fail());
+                    }
+                    if unchanged {
+                        *state = e.after.clone();
+                        *revision += 1;
+                    }
+                }
+            }
             Entry::Attempt(a) => {
                 seen.insert(&a.id);
                 if a.effects.len() != a.grade.units.len() {
@@ -2685,7 +3344,9 @@ pub fn validate(app: &App) -> AppResult<()> {
             }
             Entry::Correction(c) => {
                 let a = p.attempts.get(&c.attempt_id).ok_or_else(fail)?;
-                if app.library.versions[&a.version_id].kind == Kind::KeyedMapping {
+                if app.library.versions[&a.version_id].kind == Kind::KeyedMapping
+                    || a.judgment.is_some()
+                {
                     return Err(fail());
                 }
                 let e = a
@@ -2722,6 +3383,56 @@ pub fn validate(app: &App) -> AppResult<()> {
         if p.cards[&id].state != state || p.cards[&id].revision != rev {
             return Err(fail());
         }
+    }
+    let mut open = BTreeSet::new();
+    let mut checked = BTreeMap::<&str, usize>::new();
+    for (cid, c) in &p.checks {
+        let a = p.attempts.get(&c.attempt_id).ok_or_else(fail)?;
+        let judgment = a.judgment.as_ref().ok_or_else(fail)?;
+        let sent = c.lease.is_some();
+        let count = checked.entry(c.attempt_id.as_str()).or_default();
+        *count += 1;
+        if cid != &c.id
+            || !valid_id(cid)
+            || !valid_actor(&c.acting_token)
+            || c.sequence < a.sequence
+            || c.sequence > app.revision
+            || *count > CHECK_LIMIT
+            || sent != c.started_ms.is_some()
+            // A sent check holds exactly one reservation; an unsent one, none.
+            || app.spend.iter().filter(|s| s.work_id == c.id).count() != usize::from(sent)
+            || (sent && check_spend(app, c).is_none())
+            || match c.status {
+                CheckStatus::Queued => sent || c.reason.is_some(),
+                CheckStatus::Sent => !sent || c.reason.is_some(),
+                CheckStatus::Accepted | CheckStatus::Rejected => {
+                    !sent
+                        || judgment
+                            .decided
+                            .as_ref()
+                            .is_none_or(|d| d.check_id != c.id)
+                }
+                CheckStatus::Unsure | CheckStatus::Failed | CheckStatus::Unknown => {
+                    !sent || c.reason.is_none()
+                }
+                CheckStatus::Refused => sent || c.reason.is_none(),
+                CheckStatus::Superseded => c.reason.is_none(),
+            }
+            // A decided Attempt has no open check and none created afterwards.
+            || judgment
+                .decided
+                .as_ref()
+                .is_some_and(|d| c.status.open() || c.sequence >= d.sequence)
+            || (c.status.open() && !open.insert(c.attempt_id.as_str()))
+        {
+            return Err(fail());
+        }
+    }
+    if p.attempts
+        .values()
+        .any(|a| a.judgment.is_some() && !checked.contains_key(a.id.as_str()))
+    {
+        return Err(fail());
     }
     if let Some(current) = &p.current {
         if (current.phase == Some(StudyPhase::Study)
@@ -2765,6 +3476,59 @@ pub fn validate(app: &App) -> AppResult<()> {
         }
     }
     Ok(())
+}
+/// The one reservation a sent Check holds in the Spend ledger.
+fn check_spend<'a>(app: &'a App, check: &Check) -> Option<&'a Spend> {
+    let lease = check.lease.as_ref()?;
+    app.spend
+        .iter()
+        .find(|s| &s.id == lease && s.work_id == check.id)
+}
+/// An Attempt left for Jev, beyond its targets and its comparison, which are
+/// checked as every Attempt's are. A stored decision is never judged again:
+/// its saved raw response must still read as the Verdict that was recorded.
+fn validate_judgment(app: &App, a: &Attempt, judgment: &Judgment, v: &Version) -> Option<()> {
+    let sendable = recall_input(app, &a.prompt, &a.raw_answer)
+        .is_ok_and(|input| input.bytes() <= RECALL_LIMIT);
+    if judgment.policy != RECALL_POLICY
+        || a.disclosure
+        || v.spelling_strict
+        || a.grade.verdict != Verdict::Again
+        || a.schedule_policy != SchedulePolicy::Due
+        || a.raw_answer.trim().is_empty()
+        || !sendable
+    {
+        return None;
+    }
+    let Some(decided) = &judgment.decided else {
+        return a.effects.is_empty().then_some(());
+    };
+    let good = decided.verdict == Verdict::Good;
+    let check = app.practice.checks.get(&decided.check_id)?;
+    let spend = check_spend(app, check)?;
+    let read = crate::generation::short_decision(spend.raw_response.as_deref()?).ok()?;
+    (a.effects.len() == judgment.targets.len()
+        && decided.units.len() == judgment.targets.len()
+        && a.sequence < decided.sequence
+        && decided.sequence <= app.revision
+        && judgment
+            .targets
+            .iter()
+            .zip(&decided.units)
+            .all(|(t, u)| t.unit_index == u.unit_index && (!good || u.verdict == Verdict::Good))
+        && (good || decided.units == a.grade.units)
+        && check.attempt_id == a.id
+        && check.status
+            == if good {
+                CheckStatus::Accepted
+            } else {
+                CheckStatus::Rejected
+            }
+        && spend.response_outcome.as_deref() == Some("received")
+        && read.applied
+        && (read.outcome == "correct") == good
+        && decided.authority == jev_authority(spend.response_model.as_deref()?))
+    .then_some(())
 }
 fn target_from_effect(e: &Effect) -> Target {
     Target {

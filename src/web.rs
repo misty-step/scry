@@ -343,7 +343,7 @@ impl View<'_> {
             .practice
             .attempts
             .values()
-            .any(|a| !a.disclosure && !a.assisted && a.effects.iter().any(|e| e.card_id == card_id))
+            .any(|a| !a.disclosure && !a.assisted && a.card_ids().any(|id| id == card_id))
     }
     /// A due review asks only for Units answered unaided before and due when asked.
     fn due_review(&self, p: &crate::study::Presentation) -> bool {
@@ -781,8 +781,9 @@ impl View<'_> {
             .attempt_id
             .as_ref()
             .and_then(|id| self.app.practice.attempts.get(id));
+        let judged = attempt.and_then(|a| self.judged_state(a));
         let state = if attempt.is_some() {
-            "exact-result"
+            judged.unwrap_or("exact-result")
         } else {
             "exact-prompt"
         };
@@ -791,7 +792,7 @@ impl View<'_> {
         });
         let question = self.mapping_question(prompt);
         let mut out = format!(
-            "<section class=\"study exact-study{}\" data-state=\"{state}\" data-prompt-id=\"{}\">",
+            "<section class=\"study exact-study{}\" data-state=\"{state}\" data-prompt-id=\"{}\"{}>",
             if readiness.is_some() {
                 " mapping-study readiness-study"
             } else if question.is_some() {
@@ -799,12 +800,47 @@ impl View<'_> {
             } else {
                 ""
             },
-            escape(&prompt.id)
+            escape(&prompt.id),
+            Self::judged_poll(judged)
         );
         if self.app.practice.mixed_review {
             out.push_str("<p class=\"eyebrow\">All subjects</p>");
         }
-        if let Some(a) = attempt {
+        if let Some(a) = attempt.filter(|_| judged.is_some()) {
+            let retry = self.form(
+                "/practice/lesson/next",
+                "exact-retry",
+                "exact-form",
+                "data-next",
+                &format!(
+                    "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                    hidden("after", &a.prompt.id),
+                    hidden("mode", "retry")
+                ),
+            );
+            let (body, actions) = self.judged_result(a, &retry, |secondary| {
+                self.form(
+                    if self.app.practice.mixed_review {
+                        "/practice/review/next"
+                    } else {
+                        "/practice/next"
+                    },
+                    "exact-next",
+                    "exact-form",
+                    if secondary { "" } else { "data-next" },
+                    &format!(
+                        "{}<button class=\"{}\">Next</button>",
+                        hidden("after", &a.prompt.id),
+                        if secondary {
+                            "text-button"
+                        } else {
+                            "button primary"
+                        }
+                    ),
+                )
+            });
+            let _ = write!(out, "{body}<div class=\"result-actions\">{actions}</div>");
+        } else if let Some(a) = attempt {
             out.push_str(&self.exact_result(a));
         } else if p.source_visible() {
             // A pair is studied under its authored question, safety cue included,
@@ -979,7 +1015,7 @@ impl View<'_> {
     }
     fn exact_result(&self, a: &crate::study::Attempt) -> String {
         use crate::grading::{Change, Verdict};
-        let good = a.grade.verdict == Verdict::Good;
+        let good = a.verdict() == Some(Verdict::Good);
         let verdict = if good { "Good" } else { "Again" };
         let mut out = format!(
             "<div class=\"feedback feedback-{}\" role=\"status\"><h1 data-verdict=\"{verdict}\">{verdict}.</h1></div>",
@@ -1136,6 +1172,206 @@ impl View<'_> {
         }
         out.push_str("</div>");
         out
+    }
+    /// The `data-state` of a result whose answer was left for Jev to judge.
+    fn judged_state(&self, a: &crate::study::Attempt) -> Option<&'static str> {
+        use crate::study::JudgmentState;
+        Some(match crate::study::judgment_view(self.app, a)?.state {
+            JudgmentState::Checking => "exact-checking",
+            JudgmentState::Ungraded => "exact-ungraded",
+            JudgmentState::Decided => "exact-result",
+        })
+    }
+    /// Only a result still being checked asks the page to look again.
+    fn judged_poll(state: Option<&str>) -> &'static str {
+        if state == Some("exact-checking") {
+            " data-poll"
+        } else {
+            ""
+        }
+    }
+    /// The local comparison of an answer left for Jev. It is evidence beside
+    /// the judgment and is always labelled as not the Verdict.
+    fn judged_comparison(&self, a: &crate::study::Attempt, expected: &str) -> String {
+        let mut out = format!("<h2>Expected text</h2>{expected}");
+        let version = &self.app.library.versions[&a.version_id];
+        if version.kind == crate::library::Kind::OrderedList {
+            let count = a.card_units().len();
+            if let Ok(feedback) = crate::ordered::feedback(version, 0..count, &a.raw_answer) {
+                let _ = write!(
+                    out,
+                    "<h2>Item-by-item comparison, not the Verdict</h2><p class=\"fineprint\">{} of {count} items matched · {} in order.</p>",
+                    feedback.recalled, feedback.in_order
+                );
+            }
+        } else {
+            out.push_str(
+                "<h2>Word-by-word comparison, not the Verdict</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
+            );
+            for d in &a.grade.diff {
+                out.push_str(&Self::exact_diff_word(d, false, a.grade.units.len() > 1));
+            }
+            out.push_str("</ol>");
+        }
+        let _ = write!(
+            out,
+            "<p class=\"fineprint exact-authority\">{} · {} · comparison only, not the Verdict</p>",
+            escape(&a.grade.authority.name),
+            escape(&a.grade.authority.grader_version)
+        );
+        out
+    }
+    /// "Judged by Jev (recall-v1; model)".
+    fn judged_by(decided: &crate::study::Decided) -> String {
+        format!(
+            "Judged by Jev ({})",
+            escape(&decided.authority.grader_version.replace(";model=", "; "))
+        )
+    }
+    /// A deliberate, paid action: it says what it reserves.
+    fn check_again(&self, a: &crate::study::Attempt, class: &str) -> String {
+        format!(
+            "{}<p class=\"fineprint\">Check again asks Jev once more. It reserves ${:.2} of today's allowance.</p>",
+            self.form(
+                "/practice/check",
+                &format!("check-{}", a.id),
+                class,
+                "",
+                &format!(
+                    "{}<button class=\"button secondary\">Check again</button>",
+                    hidden("attempt_id", &a.id)
+                ),
+            ),
+            RESERVATION as f64 / 1_000_000.0
+        )
+    }
+    /// The held result of an answer left for Jev, in each of its states: being
+    /// checked, saved and not graded, or decided. Returns the result and its
+    /// actions; `next(secondary)` is the caller's own way onward. An answer
+    /// with no Verdict is never styled or counted as a miss or a success.
+    fn judged_result(
+        &self,
+        a: &crate::study::Attempt,
+        retry: &str,
+        next: impl Fn(bool) -> String,
+    ) -> (String, String) {
+        use crate::grading::{Change, Verdict};
+        use crate::study::JudgmentState;
+        let view = crate::study::judgment_view(self.app, a).expect("an answer left for Jev");
+        let version = &self.app.library.versions[&a.version_id];
+        let answer = format!(
+            "<div class=\"answer-pair\"><span>You answered</span><p>{}</p></div>",
+            escape(&a.raw_answer)
+        );
+        let full = |summary: &str, answer: &str| {
+            format!(
+                "<details class=\"exact-full-answer\"><summary>{summary}</summary><h2>{}</h2>{}{answer}{}</details>",
+                escape(&a.prompt.title),
+                Self::exact_prompt_context(&a.prompt),
+                self.judged_comparison(a, &self.exact_expected())
+            )
+        };
+        let Some(decided) = view.decided else {
+            if view.state == JudgmentState::Checking {
+                return (
+                    format!(
+                        "<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h1>Checking it.</h1><p>Jev is judging your answer. You can leave and come back; it stays here.</p></div>{answer}"
+                    ),
+                    format!(
+                        "<a class=\"text-link\" href=\"{}\">Refresh</a>{}",
+                        escape(self.path),
+                        next(false)
+                    ),
+                );
+            }
+            let again = if view.checks_left {
+                self.check_again(a, "exact-form")
+            } else {
+                "<p class=\"fineprint\">Three checks are saved for this answer. It stays saved and not graded.</p>".into()
+            };
+            return (
+                format!(
+                    "<div class=\"feedback feedback-self\" role=\"status\"><h1>Saved, not graded.</h1></div><p class=\"notice\">{}</p><p class=\"fineprint\">This answer has no Verdict and its schedule is unchanged.</p>{answer}{}",
+                    escape(
+                        view.check
+                            .and_then(|c| c.reason.as_deref())
+                            .unwrap_or("Jev did not judge this answer.")
+                    ),
+                    full("Expected text and comparison", "")
+                ),
+                format!("{again}{}", next(false)),
+            );
+        };
+        let good = decided.verdict == Verdict::Good;
+        let verdict = if good { "Good" } else { "Again" };
+        let mut out = format!(
+            "<div class=\"feedback feedback-{}\" role=\"status\"><h1 data-verdict=\"{verdict}\">{verdict}.</h1></div><p class=\"fineprint exact-authority\" data-authority=\"jev\">{}</p>",
+            if good { "correct" } else { "miss" },
+            Self::judged_by(decided)
+        );
+        if a.prompt.cue_level == crate::study::Cue::MappingKey
+            && let Some(feedback) = crate::study::mapping_feedback(self.app, a)
+        {
+            let _ = write!(
+                out,
+                "<p class=\"mapping-result\"><span>{}</span> <span aria-hidden=\"true\">→</span> <strong>{}</strong></p>",
+                escape(&feedback.key),
+                escape(&feedback.expected)
+            );
+            if let Some(answered_key) = feedback.answered_key {
+                let _ = write!(
+                    out,
+                    "<p class=\"fineprint\">That answer belongs to key {}.</p>",
+                    escape(&answered_key)
+                );
+            }
+        }
+        if good
+            && (version.kind == crate::library::Kind::OrderedList
+                || a.grade
+                    .diff
+                    .iter()
+                    .any(|d| !matches!(d.change, Change::Correct { .. })))
+        {
+            out.push_str("<p class=\"fineprint\">Jev accepted this answer as the same recall, though it differs from the expected text in the comparison below.</p>");
+        }
+        if let Some(hint) = &a.grade.wrong_version_hint {
+            let _ = write!(
+                out,
+                "<p class=\"notice\">Your answer is closer to Version {}.</p>",
+                escape(&hint.name)
+            );
+        }
+        // A missed phrase shows its expected wording at once and offers a guided retry.
+        let retry_offered = !good
+            && version.kind == crate::library::Kind::Text
+            && matches!(a.prompt.scope, crate::study::Scope::Unit { .. });
+        if retry_offered {
+            let _ = write!(
+                out,
+                "<div class=\"lesson-target\"><h2>The phrase to practise</h2>{}</div>",
+                self.exact_expected()
+            );
+        }
+        if a.effects.iter().any(|e| e.superseded) {
+            out.push_str("<p class=\"fineprint\" data-schedule-effect=\"superseded\">A newer answer was already recorded; schedule unchanged.</p>");
+        } else if a.assisted {
+            out.push_str(
+                "<p class=\"helped-label\">Assisted practice · the schedule stayed unchanged.</p>",
+            );
+        } else if a.effects.iter().all(|e| e.extra_practice) {
+            out.push_str("<p class=\"fineprint\">Extra practice · schedule unchanged.</p>");
+        }
+        out.push_str(&full("Full answer", &answer));
+        out.push_str(&self.result_progress(a));
+        (
+            out,
+            format!(
+                "{}{}",
+                if retry_offered { retry } else { "" },
+                next(retry_offered)
+            ),
+        )
     }
     fn exact_diff_word(d: &crate::grading::Diff, summary: bool, multiple_units: bool) -> String {
         use crate::grading::Change;
@@ -1763,7 +1999,7 @@ impl View<'_> {
             .practice
             .attempts
             .values()
-            .filter(|a| a.version_id == version.id && !a.disclosure)
+            .filter(|a| a.version_id == version.id && !a.disclosure && a.verdict().is_some())
             .collect::<Vec<_>>();
         let whole = attempts
             .iter()
@@ -1771,7 +2007,7 @@ impl View<'_> {
             .collect::<Vec<_>>();
         let correct = whole
             .iter()
-            .filter(|a| a.grade.verdict == crate::grading::Verdict::Good)
+            .filter(|a| a.verdict() == Some(crate::grading::Verdict::Good))
             .count();
         let phrases = attempts
             .iter()
@@ -1824,23 +2060,80 @@ impl View<'_> {
             format!("Phrase {} / {}", p.targets[0].unit_index + 1, all.len())
         };
         let mut extras = String::new();
+        let judged = a.and_then(|a| self.judged_state(a));
         let mut out = format!(
-            "<section class=\"nato-screen lesson-screen\" data-state=\"lesson-home\"><header class=\"practice-heading\"><div><h1>{}</h1><p class=\"practice-edition\">{}</p></div><p class=\"lesson-position\">{}</p></header><div class=\"lesson-stage\" data-state=\"{}\" data-prompt-id=\"{}\">",
+            "<section class=\"nato-screen lesson-screen\" data-state=\"lesson-home\"><header class=\"practice-heading\"><div><h1>{}</h1><p class=\"practice-edition\">{}</p></div><p class=\"lesson-position\">{}</p></header><div class=\"lesson-stage\" data-state=\"{}\" data-prompt-id=\"{}\"{}>",
             escape(&work.title),
             escape(&v.name),
             escape(&scope),
             if a.is_some() {
-                "exact-result"
+                judged.unwrap_or("exact-result")
             } else {
                 "exact-prompt"
             },
-            escape(&p.prompt.id)
+            escape(&p.prompt.id),
+            Self::judged_poll(judged)
         );
         if self.app.practice.mixed_review {
             out.push_str("<p class=\"eyebrow\">All subjects</p>");
         }
-        if let Some(a) = a {
-            let good = a.grade.verdict == Verdict::Good;
+        if let Some(a) = a.filter(|_| judged.is_some()) {
+            let retry = self.form(
+                "/practice/lesson/next",
+                "lesson-retry",
+                "lesson-action",
+                "data-next",
+                &format!(
+                    "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                    hidden("after", &p.prompt.id),
+                    hidden("mode", "retry")
+                ),
+            );
+            let (body, actions) = self.judged_result(a, &retry, |secondary| {
+                let class = if secondary {
+                    "text-button"
+                } else {
+                    "button primary"
+                };
+                let extra = if secondary { "" } else { "data-next" };
+                if self.app.practice.mixed_review {
+                    self.form(
+                        "/practice/review/next",
+                        "mixed-next",
+                        "lesson-action",
+                        extra,
+                        &format!(
+                            "{}<button class=\"{class}\">Next</button>",
+                            hidden("after", &p.prompt.id)
+                        ),
+                    )
+                } else {
+                    self.form(
+                        "/practice/lesson/next",
+                        "lesson-next",
+                        "lesson-action",
+                        extra,
+                        &format!(
+                            "{}{}<button class=\"{class}\">{}</button>",
+                            hidden("after", &p.prompt.id),
+                            hidden("mode", if ordered { "whole" } else { "phrases" }),
+                            if ordered {
+                                "Try the sequence again"
+                            } else if whole {
+                                "Practise phrases"
+                            } else if secondary {
+                                "Continue to next phrase"
+                            } else {
+                                "Next phrase"
+                            }
+                        ),
+                    )
+                }
+            });
+            out.push_str(&body);
+            out.push_str(&actions);
+        } else if let Some(a) = a {
+            let good = a.verdict() == Some(Verdict::Good);
             let label = if !good {
                 "Not quite"
             } else if a.assisted {
@@ -2220,7 +2513,7 @@ impl View<'_> {
         } else {
             "Unaided correct"
         };
-        let multi = a.effects.len() > 1;
+        let multi = a.card_units().len() > 1;
         let (due, exact) = if !evidence.active {
             ("Not active".to_string(), "Study dropped".to_string())
         } else if let Some(ms) = evidence.next_due_ms {
@@ -2513,7 +2806,7 @@ impl View<'_> {
                 escape(letter)
             );
             if let Some(a) = attempt {
-                let good = a.grade.verdict == crate::grading::Verdict::Good;
+                let good = a.verdict() == Some(crate::grading::Verdict::Good);
                 let version = &self.app.library.versions[&a.version_id];
                 let word = version
                     .sections
@@ -3135,10 +3428,17 @@ impl View<'_> {
             Scope::Whole => "Whole text".into(),
         };
         let verdict = |v| if v == Verdict::Good { "Good" } else { "Again" };
+        let judged = crate::study::judgment_view(self.app, a);
         let label = if a.disclosure {
             "Shown before answering"
         } else {
-            verdict(a.grade.verdict)
+            match (a.verdict(), &judged) {
+                (Some(v), _) => verdict(v),
+                (None, Some(view)) if view.state == crate::study::JudgmentState::Checking => {
+                    "Checking"
+                }
+                (None, _) => "Saved, not graded",
+            }
         };
         let mut out = format!(
             "<article class=\"history-entry exact-history-entry\" data-attempt-id=\"{}\" data-disclosure=\"{}\"><p class=\"history-meta\"><span>{label}</span> · {} · {}</p><h2>{}</h2><p class=\"fineprint\">{} · {}</p><details><summary>See this attempt <span aria-hidden=\"true\">＋</span></summary>{}",
@@ -3186,11 +3486,46 @@ impl View<'_> {
                 escape(&hint.name)
             );
         }
+        // Where Jev was asked, its judgment comes first and the comparison
+        // beneath is labelled as a comparison.
+        if let Some(view) = &judged {
+            match (view.decided, view.state) {
+                (Some(decided), _) => {
+                    let _ = write!(
+                        out,
+                        "<p class=\"fineprint exact-authority\" data-authority=\"jev\">{} · {}</p>",
+                        Self::judged_by(decided),
+                        date(decided.decided_ms)
+                    );
+                }
+                (None, crate::study::JudgmentState::Checking) => {
+                    out.push_str("<p class=\"fineprint\">Jev is judging this answer. It has no Verdict yet.</p>");
+                }
+                (None, _) => {
+                    let _ = write!(
+                        out,
+                        "<p class=\"notice\">{}</p><p class=\"fineprint\">This answer has no Verdict and its schedule is unchanged.</p>",
+                        escape(
+                            view.check
+                                .and_then(|c| c.reason.as_deref())
+                                .unwrap_or("Jev did not judge this answer.")
+                        )
+                    );
+                    if view.checks_left {
+                        out.push_str(&self.check_again(a, "exact-history-check"));
+                    } else {
+                        out.push_str("<p class=\"fineprint\">Three checks are saved for this answer. It stays saved and not graded.</p>");
+                    }
+                }
+            }
+        }
         let _ = write!(
             out,
             "<h3>{}</h3><ol class=\"exact-diff\" aria-label=\"Diff\">",
             if a.disclosure {
                 "Saved comparison · no answer submitted"
+            } else if judged.is_some() {
+                "Word-by-word comparison, not the Verdict"
             } else {
                 "Word by word"
             }
@@ -3205,12 +3540,19 @@ impl View<'_> {
             escape(&a.grade.authority.grader_version),
             if a.disclosure {
                 " · comparison only, not a recall Verdict"
+            } else if judged.is_some() {
+                " · comparison only, not the Verdict"
             } else {
                 ""
             }
         );
         for e in &a.effects {
-            let (kind, status) = if e.assisted {
+            let (kind, status) = if e.superseded {
+                (
+                    "superseded",
+                    "A newer answer was already recorded · schedule unchanged".into(),
+                )
+            } else if e.assisted {
                 ("assisted", "Assisted practice · schedule unchanged".into())
             } else if e.extra_practice {
                 ("extra", "Extra practice · already scheduled today".into())
@@ -3597,6 +3939,9 @@ fn legacy_home(_app: &App) -> &'static str {
 pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
     if matches!(path, "/library/version/add" | "/library/mapping/add") {
         redirect.strip_prefix("/api/v1").unwrap_or("/library")
+    } else if path == "/practice/check" && redirect == "/history" {
+        // An earlier answer was checked again from History: return there.
+        "/history"
     } else if path.starts_with("/practice/review/")
         || (path.starts_with("/practice/") && app.practice.mixed_review)
     {

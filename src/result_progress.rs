@@ -26,6 +26,8 @@ pub fn summarize(app: &App, answer: &study::Attempt) -> Evidence {
         .values()
         .filter(|a| {
             !a.disclosure
+                // An answer with no Verdict is neither a success nor a miss.
+                && a.verdict().is_some()
                 && a.version_id == answer.version_id
                 && a.version_hash == answer.version_hash
                 && a.prompt.scope == answer.prompt.scope
@@ -52,7 +54,7 @@ pub fn summarize(app: &App, answer: &study::Attempt) -> Evidence {
             Mark::Helped
         } else {
             evidence.unaided += 1;
-            if a.grade.verdict == Verdict::Good {
+            if a.verdict() == Some(Verdict::Good) {
                 evidence.correct += 1;
                 Mark::Correct
             } else {
@@ -78,12 +80,12 @@ pub fn summarize(app: &App, answer: &study::Attempt) -> Evidence {
     if evidence.active {
         // The current persisted cards, not the attempt snapshot: an owner correction
         // may have changed the schedule since this answer was committed.
-        for effect in &answer.effects {
+        for (card_id, unit_id) in answer.card_units() {
             match app
                 .practice
                 .cards
-                .get(&effect.card_id)
-                .filter(|c| c.study_id == answer.prompt.study_id && c.unit_id == effect.unit_id)
+                .get(card_id)
+                .filter(|c| c.study_id == answer.prompt.study_id && c.unit_id == unit_id)
             {
                 Some(card) if card.state.schedule.last_review_ms.is_some() => {
                     let due = card.state.schedule.due_ms;
