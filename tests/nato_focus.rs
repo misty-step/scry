@@ -16,6 +16,25 @@ fn start(app: &mut App, op: &str) -> MutationResult {
     let f = fields(app, op);
     engine::mutate(app, "/practice/nato/start", &f, NOW, op).unwrap()
 }
+/// The letter on screen, whether it is being studied or quizzed.
+fn letter(app: &App) -> String {
+    let p = &app.practice.current.as_ref().unwrap().prompt;
+    let unit = app.library.versions[&p.version_id]
+        .sections
+        .iter()
+        .flat_map(|s| &s.units)
+        .find(|u| p.unit_ids.contains(&u.id))
+        .unwrap();
+    library::mapping_pair(&unit.text).unwrap().0.to_string()
+}
+fn try_from_memory(app: &mut App, now: i64, tag: &str) {
+    let mut f = fields(app, &format!("loop-quiz-{tag}"));
+    f.insert(
+        "prompt_id".into(),
+        app.practice.current.as_ref().unwrap().prompt.id.clone(),
+    );
+    engine::mutate(app, "/practice/quiz", &f, now, &format!("quiz-{tag}")).unwrap();
+}
 #[test]
 fn one_action_imports_starts_and_holds_without_duplicate_effects() {
     let mut a = app();
@@ -25,7 +44,11 @@ fn one_action_imports_starts_and_holds_without_duplicate_effects() {
     assert_eq!(a.practice.studies.len(), 1);
     assert_eq!(a.practice.cards.len(), 1);
     assert!(a.practice.attempts.is_empty());
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "A");
+    // The first letter is shown with its code word before any Quiz.
+    let held = a.practice.current.as_ref().unwrap();
+    assert_eq!(letter(&a), "A");
+    assert_eq!(held.phase, Some(study::StudyPhase::Study));
+    assert_eq!(held.prompt.cue, "A\tAlfa\n");
     assert!(library::is_nato(
         a.library.versions.values().next().unwrap()
     ));
@@ -44,6 +67,7 @@ fn one_action_imports_starts_and_holds_without_duplicate_effects() {
 fn start_preserves_graded_result_schedule_and_resumes_retained_study() {
     let mut a = app();
     start(&mut a, "nato-focus-start-0011");
+    try_from_memory(&mut a, NOW, "start-0011");
     let mut f = fields(&a, "nato-focus-answer-0011");
     f.insert(
         "prompt_id".into(),
@@ -162,8 +186,9 @@ fn deliberate_nato_entry_allows_all_26_without_changing_general_paces() {
     let mut a = app();
     start(&mut a, "nato-focus-full-start");
     for index in 0..26 {
+        assert_eq!(letter(&a), char::from(b'A' + index).to_string());
+        try_from_memory(&mut a, NOW, &format!("full-{index:02}"));
         let p = a.practice.current.as_ref().unwrap().prompt.clone();
-        assert_eq!(p.cue, char::from(b'A' + index).to_string());
         let v = &a.library.versions[&p.version_id];
         let u = v
             .sections
@@ -263,12 +288,7 @@ fn imported_non_nato_study_cannot_claim_the_focused_allowance() {
 
 fn answer_at(a: &mut App, answer: Option<&str>, now: i64, tag: &str) {
     if answer.is_some() && a.practice.current.as_ref().unwrap().source_visible() {
-        let mut f = fields(a, &format!("loop-quiz-{tag}"));
-        f.insert(
-            "prompt_id".into(),
-            a.practice.current.as_ref().unwrap().prompt.id.clone(),
-        );
-        engine::mutate(a, "/practice/quiz", &f, now, &format!("quiz-{tag}")).unwrap();
+        try_from_memory(a, now, tag);
     }
     let p = a.practice.current.as_ref().unwrap().prompt.clone();
     let mut f = fields(a, &format!("loop-answer-{tag}"));
@@ -296,7 +316,7 @@ fn nato_reveal_then_next_does_not_trap_the_learner_on_alfa() {
     answer_at(&mut a, Some("Alfa"), NOW + 6_000, "assisted-a");
     let before = a.practice.cards.clone();
     next_at(&mut a, NOW + 8_000, "reveal-a");
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
+    assert_eq!(letter(&a), "B");
     for (id, card) in before {
         assert_eq!(a.practice.cards[&id], card);
     }
@@ -317,7 +337,7 @@ fn nato_wrong_then_delayed_next_does_not_trap_the_learner_on_alfa() {
         .schedule
         .due_ms;
     next_at(&mut a, due + 5_000, "wrong-a");
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
+    assert_eq!(letter(&a), "B");
     engine::validate_app(&a).unwrap();
 }
 
@@ -422,7 +442,7 @@ fn nato_existing_overdue_correct_review_advances_without_reset() {
     assert!(latest.effects[0].scheduled);
     let before = a.practice.cards.clone();
     next_at(&mut a, NOW + 80_000, "existing-correct");
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
+    assert_eq!(letter(&a), "B");
     for (id, card) in before {
         assert_eq!(a.practice.cards[&id], card);
     }
@@ -447,7 +467,7 @@ fn retained_nato_study_without_new_start_advances_without_migration() {
     let studies = a.practice.studies.clone();
     let cards = a.practice.cards.clone();
     next_at(&mut a, NOW + 80_000, "legacy-next");
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
+    assert_eq!(letter(&a), "B");
     assert_eq!(a.practice.studies, studies);
     for (id, card) in cards {
         assert_eq!(a.practice.cards[&id], card);
@@ -500,7 +520,7 @@ fn selecting_nato_skips_future_a_and_preserves_five_reviews() {
     assert_eq!(attempts.len(), 5);
     select_lesson(&mut a, "rosary-joyful", now, "schedule-away-operation");
     let result = select_lesson(&mut a, "nato", now, "schedule-return-operation");
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
+    assert_eq!(letter(&a), "B");
     assert_eq!(a.practice.cards[&card.id], card);
     assert_eq!(a.practice.attempts, attempts);
     assert!(result.data.is_some());
@@ -588,7 +608,7 @@ fn scheduled_boundary_tie_and_sole_due_retry_use_same_lesson_policy() {
     assert!(a.practice.current.is_none());
     assert_eq!(a.practice.cards, before.cards);
     select_lesson(&mut a, "nato", due, "boundary-exact-operation");
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "A");
+    assert_eq!(letter(&a), "A");
     answer_at(&mut a, Some("wrong"), due, "boundary-wrong");
     let previous = a.practice.current.as_ref().unwrap().prompt.id.clone();
     let mut f = fields(&a, "boundary-lesson-next-operation");
@@ -601,7 +621,7 @@ fn scheduled_boundary_tie_and_sole_due_retry_use_same_lesson_policy() {
         "boundary-next",
     )
     .unwrap();
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "B");
+    assert_eq!(letter(&a), "B");
     engine::validate_app(&a).unwrap();
 }
 #[test]
@@ -611,7 +631,7 @@ fn sole_due_previous_card_is_not_reported_caught_up() {
     select_lesson(&mut a, "nato", now, "sole-nextday-start-operation");
     for index in 0..26 {
         let p = a.practice.current.as_ref().unwrap().prompt.clone();
-        assert_eq!(p.cue, char::from(b'A' + index as u8).to_string());
+        assert_eq!(letter(&a), char::from(b'A' + index as u8).to_string());
         let v = &a.library.versions[&p.version_id];
         let u = v
             .sections
@@ -637,7 +657,7 @@ fn sole_due_previous_card_is_not_reported_caught_up() {
         .due_ms;
     let before = a.practice.clone();
     next_at(&mut a, retry_at, "sole-due-retry");
-    assert_eq!(a.practice.current.as_ref().unwrap().prompt.cue, "Z");
+    assert_eq!(letter(&a), "Z");
     assert_eq!(a.practice.cards, before.cards);
     assert_eq!(a.practice.attempts, before.attempts);
     engine::validate_app(&a).unwrap();

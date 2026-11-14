@@ -69,7 +69,10 @@ export async function keyedMappingFixture({capturePredecessor=false,captureMappi
   if(capturePredecessor){
    const path=join(temp,'predecessor-control.txt');await writeFile(path,'Synthetic predecessor control.\n');
    const version=(await ok(['version','add','--title','Predecessor positive control','--kind','text','--text-file',path])).result.entity_id;
-   const study=(await ok(['learn',version])).practice.study.id,prompt=(await ok(['next'])).practice.prompt;
+   // The published predecessor answers beside its cue. This build studies the
+   // phrase, then answers its Quiz.
+   const study=(await ok(['learn',version])).practice.study.id,presented=(await ok(['next'])).practice;
+   const prompt=legacyOnly?presented.prompt:(await ok(['quiz',presented.prompt.id])).practice.prompt;
    await ok(['answer',prompt.id,'--text-stdin'],'Synthetic predecessor control.');await ok(['study','drop',study]);
    const response=await api('/api/v1/export');assert.equal(response.status,200,response.status===200?'':await response.text());archives.baseline=Buffer.from(await response.arrayBuffer());
   }
@@ -120,7 +123,8 @@ export async function keyedMappingJourney({predecessorArtifact}={}){
  let current,cards=new Map(),original;
  const next=async(extra=[])=>{current=(await f.ok(['next',...(current?.attempt_id?['--after',current.prompt.id]:[]),...extra])).practice;return current;};
  const answer=async(text,operation)=>{const result=await f.ok(['answer',current.prompt.id,'--text-stdin',...(operation?['--operation-id',operation]:[])],text);current.attempt_id=result.practice.attempt.id;return result.practice.attempt;};
- const practice=async(key,text)=>{await next(['--card',cards.get(key)]);return answer(text);};
+ const quiz=async()=>{current=(await f.ok(['quiz',current.prompt.id])).practice;return current;};
+ const practice=async(key,text)=>{await next(['--card',cards.get(key)]);assert.equal(current.phase,'quiz','A practised pair returns as a Quiz.');return answer(text);};
  const refuse=async(path,payload,status)=>{const before=await f.rows(),objects=await f.r2();const r=await f.api(path,{operation_id:randomUUID(),...payload});assert.equal(r.status,status);assert.deepEqual(await f.rows(),before);assert.deepEqual(await f.r2(),objects);};
  const criteria=[
   ['26 canonical externally supplied pairs and idempotent import',async()=>{
@@ -128,7 +132,12 @@ export async function keyedMappingJourney({predecessorArtifact}={}){
    assert.equal(v.text,units.map(u=>u.text).join(''));assert.equal(v.kind,'keyed_mapping');assert.equal(v.provenance,'supplied');assert.equal(v.spelling_strict,true);
    const before=await f.rows(),replay=await f.ok(['mapping','add','--file',manifest,'--operation-id','mapping-fixture-import-operation']);assert.equal(replay.replayed,true);assert.equal(replay.result.entity_id,f.vid);transcript.push({observation:'Import receipt replay',...successfulReplay(before,await f.rows())});
    assert.equal((await f.ok(['mapping','add','--file',manifest])).result.entity_id,f.vid);assert.equal((await f.ok(['learn',f.vid])).practice.study.id,f.sid);
-   await next();assert.equal(current.prompt.cue,'A');assert.equal(current.prompt.assisted,false);assert.ok(!JSON.stringify(current).includes('Alfa'));
+   // A pair not yet practised is source study: the key with its value, and no answer.
+   await next();assert.equal(current.phase,'study');assert.equal(current.prompt.cue_level,'read');assert.equal(current.prompt.cue,'A\tAlfa\n');
+   await refuse('/api/v1/answer',{prompt_id:current.prompt.id,answer:'Alfa'},409);
+   const studied=await f.rows();await quiz();
+   for(const prefix of ['practice_cards/','practice_attempts/'])assert.deepEqual((await f.rows()).filter(row=>row.key.startsWith(prefix)),studied.filter(row=>row.key.startsWith(prefix)),'Try from memory creates no Attempt and changes no schedule.');
+   assert.equal(current.phase,'quiz');assert.equal(current.prompt.cue,'A');assert.equal(current.prompt.assisted,false);assert.ok(!JSON.stringify(current).includes('Alfa'));
    const snapshot=await f.rows();assert.equal((await f.api('/api/v1/library/versions/'+f.vid)).status,409);assert.deepEqual(await f.rows(),snapshot);
    original=await answer('Alpha');assert.equal(original.grade.verdict,'Again');assert.equal(original.effects[0].scheduled,true);assert.equal(original.assisted,false);assert.equal(original.grade.authority.name,'exact-v2');assert.ok(original.grade.authority.grader_version.endsWith(';mapping=1'));assert.equal(original.grade.diff[0].expected.text,'Alfa');
    cards.set('A',original.effects[0].card_id);
@@ -139,7 +148,9 @@ export async function keyedMappingJourney({predecessorArtifact}={}){
    for(let count=0;cards.size<26&&count<200;count++){
     await next();if(!current.prompt){await f.clock(f.at+DAY+1);continue;}
     const index=current.prompt.scope.position-1,unit=f.shown.version.sections.flatMap(s=>s.units)[index];const [key,value]=unit.text.trimEnd().split('\t');
-    assert.equal(current.prompt.cue,key);assert.equal(current.prompt.assisted,false);
+    // New pairs are studied first; pairs already answered come back as Quizzes.
+    if(current.phase==='study'){assert.ok(!cards.has(key));assert.equal(current.prompt.cue,unit.text);await quiz();}else assert.ok(cards.has(key));
+    assert.equal(current.phase,'quiz');assert.equal(current.prompt.cue,key);assert.equal(current.prompt.assisted,false);
     const a=await answer(value);assert.equal(a.grade.verdict,'Good');cards.set(key,a.effects[0].card_id);
    }
    assert.equal(cards.size,26);const due=await f.ok(['due']);assert.equal(due.cards.length,26);assert.ok(due.cards.every(c=>c.direction==='forward'));
@@ -163,6 +174,8 @@ export async function keyedMappingJourney({predecessorArtifact}={}){
   ['revealed answer remains assisted and replay commits once',async()=>{
    await next(['--card',cards.get('A')]);const cid=cards.get('A'),before=(await f.record('practice_cards/'+cid)).state.schedule;
    const revealed=await f.ok(['reveal',current.prompt.id]);assert.equal(revealed.practice.assisted,true);assert.ok(revealed.practice.expected.some(u=>u.text==='Alfa'));
+   // The revealed value is on show as study: it takes no answer until tried from memory again.
+   await refuse('/api/v1/answer',{prompt_id:current.prompt.id,answer:'Alfa'},409);await quiz();assert.equal(current.revealed,true);
    const assisted=await answer('Alfa');assert.equal(assisted.grade.verdict,'Good');assert.equal(assisted.assisted,true);assert.equal(assisted.effects[0].scheduled,false);assert.deepEqual((await f.record('practice_cards/'+cid)).state.schedule,before);
    await next(['--card',cid]);const pid=current.prompt.id,op='mapping-answer-replay-operation',payload={operation_id:op,prompt_id:pid,answer:'Alfa'};
    const response=await f.api('/api/v1/answer',payload);assert.equal(response.status,200);await response.body.cancel();
@@ -177,10 +190,10 @@ export async function keyedMappingJourney({predecessorArtifact}={}){
    let legacyBytes;try{legacyBytes=legacy.archives.baseline;assert.equal(legacy.egress,0);}finally{await legacy.close();}
    const mixed=await keyedMappingFixture({mixedOnly:true});let mixedBytes;try{mixedBytes=mixed.archives.baseline;assert.equal(mixed.egress,0);}finally{await mixed.close();}
    const mapping=await keyedMappingFixture({captureMapping:true});let mappingBytes;try{mappingBytes=mapping.archives.mappingLibrary;assert.equal(Object.keys(JSON.parse(mappingBytes).app.practice?.attempts||{}).length,0);}finally{await mapping.close();}
-   const due=JSON.parse(f.archives.baseline);assert.equal(due.format,'scry-rust-durable-sqlite-study-scheduled-v2');assert.ok(Object.values(due.app.practice.attempts).every(a=>a.schedule_policy==='due'&&a.assisted));
+   const due=JSON.parse(f.archives.baseline);assert.equal(due.format,'scry-rust-durable-sqlite-study-phase-v3');assert.ok(Object.values(due.app.practice.attempts).every(a=>a.schedule_policy==='due'&&!a.assisted));
    // Adversarial envelope downgrade only: never delete policy or rewrite history.
    const downgraded=Buffer.from(JSON.stringify({...due,format:'scry-rust-durable-sqlite-study-v1'}));
-   for(const [label,bytes,accept]of [['actual-legacy-baseline',legacyBytes,true],['mixed-only-no-attempts',mixedBytes,false],['new-guided-due',f.archives.baseline,false],['forged-legacy-envelope-new-due',downgraded,false],['mapping-library-without-new-policy',mappingBytes,false],['mapping-study',studyBytes,false]]){
+   for(const [label,bytes,accept]of [['actual-legacy-baseline',legacyBytes,true],['mixed-only-no-attempts',mixedBytes,false],['new-study-quiz-due',f.archives.baseline,false],['forged-legacy-envelope-new-due',downgraded,false],['mapping-library-without-new-policy',mappingBytes,false],['mapping-study',studyBytes,false]]){
     const result=await predecessorRestore(predecessorArtifact,bytes,accept,f.at);transcript.push({observation:'Published v0.8.1 predecessor '+label,...result});
    }
    transcript.push({observation:'Current Worker restores actual predecessor history unchanged',...await predecessorRestore(undefined,legacyBytes,true,f.at)});
@@ -213,17 +226,22 @@ async function nativeMappingForms(transcript){
  try{
   // Opening practice selects nothing; the Owner's CLI takes the first Prompt deliberately.
   const idle=await f.worker.fetch(f.origin+'/recall');assert.doesNotMatch(await idle.text(),/data-prompt-id/);await f.ok(['next']);
+  // The pair is studied on its rendered page, then tried from memory through its native form.
+  const source=await get();assert.match(source,/data-state="exact-prompt"/);assert.match(source,/data-study-phase="study"/);assert.match(source,/Alfa/);assert.doesNotMatch(source,/Bravo|id="answer"|action="\/practice\/answer"/);
+  await post(source,'/practice/quiz');
   const front=await get();assert.match(front,/data-state="exact-prompt"/);assert.doesNotMatch(front,/Alfa|Bravo/);assert.match(front,/<input id="answer" name="answer" type="text"/);
   const first=await post(front,'/practice/answer',{answer:'Alpha'}),miss=(await f.ok(['next'])).practice;
   assert.equal(miss.prompt.id,first.prompt_id);assert.equal(miss.attempt.grade.verdict,'Again');assert.equal(miss.attempt.assisted,false);assert.equal(miss.attempt.effects[0].scheduled,true);
   const held=await get();assert.match(held,/data-state="exact-result"/);assert.match(held,/Alfa/);assert.doesNotMatch(held,/I was right|Count as a miss/);
   await post(held,'/practice/next');
+  const nextSource=await get();assert.match(nextSource,/data-study-phase="study"/);assert.match(nextSource,/Bravo/);assert.doesNotMatch(nextSource,/Alfa|id="answer"/);
+  await post(nextSource,'/practice/quiz');
   const next=await get();assert.match(next,/data-state="exact-prompt"/);assert.doesNotMatch(next,/Alfa|Bravo/);
   const frozen=(await f.record('meta')).practice.current;assert.equal(frozen.prompt.cue,'B');assert.notEqual(frozen.prompt.id,first.prompt_id);
   await post(next,'/practice/answer',{answer:'Bravo'});const correct=(await f.ok(['next'])).practice.attempt;
   assert.equal(correct.grade.verdict,'Good');assert.equal(correct.assisted,false);assert.equal(correct.effects[0].scheduled,true);assert.equal(f.egress,0);
   const result=await get();assert.match(result,/data-state="exact-result"/);assert.match(result,/Bravo/);
-  transcript.push({observation:'Actual rendered native form HTTP contract',answer_transport_fields:['csrf','operation_id','revision','prompt_id','answer'],miss:'Again',explicit_next:true,correct:'Good',scheduled:true,browser_observation:false});
+  transcript.push({observation:'Actual rendered native form HTTP contract',source_study_then_quiz:true,answer_transport_fields:['csrf','operation_id','revision','prompt_id','answer'],miss:'Again',explicit_next:true,correct:'Good',scheduled:true,browser_observation:false});
  }finally{await f.close();}
 }
 
@@ -272,6 +290,12 @@ export async function keyedMappingWalk(browser,capture){
   const shot=async label=>row.evidence.push(await capture(page,`mapping-${width}-${scheme}-${noJS?'native':'enhanced'}-${zoom?200:100}-${label}.png`));
   try{
    await f.ok(['next']);await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
+   // A new letter is first studied: its code word, no answer field, one action.
+   await page.locator('[data-study-phase="study"]').waitFor();assert.equal((await page.locator('.nato-letter').innerText()).trim(),'A');await page.getByText('Alfa',{exact:true}).waitFor();
+   assert.equal(await page.locator('input[name="answer"],textarea,form[action="/practice/answer"],form[action="/practice/reveal"]').count(),0);assert.doesNotMatch(await page.content(),/Bravo/);
+   assert.equal((await f.rows()).filter(r=>r.key.startsWith('practice_attempts/')).length,0);
+   await typography(page,zoom);await shot('study');
+   await enterMemoryPage(page);
    assert.equal(await page.locator('input[name="answer"]').count(),1);assert.equal(await page.locator('textarea').count(),0);
    assert.equal((await page.locator('.nato-letter').innerText()).trim(),'A');
    assert.doesNotMatch(await page.content(),/Alfa|Bravo/,'The whole unanswered HTML, including hidden inputs and metadata, carries no canonical answer.');
@@ -288,6 +312,8 @@ export async function keyedMappingWalk(browser,capture){
    await typography(page,zoom);await shot('held-reload');
    assert.equal(await page.locator('.nato-word').textContent(),'Alfa','The canonical correction is inline, with no disclosure click.');
    await page.getByRole('button',{name:/^Next/}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();
+   await page.locator('[data-study-phase="study"]').waitFor();assert.equal((await page.locator('.nato-letter').innerText()).trim(),'B');await page.getByText('Bravo',{exact:true}).waitFor();
+   await enterMemoryPage(page);
    assert.equal((await page.locator('.nato-letter').innerText()).trim(),'B');
    const next=(await f.record('meta')).practice.current.prompt.id;await page.reload();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await f.record('meta')).practice.current.prompt.id,next);
    await page.goto(f.origin+'/library');await page.goBack();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await f.record('meta')).practice.current.prompt.id,next);
@@ -298,7 +324,8 @@ export async function keyedMappingWalk(browser,capture){
    await typography(page,zoom);assert.ok((await page.locator('.nato-word').innerText()).includes('Bravo'));
    row.good=await page.locator('[data-verdict="Good"]').evaluate(node=>{const r=node.getBoundingClientRect();return {visible:r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth,verdict:node.dataset.verdict};});assert.equal(row.good.visible,true);
    row.evidence.push(await capture(page,`mapping-${width}-${scheme}-${noJS?'native':'enhanced'}-${zoom?200:100}-good-arrival.png`,{fullPage:false}));
-   await page.getByRole('button',{name:/^Next/}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();assert.equal((await page.locator('.nato-letter').innerText()).trim(),'C');
+   await page.getByRole('button',{name:/^Next/}).tap();await page.locator('[data-state="exact-prompt"]').waitFor();await page.locator('[data-study-phase="study"]').waitFor();assert.equal((await page.locator('.nato-letter').innerText()).trim(),'C');
+   await enterMemoryPage(page);
    assert.doesNotMatch(await page.content(),/Charlie/);
    const before=(await f.record('meta')).practice.current.targets[0].before.schedule;
    await page.getByRole('button',{name:'Show answer',exact:true}).tap();await page.locator('[data-study-phase="study"]').waitFor();await page.getByText('Charlie',{exact:true}).waitFor();assert.equal(await page.locator('#answer').count(),0);await enterMemoryPage(page);assert.doesNotMatch(await page.content(),/Charlie/,'Hiding the peek removes the expected word before typing');
@@ -319,7 +346,7 @@ export async function keyedMappingRecovery(browser,capture){
  const check=async(name,run)=>{
   const f=await keyedMappingFixture(),context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true}),page=await context.newPage();page.setDefaultTimeout(12000);
   const row={name,status:'pass'};results.push(row);
-  try{await f.ok(['next']);await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();await run({f,context,page,row});assert.equal(f.egress,0);}
+  try{await f.ok(['next']);await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();await enterMemoryPage(page);await run({f,context,page,row});assert.equal(f.egress,0);}
   catch(error){row.status='fail';row.reason=error.message;}
   finally{row.evidence=await capture(page,`mapping-recovery-${results.length}.png`);await context.close();await f.close();}
  };
@@ -356,17 +383,22 @@ export async function keyedMappingBoundaryJourney(){
   const title='Alfa: NATO spelling alphabet';
   const vid=(await call('/api/v1/library/mappings',{data:manifest(title,'A','Alfa')})).result.entity_id;
   const sid=(await call('/api/v1/learn',{version_id:vid})).practice.study.id;
-  const next=await call('/api/v1/next',{study_id:sid}),prompt=next.practice.prompt;
+  // Source study shows the supplied pair, never the supplied title; its Quiz shows the key alone.
+  const source=await call('/api/v1/next',{study_id:sid});assert.equal(source.practice.phase,'study');assert.equal(source.practice.prompt.cue,'A\tAlfa\n');assert.ok(!JSON.stringify(source).includes(title));
+  assert.ok(!(await(await f.worker.fetch(f.origin+'/recall')).text()).includes(title),'The studied page hides the supplied title too.');
+  const next=await call('/api/v1/quiz',{prompt_id:source.practice.prompt.id}),prompt=next.practice.prompt;
   assert.equal(prompt.cue,'A');assert.equal(prompt.assisted,false);assert.doesNotMatch(JSON.stringify(next),/Alfa/,'Neither result nor practice may disclose the supplied answer-bearing title.');
   assert.doesNotMatch(await(await f.worker.fetch(f.origin+'/recall')).text(),/Alfa/,'Whole active HTML hides supplied title.');
   const card=(await f.ok(['due'])).cards.find(card=>card.study_id===sid),before=(await f.record('practice_cards/'+card.id)).state.schedule;
   await call('/api/v1/reveal',{prompt_id:prompt.id});
-  const assisted=(await call('/api/v1/answer',{prompt_id:prompt.id,answer:'Alfa'})).practice.attempt;
+  const retry=(await call('/api/v1/quiz',{prompt_id:prompt.id})).practice.prompt;
+  const assisted=(await call('/api/v1/answer',{prompt_id:retry.id,answer:'Alfa'})).practice.attempt;
   assert.equal(assisted.grade.verdict,'Good');assert.equal(assisted.assisted,true);assert.equal(assisted.effects[0].scheduled,false);assert.deepEqual((await f.record('practice_cards/'+card.id)).state.schedule,before);
   const supplied=(await f.ok(['export'])).app;assert.equal(supplied.library.works[supplied.library.versions[vid].work_id].title,title);
   const q=(await call('/api/v1/library/mappings',{data:manifest('Letter pairs','Q','A&B')})).result.entity_id;
   const qs=(await call('/api/v1/learn',{version_id:q})).practice.study.id;
-  const qp=(await call('/api/v1/next',{after:prompt.id,study_id:qs})).practice.prompt;
+  const qsource=(await call('/api/v1/next',{after:retry.id,study_id:qs})).practice;assert.equal(qsource.phase,'study');
+  const qp=(await call('/api/v1/quiz',{prompt_id:qsource.prompt.id})).practice.prompt;
   assert.equal((await call('/api/v1/answer',{prompt_id:qp.id,answer:'A B'})).practice.attempt.grade.verdict,'Good');
   const original=(await f.ok(['export'])).app;
   assert.equal((await call('/api/v1/library/mappings',{data:manifest('Letter pairs','Q','A B')})).result.entity_id,q);

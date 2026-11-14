@@ -193,36 +193,55 @@ fn due_review_hides_source_even_when_retained_card_cue_is_read() {
     assert!(o.p().prompt.context.is_none());
     assert!(!web::render(&o.app, "/", &BTreeMap::new(), due, None).contains(o.expected().trim()));
 }
+/// A notebook stored before every Study became study-then-quiz: it holds a
+/// first-letters Prompt. See fixtures/cue-ladder-legacy.README.md.
+fn stored_ladder() -> (Owner, i64) {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/cue-ladder-legacy.json")).unwrap();
+    let saved = &fixture["ladder"]["states"]["held_first_letters"];
+    let archive = persistence::Archive::decode(
+        saved["archive"].as_str().unwrap().as_bytes(),
+        saved["sha256"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        archive.format,
+        "scry-rust-durable-sqlite-study-scheduled-v2"
+    );
+    (
+        Owner {
+            app: archive.app,
+            n: 0,
+        },
+        saved["now_ms"].as_i64().unwrap() + 1_000,
+    )
+}
 #[test]
 fn phase_archive_is_explicit_and_legacy_prompt_and_attempt_bytes_stay_compatible() {
-    let mut o = Owner::new();
-    let vid = o
-        .app
-        .library
-        .add(
-            scry::lessons::input("st-michael-en").unwrap(),
-            "legacy",
-            None,
-        )
-        .unwrap();
-    let sid = o
-        .call("/practice/learn", &[("version_id", vid)], NOW)
-        .entity_id
-        .unwrap();
-    o.call("/practice/next", &[("study_id", sid)], NOW);
+    let (mut o, now) = stored_ladder();
     assert_eq!(o.p().phase, None);
-    let page = web::render(&o.app, "/", &BTreeMap::new(), NOW, None);
+    assert_eq!(o.p().prompt.cue_level, study::Cue::FirstLetters);
+    let page = web::render(&o.app, "/", &BTreeMap::new(), now, None);
     assert!(page.contains("Try from memory"));
     assert!(!page.contains("id=\"answer\""));
-    o.answer(NOW);
+    let earlier = o.app.practice.attempts.clone();
+    o.answer(now);
+    let answered = o.app.practice.attempts[o.p().attempt_id.as_ref().unwrap()].clone();
+    assert!(answered.assisted && answered.prompt.cue_level == study::Cue::FirstLetters);
+    assert!(
+        earlier
+            .iter()
+            .all(|(id, a)| &o.app.practice.attempts[id] == a)
+    );
     let legacy = serde_json::to_value(&o.app.practice.attempts).unwrap();
-    o.call("/practice/next", &[("after", o.p().prompt.id)], NOW);
-    o.quiz();
+    o.call("/practice/next", &[("after", o.p().prompt.id)], now);
+    assert_eq!(o.p().phase, Some(StudyPhase::Quiz));
+    assert!(!o.p().prompt.assisted);
     assert_eq!(
         serde_json::to_value(&o.app.practice.attempts).unwrap(),
         legacy
     );
-    let archive = persistence::Archive::new(o.app.clone(), vec![], NOW);
+    let archive = persistence::Archive::new(o.app.clone(), vec![], now);
     assert_eq!(archive.format, "scry-rust-durable-sqlite-study-phase-v3");
     let bytes = archive.encode().unwrap();
     assert_eq!(
@@ -237,7 +256,7 @@ fn phase_archive_is_explicit_and_legacy_prompt_and_attempt_bytes_stay_compatible
 }
 
 #[test]
-fn app_study_phase_survives_an_empty_current_without_changing_legacy_api_default() {
+fn study_then_quiz_survives_an_empty_current_for_every_study() {
     let mut o = Owner::new();
     o.call(
         "/practice/lesson/start",
@@ -250,31 +269,48 @@ fn app_study_phase_survives_an_empty_current_without_changing_legacy_api_default
     o.app.practice.current = None;
     engine::validate_app(&o.app).unwrap();
     o.call("/practice/next", &[("study_id", sid.clone())], NOW);
+    // The pair was shown but never answered: it is studied again, not quizzed cold.
+    assert_eq!(o.p().phase, Some(StudyPhase::Study));
+    let refuse = |o: &mut Owner, seed: &str| {
+        let before = o.app.clone();
+        let fields = o.fields(&[("prompt_id", o.p().prompt.id), ("answer", "swaddle".into())]);
+        assert_eq!(
+            engine::mutate(&mut o.app, "/practice/answer", &fields, NOW, seed)
+                .unwrap_err()
+                .status,
+            409
+        );
+        assert_eq!(o.app, before);
+    };
+    refuse(&mut o, "source-copy");
+    o.quiz();
     assert_eq!(o.p().phase, Some(StudyPhase::Quiz));
     o.call("/practice/reveal", &[("prompt_id", o.p().prompt.id)], NOW);
     assert_eq!(o.p().phase, Some(StudyPhase::Study));
-    let before = o.app.clone();
-    let fields = o.fields(&[("prompt_id", o.p().prompt.id), ("answer", "swaddle".into())]);
-    assert_eq!(
-        engine::mutate(&mut o.app, "/practice/answer", &fields, NOW, "empty-copy")
-            .unwrap_err()
-            .status,
-        409
-    );
-    assert_eq!(o.app, before);
-    let mut legacy = Owner::new();
-    let vid = legacy
+    refuse(&mut o, "empty-copy");
+    // A Study started by learn alone is no different, for any client.
+    let mut learned = Owner::new();
+    let vid = learned
         .app
         .library
         .add(
             scry::lessons::input("st-michael-en").unwrap(),
-            "legacy-default",
+            "learn-default",
             None,
         )
         .unwrap();
-    let learned = legacy.call("/practice/learn", &[("version_id", vid)], NOW);
-    let sid = learned.entity_id.unwrap();
-    assert!(!legacy.app.practice.studies[&sid].source_quiz);
-    legacy.call("/practice/next", &[("study_id", sid)], NOW);
-    assert_eq!(legacy.p().phase, None);
+    let sid = learned
+        .call("/practice/learn", &[("version_id", vid)], NOW)
+        .entity_id
+        .unwrap();
+    assert!(!learned.app.practice.studies[&sid].source_quiz);
+    for _ in 0..2 {
+        learned.call("/practice/next", &[("study_id", sid.clone())], NOW);
+        assert_eq!(learned.p().phase, Some(StudyPhase::Study));
+        assert!(learned.app.practice.studies[&sid].source_quiz);
+        learned.app.practice.current = None;
+        engine::validate_app(&learned.app).unwrap();
+    }
+    let archive = persistence::Archive::new(learned.app.clone(), vec![], NOW);
+    assert_eq!(archive.format, "scry-rust-durable-sqlite-study-phase-v3");
 }

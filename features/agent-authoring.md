@@ -14,7 +14,8 @@ remains unverified.
 ## Sub-features
 
 - Validate and import immutable supplied content, then search/show it.
-- Start practice and submit an answer through the same server-owned policy.
+- Start practice through the same server-owned policy: a new Unit arrives as
+  source study, `quiz` moves to its Quiz, and the answer is submitted there.
 - Replay an operation safely without duplicate domain effects.
 - Reveal is assisted; rejection leaves stored learning state unchanged.
 
@@ -29,7 +30,8 @@ configuring persistent access is not part of running this verification skill.
 
 Run `node --test qa/mcp-worker.test.mjs`. It launches the compiled MCP process,
 authenticates to a disposable real Worker, imports the checked-in NATO fixture,
-starts practice, submits a wrong spelling, verifies exact-v2 authority, replays
+starts practice, is refused an answer against the studied pair, moves to its
+Quiz, submits a wrong spelling, verifies exact-v2 authority, replays
 once, refuses conflicting/client-grade submissions and checks assisted review.
 The independent SQLite read proves domain/receipt preservation; the fixture
 asserts zero external egress and checks binary/WASM hashes before and after.

@@ -85,7 +85,14 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  const units=shown.version.sections.flatMap(section=>section.units);assert.equal(units.length,26);
  assert.equal(units.map(unit=>unit.text.split('\t')[0]).join(''),'ABCDEFGHIJKLMNOPQRSTUVWXYZ');
  const sid=(await ok('scry_learn',{operation_id:'mcp-worker-learn-operation',version_id:vid,pace:'intense'})).practice.study.id;
- const first=(await ok('scry_next',{operation_id:'mcp-worker-next-operation',study_id:sid})).practice;
+ // A learned Study presents its new pair as source study: the key with its value,
+ // which the tool server cannot answer. scry_quiz then asks from the key alone.
+ const firstSource=(await ok('scry_next',{operation_id:'mcp-worker-next-operation',study_id:sid})).practice;
+ assert.equal(firstSource.phase,'study');assert.equal(firstSource.prompt.cue_level,'read');assert.equal(firstSource.prompt.cue,'A\tAlfa\n');
+ await refused('scry_answer',{operation_id:'mcp-worker-source-answer',prompt_id:firstSource.prompt.id,answer:'Alfa'},'conflict');
+ const beforeQuiz=await rows(),first=(await ok('scry_quiz',{operation_id:'mcp-worker-first-quiz',prompt_id:firstSource.prompt.id})).practice;
+ assert.ok(isDeepStrictEqual((await rows()).filter(row=>row.key.startsWith('practice_cards/')||row.key.startsWith('practice_attempts/')),beforeQuiz.filter(row=>row.key.startsWith('practice_cards/')||row.key.startsWith('practice_attempts/'))),'Try from memory creates no Attempt and changes no schedule.');
+ assert.equal(first.phase,'quiz');assert.equal(first.prompt.cue_level,'mapping_key');
  assert.equal(first.prompt.cue,'A');assert.equal(first.prompt.assisted,false);assert.ok(!JSON.stringify(first).includes('Alfa'));
  const answer={operation_id:'mcp-worker-answer-operation',prompt_id:first.prompt.id,answer:'Alpha'};
  const answered=await ok('scry_answer',answer),attempt=answered.practice.attempt;
@@ -99,13 +106,19 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  const held=(await ok('scry_next',{operation_id:'mcp-worker-held-operation'})).practice;
  assert.equal(held.attempt.id,attempt.id,'No automatic advance after judgment.');
 
- const second=(await ok('scry_next',{operation_id:'mcp-worker-second-operation',after:first.prompt.id,study_id:sid})).practice;
+ const secondSource=(await ok('scry_next',{operation_id:'mcp-worker-second-operation',after:first.prompt.id,study_id:sid})).practice;
+ assert.equal(secondSource.phase,'study');assert.equal(secondSource.prompt.cue,'B\tBravo\n');
+ const second=(await ok('scry_quiz',{operation_id:'mcp-worker-second-quiz',prompt_id:secondSource.prompt.id})).practice;
  assert.equal(second.prompt.cue,'B');assert.equal(second.prompt.assisted,false);
  await refused('scry_answer',answer,'conflict'); // #349: old disclosure cannot bypass new unaided Prompt.
  await refused('scry_show',{kind:'version',id:vid},'conflict');
  const reveal=(await ok('scry_reveal',{operation_id:'mcp-worker-reveal-operation',prompt_id:second.prompt.id})).practice;
  assert.equal(reveal.assisted,true);assert.ok(reveal.expected.some(unit=>unit.text==='Bravo'));
- const helped=(await ok('scry_answer',{operation_id:'mcp-worker-helped-operation',prompt_id:second.prompt.id,answer:'Bravo'})).practice.attempt;
+ // The revealed pair is on show as study; it is tried from memory again, with help recorded.
+ await refused('scry_answer',{operation_id:'mcp-worker-revealed-copy',prompt_id:second.prompt.id,answer:'Bravo'},'conflict');
+ const retried=(await ok('scry_quiz',{operation_id:'mcp-worker-second-retry',prompt_id:second.prompt.id})).practice;
+ assert.equal(retried.revealed,true);assert.ok(!JSON.stringify(retried.prompt).includes('Bravo'));
+ const helped=(await ok('scry_answer',{operation_id:'mcp-worker-helped-operation',prompt_id:retried.prompt.id,answer:'Bravo'})).practice.attempt;
  assert.equal(helped.grade.verdict,'Good');assert.equal(helped.assisted,true);assert.equal(helped.effects[0].scheduled,false);
  assert.deepEqual((await ok('scry_answer',answer)).practice.attempt,attempt,'Old answer replay works once current Prompt is answered.');
  const due=await ok('scry_due');assert.ok(due.cards.length>=2);assert.ok(due.cards.every(card=>card.direction==='forward'));
@@ -118,9 +131,9 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  assert.deepEqual(app.practice.attempts[attempt.id],attempt);assert.deepEqual(app.practice.attempts[helped.id],helped);
  assert.deepEqual(app.practice.corrections,{});
  assert.deepEqual(app.jobs,{});assert.deepEqual(app.assessments,{});assert.deepEqual(app.spend,[]);
- // Additive agent Study→Quiz is real transport, while the legacy modeNone
- // NATO/Reveal chain above retains its original records and semantics.
- const source=(await ok('scry_lesson_start',{operation_id:'mcp-worker-source-operation',starter:'st-michael-en',after:second.prompt.id})).practice;
+ // A lesson uses the same two forms through the same transport, and the
+ // mapping records above keep their bytes.
+ const source=(await ok('scry_lesson_start',{operation_id:'mcp-worker-source-operation',starter:'st-michael-en',after:retried.prompt.id})).practice;
  const beforeSource=await rows(),meta=()=>rows().then(rows=>JSON.parse(rows.find(row=>row.key==='meta').value));
  const sourceCurrent=(await meta()).practice.current;
  const sourceVersion=JSON.parse(beforeSource.find(row=>row.key==='library_versions/'+sourceCurrent.prompt.version_id).value);
@@ -145,8 +158,8 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  assert.notEqual(retry.prompt.id,quiz.prompt.id);assert.ok(!JSON.stringify(retry).includes(words.trim()));
  const answeredRetry=(await ok('scry_answer',{operation_id:'mcp-worker-helped-retry',prompt_id:retry.prompt.id,answer:words})).practice.attempt;
  assert.equal(answeredRetry.assisted,true);assert.equal(answeredRetry.effects[0].scheduled,false,'Hiding a peek through CLI never erases help');
- const finalRows=await rows();for(const old of attemptsIn(beforeSource))assert.deepEqual(finalRows.find(row=>row.key===old.key),old,'Additive quiz preserves every legacy Attempt byte');
+ const finalRows=await rows();for(const old of attemptsIn(beforeSource))assert.deepEqual(finalRows.find(row=>row.key===old.key),old,'A later lesson preserves every earlier Attempt byte');
  assert.equal(stderr,'');assert.equal(pending.size,0);
  assert.equal(sha(await readFile(join(artifact,'index_bg.wasm'))),wasmHash);assert.equal(sha(await readFile(binary)),mcpHash);
- console.log('MCP Worker receipt: '+JSON.stringify({format:'scry-mcp-workerd-proof-v1',mcp_sha256:mcpHash,worker_wasm_sha256:wasmHash,units:26,legacy_answer_attempts:2,legacy_disclosure_attempts:1,explicit_source_quiz_mcp_cli:true,source_copy_refused:true,help_persists_across_quiz:true,wrong_spelling:'Again',revealed_correct:'assisted Good',answer_replay_domain_and_receipts_unchanged:true,replay_cas_revision_increment:1,protected_replay_and_library_reads:409,client_grade_refused_before_http:true,external_egress:egress,limits:['synthetic local Owner token','loopback workerd/SQLite','no hosted or physical-phone claim']}));
+ console.log('MCP Worker receipt: '+JSON.stringify({format:'scry-mcp-workerd-proof-v1',mcp_sha256:mcpHash,worker_wasm_sha256:wasmHash,units:26,mapping_source_study_before_quiz:true,mapping_answer_attempts:2,mapping_disclosure_attempts:1,explicit_source_quiz_mcp_cli:true,source_copy_refused:true,help_persists_across_quiz:true,wrong_spelling:'Again',revealed_correct:'assisted Good',answer_replay_domain_and_receipts_unchanged:true,replay_cas_revision_increment:1,protected_replay_and_library_reads:409,client_grade_refused_before_http:true,external_egress:egress,limits:['synthetic local Owner token','loopback workerd/SQLite','no hosted or physical-phone claim']}));
 });

@@ -71,6 +71,33 @@ async function fixture(t, twoUnits = false) {
     const current = (await record('meta')).practice.current;
     return (await cli(['answer', current.prompt.id, '--text-stdin'], input)).practice.attempt;
   };
+  // Try from memory: the held source, studied or revealed, becomes its Quiz.
+  const quiz = async () => {
+    const before = await rows(), current = (await record('meta')).practice.current;
+    const quizzed = (await cli(['quiz', current.prompt.id])).practice;
+    assert.equal(quizzed.phase, 'quiz');
+    assert.equal(quizzed.prompt.assisted, false);
+    assert.ok(!JSON.stringify(quizzed.prompt).includes(text));
+    const kept = prefix => all => all.filter(r => r.key.startsWith(prefix));
+    for (const prefix of ['practice_attempts/', 'practice_cards/']) assert.deepEqual(kept(prefix)(await rows()), kept(prefix)(before), 'Try from memory is not evidence.');
+    return quizzed;
+  };
+  // A new Unit is source study first; the compiled CLI cannot answer it.
+  const studyToQuiz = async () => {
+    const source = await next();
+    assert.equal(source.phase, 'study');
+    assert.equal(source.prompt.cue_level, 'read');
+    const before = await rows();
+    await cli(['answer', source.prompt.id, '--text-stdin'], text, 1);
+    assert.deepEqual(await rows(), before);
+    return quiz();
+  };
+  const revealThenQuiz = async () => {
+    const current = (await record('meta')).practice.current;
+    await cli(['reveal', current.prompt.id]);
+    await cli(['answer', current.prompt.id, '--text-stdin'], text, 1);
+    return quiz();
+  };
   const historicalCorrect = async payload => {
     const fields = {operation_id: randomUUID(), ...payload};
     const before = await rows();
@@ -83,21 +110,25 @@ async function fixture(t, twoUnits = false) {
     observations.push({observation: 'Validated historical Correction setup, not a supported HTTP write', correction_id: result.practice.correction.id, replayed: result.replayed});
     return result;
   };
-  return {runtime, origin, sql, rows, record, api, cli, sid, version, next, answer, historicalCorrect, temp, secret};
+  return {runtime, origin, sql, rows, record, api, cli, sid, version, next, answer, quiz, studyToQuiz, revealThenQuiz, historicalCorrect, temp, secret};
 }
 
 for (const scope of ['unit', 'section', 'whole']) {
   test(`Old disclosure replay refuses through CLI/API under a protected ${scope} Prompt`, async t => {
     const f = await fixture(t, scope !== 'unit');
     const nextOp = randomUUID(), revealOp = randomUUID(), answerOp = randomUUID(), heldOp = randomUUID(), correctOp = randomUUID();
+    // The studied source, the reveal and the answer all carry the text.
     const initial = (await f.cli(['next', '--study', f.sid, '--operation-id', nextOp])).practice;
-    const pid = initial.prompt.id;
+    assert.equal(initial.phase, 'study');
+    assert.equal(initial.prompt.cue.trim(), text);
     const cid = (await f.record('meta')).practice.current.targets[0].card_id;
-    const revealArgs = ['reveal', pid, '--operation-id', revealOp];
+    const revealed = (await f.quiz()).prompt.id;
+    const revealArgs = ['reveal', revealed, '--operation-id', revealOp];
     const shown = await f.cli(revealArgs);
     const afterReveal = await f.record('meta');
     assert.equal(afterReveal.practice.current.revealed, true);
     assert.deepEqual((await f.cli(revealArgs)).result, shown.result, 'Current reveal reconciles a lost response.');
+    const pid = (await f.quiz()).prompt.id;
     const answerArgs = ['answer', pid, '--text-stdin', '--operation-id', answerOp];
     const answered = await f.cli(answerArgs, text);
     const original = answered.practice.attempt;
@@ -107,16 +138,19 @@ for (const scope of ['unit', 'section', 'whole']) {
     const correctFields = {prompt_id: pid, attempt_id: original.id, verdict: 'Again', operation_id: correctOp};
     await f.cli(correctArgs, '', 1);
     const corrected = await f.historicalCorrect(correctFields);
-    for (let i = 0; i < 6; i++) {await f.next(); await f.answer(text);}
     const contextReplay = [];
     if (scope !== 'unit') {
-      await f.next(); await f.answer(text);
+      // The first phrase returns as a Quiz and is recalled unaided.
+      assert.equal((await f.next()).phase, 'quiz'); await f.answer(text);
       const firstHeld = (await f.record('meta')).practice.current;
       const contextOp = randomUUID();
+      // The second phrase is studied beside the first as context, then answered with help.
       const context = await f.cli(['next', '--after', firstHeld.prompt.id, '--study', f.sid, '--operation-id', contextOp]);
+      assert.equal(context.practice.phase, 'study');
       assert.equal(context.practice.prompt.context.trim(), text);
       contextReplay.push(['/api/v1/next', {operation_id: contextOp, after: firstHeld.prompt.id, study_id: f.sid}]);
-      await f.answer(secondText);
+      await f.quiz(); await f.revealThenQuiz();
+      assert.equal((await f.answer(secondText)).assisted, true);
     }
     const held = (await f.record('meta')).practice.current;
     const selected = await f.cli(['next', '--after', held.prompt.id, '--study', f.sid, ...(scope === 'unit' ? [] : ['--recite', scope, ...(scope === 'section' ? ['--section', f.version.sections[0].id] : [])])]);
@@ -126,7 +160,7 @@ for (const scope of ['unit', 'section', 'whole']) {
     const before = await f.rows();
     for (const [path, payload] of [
       ['/api/v1/next', {operation_id: nextOp, study_id: f.sid}],
-      ['/api/v1/reveal', {operation_id: revealOp, prompt_id: pid}],
+      ['/api/v1/reveal', {operation_id: revealOp, prompt_id: revealed}],
       ['/api/v1/answer', {operation_id: answerOp, prompt_id: pid, answer: text}],
       ['/api/v1/next', {operation_id: heldOp}],
       ...contextReplay,
@@ -165,37 +199,32 @@ for (const scope of ['unit', 'section', 'whole']) {
   });
 }
 
-test('Explicit reveal breaks the cue success run at all rungs through the compiled CLI', async t => {
+test('Explicit reveal earns no unaided credit or success run through the compiled CLI', async t => {
   const f = await fixture(t);
-  await f.next();
+  await f.studyToQuiz();
   const cid = (await f.record('meta')).practice.current.targets[0].card_id;
-  const rungs = ['read', 'first_letters', 'first_letter', 'previous_line', 'section_heading', 'whole_title'];
-  for (const [i, cue] of rungs.entries()) {
-    await f.answer(text);
-    await f.next(cid);
-    let current = (await f.record('meta')).practice.current;
-    await f.cli(['reveal', current.prompt.id]);
-    const copied = await f.answer(text);
-    let card = await f.record('practice_cards/' + cid);
-    assert.equal(card.state.cue, cue, 'A copied Good does not fade the cue.');
-    assert.equal(card.state.successes, 0);
-    assert.equal(copied.revealed, true);
-    assert.equal(copied.effects[0].scheduled, false);
-    await f.next(cid); await f.answer(text); await f.next(cid);
-    current = (await f.record('meta')).practice.current;
-    await f.cli(['reveal', current.prompt.id]);
-    const missed = await f.answer('Wrong words');
-    const correction = await f.historicalCorrect({prompt_id: current.prompt.id, attempt_id: missed.id, verdict: 'Good'});
-    card = await f.record('practice_cards/' + cid);
-    assert.equal(card.state.cue, cue);
-    assert.equal(card.state.successes, 0);
-    assert.equal(correction.practice.correction.after.successes, 0);
-    for (let j = 0; j < 2; j++) {await f.next(cid); await f.answer(text);}
-    card = await f.record('practice_cards/' + cid);
-    assert.equal(card.state.cue, rungs[Math.min(i + 1, rungs.length - 1)]);
-    observations.push({cue, revealed_good_successes: 0, revealed_again_corrected_successes: 0, next_cue: card.state.cue});
-    if (i + 1 < rungs.length) await f.next(cid);
-  }
+  const unaided = await f.answer(text);
+  assert.equal(unaided.assisted, false);
+  assert.equal(unaided.effects[0].scheduled, true);
+  const state = (await f.record('practice_cards/' + cid)).state;
+  // A copied Good after a reveal is neither recall nor a success.
+  assert.equal((await f.next(cid)).phase, 'quiz');
+  await f.revealThenQuiz();
+  const copied = await f.answer(text);
+  assert.equal(copied.revealed, true);
+  assert.equal(copied.effects[0].scheduled, false);
+  assert.deepEqual((await f.record('practice_cards/' + cid)).state, state, 'A copied Good changes no Card state.');
+  // A revealed miss is not a lapse, and its historical Correction keeps the reveal.
+  await f.next(cid);
+  const current = await f.revealThenQuiz();
+  const missed = await f.answer('Wrong words');
+  const correction = await f.historicalCorrect({prompt_id: current.prompt.id, attempt_id: missed.id, verdict: 'Good'});
+  const card = await f.record('practice_cards/' + cid);
+  assert.deepEqual(card.state, state);
+  assert.equal(card.state.cue, 'read', 'No answer moves a stored cue level.');
+  assert.equal(correction.practice.correction.after.successes, 0);
+  assert.deepEqual(correction.practice.correction.after.schedule, state.schedule);
+  observations.push({revealed_good_scheduled: false, revealed_again_corrected_successes: 0, stored_cue: card.state.cue});
   await f.cli(['study', 'drop', f.sid]);
   const archive = await f.api('/api/v1/export');
   const bytes = Buffer.from(JSON.stringify(archive));
@@ -225,7 +254,7 @@ async function restoreFixture(t) {
 for (const missing of ['work', 'version', 'section', 'unit', 'target']) {
   test(`Restore dry-run completes a refusal for a missing ${missing} reference and writes zero rows`, async t => {
     const f = await fixture(t);
-    await f.next(); await f.answer(text);
+    await f.studyToQuiz(); await f.answer(text);
     await f.cli(['study', 'drop', f.sid]);
     const archive = await f.api('/api/v1/export');
     const version = Object.values(archive.app.library.versions)[0];
@@ -265,7 +294,10 @@ test('Mixed notebook legacy errors, held feedback and replay preserve exact prac
 
 test('Owner CLI explicitly saves and reads a prompt-bound draft without grading', async t => {
   const f=await fixture(t,false);
-  const initial=(await f.cli(['next','--study',f.sid])).practice;
+  // A draft belongs to a Quiz: source study has no answer to save.
+  const source=(await f.cli(['next','--study',f.sid])).practice;assert.equal(source.phase,'study');
+  await f.cli(['save-draft',source.prompt.id,'--generation','0','--text-stdin','--operation-id',randomUUID()],'Synthetic checkpoint',1);
+  const initial=await f.quiz();
   const pid=initial.prompt.id, op=randomUUID(), before=await f.rows();
   const saved=await f.cli(['save-draft',pid,'--generation','0','--text-stdin','--operation-id',op],'Synthetic checkpoint');
   assert.equal(saved.practice.draft_generation,1);
@@ -288,7 +320,8 @@ test('Owner CLI explicitly saves and reads a prompt-bound draft without grading'
 
 
 test('CLI requires a retained checkpoint operation ID and reconciles a lost response', async t=>{
-  const f=await fixture(t,false), initial=(await f.cli(['next','--study',f.sid])).practice, pid=initial.prompt.id;
+  const f=await fixture(t,false);await f.cli(['next','--study',f.sid]);
+  const initial=await f.quiz(), pid=initial.prompt.id;
   const before=await f.rows();
   const refusal=await f.cli(['save-draft',pid,'--generation','0','--text-stdin'],'synthetic text',1);
   assert.match(refusal.error,/operation-id/);assert.deepEqual(await f.rows(),before);

@@ -312,10 +312,10 @@ leave from browsing the lesson shelf. Do not supply both `after` and `leave`.
 Same-Version start resumes the held Prompt; stale identifiers conflict.
 
 Text starts with a meaningful authored phrase. `phrases` cycles the clauses;
-`retry` repeats the current individual text phrase with a visible cue and assisted
-evidence; it creates a new Prompt but no Attempt until an answer is submitted.
+`retry` shows the missed phrase again as source study, with its help recorded;
+it creates a new Prompt but no Attempt until the Quiz that follows is answered.
 `join` checks the current phrase's authored Section; `whole` checks the complete
-Version from a cold cue; `middle` starts a later phrase. Author Sections around
+Version from its title alone; `middle` starts a later phrase. Author Sections around
 meaningful groups, not screen-width line wraps; their Unit strings must
 concatenate to the exact Version text. Learning is typed-text recall only, not
 speech recognition or pronunciation assessment. Keep language, edition/version,
@@ -324,8 +324,8 @@ source citations and rights explicit in the existing `name`, `context`,
 
 A lesson deliberately introduces up to 128 Units without changing retained
 Pace or rewriting past schedules. Existing local grading/storage bounds still
-apply. Guided cues fade after actual successful practice, but assistance never
-counts as unaided recall or changes the due schedule. Phrase, joined-Section
+apply. Assistance never counts as unaided recall or changes the due schedule.
+Phrase, joined-Section
 and whole-text Attempts retain their different scopes. Isolated phrase success
 does not establish complete-text recall.
 
@@ -389,10 +389,11 @@ practice after the held result is released. `--text-stdin` accepts an answer
 without an input file. Empty answers count as misses. Dictated text uses the
 same answer field and grader.
 
-`reveal PROMPT` saves assistance before returning the target Units. A cued
-Prompt already records assistance. Lower-help Prompt JSON contains only its
-allowed cue and context. History, complete export, and Library reads refuse
-while an unanswered Free recall Prompt protects its target. Due and Study list
+`reveal PROMPT` saves assistance before returning the target Units. The revealed
+Prompt becomes source study: `quiz PROMPT` hides it again and the answer that
+follows is assisted. A Quiz Prompt's JSON carries its title, section heading or
+mapping key and nothing answer-bearing. History, complete export, and Library
+reads refuse while an unanswered Free recall Prompt protects its target. Due and Study list
 remain available. These reads never record help or consume a Prompt.
 
 ```sh
@@ -429,20 +430,35 @@ learner-supplied Verdict is accepted.
 | GET | `/api/v1/history` | Studies, Cards, immutable Attempts and Corrections, referenced Versions and operation receipts |
 | GET | `/api/v1/export` | Complete compatible private archive, including the understanding notebook and historical custody |
 
-New lesson/app prompts distinguish `practice.phase: "study"` (visible source,
-no answer form or grade) from `"quiz"` (hidden source, raw answer graded natively).
-POST `/api/v1/quiz` with the source `prompt_id` creates a separately fenced quiz
-with the same Units and scope, without creating an Attempt or changing schedules.
-Source-phase answers are rejected server-side, including requests from older
-clients. Revealing a quiz records help; returning to quiz preserves that help.
-The generic API's legacy absent-phase guided-cue behavior remains compatible;
-clients can explicitly opt into quiz from a visible source cue. Existing Attempts
-and their original assistance/schedule evidence are never reinterpreted.
+Practice has two forms for every Study and every client, however the Study
+was started: `practice.phase: "study"` (source study: the supplied material,
+no answer and no grade) and `"quiz"` (source hidden, raw answer graded
+natively). A Unit not yet practised is presented as study first, whatever its
+Kind; one already answered is presented as a Quiz. An ordered list is always
+presented whole, however many of its Cards exist.
 
-Rollback safety: app Studies retain `source_quiz` even when no Prompt is held.
-Their archives use the phase-v3 format and older readers must refuse them. This
-archive fence does not make an older binary safe against the same live SQLite
-store: do not downgrade that store to a pre-phase runtime.
+In study, `prompt.cue_level` is `read` and `prompt.cue` is the supplied text of
+the Units in scope: a text phrase, a mapping pair as its key, a tab and its
+value, or every item of an ordered list on its own line. POST `/api/v1/quiz`
+with that `prompt_id` creates a separately fenced Quiz of the same Units and
+scope, without creating an Attempt or changing schedules. An answer or a draft
+sent against a study Prompt is refused with 409 from every client. Revealing a
+Quiz records help and returns it to study; returning to Quiz preserves that
+help, so the answer is assisted.
+
+Scry never fades cues, shows first letters or uses a Card's stored cue level
+to choose a Prompt. Cue levels appear only in records made before this rule.
+A Prompt such a record still holds, with `practice.phase` absent, can be
+answered once and is recorded as it would have been; `quiz` also applies to
+its visible source. Every Prompt after it has a phase. Existing Attempts and
+their original assistance and schedule evidence are never reinterpreted.
+
+Rollback safety: a Study keeps `source_quiz` once one of its Prompts has been
+held, even when no Prompt is held now. Its archives use the phase-v3 format and
+older readers must refuse them. A held study Prompt for a mapping pair or a
+whole list is also refused by any earlier build's validation. This archive
+fence does not make an older binary safe against the same live SQLite store:
+do not downgrade that store to an earlier runtime.
 
 Practice mutations return `practice` beside the shared `result` and `replayed`
 fields. The engine receipt freezes each response reference. Reconcile an
@@ -455,10 +471,10 @@ current Prompt before reading earlier Attempts through history; do not create
 a new operation to recover a response that may already have committed. Changed
 payload under an operation ID conflicts. Every new Attempt names `exact-v2`
 and its grader version, the acting token, Version identity and normalized hash,
-actual Cue, raw answer, Diff, Verdict and per-Card scheduling effects.
+the Prompt as presented, raw answer, Diff, Verdict and per-Card scheduling effects.
 
 Free recall schedules once per UTC calendar day. Extra practice records an
-Attempt and can change cues, but leaves FSRS unchanged. New introductions use
+Attempt but leaves FSRS unchanged. New introductions use
 a rolling 24-hour window. The existing FSRS adapter identity remains pinned;
 its historical `ALGORITHM` string includes `exact-v1`, while the Attempt's
 separate `grade.authority` names the actual `exact-v2` grader.

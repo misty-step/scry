@@ -10,9 +10,9 @@ straight into the next due Unit. Behavior authority:
 ## Sub-features
 
 - `study-learn` creates one Study per Version (`scry learn`).
-- `study-prompt` shows source without an input, then Try from memory selects a hidden-source quiz with one field and one submit control. Historical phase-less API cues remain compatible.
+- `study-prompt` shows source without an input, then Try from memory selects a hidden-source quiz with one field and one submit control. This holds for every Kind and every client; a cue-bearing Prompt held from an older record can still be answered once.
 - `study-verdict` gives Good or Again with a Diff of correct, slipped, wrong, missing and extra words, held until Next.
-- `study-assist` records Show me or a cue as an assisted Attempt before showing it.
+- `study-assist` records Show me as assistance before showing it; the retry that follows is assisted.
 - `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 because self-grading is a [non-goal](../SPEC.md#purpose-and-non-goals).
 - `study-caught-up`: opening practice with nothing held selects nothing. It offers one Study action, or says Rest for now with Browse and the next scheduled review instead of inventing practice.
 - `study-cli` covers the same actions through `scry next`, `answer`, `due`, `history` and `export`.
@@ -42,7 +42,7 @@ Preconditions:
   `[data-diff-kind]` must equal `scry next --json`'s Attempt grade. Next then
   advances, with no horizontal overflow.
 - **Interactive fixture.** `node qa/phone-serve.mjs PORT` prints a loopback URL
-  whose second Unit is already in Free recall. Drive it with Playwright or the
+  whose second Unit is held as a Free recall Quiz. Drive it with Playwright or the
   T3 preview; start another fixture for Show me before answering.
 - **First study.** `qa/phone-library.mjs` walks empty Library → supplied Version
   → Learn → source study → Try from memory → native quiz → held result, with CLI readback, dedupe, protected navigation, native
@@ -66,9 +66,13 @@ Preconditions:
 
 ## Gotchas
 
-- A new Card starts with an answer-bearing cue, so its first typed Attempt is
-  assisted and leaves the schedule unchanged ("Assisted practice · the schedule
-  stayed unchanged"). Free recall needs the fading in `qa/phone-stream.mjs`.
+- A new Unit is first held as source study, which accepts no answer. Its first
+  typed Attempt answers the Quiz after Try from memory and is Free recall. An
+  answer after Show me is assisted ("Assisted practice · the schedule stayed
+  unchanged").
+- `tests/fixtures/cue-ladder-legacy.json` holds notebooks stored under the
+  earlier cue ladder and quiz-first mappings. `tests/study_then_quiz.rs` proves
+  they restore and export unchanged and that a held cue is answered once.
 - Capture the result arrival before scrolling or reloading: verdict and the
   first changed word/replacement must be unobscured. Native Full answer holds
   the complete ordered Diff; the actions follow in ordinary flow.
@@ -86,7 +90,8 @@ Preconditions:
 
 Externally authored mapping manifests enter through `scry mapping add --file`
 and the shared Library API. Learn the returned Version and open Text practice.
-The first Prompt shows only the key, with one typed answer and Check my answer.
+A pair is first shown as its key with its value and Try from memory. The Quiz
+then shows only the key, with one typed answer and Check my answer.
 Results show the canonical value and native exact-v2 Diff, held until Next.
 Mapping results have no self-rating or Owner Correction. Show me records durable
 assistance and leaves the schedule unchanged, including a later correct answer.

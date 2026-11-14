@@ -42,15 +42,14 @@ export async function phoneFixture({port=0,legacy=false}={}) {
  let cid;
  for(const text of [previousText,phoneText]){
   cid=(await record('meta')).practice.current.targets[0].card_id;
-  // Fade via actual assisted answers. No direct SQLite writes or test clock.
-  for(let i=0;i<6;i++){
-   await cli(['answer',current.prompt.id,'--text-stdin'],text);
-   current=(await cli(['next','--after',current.prompt.id,'--card',cid])).practice;
-  }
-  assert.equal(current.prompt.cue_level,'previous_line');
+  // Study, then Try from memory, through the compiled CLI. No direct SQLite writes or test clock.
+  assert.equal(current.phase,'study');assert.equal(current.prompt.cue_level,'read');assert.equal(current.prompt.cue,text);
+  if(text===phoneText)assert.equal(current.prompt.context,previousText,'A studied phrase is shown after the phrase before it.');
+  current=(await cli(['quiz',current.prompt.id])).practice;
+  assert.equal(current.phase,'quiz');assert.equal(current.prompt.cue_level,'whole_title');assert.equal(current.prompt.assisted,false);
   if(text===previousText){await cli(['answer',current.prompt.id,'--text-stdin'],text);current=(await cli(['next','--after',current.prompt.id])).practice;}
  }
- assert.equal(current.prompt.context,previousText);
+ assert.equal(current.prompt.context,null,'A Quiz carries no neighbouring phrase.');
  const historicalCorrection=async fields=>{
   const payload={operation_id:randomUUID(),...fields};const before=await rows();
   const response=await runtime.worker.fetch(origin+'/api/v1/correct',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -96,7 +95,9 @@ export async function phoneWalk(browser,capture) {
    await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
    assert.equal(await page.locator('textarea').count(),1);assert.equal(await page.getByRole('button',{name:'Check my answer',exact:true}).count(),1);
    assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Practice','Lessons','Library','History','Settings','Earlier practice','Changelog']);
-   assert.ok(!(await page.locator('main').innerText()).includes(phoneText.trim()));assert.equal((await page.locator('.exact-context .reading').innerText()).trim(),previousText.trim());
+   assert.ok(!(await page.content()).includes(phoneText.trim()),'The Quiz page carries no answer.');assert.equal(await page.locator('.exact-context,.exact-expected').count(),0);
+   // The previous phrase is context only when asked for.
+   const previous=page.locator('details.lesson-context');assert.equal(await previous.count(),1);assert.equal(await previous.getAttribute('open'),null);assert.equal((await previous.locator('p').textContent()).trim(),previousText.trim());
    await typography();await record('prompt');row.criteria.push(1);
    clone=await f.fork();
    await page.setViewportSize({width,height:844});

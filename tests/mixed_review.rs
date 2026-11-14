@@ -38,6 +38,17 @@ impl Owner {
     fn prompt(&self) -> study::Prompt {
         self.app.practice.current.as_ref().unwrap().prompt.clone()
     }
+    /// The held pair's key, whether it is being studied or quizzed.
+    fn key(&self) -> String {
+        let p = self.prompt();
+        let unit = self.app.library.versions[&p.version_id]
+            .sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .find(|u| u.id == p.unit_ids[0])
+            .unwrap();
+        library::mapping_pair(&unit.text).unwrap().0.to_string()
+    }
     fn answer(&mut self, answer: &str, now: i64) {
         if self.app.practice.current.as_ref().unwrap().phase == Some(study::StudyPhase::Study) {
             self.call("/practice/quiz", &[("prompt_id", self.prompt().id)], now);
@@ -160,7 +171,7 @@ fn continuous_study_introduces_unseen_when_reviews_are_future_and_resumes_safely
     o.answer("Value", NOW);
     o.mixed(NOW + 1);
     assert_ne!(o.prompt().study_id, a);
-    assert_eq!(o.prompt().cue, "A");
+    assert_eq!(o.key(), "A");
     let held = o.prompt();
     let before = o.app.clone();
     let html = web::render(&o.app, "/", &BTreeMap::new(), NOW + 1, None);
@@ -176,6 +187,23 @@ fn continuous_study_introduces_unseen_when_reviews_are_future_and_resumes_safely
 // Reconstruct the old, valid on-disk policy without using new scheduling code.
 // Only the latest effect differs: old daily gating retained its before schedule.
 fn legacy_snapshot(o: &mut Owner) -> serde_json::Value {
+    // Those records also predate the study and Quiz phases.
+    for s in o.app.practice.studies.values_mut() {
+        s.source_quiz = false;
+    }
+    if let Some(current) = &mut o.app.practice.current {
+        current.phase = None;
+    }
+    o.app
+        .operations
+        .retain(|_, r| r.path.as_deref() != Some("/practice/quiz"));
+    for r in o.app.operations.values_mut() {
+        if let Some(data) = r.result.data.as_mut().and_then(|d| d.as_object_mut())
+            && data.contains_key("phase")
+        {
+            data.insert("phase".into(), serde_json::Value::Null);
+        }
+    }
     for a in o.app.practice.attempts.values_mut() {
         a.schedule_policy = study::SchedulePolicy::CalendarDay;
         a.algorithm = scry::learning::ALGORITHM.into();
@@ -372,12 +400,25 @@ fn due_reviews_exclude_guided_but_continuous_study_keeps_teaching() {
     let text = o.app.library.versions[&p.version_id].sections[0].units[0]
         .text
         .clone();
+    // Guided: the phrase is revealed during its Quiz, so its answer is assisted
+    // and the Card, though due, is no review.
+    o.call("/practice/quiz", &[("prompt_id", o.prompt().id)], NOW);
+    o.call("/practice/reveal", &[("prompt_id", o.prompt().id)], NOW);
     o.answer(&text, NOW);
+    let guided = o.app.practice.cards.values().next().unwrap();
+    assert!(guided.state.schedule.due_ms <= NOW);
+    assert!(
+        o.app
+            .practice
+            .attempts
+            .values()
+            .all(|a| a.assisted && a.effects.iter().all(|e| !e.scheduled))
+    );
     assert!(study::mixed_cards(&o.app, NOW).is_empty());
     o.mixed(NOW + 1);
     assert!(o.app.practice.current.is_some());
     // An unstarted subject receives a turn before the already-served prayer.
-    assert_eq!(o.prompt().cue, "A");
+    assert_eq!(o.key(), "A");
     let prayer_sid = p.study_id;
     for i in 0..10 {
         let p = o.prompt();
@@ -474,8 +515,9 @@ fn mixed_next_replays_original_receipt_and_rejects_overrides_without_mutation() 
         web::mutation_redirect(&o.app, "/practice/review/next", "/recall"),
         "/"
     );
+    // The newly admitted subject is held as Source study, with its one native action.
     let page = web::render(&o.app, "/recall", &BTreeMap::new(), NOW + 70_000, None);
-    assert!(page.contains("/practice/answer"));
+    assert!(page.contains("/practice/quiz") && !page.contains("/practice/answer"));
     assert!(page.contains(&format!("name=\"prompt_id\" value=\"{}\"", o.prompt().id)));
     engine::validate_app(&o.app).unwrap();
 }
@@ -501,7 +543,7 @@ fn all_subjects_and_focused_entry_preserve_held_until_explicit_fenced_switch() {
         NOW,
     );
     assert!(!o.app.practice.mixed_review);
-    assert_eq!(o.prompt().cue, "A");
+    assert_eq!(o.key(), "A");
     assert!(o.app.practice.attempts.is_empty());
 }
 
@@ -612,7 +654,7 @@ fn empty_mixed_get_is_read_only_and_explicit_study_admits_one_subject() {
     o.mixed(NOW);
     assert_eq!(o.app.practice.studies.len(), 1);
     assert_eq!(o.app.practice.cards.len(), 1);
-    assert_eq!(o.prompt().cue, "A");
+    assert_eq!(o.key(), "A");
     let saved = o.app.clone();
     let held = web::render(&o.app, "/recall", &BTreeMap::new(), NOW, None);
     assert!(held.contains(&format!("data-prompt-id=\"{}\"", o.prompt().id)));
@@ -878,7 +920,7 @@ fn oversized_authored_text_is_preserved_without_blocking_other_study() {
     let vid = o.app.library.add(input, "oversize", None).unwrap();
     let before = o.app.library.versions[&vid].clone();
     o.mixed(NOW);
-    assert_eq!(o.prompt().cue, "A");
+    assert_eq!(o.key(), "A");
     assert_eq!(o.app.library.versions[&vid], before);
     assert!(!o.app.practice.studies.values().any(|s| s.version_id == vid));
 }
@@ -929,10 +971,9 @@ fn safe_existing_due_phrase_is_not_hidden_by_an_oversized_unseen_unit() {
         .call("/practice/learn", &[("version_id", vid)], NOW)
         .entity_id
         .unwrap();
-    for i in 0..7 {
-        o.focus(&sid, NOW + i);
-        o.answer(first, NOW + i);
-    }
+    // Studied, then recalled unaided: the short phrase is scheduled.
+    o.focus(&sid, NOW);
+    o.answer(first, NOW);
     assert!(
         o.app
             .practice

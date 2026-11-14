@@ -104,10 +104,11 @@ writes. The archive fence also protects mixed-only session state; it does not
 claim old code can preserve that state when pointed directly at live rows.
 
 
-App source/quiz Studies, explicit presentation phases and transition receipts use
-`scry-rust-durable-sqlite-study-phase-v3`. A Study's mode survives an empty held
-prompt; a phase-less generic API Study remains legacy until explicitly selected
-for app study or quiz. New archives must be refused by the published predecessor
+Studies presented as study or Quiz, explicit presentation phases and transition
+receipts use `scry-rust-durable-sqlite-study-phase-v3`. Every new Prompt carries
+a phase, whichever client asked for it, and marks its Study, so the format
+survives an empty held prompt. A Study from an older record keeps its earlier
+format until its next Prompt is held. New archives must be refused by the published predecessor
 before restore writes. As above, this is an archive fence, not a claim that old
 code can preserve unknown fields when pointed directly at live rows. After
 source/quiz writes, rollback requires a compatible fix, never a direct downgrade.

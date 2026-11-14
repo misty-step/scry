@@ -41,7 +41,9 @@ test('retired generation POSTs refuse before jobs, photos, receipts or spend; na
   const manifest=JSON.parse(readFileSync(new URL('../examples/nato-alphabet.json',import.meta.url),'utf8'));
   const imported=await mutate('/api/v1/library/mappings',{data:manifest});
   await mutate('/api/v1/learn',{version_id:imported.result.entity_id});
-  const prompt=(await mutate('/api/v1/next')).practice.prompt;
+  // The new pair is studied, then answered as a Quiz.
+  const source=(await mutate('/api/v1/next')).practice;assert.equal(source.phase,'study');
+  const prompt=(await mutate('/api/v1/quiz',{prompt_id:source.prompt.id})).practice.prompt;
   const answer=(await mutate('/api/v1/answer',{prompt_id:prompt.id,answer:'Alfa'})).practice.attempt;
   assert.equal(answer.grade.verdict,'Good');assert.equal(answer.assisted,false);
   const graded=(await read()).app;assert.deepEqual(graded.spend,[]);assert.deepEqual(graded.jobs,{});assert.deepEqual(graded.goals,{});

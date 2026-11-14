@@ -88,9 +88,12 @@ Call `scry_quiz` with a retained `operation_id` and that `prompt_id` only when
 the learner chooses to try from memory. Its new Prompt hides the source and
 creates no Attempt or schedule credit. Source-phase `scry_answer` is refused.
 A reveal returns to source study; hiding it again preserves assistance, so the
-subsequent answer cannot count as unaided recall. Generic legacy `scry_next`
-without a phase retains its historical guided-cue protocol; `scry_quiz` is also
-the explicit opt-in from its visible source cue.
+subsequent answer cannot count as unaided recall. `scry_next` and `scry_learn`
+follow the same two forms as a lesson: a Unit not yet practised arrives as
+`study`, a practised one as `quiz`, and an ordered list always arrives whole.
+Scry never fades cues or shows first letters. A Prompt held without a phase
+comes from an older record: it can be answered once, and `scry_quiz` applies to
+its visible source.
 
 Submit raw typed text for the quiz with `scry_answer`. Then call `scry_lesson_next` with a
 new retained `operation_id`, the answered Prompt ID in `after`, and `mode`:

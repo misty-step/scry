@@ -99,6 +99,10 @@ try {
       assert.equal(fixtureCertRequests,1,'The isolated fixture caches its own issuer keys.');
       const start=await (await req('/?practice=nato',qaToken)).text();
       assert.equal((await post('/practice/nato/start',qaToken,fields(start,'/practice/nato/start'))).status,303);
+      // The first letter is studied before its Quiz; a draft belongs to the Quiz.
+      const source=await (await req('/?practice=nato',qaToken)).text();
+      assert.equal((await post('/practice/draft',qaToken,{...fields(source,'/practice/quiz'),operation_id:randomUUID(),generation:'0',answer:'QA_CHECKPOINT_SYNTHETIC'},{'X-Scry-Request':'page','X-Scry-Expected-Scope':qaScope})).status,409,'Source study accepts no draft.');
+      assert.equal((await post('/practice/quiz',qaToken,fields(source,'/practice/quiz'))).status,303);
       const question=await (await req('/?practice=nato',qaToken)).text();
       const draft={...fields(question,'/practice/answer'),generation:'0',answer:'QA_CHECKPOINT_SYNTHETIC'};
       const wrong=await post('/practice/draft',ownerToken,draft,{'X-Scry-Request':'page','X-Scry-Expected-Scope':qaScope});

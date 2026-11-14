@@ -1,16 +1,31 @@
 use scry::{engine, model::App, persistence};
 use std::{collections::BTreeMap, time::Instant};
 
-#[test]
-#[ignore = "synthetic capacity measurement"]
-fn measure_checkpoint_receipt_growth() {
-    let now = 1_800_000_000_000;
+/// Focused NATO practice at its first Quiz: the letter is studied, then tried from memory.
+fn quizzed(now: i64) -> App {
     let mut app = App::new("synthetic-csrf-at-least-24-characters".into());
     let start = BTreeMap::from([
         ("csrf".into(), app.csrf.clone()),
         ("operation_id".into(), "capacity-start-00001".into()),
     ]);
     engine::mutate(&mut app, "/practice/nato/start", &start, now, "capacity").unwrap();
+    let quiz = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "capacity-quiz-000001".into()),
+        (
+            "prompt_id".into(),
+            app.practice.current.as_ref().unwrap().prompt.id.clone(),
+        ),
+    ]);
+    engine::mutate(&mut app, "/practice/quiz", &quiz, now, "capacity-quiz").unwrap();
+    app
+}
+
+#[test]
+#[ignore = "synthetic capacity measurement"]
+fn measure_checkpoint_receipt_growth() {
+    let now = 1_800_000_000_000;
+    let mut app = quizzed(now);
     let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
     for count in 0..=2000 {
         if count > 0 {
@@ -48,12 +63,7 @@ fn measure_checkpoint_receipt_growth() {
 fn automatic_receipts_have_a_notebook_wide_budget_without_changing_manual_saves() {
     use scry::study::{AUTOSAVE_RECEIPT_LIMIT, autosave_remaining};
     let now = 1_800_000_000_000;
-    let mut app = App::new("synthetic-csrf-at-least-24-characters".into());
-    let start = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "capacity-start-00001".into()),
-    ]);
-    engine::mutate(&mut app, "/practice/nato/start", &start, now, "capacity").unwrap();
+    let mut app = quizzed(now);
     let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
     for i in 0..AUTOSAVE_RECEIPT_LIMIT {
         let fields = BTreeMap::from([
@@ -87,12 +97,7 @@ fn automatic_receipts_have_a_notebook_wide_budget_without_changing_manual_saves(
 fn receipt_generation_is_not_evidence_that_a_checkpoint_is_current() {
     use scry::study::checkpoint_current;
     let now = 1_800_000_000_000;
-    let mut app = App::new("synthetic-csrf-at-least-24-characters".into());
-    let start = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "capacity-start-00001".into()),
-    ]);
-    engine::mutate(&mut app, "/practice/nato/start", &start, now, "capacity").unwrap();
+    let mut app = quizzed(now);
     let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
     let fields = BTreeMap::from([
         ("csrf".into(), app.csrf.clone()),
@@ -120,12 +125,7 @@ fn receipt_generation_is_not_evidence_that_a_checkpoint_is_current() {
 #[test]
 fn discard_control_starts_hidden_until_a_checkpoint_exists() {
     let now = 1_800_000_000_000;
-    let mut app = App::new("synthetic-csrf-at-least-24-characters".into());
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "autosave-control-start".into()),
-    ]);
-    engine::mutate(&mut app, "/practice/nato/start", &fields, now, "capacity").unwrap();
+    let app = quizzed(now);
     let html = scry::web::render(&app, "/", &Default::default(), now, None);
     assert!(html.contains("data-checkpoint-discard data-checkpoint-present=\"false\""));
     assert!(html.contains("value=\"Discard saved draft\" hidden"));

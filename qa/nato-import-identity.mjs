@@ -43,8 +43,16 @@ export async function normalizedNatoJourney(){
     const imported=await api('/api/v1/library/mappings',{data:supplied});
     const vid=imported.result.entity_id,library=subset(await rows(),'library_');
     const learned=await api('/api/v1/learn',{version_id:vid,pace:'light'}),sid=learned.result.entity_id;
-    const next=await api('/api/v1/next',{study_id:sid});
-    const answer={prompt_id:next.practice.prompt.id,answer:'Alpha'};
+    // The agent's Study presents the supplied pair as source study, then its Quiz.
+    const source=async presented=>{
+     assert.equal(presented.practice.phase,'study');assert.equal(presented.practice.prompt.cue_level,'read');
+     const refused=await runtime.worker.fetch(origin+'/api/v1/answer',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify({operation_id:randomUUID(),prompt_id:presented.practice.prompt.id,answer:'Alfa'})});
+     assert.equal(refused.status,409,'The API refuses an answer against a source being studied');
+     const quiz=await api('/api/v1/quiz',{prompt_id:presented.practice.prompt.id});assert.equal(quiz.practice.phase,'quiz');assert.equal(quiz.practice.prompt.cue_level,'mapping_key');
+     return quiz.practice.prompt;
+    };
+    const first=await api('/api/v1/next',{study_id:sid});assert.equal(first.practice.prompt.cue,`${supplied.pairs[0].key}\t${supplied.pairs[0].value}\n`);
+    const answer={prompt_id:(await source(first)).id,answer:'Alpha'};
     const firstAnswer=await api('/api/v1/answer',answer);
     const history=await rows(),studyBefore=values(history,'practice_studies/')[0];
     assert.equal(firstAnswer.practice.attempt.grade.verdict,'Again');
@@ -71,7 +79,7 @@ export async function normalizedNatoJourney(){
     // that must still be wrong even though case/punctuation normalize.
     for(let i=1;i<26;i++){
      const advanced=await api('/api/v1/next',{after:values(await rows(),'meta')[0].practice.current.prompt.id});
-     const prompt=advanced.practice.prompt;assert.equal(prompt.version_id,vid);assert.equal(prompt.cue,supplied.pairs[i].key);
+     const prompt=await source(advanced);assert.equal(prompt.version_id,vid);assert.equal(prompt.cue,supplied.pairs[i].key);
      const wrong=i===9?'Juliet':i===23?'Xray':null;
      const op=randomUUID();const payload={prompt_id:prompt.id,answer:wrong??canonical.pairs[i].value};
      const answered=await api('/api/v1/answer',payload,op);

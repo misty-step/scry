@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {starterFixture,nativeFields} from './nato-starter.mjs';
-import {enterMemory} from './study-review.mjs';
+import {enterMemory,assertStudySource} from './study-review.mjs';
 import {htmlStructure} from './html-structure.mjs';
 const DAY=86400000,START=(Math.floor(Date.now()/DAY)+1)*DAY+12*3600000;
 const domain=rows=>Object.fromEntries(Object.entries(rows).filter(([key])=>key!=='meta'));
@@ -27,11 +27,15 @@ export async function continuousLibraryJourney(){
   let rows=await f.rows(),held=rows.meta.practice.current;
   assert.equal(held.prompt.version_id,canonical,'Default uses one deterministic current edition of supplied Work before importing catalog.');
   assert.equal(records(rows,'practice_studies/').length,1);assert.equal(records(rows,'practice_cards/').length,1,'Admission introduces one Unit, not an entire deck.');
-  assert.doesNotMatch(await f.get('/'),/A supplied edition cedar|A supplied edition willow|Z alternate edition cedar/,'Protected recall does not expose supplied answers.');
+  // The admitted pair is studied first: its own value, never the next pair or another edition.
+  assert.equal(held.phase,'study');assertStudySource(await f.get('/'),'A supplied edition cedar');
+  assert.doesNotMatch(await f.get('/'),/A supplied edition willow|Z alternate edition cedar/,'Source study shows only the admitted pair.');
   const admitted=domain(rows);assert.equal((await f.post('/practice/review/start',start)).status,303);assert.deepEqual(domain(await f.rows()),admitted,'Admission replay creates no duplicate studies, cards, or evidence.');
   await f.get('/');await f.get('/recall');assert.deepEqual(domain(await f.rows()),admitted,'Read holds admitted question without further introductions.');
   const sid=held.prompt.study_id,cardId=held.targets[0].card_id;
-  const answer={...nativeFields(await f.get('/'),'/practice/answer'),answer:'A supplied edition cedar'};
+  const quiz=await enterMemory(f);assert.doesNotMatch(quiz,/A supplied edition cedar|A supplied edition willow|Z alternate edition cedar/,'Protected recall does not expose supplied answers.');
+  assert.equal(records(await f.rows(),'practice_cards/').length,1,'Trying from memory introduces nothing.');
+  const answer={...nativeFields(quiz,'/practice/answer'),answer:'A supplied edition cedar'};
   assert.equal((await f.post('/practice/answer',answer)).status,303);
   rows=await f.rows();const attempts=records(rows,'practice_attempts/');assert.equal(attempts.length,1);assert.match(await f.get('/'),/data-verdict="Good"/);
   const evidence=Object.fromEntries(Object.entries(rows).filter(([key])=>key.startsWith('practice_attempts/')||key.startsWith('practice_payload/')));
@@ -42,7 +46,9 @@ export async function continuousLibraryJourney(){
   assert.equal(records(rows,'practice_cards/').filter(c=>c.study_id===sid).length,1);
   assert.ok(!records(rows,'practice_studies/').some(s=>s.version_id===alternate||s.version_id===overCapacity),'Paused Work cannot be re-entered through an alternate; oversized text is not auto-admitted.');
   await f.clock(rows['practice_cards/'+cardId].state.schedule.due_ms+1);
-  const leave={...nativeFields(await f.get('/'),'/practice/answer'),leave:rows.meta.practice.current.prompt.id};delete leave.prompt_id;
+  // The next subject is held as source study; leaving it uses the same native envelope.
+  assert.equal(rows.meta.practice.current.phase,'study');
+  const leave={...nativeFields(await f.get('/'),'/practice/quiz'),leave:rows.meta.practice.current.prompt.id};delete leave.prompt_id;
   // Use only the standard native operation envelope when leaving an unanswered prompt.
   const envelope=Object.fromEntries(Object.entries(leave).filter(([key])=>['csrf','revision','operation_id','leave'].includes(key)));
   assert.equal((await f.post('/practice/review/start',envelope)).status,303);
