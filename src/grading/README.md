@@ -1,7 +1,7 @@
 # exact-v2 consumer reference
 
-[SPEC US-017](../../SPEC.md#us-017-get-an-exact-verdict-and-a-word-by-word-diff)
-owns grading behavior. `grading::grade` is the pure seam for #315. Attempt
+[SPEC § Grading](../../SPEC.md#grading) owns grading behavior. This page
+describes the `exact-v2` policy that historical results were decided under. `grading::grade` is the pure seam for #315. Attempt
 recording, HTTP, CLI, scheduling, corrections, and held feedback belong to #317.
 
 ```rust

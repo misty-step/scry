@@ -7,8 +7,11 @@ and PR. New Hermes profiles review the checkout, then use native
 
 Shared standard: [Constitution](https://foundations.mistystep.io/) and [Way of working](https://foundations.mistystep.io/way-of-working).
 
-Read [SPEC.md](SPEC.md), especially "Exact recall first" and US-014 to US-021,
-before scoping or verifying behavior. [GLOSSARY](GLOSSARY.md) owns the words. It is the only story/acceptance authority. [VISION](VISION.md) explains
+Read [SPEC.md](SPEC.md) before scoping or verifying behavior. It is the
+present-tense target state and the only behavior authority; its
+[Terms](SPEC.md#terms) own the words. Change it and close drift through the
+[spec skill](https://github.com/misty-step/mistystack/blob/master/skills/spec/SKILL.md),
+never through a ticket backlog. [VISION](VISION.md) explains
 intent; [DESIGN](DESIGN.md) owns visuals; [ADRs](docs/adr/README.md) own technical
 decisions. Do not restate their contracts here.
 
@@ -38,7 +41,8 @@ preview work uses isolated synthetic data without production capabilities.
 Read [QA](docs/qa/system.md) and [.agents/skills/scry-qa/SKILL.md](.agents/skills/scry-qa/SKILL.md).
 QA runs against SPEC, never edits intent to fit implementation. Use the existing
 native, target, runtime and browser gates documented there; `qa/walk --all`
-discovers numbered stories from SPEC. Worktree receipts are development proof;
+runs every journey and refuses to start when a journey's SPEC capability
+heading is missing. Worktree receipts are development proof;
 release artifacts require committed source and the exact tested bytes.
 
 Phone experience, real-provider usefulness, deployed private ingress and
@@ -76,4 +80,4 @@ Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 ### Domain docs
 
-Single-context: root `GLOSSARY.md` (created lazily) and `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: [SPEC § Terms](SPEC.md#terms) and `docs/adr/`. See `docs/agents/domain.md`.

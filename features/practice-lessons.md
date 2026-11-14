@@ -1,7 +1,7 @@
 # Choose and practise lessons
 
 Choose a topic visually, select its edition or mystery set, and practise with
-native feedback. [SPEC](../SPEC.md#visual-practice-chooser-2026-11-01) owns acceptance.
+native feedback. [SPEC § Lessons](../SPEC.md#lessons) owns the target behavior.
 
 ## Sub-features
 

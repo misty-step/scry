@@ -2,10 +2,10 @@
 
 The concept notebook offers one question at a time. The learner answers by
 choice or recall, reads a held, honest result, and chooses Next deliberately.
-Help and corrections stay visible and immutable. Stories: US-002, US-003,
-US-007, US-008, US-011. Intent: [S01/S02](../SPEC.md#s01--open-into-useful-learning),
-[S05](../SPEC.md#s05--repair-a-bad-learning-moment) and
-[S06](../SPEC.md#s06--survive-interruptions-without-losing-truth).
+Help and corrections stay visible and immutable. Walk journeys: US-002, US-003,
+US-007, US-008, US-011. Intent: [SPEC § Earlier concept notebook](../SPEC.md#earlier-concept-notebook),
+[Grading](../SPEC.md#grading) and
+[Drafts and interruptions](../SPEC.md#drafts-and-interruptions).
 
 ## Sub-features
 

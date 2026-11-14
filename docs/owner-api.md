@@ -1,7 +1,7 @@
 # Owner API and CLI
 
 Current policy: external agents author content; Scry grades answers natively.
-Under the [2026-10-27 retirement amendment](../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406),
+Because generation and self-grading are [SPEC non-goals](../SPEC.md#purpose-and-non-goals),
 native content-generation and learner-supplied Verdict/Correction writes return
 410, regardless of paid permission. Existing material, Attempts, Corrections,
 receipts and usage remain readable under the unchanged assistance/auth boundaries.

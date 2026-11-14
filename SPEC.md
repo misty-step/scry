@@ -1,1563 +1,658 @@
-# Scry specification: native memorization
-
-## What it does
-
-Scry helps its owner memorize externally authored knowledge. Agents supply
-content; Scry owns smart grading using Jev, honest assistance and the memory schedule.
-The first journey is one forward-NATO review canvas, backed by the existing
-Library, Versions and Studies. Existing exact-text and concept-notebook history remains
-preserved; new purpose is not permission to rewrite learning evidence.
-
-## What it enables
-
-The owner can receive useful supplied material through the API/CLI, practise
-with one typed answer, see a server-owned Verdict and useful correction,
-and continue deliberately. Agent-ergonomic MCP and multimedia are part of the
-new direction, with their delivered scope stated below rather than inferred
-from intent. Legacy concept/reference paths remain available through secondary navigation;
-their existence does not imply native generation or self-grading belongs in
-the new memorization flow.
-
-This is the single behavioral reference for Scry, for one owner. Words follow
-[GLOSSARY](GLOSSARY.md). QA runs against this file's US,
-S, and quality-contract IDs. They describe accepted intent, not implementation
-or deployment success. Never weaken a criterion to fit code; change intent
-through review, and retire identifiers explicitly rather than reusing them.
-
-[VISION](VISION.md) explains the goal; [GLOSSARY](GLOSSARY.md) owns the words;
-[DESIGN](DESIGN.md) owns visual decisions;
-[ADRs](docs/adr/README.md) own technical decisions; [QA](docs/qa/system.md) owns
-verification procedures and evidence limits. [README](README.md#start-or-resume-work)
-is the work entrypoint. Dated receipts and proposals are not competing requirements.
-
-## Scope and acceptance status
-
-### Smart and simple grading with Jev (2026-11-07)
-
-The owner's direction is: **"Grading should be smart and simple using Jev."**
-This is the current grading direction, not another alias expansion or a
-local-only substitute. Scry owns the Verdict and schedule; the Owner supplies
-an answer, never a grade. Native assessment means server-owned judgment, not
-a prohibition on server-side Jev.
-
-This supersedes the deterministic-only introduction, LESSON-04, US-016.11,
-US-017 and earlier exact-recall/model-free restrictions below. Supplied content,
-hidden-source quizzes, assistance, pinned scheduling rules and historical
-Attempts, Corrections and schedules remain intact. Native content generation
-remains retired. Frozen STOPs and other stopped work are not reopened.
-
-- **JEV-01:** Study supplied material, choose Try from memory, answer one
-  protected Prompt and Check. Scry uses Jev to assess the frozen Version and
-  learning objective. Valid recall must not fail solely because its expression
-  is absent from an alias list. Exact-word, Spelling-strict, ordered-identity
-  and safety-bearing objectives retain their actual distinctions.
-- **JEV-02:** Show checking, then a concise server-owned Verdict and useful
-  correction, held until deliberate Next. No self-rating, client Verdict,
-  expected-answer override or optimistic success. Assistance remains truthful
-  and cannot earn unaided schedule credit.
-- **JEV-03:** Whole ordered recall recognizes intended item identities and
-  sequence, showing canonical items and missing/repeated/misplaced feedback.
-  Accept valid expressions but distinguish related, different identities.
-  An omission must not cascade across later correctly ordered identities.
-  A duplicate or transposition cannot earn a correct whole result.
-- **JEV-04:** Bind saved answers and assessment evidence to the immutable
-  Prompt, Version and scope. Repeated submission, reload, lost responses,
-  stale completion and restart must not duplicate Attempts or schedule
-  effects, grade a replacement Prompt, or rejudge historical results. Retain
-  actual assessment Authority and policy/version evidence with each result.
-
-**Implementation choices, not additional owner mandates:** local exact-match
-fast paths, request shape, model/threshold selection, budgets, cost controls,
-timeout/retry policy and provider payload/retention/privacy design are
-engineering decisions to specify and review. They must serve this journey,
-not quietly replace it or be attributed to the Owner. Existing authorization,
-privacy, honest uncertainty and unknown-cost preservation boundaries remain.
-A failed or inconclusive check leaves the answer saved and ungraded, never
-self-graded or awarded schedule credit. This amendment does not activate a
-provider, authorize spending, transmit private study data or provision credentials.
-
-**Testable journey; not yet delivered:** with synthetic supplied content, prove
-study → hidden quiz → Check → Jev-backed judgment → correction → deliberate
-Next in native phone/no-JavaScript and enhanced desktop flows. Cover an
-unlisted valid expression, a different identity, omissions/duplicates/swaps,
-strict spelling, unsafe negation, assisted retry, malformed/unavailable/unsure
-assessment, operation replay, stale responses and restart. Independently
-inspect stored Attempts and schedules. Synthetic provider responses prove
-integration only, not real-provider quality; live Jev evidence requires its
-applicable authorization. Existing exact-v2 receipts are not Jev acceptance.
-
-### Automatic answer evidence (2026-11-01)
-
-- **RESULT-01:** After a native answer commits, show its same-scope unaided correct/answer count and recent outcomes automatically with the correction and next action. This is observed recall evidence, not a mastery probability. Guided answers and reveal-only events do not earn unaided credit.
-- **RESULT-02:** Show the actual persisted next review time for the answered item. Multi-unit answers show the earliest scheduled part, not an invented whole-text schedule; unscheduled or inactive work is labeled honestly. Phrase, joined and whole recall evidence remain separate by immutable version and exact scope.
-- **RESULT-03:** No summary appears before commit or on a still-unanswered prompt. Reload, retry and response reconciliation retain one committed answer and its evidence. Phone/no-JavaScript and desktop views show the summary without opening Progress; grading, scheduling and stored history are unchanged.
-
-
-### Whole-app visual simplification (2026-11-01)
-
-The owner requests fewer components, less text, noise and friction throughout
-Scry. This refines presentation without changing stored learning or authoring.
-
-- **SIMPLE-01:** Practice shows one subject/scope, a clear source-study or memory-quiz task,
-  no input while studying and one answer field while quizzed and one primary next action. Assistance remains truthful;
-  repeated labels, decorative panels and saved-answer reassurances are removed.
-- **SIMPLE-02:** Lessons, Progress and optional details remain reachable through
-  compact native disclosures. Browsing, dismissal, previous-phrase inspection
-  and challenge selection retain existing draft, prompt and assistance rules.
-- **SIMPLE-03:** Library, edition, History and Settings use direct headings and
-  progressive disclosure for secondary metadata/operations. All existing actions,
-  safety warnings, content, history and APIs remain; navigation is not duplicated
-  in a footer. No-JS, keyboard, 320/390/1280 layouts and interruption require proof.
-
-### Visual practice chooser (2026-11-01)
-
-The owner asks for a thoughtful, visually led redesign of choosing practice.
-This refines LESSON-01, without reopening the stopped generic recitation work.
-
-- **CHOOSER-01:** Topic identity leads visually; NATO, Saint Michael editions
-  and Rosary sets are grouped rather than repeated as a flat catalog. Essential
-  wording/language labels remain explicit. Current practice is distinguished
-  from starting another lesson; no invented mastery or historical resume claim.
-- **CHOOSER-02:** Inline browsing and dismissal retain the typed answer and held
-  question/result without requests or new evidence. Returning to current
-  practice does not submit lesson start. Switching still uses the existing
-  prompt fence and visibly states that an unanswered question stays ungraded.
-- **CHOOSER-03:** Externally supplied text remains reachable when the existing
-  assistance fence permits it. A shared title/edition alone cannot hide custom
-  content as a bundled starter. Protected metadata stays absent from the DOM.
-  Phone, desktop, native no-JS, keyboard, repeated/dismissed actions and network
-  interruption require actual verification; visual icons are decorative beside
-  readable labels, never the only action names.
-
-### Baby-care readiness starter (2026-11-02)
-
-- **BABY-01:** The lesson shelf includes three original, sourced newborn/early-infant
-  preparation mappings: safe soothing (including Karp's five S's), everyday safety,
-  and Montessori-inspired awake interaction. They are educational memory practice,
-  not medical advice or hands-on certification; safety guidance takes precedence
-  over optional soothing and educational approaches. Source notes remain accessible.
-- **BABY-02:** Critical safety conditions remain in the question itself. Native
-  exact normalized answers reject dangerous alternatives, negation and extra unsafe
-  words; no approximate clinical judgment, self-grading or generated medical advice.
-- **BABY-03:** Browsing does not import or enroll. Deliberate selection imports the
-  immutable supplied mapping and enters normal paced, scheduled review scoped to
-  that lesson. Help remains assisted; prior history and other subjects remain intact.
-  Joined/whole prayer modes are not applied to factual keyed questions.
-
-### Authored prayer and ordered-sequence lessons (2026-10-29)
-
-The next domain expands the same review canvas, rather than replacing NATO or
-its history. This bounded lesson journey is distinct from the stopped generic
-phone Recite/Whole/Section chooser work: that earlier disposition is unchanged.
-
-- **LESSON-01:** A quiet inline lesson shelf offers NATO, four Rosary sets and
-  St Michael in explicitly named English and Latin editions. Browsing the shelf
-  preserves the held question/result and typed draft. Deliberate switching from
-  an unanswered question fences its exact prompt ID and clearly leaves it
-  without a grade; a late answer cannot grade a different question. Completed
-  attempts, Versions, Studies and schedules remain intact.
-- **LESSON-02:** Each Rosary set is one ordered whole-five recall activity, not
-  five isolated fact cards. Native grading resolves authored aliases to stable
-  item identities, reports missing, repeated and misplaced identities, and does
-  not cascade an omission across the remaining correctly ordered items. A
-  duplicate or transposition cannot earn a correct whole-sequence result.
-- **LESSON-03:** Prayer learning uses authored meaning-based clauses, source study
-  followed by explicit memory quizzes, intermediate joined passages (authored
-  Sections), optional midpoint starts, and a separate whole-text challenge.
-  Retained cued attempts remain assisted historical evidence. Phrase success never becomes whole-prayer credit.
-  A mismatched phrase shows the expected phrase immediately and offers a guided
-  retry of that same phrase; continuing remains an explicit secondary choice.
-  Successful phrases offer Next. Retry records no new Attempt until submission,
-  and never turns disclosed wording into unaided credit. Optional challenges
-  stay secondary. Deliberate
-  lesson entry introduces the selected short text without changing stored Pace
-  or changing the underlying pinned memory model.
-- **LESSON-04:** Scry owns every result using Jev as specified above. Supplied
-  wording and learning objectives remain authoritative; exact-word practice
-  and ordered-identity recall are not interchangeable. No client grade,
-  self-rating, speech recognition or pronunciation validation is implied.
-  Latin starter wording is unaccented; named English Versions are not silently
-  substituted. Historical exact-v2 case/punctuation/accent policy remains
-  attached to its original results.
-- **LESSON-05:** Ordinary VersionInput authoring supplies text, clause boundaries,
-  Sections, edition names, sources and rights. Ordered aliases are optional,
-  bounded, unambiguous after normalization and immutable with their Version.
-  Empty new fields preserve old hashes/serialization and backup compatibility.
-  Existing API, CLI and MCP expose lesson start/next for supplied Version IDs,
-  not only bundled starter names. No native content generation is added.
-- **LESSON-06:** Progress distinguishes actual unaided whole attempts from assisted
-  and phrase practice; it claims neither validated mastery nor predicted readiness.
-  Native forms, multiline text, phone/desktop, dark mode, reduced motion and
-  no-JavaScript flows require source-bound verification. Bundled content or green
-  synthetic tests do not establish household admission or live learner acceptance.
-
-This implements a bounded ordered-list subset of US-020; its broader Ladder and
-other recitation modes remain separate acceptance work. Historical story text
-below remains intact. Proof belongs in the feature card, CI and deployment record.
-
-### NATO-focused review (2026-10-29)
-
-The owner directs a first-principles simplification optimized only for NATO.
-This supersedes the Library-first and review-entry navigation below, not its
-content, grading, privacy or history contracts. Home is one focused review
-canvas: one explicit **Start practice** imports the immutable canonical starter,
-starts or resumes its retained Study, and presents the first protected letter.
-There is no Library, Version, pace or setup screen on this journey. The same
-canvas holds the current question or graded result across refresh and return.
-
-- **NATO-01:** Start is one atomic, CSRF-protected, operation-receipted mutation.
-  Repeated Start (including a new operation ID) never duplicates content or
-  Studies, resets card schedules, or replaces another Study's held prompt.
-  Deliberate Start sets the NATO-only introduction allowance to all 26 letters;
-  existing general pace options and historical schedules remain unchanged.
-- **NATO-02:** A letter, one typed answer, native Check, concise canonical
-  feedback, and deliberate Next form the review loop. No self-grade, client
-  success field, optimistic verdict or automatic advancement. Official spelling
-  and the existing mapping grader remain authoritative. Enter submits/advances;
-  native forms work without JavaScript. Keyboard review remains immediate; subtle
-  pointer-driven transitions respect reduced-motion preferences.
-  NATO selection and Next use due cards, then new letters; they never present
-  future-due cards as ordinary review. Prefer another eligible letter over the
-  just-completed one, falling back to that letter only if it is due and no other
-  eligible work exists. Re-entering NATO does not restart at A. If all letters
-  are introduced and none is due, show caught-up with the next scheduled time.
-  This November 1 correction supersedes the earlier unconditional A–Z loop;
-  schedules, history and once-per-day grading rules remain unchanged.
-- **NATO-03:** Progress is unique NATO letters with actual unassisted,
-  non-disclosure graded attempts, labelled “practiced,” not correct, mastered or
-  predicted ready. Import, reveal and repeated answers cannot inflate this count.
-- **NATO-04:** Optional alphabet reference is absent during protected recall;
-  the result shows only its own canonical correction. Reveals are explicitly
-  recorded assistance, never mastery credit. Historical Library, API/CLI/MCP,
-  account settings and earlier learning history remain available in a quiet menu.
-- **NATO-05:** The question and primary action fit phone and desktop; inputs are
-  at least 16px, zoom remains enabled, keyboard focus is visible and restored,
-  repeated requests reconcile their original operation identity, and unknown
-  network results never fabricate a grade. Test real local Worker/SQLite flows,
-  keyboard-only, no-JS, reduced motion, long input and failure states.
-
-### Continuous study (2026-11-02, later owner direction)
-
-This supersedes the earlier due-only default below. Zero scheduled reviews is
-not completion while eligible unseen or unfinished material exists.
-
-- **STUDY-01:** Home offers one Study action and a closed secondary Browse. Study/Next
-  serves genuinely due practiced material first, then rotates unfinished learning
-  and unseen subjects by least recent completed service. The same read-only plan
-  powers availability. Home and an empty mixed `/recall` GET never enroll or introduce.
-- **STUDY-02:** Available material includes agent-authored local Library Works and
-  the curated starter shelf. Admission creates only the selected Study and needed
-  target, not the whole catalog. Active text advances its earliest unfinished
-  phrase through source study and memory quizzes; new ordered lists remain indivisible sequences.
-  Mapping introductions obey the Study's rolling 24-hour Pace (not focused NATO's
-  all-letters override). Other eligible subjects remain available at one subject's limit.
-- **STUDY-03:** A selected edition is retained. Unstarted local Works select one
-  unsuperseded eligible Version (stable name/ID tie-break), never all historical
-  editions. The starter shelf defaults to supplied English Saint Michael; historical
-  English/Latin remain explicit alternatives, and an explicitly selected alternative
-  suppresses automatic default enrollment. Paused Studies receive no new work but
-  retain due reviews; dropped Studies receive neither. Alternate editions cannot
-  bypass a paused/dropped Work. No existing evidence or content is reset.
-- **STUDY-04:** Held drafts/questions/results survive reload and navigation. Only
-  explicit fenced Study/Next advances; operation replay reproduces one committed
-  selection without duplicate enrollment or cards. Native grading, assisted learning,
-  source privacy and safety-bearing baby-care cues remain unchanged.
-  An explicit Save draft checkpoints acknowledged text for the exact unanswered
-  Prompt in the notebook; anyone with that notebook's owner/token authority can
-  read it. Saving never grades, advances, schedules, or invokes a provider.
-  Competing saves and explicit discards use a draft generation, and exact
-  operation replay is safe.
-  A committed answer or deliberate Prompt replacement clears the checkpoint.
-  With JavaScript, editing an answer can also checkpoint a quiet
-  foreground snapshot after five seconds. The editor remains usable, and the
-  status distinguishes newer unsaved text from the acknowledged snapshot.
-  Automatic saves stop after 512 automatic receipts per notebook and pause on
-  a capacity refusal; explicit Save draft and exact replay remain available.
-  Automatic saving does not start on load, reconnect, foreground return, or
-  unload. Only acknowledged text can be relied on as durable; a lost response
-  may have committed and requires manual reconciliation. Reconciliation never
-  automatically sends edits made during uncertainty or while offline. Retention of unsent keystrokes remains an open part
-  of STUDY-04.
-- **STUDY-05:** When no eligible work remains, show Rest for now and Browse, not
-  invented completion or a misleading future-review countdown. Material beyond
-  native grading capacity remains in Library rather than poisoning continuous entry.
-  Focused practice and explicit edition choices remain available.
-
-### Study source or quiz from memory (2026-11-02, latest owner direction)
-
-This supersedes app copy-to-grade and fading-copy flows, not immutable history.
-
-- **MEMORY-01:** Study displays source material without an answer field or grading
-  controls. Try from memory explicitly replaces that held source with a new,
-  same-scope hidden-source quiz. Studying and transitioning create no Attempt,
-  success, review count or schedule credit. New app source phases reject answer
-  submissions server-side, including API submissions.
-- **MEMORY-02:** Review is a genuine hidden-source native quiz. A later due review
-  cannot expose source because a retained Card has an old Read cue. Initial source
-  study does not permanently taint later recall; revealing during a quiz does mark
-  its retry assisted. Hidden assisted retry remains protected from source/reference
-  leakage and cannot earn unaided credit or extend scheduling.
-- **MEMORY-03:** Quiz transitions fence the held prompt, are replayable, reject
-  client grades and stale answers, and preserve historical Attempts, target scope
-  and card projections. Generic legacy API presentations without a phase remain
-  compatible; web renders their visible source as study, not a copy form. API,
-  CLI and MCP expose the explicit quiz transition.
-- **MEMORY-04:** New phase/transition archives use
-  `scry-rust-durable-sqlite-study-phase-v3`; old binaries must refuse rather than
-  strip the phase. Old archive/Attempt bytes retain their original meaning.
-  Mapping source study preserves its authored question and safety-bearing cues.
-
-### Mixed due review (2026-11-02)
-
-- Default review interleaves due, previously practiced content across enrolled, non-dropped Studies. Least-recently-served Study wins; due time and stable identity break ties. One overdue subject cannot monopolize the session.
-- Earlier due-only admission is superseded by Continuous study above. Due-review eligibility remains distinct from unfinished/new learning; no learning introduction is relabeled as review evidence. Paused Studies retain their existing due-review eligibility.
-- New due-policy Attempts carry an explicit algorithm-policy identifier; new-semantic archives use `scry-rust-durable-sqlite-study-scheduled-v2`. Legacy history keeps its original bytes and remains readable by this build. Older binaries must refuse new semantics rather than strip metadata; rollback after new review writes requires a compatible build, not a transparent downgrade.
-- Held questions/results survive navigation and choosing all subjects. Only explicit fenced Next or lesson switching changes the current activity; no selection fabricates a grade.
-- Ordered-list lessons remain whole-sequence activities. Only genuinely due components change schedule; future components remain optional early practice. Mode and native feedback stay visible without inventing mastery.
-
-### NATO progress visibility (2026-10-29)
-
-The owner requests useful per-letter learning evidence without adding screens.
-This extends NATO-03 and supersedes earlier visual prohibitions on progress
-information or all microanimation; it does not invent mastery or alter grading.
-
-- **NATO-06:** A read-only progress disclosure on the same canvas exposes all
-  26 letters. Reviews count distinct answered prompts, including assisted and
-  early extra practice. Reveal-only disclosure records are not completed
-  reviews or wrong answers. Accuracy is correct / unaided answered prompts,
-  with the denominator visible; no evidence shows a dash. Assisted answers are
-  counted separately. Existing immutable receipts are the source; opening,
-  selecting or closing the inspector never writes evidence or changes a draft,
-  held prompt, assistance or schedule.
-- **NATO-07:** Each letter shows its actual schedule due recommendation only
-  after a scheduled review in an active Study, otherwise “Not scheduled.” This
-  is the eligibility boundary for ordinary review, not a guaranteed ordering
-  among due cards. Only the held letter is labeled on screen or answer saved;
-  no invented alphabetical queue position is shown. Recent outcomes, last
-  review time and assisted counts remain truthful after reload.
-- **NATO-08:** Progress never exposes canonical words or past raw answers in
-  protected recall, including hidden DOM. Native disclosure and letter selection
-  work without JS. Keyboard arrows, visible focus, phone/desktop light/dark,
-  reduced-motion, zoom, interrupted/repeated actions and draft preservation are
-  verified with synthetic data. Current production owner data is not test data.
-
-### Minimal deployment (2026-10-29)
-
-The owner states that Scry has no users and directs removal of all project
-machinery beyond the minimum needed to deploy. This supersedes OPS1's previous
-requirement for a hosted recovery rehearsal before release: required application
-tests and review → merge → one master build/test → deploy the tested Worker to
-the existing Cloudflare target → verify its code identity. Generated release
-PRs, custom recovery controllers, temporary recovery infrastructure, approval
-windows, consumed-attempt markers and custody fingerprint gates are retired.
-They must not be recreated as deployment prerequisites under different names.
-
-This is an operational simplification, not a change to S09 privacy, S10
-application backup/archive validation, native grading or saved-history behavior.
-Existing stored content, namespaces, R2 objects, authentication and secrets are
-preserved. Native/WASM/browser tests of those application boundaries remain.
-No live recovery or authenticated-use claim follows from passing source tests
-or a deployment. Separate future data deletion, credential changes or paid
-work still require their applicable authorization.
-
-
-### External authoring and native memorization (2026-10-27)
-
-The owner now wants Scry focused on memorization: external agents author the
-content through ergonomic API, CLI and MCP interfaces; Scry stores it, presents
-practice, grades answers natively and schedules recall. **No self-grading and
-no native content generation belong in this new flow.** Existing content,
-Attempts, Corrections, media and historical provider/spend records are retained,
-not rewritten or deleted. This supersedes the previous generation-first intent
-for new memorization features; it does not activate paid work or retire the
-preservation requirements of the legacy concept and text paths.
-
-Historical first delivery (2026-10-27; local-only assessment is superseded
-by JEV-01–04): a supplied NATO spelling alphabet uses existing
-Work, Version, Unit, Study and Card records (US-015/016/017/018/021), not a new
-collection model. Forward key→value recall starts with the key alone; Scry's
-server-owned expected value and pinned `exact-v2` decide Good/Again. No client
-Verdict, rating, expected answer, assistance flag or schedule is accepted. The
-mapping path offers no Owner Correction; legacy Corrections remain intact.
-Reveal records assistance before disclosure, cannot advance the schedule, and
-cannot turn a later answer into unaided success. Held results require Next.
-
-An externally supplied typed-pair manifest declares `direction: forward` and
-is validated atomically before Library admission. Exactly one unique key/value
-pair becomes one immutable Unit; the supplied NATO example contains A–Z and
-all 26 canonical values, including Alfa, Juliett, Whiskey and X-ray. No provider
-or remote source is fetched. Import/retry and repeated Learn use the shared
-receipt and deduplication rules, preserving existing identity and schedules.
-The owner can explicitly add the bundled NATO alphabet from Library, then
-choose its existing native Learn action. Reading Library never imports it.
-The versioned `nato-v1` starter selector chooses the same supplied manifest on
-the server, is mutually exclusive with a client manifest, and accepts no
-client override of its words. Repeated Add or agent import returns the same
-Version without resetting a Study or schedule; changed starter content must
-use a new selector. The starter form contains no canonical-answer payload.
-The historical mapping-only `exact-v2` profile remains pinned for its results as
-`1;unicode=17.0.0;mapping=1`: Unicode NFKC/case-folding and whitespace follow
-the existing engine, but punctuation creates word boundaries rather than
-joining letters, and ampersands are not expanded to "and". Interior apostrophes
-remain significant. X-ray and X ray match; Xray does not. Separating a word
-with punctuation (a.l.f.a) cannot make it Alfa. Historical text grading retains
-its original profile and bytes. Spelling-strict Slips
-remain Again, with the official value shown; another pair's value is identified
-as the wrong key, never accepted as a near match.
-
-A bounded stdio MCP surface may discover and invoke the same supplied-content
-validation/import/search/show, Learn/due/next/raw-answer/reveal API. It inherits
-Owner-token admission, explicit mutation operation IDs, assistance fences and
-same-operation reconciliation before advancing. It exposes no generation,
-self-rating, Correction, credential-minting or arbitrary HTTP tool. MCP support
-is not hosted bearer-admission evidence (#335).
-
-Broader US-021 reverse directions, year policy, assisted value-choice ladder,
-random-start whole-set Recitation and Relations remain pending. Multimedia
-attachments/playback, broader MCP coverage, legacy-flow retirement and the
-front-door/navigation redesign require their own implementation and proof.
-The current NATO path is entered through Library and Text practice; this
-amendment does not claim those remaining surfaces are delivered.
-
-
-### Review-first entry and retired native generation (2026-10-27, #406)
-
-This amendment replaces the preserved generation-first runtime front door
-below. Home is a small review entry, not a concept dashboard: resume the current
-exact/mapping Prompt or held result, start review when a Study exists, or choose
-the supplied NATO starter. Library is secondary. Home never selects a Prompt,
-reveals an answer, clears a draft or consumes either practice stream. An
-interrupted earlier concept occurrence remains directly reachable; old notes,
-requests, versions and histories remain available through secondary navigation.
-
-Native content generation is retired, not merely unavailable pending provider
-configuration. All new browser/API Create/add, goal retry/refinement and question
-fix-generation requests refuse explicitly before a new Job, operation receipt,
-photo upload, spend reservation or provider call. Existing queued, candidate,
-sent, uncertain and paused generation/transcription/critic Jobs are never
-claimed, published or reactivated by reads, alarms, restart or recovery
-resumption. Those current operations leave historical job records unchanged;
-the existing restore pause/uncertain-status transform remains required, retaining
-all original content, responses, usage and custody evidence. Historical requests and saved drafts remain
-readable; an unsent legacy Create draft remains copyable rather than submitted.
-No migration, deletion or overwrite is implied.
-
-This retires new generation behavior in S11, US-013, and the generation portion
-of US-004 (including retry/refine/fix and native transcription), plus US-019.
-Their identifiers and historical criteria remain as preservation/policy
-references, not an active product promise. Existing content validation,
-provider/spend history, uncertain usage accounting and complete recovery are
-not retired. Pure historical generation fixtures remain compatibility proof,
-not evidence that the current server accepts generation requests.
-
-**Answer grading is not content generation.** Native exact/mapping grading,
-assistance fences, deliberate Next, saved Attempts and schedules continue.
-Existing answer-assessment work is still separate from retired generation;
-resuming meaning checks must not reactivate generation Jobs. Self-grading is retired on **all active surfaces**, not only the NATO path:
-new legacy self-check/override and exact-text Correction submissions (including
-API/CLI aliases) refuse before a receipt, Event, Correction or schedule write.
-Old Attempts, owner-authored Corrections and their displayed attribution stay
-intact. No client-supplied Verdict can become a new learning result. A legacy
-answer without a supported native verdict stays saved and ungraded with an
-honest unavailable message and access to its saved material/history; no
-self-rating fallback or invented grade can unblock it. Native exact/choice
-and supported answer-assessment activities continue. This retires the new-write
-portions of US-007, US-017.10, US-018.5 and legacy self-check criteria, not their
-historical evidence-preservation requirements. No new provider/spend
-authorization follows from this amendment.
-
-
-The following 2026-10-24 navigation amendment is historical; the review-first
-amendment above supersedes its front door, not history preservation.
-On 2026-10-24 the owner made concepts the primary primitive and rejected an
-empty saved-text Library as the front door ([#388](https://github.com/misty-step/scry/issues/388)).
-Home (`/`) now introduces concepts and offers Add material. It does not select
-or consume either practice stream. Resume practice opens the existing concept
-occurrence at `/notebook`; Text practice opens exact recall at `/recall`, with
-Library secondary there. Both streams retain their current questions, protected
-answers, held results, and histories. Concept pages organize existing facts as
-Study, Practice, Resources, and Related (Builds on / Used by). This priority
-amendment does not import or rewrite data, activate paid work, add source
-formats, create independent material/quiz collections, or infer mastery across
-relationships. Preparation readiness is not spend authorization or a hard
-monthly budget guarantee; production paid generation stays off.
-
-On 2026-10-20 the owner made exact recall Scry's first purpose
-([#296](https://github.com/misty-step/scry/issues/296)); see
-[Exact recall first](#exact-recall-first-2026-10-20) for what that retired and
-narrowed. The 2026-10-24 amendment supersedes that navigation priority, not its
-exact-recall behavior. Prompt-first Create (2026-10-02) governs concept preparation. The 2026-10-07 rewrite uses
-these contracts without inheriting historical runtime acceptance. The revived
-notebook from D6 is archived read-only and exact recall starts fresh. US-001.1's Go schema 4→5 preservation and
-US-005/S03's explicit-mode capture remain historical Go obligations at Git
-`c6ba395`; US-012 is retired with its ID reserved. Old Go and retired Rust/preview
-receipts do not certify the candidate, and a green gate does not activate it.
-[The runbook](docs/runbook.md) owns operational records; serving provenance and
-revival remain separately governed, not inferred from this specification.
-
-Useful real material, physical-phone experience,
-deployed private ingress (including S09.2 account/history return), live provider
-outcomes, and independent recovery still require their own evidence. The
-existing rewrite acceptance stays open. No historical-store import, deletion,
-writer reactivation, new paid capability, or deployment permission follows here.
-
-Scry has one owner. Accounts or tokens for anyone else, public signup or
-anonymous reading, a public Library, billing, collaboration, universal import,
-a course/chat product, a manual graph editor, a compulsory foundation
-detour, and an invisible offline mutation queue are out of scope. Every
-exact-recall action is available through the API and the `scry` CLI (AG1).
-Dictated input is text, not an assumed speech engine or automatic recording
-integration; it is graded as typed. A mandatory activity ladder is excluded;
-the exact-recall Ladder is a cue scaffold, not a required activity sequence.
-
-### Exact recall first (2026-10-20)
-
-Historical priority decision: navigation priority is amended above on 2026-10-24;
-the following records the original scope. The 2026-11-07 Jev amendment
-supersedes local-only/model-free grading restrictions, not historical evidence.
-
-The owner confirmed this direction on 2026-10-20 (#296, with his changes: a
-generation agent with tools, one owner, Roman Missal 2011 wording, the slip
-default, owner tokens, an archived revived notebook, no spend decision yet,
-and cuts to unrequested gates). US-014 to US-021 add the exact-recall
-stories. These existing contracts are retired or narrowed as of that date:
-
-| Contract | Change on 2026-10-20 |
-| --- | --- |
-| Prompt-first front door (Experience contract, S11, US-013) | Narrowed: governs the understanding notebook's Create. Exact recall starts by searching the Library (US-015) and creating with the generation agent (US-019). |
-| No inferred web search (S11.3, US-013.2, Create bullet) | Narrowed: still binds Create. A request to create a Work authorizes the generation agent to search the web for that named Work (US-019). |
-| Local grading forbidden beyond exact key (S02.5, US-003.1, US-008) | Narrowed: govern answers outside exact recall. Exact-recall answers are graded locally by `exact-v2` (US-017); its one enumerated Slip tolerance is not the liberal similarity those stories exclude. |
-| US-008 holdout evidence before live activation | Retired: Jev is off the exact-recall path and the owner did not ask for this gate. |
-| AI1 operator-approved real-input set | Retired: usefulness is judged by the owner's use and Self-checks (US-019). |
-| US-004 critic-v1 gate and 60-candidate bound | Narrowed: concept generation only. Library Versions publish on deterministic Self-checks (US-019), whatever their Unit count. |
-| Prerequisite-first concepts and 3/6/12 new concepts (S08.2, US-010.3, US-011) | Narrowed: concept goals only. Studies introduce Units in reading order at the same Pace numbers (US-016). |
-| Owner identity (S09.1) | Extended: an unexpired, unrevoked Owner token is owner identity (US-014). |
-| Bespoke QA identity (S09.4) | Retired: machine access uses Owner tokens (S09.3, US-014) or synthetic environments; removal of the QA service identity is a ticket. A verification-only QA sign-in to the isolated `scry-qa` space remains (2026-10-21, S09.4). |
-| One-way revival (D6, revival dry-run boundary) | Retired for new work: the revived notebook is archived read-only, nothing deleted, and exact recall starts in a fresh space. |
-| Masthead navigation (US-002.4) | Library is the primary destination; the wordmark returns to practice. Understanding retains the old Create/Map paths quietly. |
-| `exact-v1` trim equality | Narrowed: history keeps its attribution; new exact-recall Attempts use `exact-v2`. |
-
-## Adopted behavioral policies
-
-The D identifiers are retained for existing references; implementation choices
-belong in ADRs, not this table.
-
-| ID | Binding policy |
-| --- | --- |
-| D1 | Build around what the learner wants to remember, not old QA datasets. Sustained usefulness needs real use. |
-| D2 | Current assessment follows JEV-01–04 and US-017. Scry owns Verdicts; uncertainty is not a miss, success or self-grading. Historical authorities retain their original meaning. |
-| D3 | Assistance and immutable corrections follow S02/S05 and US-007; exposure is not cold recall. |
-| D4 | One question, one answer action, held feedback and deliberate Next; review-first navigation with historical concept practice preserved. Visual decisions live in DESIGN; earlier phone approval is not blanket acceptance. |
-| D5 | Daily/pre-release off-machine complete backups, 30-day retention, RPO 24h/RTO 60m targets (not guarantees). Provider key cap $25/week; application $3.50 per rolling 24h; conservative generation reservation $0.50. Generation, Jev and criticism share the allowance. Unknown sent cost retains its reservation and requires deliberate resolution, not free retry. The historical no-provider exact-recall restriction is superseded by the Jev amendment, not spend activation. Enabling production generation for the generation agent, and its caps, is a separate owner spend decision that arrives with US-019; until he makes it these numbers stand and production generation stays off. |
-| D6 | Amended 2026-10-20: the revived notebook is archived read-only with nothing deleted, its final verified backup retained and no writer attached; exact recall starts in a fresh space. The rest of this row is historical. No legacy API parity. Ordinary candidates start fresh; the authorized 2026-10-15 revival alone imports the final consistent Go dataset once, with preserved learning history and media. Preserve historical stores, source and recovery artifacts separately; no general import, deletion or simultaneous historical writer is implied. [ADR 006](docs/adr/006-one-way-revival-custody.md) owns custody and cutover decisions, not an acceptance receipt. |
-
-Health must report non-200 with reason `backup_stale` if no verified remote
-snapshot exists or the last one is older than 26 hours. A separately authorized
-machine trigger may request a backup, but cannot read learner data or act as
-the owner. Trigger success acknowledges complete remote verification, not just
-an attempted upload. Failed backups never advance the last verified time.
-
-### Private runtime failure reporting
-
-As the learner, I want an unexpected failure at the operated application
-boundary to reach the existing Sentry/owned-triage route without exposing my
-notebook or making study depend on the telemetry service.
-
-- Unexpected request exceptions and upstream server failures identify the
-  environment and deployed release; ordinary access denials are not incidents.
-- Reports contain only a fixed failure category and deployment identity, never
-  learner content, URLs, headers, credentials, raw errors or response bodies.
-- Reporting is bounded and asynchronous. An unavailable or rejecting sink does
-  not delay or change the application response; later reporting can recover.
-- A controlled synthetic failure, its remote event and owned recovery are
-  retrieved before claiming coverage. This does not certify uptime or cron health.
-
-## Experience contract
-
-The first screen is the learning moment, not a dashboard. Learning effort is
-intentional; interface effort is not. An ordinary session should not require
-choosing a deck, configuring a scheduler, approving drafts, reading telemetry,
-or understanding the implementation.
-
-Home offers native review and the supplied NATO starter, with Library secondary.
-It resumes a saved Prompt or held result without showing its answer or selecting
-another one. Earlier material and interrupted legacy activity remain accessible
-without offering generation or self-rating. The concept Stream at
-`/notebook` retains its question, introduction, preparing receipt and first-run
-states. The exact-recall Stream at `/recall` opens into the current Prompt or held result, an honest
-caught-up state, or Library entry when no Study remains active (US-018). Neither practice stream opens an administration dashboard.
-Concepts are teachable ideas, goals express intent, and notes are durable
-reference material, one current note per concept. The Map is the place
-to inspect goals/concepts, focus or pause, and see a labeled estimate
-from real observations, not a certified mastery score.
-
-The historical understanding-notebook sequence was prompt → saved
-preparation → useful reference and practice → refinement from real interaction
-([S11](#s11--create-useful-material-from-intent-us-013)). A returning learner can
-continue retrieval-led study directly. “Quiz-first” is not a compulsory pretest,
-material-import workflow, or mastery profile before generation.
-
-```text
-scry                                    Concepts   Add material
-concept chip (inert before grading)
-One question or first-time concept introduction
-One answer control OR Start practicing / I know this already
-
-checking → self-check (if unsure/close/failed) → held result
-Correct. / Not quite. / Shown.
-expected answer · explanation · citations
-Next
-I was right (quiet, automatic miss only)
-```
-
-- One choice tap submits, or a recall field uses Check my answer; More offers Show me.
-  `question`, `checking`, `self-check`, `result`, `intro`, `preparing`,
-  `empty-first-run`, `caught-up`, and `conflict/error` are distinct states.
-  Feedback stays until deliberate Next; no auto-dismiss, swipe grade, or
-  ungraded answer/explanation preloading.
-- Self-check is learner authority on Jev unsure or a failed or unavailable
-  check. Failed check also offers Retry check using a new deliberate
-  operation, not a duplicate send. An automatic miss offers quiet “I was right”
-  under Next; automatic correct offers “Count as a miss” in More. Immutable
-  attempt and correction both remain in history.
-- Intro presents a standard note before an unseen concept's first question;
-  “I know this already” records an observation without scoring a cold answer.
-  While a question awaits an unaided answer, every concept it assesses opens
-  behind the Look it up gate, and text or titles drawn from its own capture
-  (source text, goal title, preparation receipts) are replaced on every route
-  until assistance is recorded; a concept page links to
-  its capture but never carries the capture's text. Navigate to a concept page
-  without consuming a review occurrence.
-- Create has one private intent field and optional photo (US-013/S11). It
-  prepares concepts; exact-recall Works are found or created
-  through US-015/US-019. Text,
-  including URLs, never infers public search or link reading; photos transcribe
-  before preparation. Saved goals expose captured intent, useful reference,
-  practice, refinement, and honest failure. `/add` is an alias; text/URL prefill
-  remains editable and private when preparation is available. When preparation
-  is unavailable, say so before submission, omit preparation controls, and retain
-  any unsent text visibly. Do not imply saving a free draft or support for URL
-  fetching or videos. Readiness does not authorize paid work. Historical explicit Topic/Link callers belong
-  to the archived Go revision, not a replacement public API.
-
-- Map shows goal sections and an accessible concept list
-  alongside a decorative constellation. Concept pages show status, separate
-  unaided/helped/missed tally, labeled recall estimate, notes, related concepts,
-  questions, provenance, and Practice. Status words and focus/pause never
-  depend on color alone.
-- Keep private browser controller presentation-only; without JS, forms and
-  capture controls remain functional. Design tokens, responsive behavior,
-  reduced motion, and accessible targets live in [DESIGN](DESIGN.md).
-
-## End-to-end acceptance criteria
-
-These are accepted behavioral criteria, not claims that each is implemented.
-Dated **PASS**, **FAIL**, and **UNVERIFIED** observations belong to their
-source/environment-bound receipts, including the [earlier Go acceptance
-receipt](docs/qa/personal-go-cutover-20260910.json), not this prose. IDs are
-specification identifiers, not tracker-generated issues; owning items link here.
-
-### S01 — Open into useful learning
-
-As the learner, I want opening Scry to put me into a useful learning moment so
-that I can start without organizing the app first.
-
-- **S01.1:** With eligible material, opening review shows a question and an
-  actionable response control without an intermediate dashboard/deck choice.
-- **S01.2:** With no material, the screen offers capture. With material but none
-  currently due/eligible, it explains that state and offers a deliberate next
-  action; it does not invent due work or silently reset schedules. Stopped
-  preparation is not described as running: the Stream links directly to the
-  saved request and its recovery options instead of asking the learner to wait.
-  Imported requests that never finished remain recoverable on their own page
-  and the Map, not as the Stream's next learning action.
-- **S01.3:** Returning from Create/Map/Concept preserves an unfinished occurrence
-  or held result. Navigation and status reads do not consume it.
-
-Proof: browser journeys through empty, due, exhausted, and returning states.
-
-### S02 — Answer, understand, and continue
-
-As the learner, I want a clear recall attempt and useful feedback so that each
-interaction teaches me something without taking away control.
-
-- **S02.1:** A selected option refers to the exact displayed choice, including
-  after order changes. Supported typed variants pass without accepting a
-  meaning-changing answer merely through broad string normalization.
-- **S02.2:** An answer produces the submitted/expected response, understandable
-  outcome and concise explanation. The question and feedback remain until
-  explicit Next. An unjudgeable response stays visibly ungraded rather than
-  being confidently labeled wrong or silently advancing its schedule.
-- **S02.3:** Reveal or answer-bearing help marks the occurrence assisted before
-  it can count as a success; refresh, another tab, or a later correct answer
-  cannot turn that occurrence into cold recall. Recognition and cued recall
-  remain distinguishable in the learning record.
-- **S02.4:** Next advances deliberately; Back, refresh, canceled gestures, and
-  read-only requests do not fabricate answers. If no next item is ready, the
-  learner sees an honest end/pending state.
-- **S02.5 (US-003/US-008/US-017):** Assess short recall, exact-word recall,
-  ordered identity and explain-level prose against their actual objectives
-  under JEV-01–04. There is no answer-form setting. Jev provides smart
-  server-owned judgment; a local key/variant fast path is optional, not a
-  required dispatch policy. Historical short-v1 thresholds and semantic-v1
-  rules remain evidence of those original policies, not new Jev mandates.
-- **S02.6 (US-002/US-007):** A close, unsure or failed check preserves the
-  answer ungraded without schedule credit. Retry and failure handling follow
-  the reviewed implementation policy; they must not duplicate assessment or
-  schedule effects. Record the actual Authority, never a fabricated Jev result
-  for a local decision. No new self-check, self-rating or Owner Correction is
-  offered. Historical learner/reveal/exact/Jev attribution and Corrections
-  retain their original meaning. Assistance is fenced before disclosure.
-
-Proof: actual browser interactions plus deterministic learning/SQLite boundary
-checks for ambiguous answers, semantic policy thresholds, pending/failure
-recovery, assistance cues, and reveal/submit races.
-
-Historical Go first-screen cutover (US-013, 2026-09-28): `/add` now has one text field
-and an optional photo, with no mode chooser. Text, including a standalone
-URL or shared URL, is saved as private My text and never authorizes web
-research. A selected photo uses the existing photo path and caption limit.
-The mode-based flow below describes retained explicit-mode captures and
-legacy callers; this screen does not claim link reading, topic search, a
-new interpretation step, or a new spending contract.
-
-### S03 — Add something without configuring it (US-005)
-
-Historical Go explicit-mode callers only, retained at Git `c6ba395`. This is
-not a replacement compatibility API or the Create screen contract; US-013 and
-S11 govern the Rust front door. The exact historical criteria remain recorded.
-
-As the learner, I want to add a topic, text, link, or photo with an explicit
-choice of what it is, so I do not have to create a deck or card template.
-
-- **S03.1:** Capture requires a visible Topic / My text / Link / Photo choice,
-  one input or photo, and no mandatory taxonomy/title. Share-target prefill
-  remains editable. The source and its goal persist under one operation ID.
-- **S03.2:** Topic alone may trigger Exa search when configured; Link fetches
-  only its chosen page; Photo transcribes before planning; pasted text never
-  goes to web search. Zero research documents is valid, with topic knowledge
-  labeled honestly. Preparation stages remain inspectable after leaving/restart.
-- **S03.3:** Unsupported/oversize input is rejected without truncation or
-  creating a source. Failed work preserves input, permits bounded retry and
-  never reports zero usable questions as ready.
-
-Proof: browser capture/navigation, interrupted response, process restart, and
-honest invalid/empty/provider-failure outcomes.
-
-### S04 — Receive useful, trustworthy generated material
-
-As the learner, I want AI to produce material worth reviewing so that I do not
-become a full-time editor of generated cards.
-
-S04 governs concept material. Versions made by the generation agent follow
-US-019 (narrowed 2026-10-20).
-
-- **S04.1:** Source-basis material quotes exact saved source/page/transcript
-  text; web-basis material quotes exact saved Exa search excerpts and cites their
-  URLs/documents. Topic-basis material carries no fabricated evidence and is
-  labeled “General knowledge”; a topic word is not a factual source.
-- **S04.2:** Published prompts are answerable, standalone where appropriate,
-  non-leaking, and aligned with the requested learning task. MCQs have one
-  defensible answer and useful non-overlapping distractors. Explicit complete
-  sets or exact-text tasks are not quietly sampled, reordered, or paraphrased
-  while claiming completion.
-- **S04.3:** Useful validated quizzes become reviewable without a mandatory
-  approval inbox. A partial result is labeled partial; paid retries, rejected
-  output, and unknown usage are not hidden behind a success count.
-- **S04.4:** Slow, rate-limited, or failed model work leaves existing review
-  usable. Attempts and spend are bounded; stale or repeated job completion
-  cannot duplicate publication or resurrect edited/removed source material.
-
-Proof: a human-reviewed representative content set plus real provider calls for
-model quality; controlled external-boundary failures for job behavior. Valid
-JSON, deterministic fixtures, or an LLM judge alone cannot prove usefulness.
-
-### S05 — Repair a bad learning moment
-
-As the learner, I want to correct or dismiss a bad question without being
-punished for it so that I can trust the app and keep learning.
-
-- **S05.1:** From the question/result I can flag a problem and correct future
-  content or stop its future selection without navigating an administration UI.
-- **S05.2:** Content edits preserve the old presented wording, choices, answer,
-  generation attribution, and recorded result. Future occurrences use the new
-  version; changing content does not silently rewrite review history.
-- **S05.3:** A grading dispute is distinct from learner failure and from a new
-  successful recall. Retain the original event, mark it
-  disputed, and offer an explicit recorded schedule reset for faulty material;
-  do not silently recompute all subsequent history or assert that the learner
-  knew the answer. This is the adopted D3 policy.
-
-Proof: edit/flag after grading, inspect old and new occurrences, and confirm
-that lifecycle/correction actions do not manufacture recall evidence.
-
-### S06 — Survive interruptions without losing truth
-
-As the learner, I want to resume after a refresh, lost connection, or app restart
-so that I do not have to remember which answers actually saved.
-
-- **S06.1:** Lose an answer response after commit, then retry/reload: exactly
-  one review and schedule transition exist and the same result is recoverable.
-  Reusing an operation ID with a different payload is an explicit conflict.
-- **S06.2:** Competing tabs or stale question versions cannot overwrite a newer
-  occurrence. Late HTML/prefetch responses cannot revert the current view.
-- **S06.3:** Pending is distinguishable from saved. A definite rejection and an
-  unknown network outcome offer safe recovery without losing the in-page
-  answer. Offline review pauses; there is no invisible queue of uncommitted
-  answers. Only one unresolved browser mutation is permitted.
-- **S06.4:** Semantic submission first saves one pending assessment and immutable
-  operation receipt, calls the model outside SQL, then rechecks current
-  occurrence, content version, schedule version, ungraded state, and lease
-  ownership before finalization. Exactly one send lease exists per assessment:
-  a concurrent duplicate is refused, a replay reconciles the durable state and
-  never resends, and an interrupted send becomes a definite failure with its
-  reservation retained as unknown spend. A competing operation conflicts, and
-  stale work is superseded without an event or schedule change.
-
-Proof: network interruption/reordering, two browser tabs, semantic timeout and
-stale-finalization cases, and real restart with SQLite state inspected through
-consumer-visible history/results.
-
-### S07 — Manage what I am learning (US-001/US-009/US-010)
-
-As the learner, I want a Map and concept pages so I can inspect, focus, pause,
-and revisit the material I care about.
-
-- **S07.1:** Map lists active goals before paused goals, omits archived
-  goals, shows a readable status/due list beside its decorative constellation,
-  and does not mutate learning on navigation.
-- **S07.2:** Pausing/focusing a goal changes selection without erasing notes or
-  history. Archiving source/concept stops future selection and invalidates stale
-  publication while retaining old content and evidence.
-- **S07.3:** Personal export includes source text, current content, review history,
-  and schedule/version information in a documented portable form. Export is
-  read-only and does not alter the review session. Full erasure/backup retention
-  semantics are a separate explicit decision, not an archive side effect.
-
-Proof: browser edit/archive and an inspected export across a restart.
-
-### S08 — Return to worthwhile practice (US-009/US-011)
-
-As the learner, I want Scry to introduce prerequisites first and choose
-appropriate review from honest evidence, without mistaking exposure for recall.
-
-- **S08.1:** The pinned FSRS algorithm, state, rating and time yield the same
-  next schedule. A miss/help follows its conservative policy; read, know,
-  and practice observations remain separate from graded attempts.
-- **S08.2:** Selection v2 introduces unseen concepts prerequisite-first,
-  interleaves eligible due practice, honors focused/paused goals, and caps new
-  concepts per rolling day at 3/6/12 for light/steady/intense pace. Narrowed
-  2026-10-20 to concept goals; Studies follow US-016.
-- **S08.3:** Concept state distinguishes new/learning/solid/fading and tallies
-  unaided/helped/missed events. Predicted recall is explicitly an estimate;
-  navigation, animation, or a note read never manufactures a learning event.
-
-Proof: prerequisite/pace selection, concept evidence and next-day
-resume in focused learning/store checks and browser use. Efficacy claims
-require separate delayed unaided recall data.
-
-### S09 — Keep the application private
-
-As the owner, I want easy private access from my phone and computer without
-maintaining a signup product or exposing my learning material.
-
-- **S09.1:** Only the approved owner identity, through Access or an unexpired,
-  unrevoked Owner token (US-014), can access the owner's notebook; missing,
-  unapproved, or forged identity cannot read/export material or mutate it
-  through any exposed hostname, backend listener, or alternate port. Verify
-  the actual ingress trust boundary before accepting personal data.
-- **S09.2:** Cross-site mutation and user/model script or HTMX-attribute injection
-  are rejected or rendered inert. Back/history/cache after sign-out or identity
-  change does not expose a previous private session. Prove upstream logout and
-  account-switching behavior rather than assume header presence solves session
-  lifecycle.
-- **S09.3:** Build/preview agents have synthetic data and no production database,
-  model, backup, or deployment authority by default. If machine access is added,
-  it uses an explicitly scoped/revocable app credential, not VM management/root
-  access or a browser token copied into a client.
-- **S09.4:** Retired 2026-10-20; the identifier stays reserved. The bespoke QA
-  service identity and notebook are no longer a contract: machine access uses
-  Owner tokens without paid work (US-014) or synthetic environments (S09.3).
-  The former text is at Git `cb93333`. On 2026-10-21 (harness verification
-  policy, phaedrus 2026-10-21) a verification-only QA sign-in remains: the
-  dedicated AgentMail account (`QA_EMAIL`), admitted by an exact-email Access
-  policy and signed in through the Owner's identity provider, reaches only the
-  isolated `scry-qa` space, with Owner capabilities there. It never reaches the
-  Owner's notebook, operator routes or backup. It is a verification access
-  rule, not a learner-facing contract.
-
-Proof: actual private HTTPS access, negative ingress/CSRF/content tests, and
-inspection of the deployed capability boundary. A local auth stub is not proof.
-
-### S10 — Keep my work recoverable
-
-As the owner, I want a restart, bad release, or lost VM not to destroy my learning
-history or silently restart paid work.
-
-- **S10.1:** Restart preserves acknowledged captures/reviews and exposes durable
-  jobs as recoverable or failed, not forgotten. Incompatible migration fails
-  before serving ordinary traffic or claiming jobs.
-- **S10.2:** Backup produces a completed, integrity-checked complete application snapshot and
-  required assets/configuration metadata outside the live VM. Interrupted copy
-  or upload is not advertised as a usable backup; stale backup status is visible.
-- **S10.3:** A fresh isolated environment can restore using off-VM recovery
-  material and a compatible binary. Restored uncertain jobs stay paused until
-  reconciled; they do not silently regenerate or send again. Measure actual data
-  loss and restore time against the approved D5 policy before calling this safe.
-- **S10.4:** While restored background work is paused, preparation and meaning
-  checks say so and link to Settings, not indefinite progress or ineffective
-  retries. The notebook's own learner can deliberately choose Resume preparation
-  there, without an operator key. This enables queued and future work only;
-  historical paused/unknown jobs, assessments, reservations and learning history
-  remain unchanged. Same-origin/session protection and exact-operation replay
-  apply. A new resume after resumption conflicts without changing state.
-
-Proof: process interruption, concurrent review/backup, incomplete upload, and a
-real fresh-environment restore. Persistent disk or VM cloning is insufficient.
-
-### S11 — Create useful material from intent (US-013)
-
-Approved product acceptance, reaffirmed 2026-10-02; not an implementation receipt.
-Amended 2026-10-24: S11 governs concept preparation, reached through Add material
-from concept Home. S11.3's search boundary does not restrict US-019.
-If preparation is unavailable, the interface states that before accepting a
-request; it never enables a provider or claims a free save-only draft.
-As the learner, I want to express what I want to learn and receive useful
-tailored material first, then improve it through use rather than setup.
-
-- **S11.1:** From Create, a short topic word, a phrase, and a long rambling
-  dictated request are each valid learning intent. For example, “photosynthesis”,
-  “why HTTP caches go stale”, and a transcript mixing current knowledge,
-  questions, and a desired practical use do not require imported factual text,
-  a mode chooser, learner profile, or diagnostic quiz before preparation.
-  Dictated input means accepting its text; no speech engine, browser vendor,
-  automatic recording, or microphone integration is selected here. Unsupported
-  or oversize input is rejected honestly without silent truncation or loss of
-  the editable draft; established 32 KiB text / 4 MiB photo / 1 KiB caption bounds remain unchanged.
-- **S11.2:** The first completed result contains useful study/reference material
-  and practice attached to teachable concepts: an understandable explanation
-  with relevant examples or distinctions, and answerable questions with
-  explanatory feedback. It responds to the expressed intent, not merely its
-  keywords. A bare topic still receives a useful starting point with assumptions
-  made visible. Optional clarification can refine it afterward; no compulsory
-  questionnaire or draft-approval inbox stands between curiosity and useful work.
-- **S11.3:** Supplied material may support the prompt but is not mandatory.
-  Keep captured intent and optional evidence inspectable. A topic/request is
-  not a factual citation: generated general knowledge is labeled; source/web
-  claims obey S04.1's exact evidence rules. Private text, including dictated
-  text and pasted URLs, does not authorize inferred web search or link reading.
-- **S11.4:** Saved input and preparation state survive leaving or restarting.
-  Pending is visibly pending, not ready or an instantaneous-completion promise;
-  existing study stays usable while work runs. Partial usable output is labeled
-  partial. Failed/empty output preserves input and offers the existing bounded
-  recovery path, never a fabricated success. An unknown sent outcome retains
-  accounted usage and requires deliberate reconciliation, not an invisible
-  resend. Replayed capture/publication does not duplicate saved work.
-- **S11.5:** Subsequent material and practice respond to actual answers,
-  expressed confusion, content/grade corrections, and learner feedback. The
-  evidence for refinement remains inspectable; an initial guess, reading,
-  navigation, reveal, or “I know this already” is not a genuine unaided attempt
-  or certified mastery. Preserve immutable presentations/attempts and grading
-  authority. Refinement neither silently mutates the pinned scheduler policy
-  nor reinstates retired US-012's contrast-generation mechanism by implication.
-- **S11.6:** Durable concept notes remain reusable beyond one answer. Practice
-  uses useful variations, mechanisms, distinctions, and application where the
-  intent calls for them, rather than repeated wording masquerading as breadth.
-  Prerequisite introductions, assistance fences, honest estimates, held feedback,
-  and deliberate Next remain binding under S02/S08; this front door deletes none
-  of those contracts.
-- **S11.7:** Privacy, shared bounded spending, exact retry/history, and hosted
-  recovery under S06/S09/S10 and D5 remain binding through creation/refinement
-  and any future runtime replacement. No new cap, local-only production backup
-  exception, historical-store import, or deployment permission follows from S11.
-
-Proof required for product completion: human review of real word/phrase/dictated
-inputs through authorized generation, inspectable reference/practice output,
-and later interaction that demonstrably refines material without manufacturing
-learning history. Exercise slow, partial, failed, and uncertain work separately.
-Historical Go Add walks prove their capture/privacy boundary only; source documentation, fixture
-success, and older phone receipts do not establish S11 acceptance.
-
-### S12 — Inspect the changes in this build
-
-As the learner, I can follow Changelog from the private application's navigation
-to useful release notes included in the serving build, not newer unpublished
-work. The page names the semantic version and full source revision, works in
-light and dark themes on phone and desktop, and does not read or change my
-learning state. It retains the application's private access boundary. Health
-responses identify that same version and revision without exposing notebook data.
-
-## Cross-cutting quality contracts
-
-These are candidate budgets to approve through the experience slice, not
-measurements of the current or proposed app. Keep latency, generation quality,
-reliability, usability, and learning outcomes separate.
-
-| ID | Proposed contract | Measurement / acceptance |
-| --- | --- | --- |
-| UX1 | Input acknowledgement p95 <100 ms | Pointer/key action to visible pressed/pending response on the owner's actual phone, including an induced 300 ms RTT profile; no network dependency for acknowledgement |
-| UX2 | Deterministic graded feedback p95 <300 ms, including `exact-v2` | Submit to committed, visible result, on a declared <=100 ms RTT profile; include DB/render/browser time, not just handler time; no claim that AI semantic grading meets this budget |
-| UX3 | Prefetched Next p95 <150 ms; existing first review p95 <2 s; capture to first usable quiz p95 <20 s | Report warm/cold state, payload sizes, network/device, sample count, failures/timeouts and measurement endpoints separately; pending UI is not completion, and failed jobs remain in the outcome report |
-| UX4 | Usable at 320 CSS px, with keyboard and 200% text zoom | No horizontal clipping; visible focus, labeled controls, accessible result announcements, >=44 CSS px primary targets, adequate contrast, reduced motion; test long questions and explanations, not only short fixtures |
-| UX5 | Smooth but honest continuity | At most one speculative next prompt, no speculative success/mastery; canceled gestures and stale responses do not submit; loss/conflict recovers without an invisible offline queue |
-| AI1 | Retired 2026-10-20 | The operator-approved real-input set is no longer required; usefulness is judged by the owner's use and US-019's Self-checks |
-| AG1 | Agent-drivable | Every exact-recall create, read, update and delete action is available through the versioned API and the `scry` CLI with machine-readable output, driven by an Owner token (US-014). The phone UI calls the same behavior; no exact-recall action is web-only |
-| OPS1 | Minimal deployment; preserve private data | October 29 operational amendment: required application tests, direct deployment and code readback; S09 privacy and S10 application backup/history behavior remain, but hosted recovery rehearsal is not a release gate |
-
-A small smoke sample can establish a functioning path, not a production p95 or
-population retention claim. Record the sampling plan before a performance run;
-repeatable browser emulation is not evidence of the owner's physical-phone feel.
-The owner approves aesthetics and usefulness; QA agents can surface defects and
-measure contracts but cannot manufacture that approval.
-
-## Detailed behavioral boundaries
-
-These requirements retain behavior previously mixed into the architecture
-section. Their implementation is recorded in [ADR 004](docs/adr/004-rust-cloudflare-candidate.md).
-
-### Interruption, privacy, and assistance
-
-- Only one browser mutation may remain unresolved. Reconcile a lost response
-  with its exact frozen operation/payload; changed payload conflicts. Definite
-  rejection retains editable input; reconnect never automatically sends answers.
-- Read-only preparation polling pauses for active/dirty forms, unknown answers,
-  or hidden/offline pages. Late responses cannot replace newer stages, retry
-  paid work, advance questions, or dismiss held results.
-- A current answer, note, goal title/intent, leaking concept name, old attempt,
-  edit, photo, or export cannot bypass assistance. Record assistance durably
-  before displaying answer-bearing reference. Self-check preserves the original
-  attempt's assistance snapshot and records exposure for subsequent practice.
-- Private pages are not cached. Denied access removes private content;
-  leaving a page removes retained private views, and history return revalidates
-  access. Untrusted user/model text remains inert. Core forms work without JS.
-- Alternate hostnames may redirect reads only, never replay mutations.
-  Browser-owner access does not grant backup or isolated-restore capability.
-
-### Content, practice, and criticism
-
-- Saved goals retain intent and optional photo/transcript; concepts retain
-  prerequisites and append-only notes. Occurrences preserve presented wording,
-  choices, content/schedule versions, answer, assistance, and held result.
-  An acknowledged answer, immutable event, complete schedule, held result, and
-  exact operation receipt must agree durably before success is shown.
-- A generated fix is a saved draft for its exact question/version, not an
-  automatic overwrite. Versioned Save chooses it; later edits/source changes
-  invalidate stale work and remove any invalidated answer-bearing rubric.
-- Deliberate extra practice, intro/read/know observations, helped attempts,
-  and unaided grades remain distinct. Pausing excludes new material but keeps
-  due practice; focusing prioritizes new concepts. Scheduler compatibility
-  preserves full due/stability/difficulty/interval/repetition/lapse/state/
-  last-review/remaining-step state and pinned algorithm identity, not efficacy.
-- Concept generation only (narrowed 2026-10-20; Library Versions follow
-  US-019): when configured, US-004's critic independently judges each applicable hard
-  defect: unsupported source claims, contradictions,
-  changed qualifications, missing context, ambiguous/indefensible answers,
-  leaked answers, overlapping choices, misaligned rubrics, and adversarial
-  content. Source/choice/rubric defects apply only to those content types.
-  Mixed-type or incomplete judgments cannot publish. Thresholds are policy,
-  not demonstrated calibration. Critic retries check only unresolved criticism,
-  retain prior judgments, and never regenerate the saved batch or fish for scores.
-  Mixed accepted/rejected output is partial; no accepted output is not ready.
-  Generated output above US-004's 60-candidate bound fails with the input kept;
-  it is never sampled, truncated, or presented as complete.
-
-### Capacity and recovery
-
-- The candidate bounds a complete archive to 16 MiB including base64 photo bytes,
-  and each stored record to 1 MiB. Existing individual input bounds remain in
-  S11/US-013. Reject capture/edit growth beyond archive capacity before committing
-  and retain the draft. Paid completion receipts remain durable at capacity;
-  capacity failure cannot become backup success or silent deletion.
-- A completed backup includes every referenced photo, metadata and checksum,
-  and passes exact remote size/checksum/full-byte readback and archive validation.
-  Failed upload/readback stays visibly failed in Settings while study remains
-  available. Durable storage alone is not independent recovery proof.
-- Restore uses an unused isolated space, independently retained compatible
-  application/assets/configuration, and an integrity-checked complete archive.
-  Validate all content/photo bytes, clear inherited live-backup receipts, and
-  keep uncertain jobs/assessments paused without paid integrations. Never overwrite
-  acknowledged live writes or reactivate a historical writer during rehearsal.
-  Measure private-service recovery and name untested provisioning/DNS/configuration
-  steps against D5; copying a live store is not a complete recovery demonstration.
-- Historical (D6 amended 2026-10-20): before the one-way revival import, an authorized read-only dry run traverses
-  the complete preserved dataset inside private Cloudflare. It writes nothing
-  and reports only fixed refusal class names and their counts, never content or
-  identifiers. An incomplete traversal is a failure, not a complete report.
-  Further shape-specific repairs follow that complete report as one batch;
-  repeated first-refusal imports are not the diagnostic workflow.
-  Before writing the production store, rehearse the complete import with the
-  same retained dataset and candidate on disposable private hosted storage.
-  Native archive/history/scheduler refusals must be included, not only the Go
-  projection checks. An incomplete native traversal is failure; never report it
-  as an empty refusal table or retry production to discover the next defect.
-
-## User stories
-
-The original US IDs and numbered criteria below remain binding alongside the
-S criteria above, as narrowed in [Exact recall first](#exact-recall-first-2026-10-20).
-A story whose evidence line reads `Evidence: pending` is accepted intent not yet
-built; the ticket that implements it replaces that line with its walks and tests.
-
-US-014 to US-021, added 2026-10-20, govern the exact-recall activity for its owner
-([#296](https://github.com/misty-step/scry/issues/296)). In them "I" is the
-owner, whether he acts on his phone or through an agent holding an Owner token.
-Every criterion holds through the API and the `scry` CLI (AG1); US-018 adds the
-phone. S06 retry/conflict, S09 privacy and S10 recovery apply unchanged. Overlapping IDs express the same contract at different journey
-scales, not competing authorities. Policy names (FSRS, Jev, short-v1, semantic-v1,
-critic-v1) retain their accepted compatibility meaning; technical decisions and
-verification commands live outside this behavioral reference.
-
-| Story | Related end-to-end criteria | Scope |
-| --- | --- | --- |
-| US-001 | S05, S07 | Current concepts/history; criterion 1 is retained Go migration only |
-| US-002 | S01, S02 | Current study loop |
-| US-003 | S02, S06, JEV-01–04 | Current server-owned grading and honest uncertainty |
-| US-004 | S04, S06 | Current prepublication criticism, concept generation only |
-| US-005 | S03 | Superseded front door; historical Go explicit-mode callers only |
-| US-006 | S02, S04, S07 | Current concept reference |
-| US-007 | S02, S05, S06 | Current grade correction |
-| US-008 | S02, JEV-01–04 | Smart short-answer assessment; historical battery policies retained |
-| US-009 | S07, S08 | Current Map/evidence |
-| US-010 | S07, S08 | Current focus, pause and pace for concept goals |
-| US-011 | S08 | Current prerequisites for concept goals |
-| US-012 | S11.5 excludes reinstatement | Retired; ID reserved |
-| US-013 | S11, S04, S06, S09, S10 | Create and refinement for the understanding notebook |
-| US-014 | S06, S09, AG1 | Exact recall: Owner tokens, API and CLI (see criterion walks) |
-| US-015 | S07, AG1 | Exact recall: Library, find before create (evidence pending) |
-| US-016 | S01, S02, S06, S08 | Exact recall: Study, Ladder and schedule (see criterion walks) |
-| US-017 | S02, JEV-01–04 | Current Jev grading and useful correction; historical exact-v2 evidence |
-| US-018 | S01, S02, UX4 | Exact recall on the phone (see criterion walks) |
-| US-019 | S04, S06, D5 | Exact recall: generation agent (evidence pending) |
-| US-020 | S02, S08 | Exact recall: ordered lists (evidence pending) |
-| US-021 | S02, S08 | Exact recall: keyed mappings (evidence pending) |
-
-## US-001 Find and reuse saved understanding
-
-Statement: When I explore what I am learning, I want saved concepts and notes revisitable, so that I can connect prerequisites across questions without losing earlier study.
-
-Criteria:
-1. WHEN schema 4 upgrades to schema 5, THE SYSTEM SHALL preserve foundation rows and relations as historical data; foundation-origin concepts SHALL NOT appear as newly generated concepts in the Map or Stream.
-2. WHEN I inspect a concept page, THE SYSTEM SHALL show its current notes under Study, saved questions and actions under Practice, original material under Resources, and prerequisite links in both directions under Related (Builds on and Used by) while preserving old presented wording and review history.
-
-Criterion 1 remains binding on the retained Go/SQLite runtime and its schema
-4→5 migration, preserved at Git `c6ba395` with compatible recovery artifacts.
-The Rust candidate never performs that Go schema upgrade or deletes that store;
-D6's separately authorized one-way revival is not the historical migration or
-API parity. Criterion 2 applies to the current candidate. Neither proves serving state.
-
-No-gos: no manual graph editor, no automatic replanner.
-
-## US-002 Stay with one question through its result
-
-Current applicability (2026-10-27): criterion 3’s new self-rating controls are retired; criteria 4–5’s concept/Create navigation is superseded by the review-first amendment. Held results, explicit Next, protected answers and both streams’ saved state remain binding.
-
-Statement: When I review, I want one question and one way to answer, followed by the result and Next, so I can keep studying without navigating a dashboard.
-
-Criteria:
-1. WHEN a question is ungraded, THE SYSTEM SHALL show it as the dominant heading with one answer control (choice buttons that submit by tap, or one recall field and submit), and SHALL keep the answer and explanation hidden until grading or self-check.
-2. WHEN an answer resolves, THE SYSTEM SHALL retain the question, result, expected answer, and explanation until I choose Next; a choice tap SHALL NOT require another submit. WHEN a check is pending, THE SYSTEM SHALL show checking without inventing a grade.
-3. WHEN an automatic check reports a miss, THE SYSTEM SHALL show a quiet "I was right" link beneath Next; WHEN an automatic check reports correct, THE SYSTEM SHALL offer "Count as a miss" in More. These controls SHALL NOT auto-advance.
-4. THE SYSTEM SHALL keep Concepts and Add material in the masthead, with the wordmark returning to concept Home. Home SHALL NOT select either practice stream or reveal a protected answer; it SHALL offer Resume practice for a saved concept occurrence at `/notebook`. Quiet Text practice SHALL retain the exact stream at `/recall` and its Library access, including current Prompts and held results. Maintenance SHALL NOT become an always-visible inspection dashboard.
-5. WHEN review is empty or caught up, THE SYSTEM SHALL offer Create or an honest next-time indication, not an invented due question or foundation detour.
-
-No-gos: no auto-advance, due-count chrome, foundation routes, or hidden answer preloading.
-
-## US-003 Get an honest answer judgment
-
-Current applicability (2026-11-07): JEV-01–04 govern current assessment.
-The original short-v1 thresholds in criterion 2 and semantic-v1 policy in
-criterion 3 below describe retained historical implementations, not mandatory
-new dispatch or threshold choices. Criteria 2/4's learner self-check fallback
-remains retired; unsupported answers stay saved and ungraded. Criterion 5's
-learner authority is historical attribution only, never a new self-rating write.
-
-Statement: When I answer in my own words, I want correct meaning recognized where appropriate and uncertainty handed back to me, so my history reflects what I actually knew.
-
-Criteria:
-1. WHEN I submit an answer, THE SYSTEM SHALL resolve it under JEV-01–04 against the actual learning objective. Local exact-key or authored-variant matches MAY be an optimization, never a requirement or a substitute for the Jev-backed journey; broad string similarity SHALL NOT silently determine correctness.
-2. WHEN a recall answer does not match the key or an authored variant, THE SYSTEM SHALL stage one bounded Jev `short-v1` check outside SQL; it SHALL accept only at accept probability ≥0.85, exact-identity risk ≤0.35, injection risk ≤0.20, or reject only at reject probability ≥0.90 and injection risk ≤0.20. Other outcomes SHALL remain ungraded for self-check.
-3. WHEN explain-level prose has an authored rubric, THE SYSTEM SHALL retain the `semantic-v1` required-ideas policy; incomplete and incorrect shadow classes SHALL remain ungraded, and answer-bearing cues SHALL count as assistance before display.
-4. WHEN a check is close, unsure, unavailable, malformed, or fails, THE SYSTEM SHALL preserve the answer and offer a learner self-check; a failed check SHALL also offer Retry check without sending the identical paid assessment twice.
-5. WHEN a result is recorded, THE SYSTEM SHALL name its authority as exact, Jev, learner, or reveal; it SHALL preserve original attempts and grade corrections across restart without silently rewriting history.
-
-No-gos: no liberal string-similarity grading, model call inside a SQL transaction, learner rubric authoring, or change to pinned scheduler identity.
-
-Historical narrowing (2026-10-20): US-003 excluded exact recall in favor of
-local exact-v2. The 2026-11-07 Jev amendment supersedes that exclusion. Legacy
-thresholds are not automatically the new Jev design.
-
-## US-004 Check generated candidates before publication
-
-Current applicability (2026-10-27): new generation, criticism and publication are retired. These criteria retain historical policy/receipt meaning; they do not authorize current HTTP requests or background claims. Complete history, unknown spend and recovery preservation remain binding.
-
-Statement: I want generated quizzes checked for critical defects before they
-enter review. A failed check must retain candidates and paid usage.
-
-Criteria:
-1. WHEN the critic is configured, THE SYSTEM SHALL save validated candidates
-   before any critic request. EACH batch SHALL contain at most 60 candidates.
-2. THE critic-v1 policy SHALL reject any applicable hard defect at probability
-   0.80 or higher. Missing or malformed judgments SHALL remain ungraded.
-   Explanation teaching value SHALL rank only, never reject.
-3. EACH assessment SHALL have one transmission lease and an atomic reservation
-   against the shared generation and semantic allowance. Interrupted sends SHALL
-   retain unknown usage. A retry SHALL use a new assessment, never resend a row.
-4. WHEN a critic fails, THE SYSTEM SHALL preserve candidates and retry only the
-   critic. Judged candidates SHALL be reused. Publication SHALL recheck the saved
-   judgments, source revision, and job ownership in one transaction.
-5. WHEN no critic endpoint is configured, THE SYSTEM SHALL record skipped
-   criticism without reserving allowance or changing existing publication.
-6. Export and content history SHALL retain candidate attempts, defect reasons,
-   model attribution, raw responses, and known or unknown usage.
-
-No-gos: no generator-v4 change, pairwise duplicate checks,
-practice-coverage UI, production activation, or general accuracy claim.
-
-Narrowed 2026-10-20: US-004 applies to concept generation. Versions from the
-generation agent publish on deterministic Self-checks (US-019), and the
-60-candidate bound does not limit a Version's Units.
-
-## US-005 Capture a goal in one step
-
-Superseded by US-013 for the Go Add contract on 2026-09-28. The Rust replacement
-uses prompt-first Create. Explicit-mode criteria remain historical compatibility
-for the archived Go revision and captures; no replacement Topic/Link API or
-inferred browsing follows from them.
-
-Statement: When I have something to learn, I want to add it in one step with its actual source type, so useful material can be prepared without a project setup.
-
-Criteria:
-1. WHEN a retained explicit-mode caller adds a Topic, My text, Link, or Photo, THE SYSTEM SHALL require that caller's mode and save exactly one source and goal for an identical operation ID; this SHALL NOT require a mode chooser on Add/Create.
-2. WHEN I choose Topic, THE SYSTEM SHALL search through Exa only if configured; WHEN I paste My text, THE SYSTEM SHALL NOT send it to web search. A Link SHALL fetch only the chosen URL, and a Photo SHALL transcribe before planning.
-3. IF Topic research has no documents, THEN THE SYSTEM SHALL proceed with labeled general knowledge; IF a Link page cannot be read, THEN THE SYSTEM SHALL fail that preparation recoverably instead of planning from the URL; IF a photo is unsupported or too large, THEN THE SYSTEM SHALL reject it without creating a source.
-4. WHEN generation fails, THE SYSTEM SHALL preserve captured material and show a recoverable failed preparation state rather than report ready.
-
-No-gos: no automatic search of pasted private text, account signup, or duplicate capture on replay.
-
-## US-006 Understand a question's concept
-
-Statement: When a question assumes an idea I do not understand, I want a note for that concept one tap away, so studying can be more than repeating the answer.
-
-Criteria:
-1. WHEN a newly generated question publishes, THE SYSTEM SHALL link exactly one primary concept and an existing standard note.
-2. WHEN I open a concept from a graded question, THE SYSTEM SHALL show its note and linked questions without changing the current review occurrence.
-3. WHEN a note quotes my material or a web excerpt, THE SYSTEM SHALL keep exact evidence and inspectable provenance; general-knowledge notes SHALL be labeled and SHALL NOT claim quoted source support.
-
-No-gos: no untrusted markup execution, fabricated citations, or reading counted as unaided recall.
-
-## US-007 Correct a grade in one tap
-
-Current applicability (2026-10-27): new owner-supplied Corrections/overrides are retired on every surface. The criteria below retain historical transition and immutable-history meaning; current server admission refuses new writes and retries without changing the saved correction.
-
-Statement: When a check gets my answer wrong, I want to correct it immediately, so my future practice does not inherit a false result.
-
-Criteria:
-1. WHEN an automatic miss is shown, THE SYSTEM SHALL offer "I was right" beneath Next; WHEN an automatic correct result is shown, THE SYSTEM SHALL offer "Count as a miss" in More.
-2. WHEN I correct a grade, THE SYSTEM SHALL record one immutable override, replace the current schedule consistently, and retain the original attempt and authority in history.
-3. WHEN the same override operation is retried, THE SYSTEM SHALL return the committed correction without a second schedule change; a stale correction SHALL conflict.
-
-No-gos: no rewriting the original attempt or pretending the correction was a new cold recall.
-
-## US-008 Answer short questions in my own words
-
-Current applicability (2026-11-07): JEV-01–04 supersede mandatory local
-dispatch and the old short-v1 threshold battery. No self-check or self-rating
-fallback remains. Original criteria are preserved in the
-[pre-amendment SPEC](https://github.com/misty-step/scry/blob/3f2a3c48d98d4247c715d43a5f1172852beba838/SPEC.md#us-008-answer-short-questions-in-my-own-words).
-
-Statement: When a short answer means the same thing in different words, I want it to count without accepting a different fact as correct.
-
-Criteria:
-1. WHEN I submit a short answer, THE SYSTEM SHALL use the current Jev grading direction to recognize correct meaning while preserving required identities and forms; a local exact-match optimization is optional.
-2. WHEN the assessment supports correct or incorrect recall, THE SYSTEM SHALL commit the corresponding server-owned Verdict under its reviewed policy; inconclusive results SHALL stay ungraded.
-3. WHEN a check fails or cannot be trusted, THE SYSTEM SHALL keep my answer without a grade or schedule credit and SHALL NOT ask me to self-grade.
-
-No-gos: no liberal similarity rule, hidden automatic retry, or claim that an untested holdout passed.
-
-Historical narrowing (2026-10-20): US-008 excluded exact recall. The current
-Jev amendment supersedes that split; its retirement of the former mandatory
-holdout gate remains unchanged. New quality claims still need actual evidence.
-
-## US-009 See what I know
-
-Statement: When I return to study, I want to see where my concepts stand, so I can choose what needs attention without mistaking an estimate for a fact.
-
-Criteria:
-1. WHEN I open Map, THE SYSTEM SHALL show active and paused goals with concept status, due indication, and an accessible list alongside any decorative constellation.
-2. WHEN I inspect a concept, THE SYSTEM SHALL distinguish new, learning, solid, and fading, show unaided/helped/missed observations separately, and label predicted recall explicitly as an estimate.
-
-No-gos: no guaranteed mastery score, color-only meaning, or synthetic review events from navigation.
-
-## US-010 Say what I want to know
-
-Statement: When my interests change, I want to pause or focus a learning goal, so the next material reflects what I choose.
-
-Criteria:
-1. WHEN capture succeeds, THE SYSTEM SHALL create one goal tied to the source; focus SHALL prioritize new concepts belonging to that goal.
-2. WHEN I pause a goal, THE SYSTEM SHALL exclude its new material from ordinary selection and retain its notes/history; WHEN I resume it, THE SYSTEM SHALL make eligible material selectable again.
-3. WHEN I change pace among light, steady, and intense, THE SYSTEM SHALL cap new concepts in a rolling day at 3, 6, and 12 respectively without fabricating due work.
-
-No-gos: no invisible goal deletion or goal settings as a gate before capture.
-
-Narrowed 2026-10-20: US-010 applies to concept goals. Studies pause and set
-Pace under US-016.
-
-## US-011 Meet prerequisites first
-
-Statement: When one idea depends on another, I want a useful introduction and simpler starting point before its questions, so I am not repeatedly tested on something I have not encountered.
-
-Criteria:
-1. WHEN a goal's concepts have prerequisites, THE SYSTEM SHALL order unseen introductions prerequisite-first and show the standard note before that concept's first question.
-2. WHEN I choose "I know this already" on the intro, THE SYSTEM SHALL record that observation without scoring a cold review or skipping later due questions.
-
-No-gos: no compulsory foundation detour or reading counted as a graded success.
-
-Narrowed 2026-10-20: US-011 applies to concept goals. Studies introduce Units
-in reading order (US-016).
-
-## US-012 Practice a real confusion (retired)
-
-Retired on 2026-09-23 by the operator's simplification decision (MIS-162): Scry
-no longer generates contrast questions from recorded confusions. The id stays
-reserved.
-
-## US-013 Create from what I want to learn
-
-Current applicability (2026-10-27): new native Create/preparation is retired. The criteria below retain historical policy meaning, not a supported current entrypoint. Legacy unsent drafts remain copyable and saved material/history remain intact.
-
-Statement: When curiosity starts as a word, phrase, or long dictated ramble,
-I want Create to produce useful tailored study/reference and practice material
-without a setup questionnaire, so I can start learning and refine it through
-actual practice and feedback.
-
-Amended 2026-10-24: US-013 is concept preparation, reached through Add material
-from concept Home. When unavailable, the page explains that honestly and
-omits submission controls; no free draft or unsupported format is promised.
-
-Acceptance: [S11.1–S11.7](#s11--create-useful-material-from-intent-us-013)
-bind the approved Create journey, including useful first material, honest
-generation states, and refinement without fabricated mastery. The criteria below
-preserve the capture/privacy boundary adopted on 2026-09-28 in the redesigned
-Create flow. The implementation accepts dictated text; it does not select a
-speech engine or add automatic recording. Current tests and synthetic browser
-walks establish only the cases they actually exercise.
-
-Criteria:
-1. WHEN I submit text or one supported photo from Create, THE SYSTEM SHALL save
-   one source and goal without a mode chooser, enforce the existing 32 KiB
-   text, 4 MiB photo and 1 KiB caption limits, and return the saved source for
-   an identical operation.
-2. WHEN I paste or share text containing a URL, THE SYSTEM SHALL keep it
-   private text and SHALL NOT start web research by inference; invalid input
-   SHALL leave a usable Create field without creating a source when preparation is ready, or visibly retain unsent text when it is unavailable.
-
-No-gos: mandatory import, onboarding questionnaire or diagnostic quiz before
-useful material; inferred public search; assumed speech engine or recording
-integration; source-only docs treated as runtime or deployment acceptance.
-
-## US-014 Drive Scry with an owner token
-
-Statement: When I or an agent I trust work from a terminal, I want every Scry
-action available through an API and the `scry` CLI with a revocable owner
-token, so I can add, practise and inspect without a browser.
-
-Criteria:
-1. WHEN I, signed in through Access, create an Owner token, THE SYSTEM SHALL show its secret once, keep only a verifier, and afterwards list it by name, creation time, last use and expiry without the secret.
-2. WHEN a request presents an unexpired, unrevoked Owner token, THE SYSTEM SHALL act as the Owner for every API action, including creating, listing and revoking Owner tokens.
-3. IF a request presents a missing, malformed, expired or revoked token, THE SYSTEM SHALL refuse it before reading or changing any state, with the same refusal whether or not the token ever existed.
-4. WHEN an Owner token is revoked, THE SYSTEM SHALL refuse that token's next request.
-5. WHEN an API mutation repeats a committed operation ID with the same payload, THE SYSTEM SHALL return the committed result without a second change; IF the payload differs, THE SYSTEM SHALL refuse it as a conflict.
-6. WHEN a token-authenticated mutation commits, THE SYSTEM SHALL record which Owner token acted, visible in history and export.
-7. IF a token without paid permission asks for paid work, THE SYSTEM SHALL refuse before reserving any allowance; a new token SHALL lack paid permission unless created with it.
-8. WHEN a CLI command runs with `--json`, THE SYSTEM SHALL print machine-readable output and exit non-zero on any refusal or failure.
-
-No-gos: no accounts or tokens for anyone but the owner, no signup, no anonymous
-or public reading, no token kept in browser storage, no relaxed CSRF for
-browser sessions. The bounded supplied-content stdio MCP exception is defined
-in the 2026-10-27 amendment; broader MCP actions remain out of scope.
-
-Evidence: `qa/walk --stories "US-014"` (eight criterion walks),
-`qa/owner-api.test.mjs` (built Worker, SQLite and compiled CLI),
-`tests/owner_api.rs` (shared receipts, paid authorization and archive compatibility).
-Synthetic local proof; deployed private ingress and physical phone remain unverified.
-
-## US-015 Find a Work before creating it
-
-Statement: When I want to learn something by heart, I want Scry to look in my
-Library first and keep each Work and Version once, so I build on what is
-already there instead of collecting duplicates.
-
-Criteria:
-1. WHEN I search by a title, alias or opening words, THE SYSTEM SHALL return matching Works with their Versions, and SHALL say plainly when nothing matches.
-2. WHEN I add a Version under a title or alias of an existing Work, THE SYSTEM SHALL attach it to that Work instead of creating another Work.
-3. WHEN I add a Version whose text, ignoring case, punctuation and spacing, equals an existing Version's, THE SYSTEM SHALL return the existing Version and create nothing.
-4. WHEN I add a Version, THE SYSTEM SHALL store its Kind, ordered Sections and Units, Provenance and Rights status; IF its Units joined in order do not reproduce its text exactly, THE SYSTEM SHALL refuse it and store nothing.
-5. WHEN I correct a Version's wording, THE SYSTEM SHALL create a new Version that supersedes the old one and SHALL leave the old Version and every Attempt against it unchanged.
-6. WHEN I show a Work or Version, THE SYSTEM SHALL show its Versions, Units, Provenance, Rights status and Relations without changing any Study.
-7. WHEN I delete a Work or Version that no Study uses, THE SYSTEM SHALL remove it; IF a Study uses it, THE SYSTEM SHALL refuse and keep it.
-8. WHEN the Library is exported on its own, THE SYSTEM SHALL include no Study, Card, Attempt, request or token.
-
-No-gos: no public or anonymous reading, no sharing yet, no meaning-based
-(embedding) search, no editing a Version in place.
-
-Evidence: `qa/walk --stories "US-015"` (eight criterion walks),
-`qa/library.test.mjs` (compiled CLI → built isolated Worker → SQLite/local R2),
-`tests/library.rs` (invariants, receipts, archive compatibility and Study-reference refusal).
-US-015.7's used-Study case is native reference-seam proof only, as #316 permits;
-real Study/Attempt preservation and refusal need #317. Supplied text is synthetic;
-the owner's full Roman Missal 2011 input, hosted ingress and recovery remain unverified.
-
-## US-016 Learn a Version unit by unit
-
-Statement: When I choose a Version to learn, I want Scry to bring its Units to
-me in reading order with cues that fade as I improve, so I can recite it word
-for word in the fewest minutes a day.
-
-Criteria:
-1. WHEN I learn a Version, THE SYSTEM SHALL create one Study for it; learning the same Version again SHALL return that Study.
-2. WHEN a Study introduces new Units, THE SYSTEM SHALL introduce them in reading order, at most 3, 6 or 12 per rolling day for light, steady or intense Pace.
-3. WHEN I ask for the next Prompt, THE SYSTEM SHALL show the Work title, the previous Unit as context and the cue for the Card's Cue level, and nothing more of the Unit than that level allows.
-4. WHEN I ask to recite a Section or a whole Version, THE SYSTEM SHALL prompt from its heading or title alone and treat the answer as a Recitation.
-5. WHEN I answer with an answer-bearing cue, THE SYSTEM SHALL record the Attempt as assisted and leave the Card's schedule unchanged.
-6. WHEN I answer in Free recall, THE SYSTEM SHALL schedule a genuinely due Card with the pinned memory model from the native Verdict, including learning/relearning within the same day. Optional early Attempts SHALL be recorded as extra practice without changing the schedule. Immutable historical Attempts and corrections SHALL retain their original scheduling policy (missing policy means the legacy calendar-day rule). This November 2 direction supersedes the previous once-per-day constraint.
-7. WHEN I succeed twice in a row at a Card's Cue level, THE SYSTEM SHALL fade its cue one level; WHEN a Free recall Attempt is Again, THE SYSTEM SHALL drop the Card one Cue level for relearning.
-8. WHEN I ask what is due, THE SYSTEM SHALL list due Cards and upcoming due times without presenting, consuming or changing any Card.
-9. WHEN I pause a Study, THE SYSTEM SHALL stop introducing its new Units while keeping its due Cards and history; WHEN I drop a Study, THE SYSTEM SHALL stop presenting its Cards and keep its Attempts.
-10. WHEN I read history or export, THE SYSTEM SHALL include each Study, its Cards with schedules and Cue levels, every Attempt with its Diff, Verdict and Authority, and the Versions they reference.
-11. WHILE I practise, THE SYSTEM SHALL follow JEV-01–04 with server-owned Verdicts and preserved answer, scope, Authority and schedule evidence. The former no-provider/no-spend restriction is superseded; applicable provider and spend authorization remains required.
-
-No-gos: no separate Cards per Cue level, no prerequisite ordering, no
-concept selection, no streaks or due-count chrome.
-
-Evidence: `qa/walk --stories "US-016"`, `qa/study.test.mjs`, and `tests/study.rs` exercise the compiled CLI, built Worker, SQLite, and local R2 with authored synthetic text. Phone, private canonical wording, hosted admission, and independent hosted recovery remain unverified.
-
-## US-017 Get an exact verdict and a word-by-word diff
-
-Current applicability (2026-11-07): Jev grading supersedes the local-only
-contract. The heading and criterion IDs stay stable. Criterion 10 stays
-retired. Earlier criteria and evidence remain in the
-[pre-amendment SPEC](https://github.com/misty-step/scry/blob/3f2a3c48d98d4247c715d43a5f1172852beba838/SPEC.md#us-017-get-an-exact-verdict-and-a-word-by-word-diff).
-
-Statement: When I answer a Prompt, I want smart, simple grading using Jev and
-a clear correction, so I know what to fix and my schedule reflects actual
-recall without asking me to grade myself.
-
-Criteria:
-1. WHEN I submit an answer, THE SYSTEM SHALL assess it server-side using Jev against the frozen Version, Prompt scope and learning objective under JEV-01–04.
-2. WHEN an answer satisfies that objective, THE SYSTEM SHALL return Good; WHEN it demonstrably fails, THE SYSTEM SHALL return Again. Inconclusive or failed assessments SHALL stay ungraded, never become a miss or self-rating.
-3. WHEN a typing Slip does not change recalled content, THE SYSTEM SHALL distinguish it from a content error. The historical exact-v2 one-edit/five-letter heuristic is historical policy, not a ban on smart assessment.
-4. IF the Version is Spelling-strict, THE SYSTEM SHALL count misspellings as wrong; smart assessment SHALL preserve distinctions that are themselves the learning objective.
-5. WHEN a Verdict is shown, THE SYSTEM SHALL show expected content and useful correction, including word-level Diff for exact-word practice, and hold them until Next. A mechanical Diff SHALL NOT masquerade as Jev's judgment or contradict it without explanation.
-6. WHEN an answer belongs to another supplied Version of the same Work, THE SYSTEM SHALL distinguish it from the studied Version rather than silently substitute wording.
-7. WHEN a Recitation covers several Units, THE SYSTEM SHALL retain per-Unit attribution and Verdicts consistent with its whole-scope assessment; phrase success SHALL NOT become whole-text credit.
-8. WHEN an answer arrives as dictated text, THE SYSTEM SHALL assess it under the same objective as typed text, without claiming pronunciation validation.
-9. EACH new Verdict SHALL retain actual Authority and assessment policy/version evidence. Replay, display, export and recovery SHALL reproduce the stored judgment without another model judgment. Historical exact-v2 Authorities, Verdicts and Diffs SHALL remain unchanged.
-10. THE SYSTEM SHALL offer no new Owner Correction or self-rating, retired since 2026-10-27; saved historical Corrections SHALL remain readable and immutable.
-
-No-gos: no client grades, self-grading, silent Version substitution, rewritten
-historical assessment or native content generation. A local exact-match fast
-path is an implementation choice, not a substitute for the Jev-backed journey.
-
-Evidence: existing `qa/walk --stories "US-017"`, `qa/study.test.mjs` and
-`tests/study.rs` receipts establish their source-bound exact-v2 behavior only.
-New JEV-01–04 integration and journey proof remains required, distinct from
-separately authorized real-provider quality and live acceptance.
-
-## US-018 Practise exact recall on my phone
-
-Current applicability (2026-10-27): criterion 5’s new self-rating controls are retired. Review-first navigation and the supplied NATO starter are governed by the current amendment; native grading, immutable history and the other phone safety contracts remain binding.
-
-Statement: When I have a few minutes with my phone, I want Scry to open
-straight into my current practice, and to find or add a text and begin learning
-it there, so practice fits into my day without a terminal.
-
-Criteria:
-1. WHEN I open Text practice on my phone with exact-recall Cards due, THE SYSTEM SHALL show the next Prompt in the Stream with one answer field and one submit control.
-2. WHEN I submit, THE SYSTEM SHALL show the Verdict and Diff the API gives for that Attempt and hold them until I choose Next.
-3. WHEN I ask for a cue or to see the Unit before answering, THE SYSTEM SHALL record the Attempt as assisted before showing it.
-4. WHEN no exact-recall Card is due, THE SYSTEM SHALL say when the next one is due instead of inventing practice.
-5. WHEN an automatic Verdict is shown, THE SYSTEM SHALL offer the US-007 corrections without auto-advancing.
-6. WHEN I open Text practice with no current exact-recall Study, THE SYSTEM SHALL offer Library entry on my phone: search by title, alias or opening words with an honest miss, inspect matching Work/Version metadata, add supplied text with optional edition/source, and Learn a chosen Version. Supplied text SHALL retain US-015 segmentation, deduplication and private rights by default; repeated Learn SHALL return the same Study (US-016.1). Current Prompts and held results SHALL remain directly reachable. Library content SHALL remain behind the deliberate assistance boundary while a protected Prompt is unanswered, and the supplied-text path SHALL call no provider.
-
-No-gos: no web-only exact-recall action, no
-microphone integration, no swipe grading.
-
-Evidence: `qa/walk --stories "US-018"`, `qa/phone-stream.mjs`, `qa/phone-library.mjs`, `tests/phone_library.rs`, and `tests/study.rs` cover first-study Library entry and the phone Stream, shared CLI Verdict and Diff, held results, assistance, next due time, and Corrections using authored synthetic wording in light and dark. Emulation is not physical-phone acceptance. Private canonical wording, deployed ingress, and owner acceptance remain unverified.
-
-## US-019 Create a Version with the generation agent
-
-Retired for new memorization work by the 2026-10-27 external-authoring decision.
-The identifier and criteria remain historical; no implementation or provider
-activation follows from them. Supplied Versions remain supported by US-015.
-
-Statement: When something I want to learn is not in my Library, I want to
-name it and have an agent with tools produce a checked Version, so I can start
-learning without typing the text myself.
-
-Criteria:
-1. WHEN I ask to create something, THE SYSTEM SHALL search the Library first and start a Generation run only if nothing matches or I ask for another Version.
-2. WHEN a Generation run drafts a Version, THE SYSTEM SHALL let the Generation agent choose between model memory and web search, and SHALL record in the Version's Provenance which it used, with any sources cited.
-3. WHEN a draft passes its Self-checks (Units join to its text exactly, and any declared count matches, such as 26 NATO letters), THE SYSTEM SHALL add it to the Library through US-015 without critic-v1 or another model judge.
-4. IF a Self-check fails, or the run fails or is cancelled, THE SYSTEM SHALL keep the run with its draft, tool calls, Self-check results and cost, leave it unpublished, and allow a deliberate new run.
-5. EACH Generation run SHALL reserve against the shared allowance before sending and stop at its cost bound; an unknown sent cost SHALL keep its reservation until deliberately resolved (D5).
-6. WHEN the same create operation is replayed, THE SYSTEM SHALL return the existing run without spending again.
-7. EACH Spend ledger entry SHALL record its purpose and model; WHEN I ask for spend, THE SYSTEM SHALL report it by day, purpose and model, and the cost of each run.
-8. IF the owner has not enabled production generation, THE SYSTEM SHALL refuse a Generation run before reserving allowance, and supplied Versions (US-015) SHALL still work.
-
-No-gos: no rule that texts must come from sources or from two sources, no ban on
-model memory, no Study or Attempt data sent to the agent, no unbounded run, no
-discarded run.
-
-Evidence: pending
-
-## US-020 Learn an ordered list
-
-Statement: When order is the content, such as the Mysteries of the Rosary, the
-books of the New Testament or the English monarchs since 1066, I want to
-practise each item from the one before it, so I can say the whole list in order.
-
-Criteria:
-1. WHEN I study an ordered list, THE SYSTEM SHALL make one Card per item and prompt each item from the previous item and its position.
-2. WHEN an item has authored aliases, THE SYSTEM SHALL accept an alias as correct and show the Version's own form.
-3. WHEN a Card has not yet reached Free recall, THE SYSTEM SHALL offer a choice of the next item and record that Attempt as assisted.
-4. WHEN I recite the whole list, THE SYSTEM SHALL grade order by alignment and give each item its own Verdict.
-5. WHEN a list is part of a larger Work (the Glorious Mysteries in the Rosary), THE SYSTEM SHALL record and show that Relation on both Works.
-
-No-gos: no reordering or sampling of a complete set, no relations editor.
-
-Evidence: pending
-
-## US-021 Learn a keyed mapping
-
-Statement: When the content is pairs, such as the NATO alphabet, the Rosary day
-schedule or the first seven ecumenical councils with their years, I want to
-practise each pair in the directions worth practising, so I can answer from
-either side.
-
-Criteria:
-1. WHEN I study a keyed mapping, THE SYSTEM SHALL make one Card per pair and declared direction.
-2. WHEN the value is a year, THE SYSTEM SHALL accept it with or without AD or CE and grade it as an exact number.
-3. WHEN a Spelling-strict mapping is answered (NATO "Alfa", "Juliett"), THE SYSTEM SHALL count any misspelling as wrong and show the official form.
-4. WHEN a Card has not yet reached Free recall, THE SYSTEM SHALL offer a choice of values and record that Attempt as assisted.
-5. WHEN I recite the whole set from a random start, THE SYSTEM SHALL give each pair its own Verdict.
-6. WHEN a mapping relates to another Work (the Rosary day schedule to the Mysteries of the Rosary), THE SYSTEM SHALL record and show that Relation on both Works.
-
-No-gos: no tolerance on years unless the Version declares a range, no
-relations editor.
-
-Evidence: pending
-
-### US-021 first delivery: forward NATO subset
-
-The 2026-10-27 amendment bounds the first implementation without claiming the
-whole story complete. Its required proof is supplied manifest → shared
-API/compiled CLI → Library → Learn → key-only phone Prompt → server Verdict,
-strict spelling Diff and held Next. It must include all 26 source-checked
-pairs, malformed/duplicate input refusal, canonical normalization cases,
-forged-grade and Correction refusal with unchanged state, reveal assistance,
-replay/conflict, protected reference access and immutable archive recovery.
-No reverse/years/choice/set/Relation criterion above is removed to fit this slice.
-
-Subset proof: `tests/keyed_mapping.rs`, `tests/keyed_mapping_library.rs`,
-`qa/keyed-mapping.test.mjs`. Exact-source execution and browser receipts belong
-in #324 / its PR; source existence alone is not a PASS.
+# Scry specification
+
+Scry helps its Owner memorize knowledge that someone else wrote. Agents supply
+the content. Scry presents practice, judges every answer itself, tells the
+truth about help, and schedules recall. It is private, for one person, on his
+phone and computer and through an API and command line.
+
+This file is Scry's present-tense target state: what a rebuild must do for the
+Owner to experience the same product. [VISION](VISION.md) explains why,
+[DESIGN](DESIGN.md) owns visual decisions, [the decision records](docs/adr/README.md)
+own technical ones, [QA](docs/qa/system.md) owns verification and
+[the runbook](docs/runbook.md) owns operations.
+
+## Purpose and non-goals
+
+The Owner can receive material an agent wrote, study it, answer from memory
+with one typed answer, see Scry's Verdict with a useful correction, and return
+when recall is due. Learning effort is intentional; interface effort is not.
+
+Scry is not, and does not become by implication:
+
+- **A content generator.** Scry never writes, drafts, transcribes, researches,
+  refines or repairs learning content. Every request to do so is refused
+  before any job, record, upload, reservation or provider call exists.
+- **Self-graded.** There is no self-rating, client-supplied Verdict,
+  expected-answer override or Owner Correction of a grade.
+- **A product for anyone else.** No accounts or tokens for other people,
+  signup, anonymous or public reading, public Library, sharing, billing or
+  collaboration.
+- **A speech product.** No microphone integration, speech recognition or
+  pronunciation validation. Dictated input is text and is graded as typed.
+- **A study administrator.** No deck choice, scheduler configuration, approval
+  inbox, mandatory taxonomy, setup questionnaire, streaks, due-count chrome,
+  swipe grading or automatic advance.
+- **A general knowledge tool.** No universal import, course or chat product,
+  manual graph or relations editor, or meaning-based search.
+- **A source of advice.** Baby-care lessons are memory practice, not medical
+  advice or hands-on certification.
+- **A predictor.** Scry shows observed evidence and never claims mastery,
+  readiness or a guaranteed recall probability.
+- **An offline queue.** Unsent answers are never queued invisibly and sent
+  later.
+
+## Terms
+
+Specification, code, commits and conversation use these words.
+
+### People and access
+
+- **Owner:** the one person Scry is for. Every Study, Attempt and Library
+  entry is his and visible only to him. Avoid: user, account, learner.
+- **Owner token:** a revocable bearer credential that lets a program, such as
+  an agent using the CLI, act as the Owner. Avoid: API key, admin token.
+
+### Library
+
+- **Library:** the Owner's private store of Works and their Versions, kept
+  apart from his study state. Avoid: deck, collection, catalogue.
+- **Work:** the abstract thing to learn, such as "Nicene Creed" or "NATO
+  spelling alphabet". It has a title, aliases, a Kind and a short context note.
+  Avoid: topic, goal, item.
+- **Kind:** the shape of a Work's content: a text (prayer, creed, poem), an
+  ordered list, or a keyed mapping. Avoid: type, mode, category.
+- **Version:** one exact wording of a Work, such as "English, Roman Missal
+  2011". It never changes; a correction is a new Version that supersedes it.
+  Avoid: edition (unless naming one), variant.
+- **Section:** an ordered group of Units within a Version: a creed article, a
+  stanza, a set of mysteries. Avoid: chunk, part.
+- **Unit:** the smallest piece of a Version practised on its own: a clause or
+  line of a text, an item of a list, a key and value of a mapping. A Version's
+  Units, joined in order, reproduce its text exactly. Avoid: card, chunk.
+- **Relation:** a typed link between Works or Versions: version of, part of,
+  related to, supersedes. Avoid: tag, link.
+- **Provenance:** how a Version's text was obtained: supplied by the Owner or
+  his agent, written by a model from memory, or checked against cited sources.
+- **Rights status:** what a Version's copyright would allow: public domain,
+  licensed, or private only. Private only is the default.
+- **Spelling-strict:** said of a Version whose spelling is itself the thing
+  being learned, such as the NATO words "Alfa" and "Juliett".
+- **Starter shelf:** the curated lessons Scry offers without an agent: the
+  NATO alphabet, the four Rosary sets, the Saint Michael prayer in named
+  English and Latin editions, and the baby-care mappings.
+
+### Study and practice
+
+- **Study:** the Owner's decision to learn one Version, with its Pace and
+  whether it is paused or dropped. Avoid: goal, deck, course.
+- **Card:** the Owner's memory state for one Unit in one direction. Avoid:
+  flashcard, question.
+- **Prompt:** what Scry presents for the Owner to answer: the subject, its
+  scope and what he may see. Avoid: challenge.
+- **Source study:** reading supplied material with no answer field. It earns
+  no Attempt and no schedule credit.
+- **Quiz:** answering a Prompt with the source hidden.
+- **Free recall:** an answer given with no answer-bearing help. Only Free
+  recall moves the schedule. Avoid: test mode.
+- **Recitation:** one answer that covers several Units in order, such as a
+  stanza, a Rosary set or a whole prayer. Each Unit keeps its own outcome.
+- **Attempt:** one immutable record of an answer: what was asked, in which
+  scope, the raw answer, the Verdict, the Diff where one applies, the help
+  given and the Authority. Avoid: review, response.
+- **Verdict:** the outcome of an Attempt. Good means the answer satisfies the
+  learning objective; Again means it demonstrably does not. An answer Scry
+  cannot judge has no Verdict. Avoid: score, mark.
+- **Authority:** who decided a Verdict, with the policy and version it was
+  decided under. Avoid: grader.
+- **Jev:** the judgment service Scry's server uses to assess an answer against
+  its learning objective.
+- **Slip:** a typing error in a word that was clearly recalled, such as
+  "concieved". It is shown and counts as recalled, except in a Spelling-strict
+  Version. Avoid: typo, fuzzy match.
+- **Diff:** the word-by-word comparison of an answer with the expected text,
+  marking each word correct, slipped, wrong, missing or extra.
+- **Assistance:** anything answer-bearing shown before or during an answer: a
+  reveal, a cue, a guided retry, reference material. An assisted Attempt is
+  recorded as assisted.
+- **Pace:** how many new Units a Study introduces per rolling day: 3 for
+  light, 6 for steady, 12 for intense.
+- **Spend ledger:** the record of money reserved and spent on paid calls, by
+  day, purpose and model.
+
+### Earlier material
+
+- **Concept:** a teachable idea from the earlier concept notebook, with a
+  current note, saved questions and prerequisite links. It is not a Work or
+  Unit.
+- **Goal:** a saved request from the earlier concept notebook that groups its
+  Concepts. Memorization uses Study instead.
+- **Correction:** an Owner's override of a Verdict recorded in the past. Scry
+  no longer accepts new ones; saved ones stay readable and unchanged.
+- **Archived notebook:** the oldest notebook, kept read-only with nothing
+  deleted and no writer attached.
+
+## Invariants
+
+1. **Scry owns every Verdict.** The Owner supplies an answer, never a grade.
+   Nothing a client sends as a Verdict, rating, expected answer, assistance
+   flag or schedule is accepted.
+2. **Uncertainty is not a grade.** A failed, unavailable, malformed or
+   inconclusive assessment leaves the answer saved and ungraded, with no
+   schedule effect and no fallback to self-grading.
+3. **Help is recorded before it is shown.** An assisted Attempt never earns
+   unaided credit and never extends the schedule. Reading, studying, revealing
+   and navigating are not recall.
+4. **History is never rewritten.** Attempts, Verdicts, Authorities, Diffs,
+   saved Corrections, Versions and past schedules keep their original content
+   and meaning. A result is never rejudged; it keeps the policy it was decided
+   under. A build that cannot honor newer saved meaning refuses it instead of
+   stripping it.
+5. **Supplied content is authoritative.** Scry never silently substitutes,
+   samples, reorders or paraphrases a Version. Named editions stay distinct.
+6. **Each action happens once.** Every mutation carries an operation identity.
+   Repeating it returns the committed result; reusing it with a different
+   payload is an explicit conflict. A lost response, reload, restart, second
+   tab or stale page never duplicates an Attempt, schedule effect or
+   enrolment, and never grades a Prompt other than the one answered.
+7. **Only a deliberate action advances.** Reading, navigating, reloading and
+   status checks never select a Prompt, reveal an answer, clear a draft,
+   enrol a Study, write evidence or change a schedule.
+8. **Protected recall stays protected.** While a Prompt awaits an unaided
+   answer, nothing answer-bearing is reachable from it: not in the page
+   source, the Library, progress, history, export or reference pages.
+9. **Evidence is observed, never invented.** Counts come from saved Attempts.
+   Phrase, joined-passage and whole-text evidence stay separate; success on a
+   part never becomes credit for the whole.
+10. **Only the Owner gets in.** No other identity reads, exports or changes
+    anything, through any hostname, listener or port.
+11. **Acknowledged work survives.** An answer Scry has acknowledged survives
+    restart, release and loss of the serving machine, within the stated
+    backup limits.
+12. **Paid work is bounded.** Spend never exceeds its caps, and a sent request
+    with an unknown cost keeps its reservation until deliberately resolved.
+
+## Experience
+
+The first screen is the learning moment, not a dashboard. An ordinary session
+needs no choice of deck, no configuration and no reading of telemetry. Scry is
+quiet: few components, little text, no decorative panels, no repeated labels
+and no reassurance copy.
+
+One thing leads at a time. Practice shows one subject and scope, one clear
+task (study this, or answer from memory), one answer field when quizzed, and
+one primary next action. Topic identity leads visually. Lessons, progress and
+optional details sit behind compact disclosures on the same screen. Library,
+history, settings, earlier practice and the changelog live in a quiet menu,
+and navigation is never duplicated in a footer.
+
+The loop is study, then **Try from memory**, then one typed answer and
+**Check**, then a visible checking state, then Scry's Verdict with its
+correction, held on screen until the Owner chooses **Next**. Studying a
+source, answering a question, checking, a held result, an answer saved but
+ungraded, nothing left to do, and a conflict or error are visibly different
+states.
+
+It feels immediate with a keyboard: Enter submits and advances, focus is
+visible and restored, and transitions are subtle and respect reduced-motion
+preferences. Icons are decorative beside readable labels and are never the
+only name of an action. Status never depends on colour alone.
+
+It works equally on a phone and a desktop, in light and dark, with JavaScript
+or without it: every core action is a native form. Inputs are at least 16 CSS
+pixels, zoom stays enabled, primary targets are at least 44 CSS pixels, and
+the layout holds at 320 CSS pixels wide and at 200% text zoom without
+horizontal clipping, including with long questions and explanations.
+
+## Capabilities
+
+### Open into study
+
+- Home offers one **Study** action and a closed, secondary **Browse**. It
+  resumes a held Prompt or result without showing its answer or choosing
+  another one.
+- Study and Next serve genuinely due, previously practised material first,
+  interleaved across Studies: the least recently served Study wins, then due
+  time, then a stable identity, so one overdue subject cannot monopolize a
+  session. After that they rotate unfinished learning and unseen subjects by
+  least recent service.
+- Available material is the Library's agent-authored Works and the Starter
+  shelf. Admitting a subject creates only the selected Study, never the whole
+  shelf. Home and opening practice with nothing held never enrol or introduce.
+- An unstarted Work offers one unsuperseded Version, chosen stably, never all
+  its historical editions. A chosen edition is kept. The Starter shelf
+  defaults to the supplied English Saint Michael prayer; other editions are
+  explicit alternatives, and choosing one suppresses the default.
+- A paused Study gets no new material but keeps its due reviews. A dropped
+  Study gets neither, and its Attempts are kept. Another edition never
+  bypasses a paused or dropped Work.
+- Due review and new learning stay distinct: an introduction is never
+  labelled or counted as review evidence.
+- When nothing is eligible, Scry says **Rest for now** and offers Browse. It
+  does not invent due work, claim completion or show a misleading countdown.
+  A focused lesson with everything introduced and nothing due says so and
+  names the next scheduled time.
+- Material Scry cannot grade stays in the Library and is never served by
+  Study.
+
+### Study, then quiz from memory
+
+- Source study shows the supplied material with no answer field and no
+  grading controls. Scry refuses an answer submitted against a source being
+  studied, from any client.
+- **Try from memory** deliberately replaces the held source with a Quiz of
+  the same scope, source hidden. Studying and making that transition create
+  no Attempt, success, review count or schedule credit.
+- A later due review is always a hidden-source Quiz. Having once studied a
+  source does not taint later recall; revealing during a Quiz marks that
+  retry assisted.
+- A mapping's source study keeps its authored question and any
+  safety-bearing cue.
+- Prompts presented through the API in an older cue-bearing form stay
+  answerable; the app shows any visible source as study, never as a form to
+  copy from.
+
+### Grading
+
+- Scry assesses each submitted answer on the server, using Jev, against the
+  frozen Version, the Prompt's scope and the learning objective.
+- Valid recall is never failed merely because its wording is absent from a
+  list of accepted answers. A related but different identity is never
+  accepted as a match.
+- Objectives keep their real distinctions. Exact-word practice,
+  Spelling-strict content, ordered identity and safety-bearing answers are
+  not interchangeable with loose meaning.
+- A Slip is distinguished from a content error and counts as recalled, except
+  in a Spelling-strict Version, where the misspelling is a miss and the
+  official form is shown.
+- An answer that belongs to another Version of the same Work is identified as
+  that other wording, never silently accepted or substituted.
+- Dictated text is assessed exactly as typed text.
+- The result shows the expected content and a concise, useful correction. For
+  exact-word practice it includes the Diff. A mechanical Diff never
+  masquerades as the judgment and never contradicts it without explanation.
+- Each Verdict keeps its actual Authority and the policy it was decided
+  under. Replay, display, export and recovery reproduce the stored judgment
+  without judging again.
+- When an assessment fails or is inconclusive, the answer stays saved and
+  ungraded, Scry says so honestly, and the saved material and history stay
+  reachable.
+
+### Assistance
+
+- A reveal, a cue or answer-bearing reference is recorded as Assistance
+  before it is displayed. Reload, another tab or a later correct answer
+  cannot turn that occurrence into unaided recall.
+- A mismatched phrase shows the expected phrase immediately and offers a
+  guided retry of the same phrase; continuing is an explicit secondary
+  choice. A retry records nothing until it is submitted and never turns
+  disclosed wording into unaided credit.
+- A reveal on its own is a record of help. It is not a completed review and
+  not a wrong answer.
+- Optional reference, such as the whole alphabet, is absent during protected
+  recall. A result shows only its own correction.
+
+### After an answer
+
+- Once an answer commits, the result shows automatically, beside the
+  correction and the next action: the count of unaided correct answers out of
+  unaided answers for that exact scope, and the recent outcomes. No summary
+  appears before a commit or on an unanswered Prompt.
+- It shows the actual saved next review time for the answered item. An answer
+  covering several Units shows the earliest scheduled part, never an invented
+  whole-text schedule. Unscheduled or inactive work is labelled as such.
+- The result, the question and the answer stay until the Owner chooses Next.
+
+### Scheduling
+
+- The memory model is pinned: the same state, Verdict and time always produce
+  the same next schedule, including learning and relearning steps within a
+  day.
+- A Free recall answer to a genuinely due Card schedules it from the Verdict.
+  An optional early answer is recorded as extra practice and leaves the
+  schedule alone.
+- A Study introduces Units in reading order, at most its Pace per rolling 24
+  hours. Each subject keeps its own limit; one subject reaching it does not
+  block the others.
+- Asking what is due lists due Cards and upcoming times without presenting,
+  consuming or changing anything.
+
+### Lessons
+
+- A quiet lesson shelf on the practice screen groups the Starter shelf by
+  topic rather than as a flat catalogue, with essential wording and language
+  labels explicit. Current practice is distinguished from starting another
+  lesson.
+- Browsing or dismissing the shelf keeps the typed draft and the held
+  question or result, makes no request and writes no evidence. Returning to
+  current practice does not start a lesson.
+- Switching away from an unanswered question says plainly that it stays
+  ungraded and fences that exact Prompt, so a late answer cannot grade a
+  different question.
+- Browsing never imports or enrols. Deliberate selection imports the
+  immutable supplied content once and enters normal paced, scheduled practice
+  for that lesson. Selecting again returns the same content and Study without
+  resetting anything.
+- Entering a lesson deliberately introduces the selected short content
+  without changing the stored Pace.
+- Agent-supplied content stays reachable beside the Starter shelf wherever
+  protected recall permits. A shared title or edition name never hides custom
+  content as a starter.
+
+### Texts and prayers
+
+- A text is learned through authored, meaning-based clauses: source study,
+  then a Quiz of each phrase, then joined passages (its Sections), then a
+  separate whole-text challenge. The Owner may start from a midpoint.
+- Reciting a Section or a whole Version is prompted from its heading or title
+  alone. Each Unit in a Recitation keeps its own attribution and Verdict,
+  consistent with the assessment of the whole.
+- Optional challenges stay secondary to the next phrase.
+- Supplied Latin starter wording is unaccented. A named English Version is
+  never substituted for another.
+
+### Ordered lists
+
+- An ordered list is recalled as one whole sequence, not as isolated cards.
+  Each Rosary set is one recall of its five mysteries in order.
+- Grading recognizes the intended item identities and their order. Authored
+  aliases are accepted, and the result shows the Version's own form.
+- The result reports missing, repeated and misplaced items. One omission does
+  not cascade across the later correctly ordered items. A duplicate or a
+  transposition cannot earn a correct whole result.
+- Only components that are genuinely due change their schedule; the rest are
+  optional early practice.
+- A list that is part of a larger Work, such as the Glorious Mysteries within
+  the Rosary, shows that Relation on both Works.
+
+### Keyed mappings
+
+- A mapping is practised one pair at a time, in each direction its Version
+  declares. A forward Prompt shows the key alone.
+- A value that belongs to another pair is identified as the wrong key, never
+  accepted as a near match.
+- A year is accepted with or without AD or CE and graded as an exact number,
+  unless the Version declares a range.
+- Reciting the whole set, from any starting pair, gives each pair its own
+  Verdict.
+- A mapping related to another Work, such as the Rosary day schedule and the
+  mysteries, shows that Relation on both Works.
+
+### NATO alphabet
+
+- One **Start practice** imports the canonical alphabet, starts or resumes
+  its Study and presents the first letter, with no Library, Version, Pace or
+  setup screen. Starting deliberately allows all 26 letters to be introduced.
+  Starting again never duplicates content, resets a schedule or replaces
+  another Study's held Prompt.
+- The alphabet has all 26 official words, including Alfa, Juliett, Whiskey
+  and X-ray, and is Spelling-strict. Case and surrounding space do not
+  matter, and "X-ray" and "X ray" are the same answer. "Xray", "Alpha",
+  "Juliet" and letters separated by punctuation are misses.
+- Practice serves due letters, then new ones, and never presents a letter
+  that is not yet due as ordinary review. It prefers a different letter from
+  the one just answered and does not restart at A.
+- The practised count is the number of distinct letters with an unaided,
+  graded Attempt, labelled "practised", never "correct" or "mastered".
+  Importing, revealing and repeating cannot inflate it.
+- A read-only progress disclosure on the same screen shows all 26 letters.
+  For each: answered Prompts, including assisted and early practice; accuracy
+  as correct out of unaided answers with the denominator visible, or a dash
+  with no evidence; assisted answers counted separately; recent outcomes; the
+  last review time; and the actual next due time, or "Not scheduled".
+- Opening, selecting or closing that disclosure writes nothing and changes no
+  draft, held Prompt, Assistance or schedule. It never exposes a canonical
+  word or a past raw answer during protected recall. It shows no invented
+  queue position, and only the held letter is marked as current. Arrow keys
+  move between letters.
+
+### Baby-care readiness
+
+- The Starter shelf includes three original, sourced mappings for newborn and
+  early-infant preparation: safe soothing, including the five S's; everyday
+  safety; and Montessori-inspired awake interaction. Their source notes stay
+  accessible.
+- Safety guidance takes precedence over optional soothing and educational
+  approaches, and a critical safety condition stays in the question itself.
+- These answers are held to their exact normalized form. A dangerous
+  alternative, a negation or added unsafe words is a miss. There is no
+  approximate clinical judgment.
+- Whole-text and joined-passage modes are not applied to these factual
+  questions.
+
+### Progress
+
+- Progress separates unaided whole attempts from assisted and phrase
+  practice. It claims neither mastery nor predicted readiness.
+- History lists each Study, its Cards and schedules, every Attempt with its
+  answer, Verdict, Diff, Assistance and Authority, and the Versions they
+  refer to. Reading it changes nothing.
+
+### Library
+
+- Searching by a title, an alias or opening words returns matching Works with
+  their Versions, and says plainly when nothing matches.
+- A Version added under an existing Work's title or alias attaches to that
+  Work. A Version whose text equals an existing one, ignoring case,
+  punctuation and spacing, returns the existing Version and creates nothing.
+- A Version stores its Kind, ordered Sections and Units, Provenance, Rights
+  status, edition name and sources. If its Units joined in order do not
+  reproduce its text exactly, it is refused and nothing is stored.
+- Ordered aliases are optional, bounded, unambiguous after normalization and
+  fixed with their Version.
+- Correcting wording creates a new Version that supersedes the old one. The
+  old Version and every Attempt against it stay unchanged.
+- Showing a Work or Version shows its Versions, Units, Provenance, Rights
+  status and Relations without changing any Study.
+- A Work or Version that no Study uses can be deleted. One that a Study uses
+  cannot.
+- Learning a Version creates one Study for it. Learning it again returns that
+  Study.
+- The Library exported on its own contains no Study, Card, Attempt, request
+  or token.
+- With no current Study, the app offers the Library: search, inspect, add
+  supplied text with an optional edition and source, and learn a chosen
+  Version. Adding supplied text calls no paid service.
+- Reading the Library never imports the Starter shelf.
+
+### Agent access
+
+- Every memorization action is available through a versioned API and the
+  `scry` command line with machine-readable output, driven by an Owner token.
+  The app uses the same behavior, and no such action is web-only. A CLI
+  command asked for machine-readable output exits non-zero on any refusal or
+  failure.
+- An agent supplies content as a manifest that Scry validates as a whole
+  before admitting anything: text with its clause boundaries and Sections, an
+  ordered list with aliases, or typed pairs with a declared direction. A
+  malformed or duplicate entry refuses the whole manifest. Scry fetches no
+  remote source to admit it.
+- An agent can start and continue a lesson for any supplied Version, not only
+  the Starter shelf: learn, ask what is due, take the next Prompt, move from
+  study to Quiz, submit a raw answer and reveal.
+- A bounded local tool server for agents exposes the same validation, import,
+  search, show, learn, due, next, Quiz, answer and reveal actions under the
+  same rules. It offers no generation, self-rating, Correction, credential
+  creation or arbitrary network tool.
+
+### Owner tokens
+
+- The signed-in Owner creates an Owner token. Its secret is shown once; only
+  a verifier is kept. Tokens are then listed by name, creation time, last use
+  and expiry, without the secret.
+- A request with an unexpired, unrevoked token acts as the Owner for every
+  API action, including creating, listing and revoking tokens.
+- A missing, malformed, expired or revoked token is refused before any state
+  is read or changed, with the same refusal whether or not the token ever
+  existed. Revocation takes effect on that token's next request.
+- A committed mutation records which token acted, visible in history and
+  export.
+- A token cannot request paid work unless it was created with that
+  permission, and is refused before any allowance is reserved.
+- A token is never kept in browser storage, and browser sessions keep their
+  cross-site protection.
+
+### Drafts and interruptions
+
+- A held draft, question or result survives reload, navigation and return.
+- **Save draft** checkpoints the text typed for the exact unanswered Prompt.
+  Saving never grades, advances, schedules or calls a paid service. The
+  Owner can discard it; competing saves and discards settle on the newest. A
+  committed answer or a deliberate change of Prompt clears the checkpoint.
+- With JavaScript, an edited answer is also checkpointed quietly after five
+  seconds in the foreground. The editor stays usable, and the status
+  distinguishes newer unsaved text from the acknowledged snapshot. Automatic
+  saving does not start on load, reconnect, return to the foreground or
+  unload. It stops after 512 automatic saves and on a capacity refusal;
+  Save draft stays available.
+- Only acknowledged text can be relied on. A lost response may have
+  committed and is reconciled against its original operation; reconciliation
+  never sends edits made while the outcome was unknown or the device was
+  offline.
+- Pending is distinguishable from saved. A definite rejection keeps the
+  editable answer. Only one unresolved action is permitted at a time, and
+  practice pauses offline.
+- A competing tab or stale page cannot overwrite a newer Prompt, and a late
+  response cannot revert the current view, dismiss a held result or advance.
+- An assessment is sent once. A concurrent duplicate is refused, a replay
+  reconciles the saved state without sending again, and an interrupted send
+  becomes a definite failure with its reservation kept as unknown spend.
+
+### Earlier concept notebook
+
+- Material from the earlier concept notebook stays reachable through
+  secondary navigation: Goals, Concepts with their notes, saved questions and
+  history. Nothing is imported, rewritten or deleted.
+- A Concept page shows its current notes, its saved questions, its original
+  material and its prerequisite links in both directions, and keeps old
+  presented wording and review history. Opening it from a result does not
+  consume or change the current question.
+- The Map lists active Goals before paused ones beside a decorative
+  constellation, with an accessible list of Concepts and their status. A
+  Concept is new, learning, solid or fading, with unaided, helped and missed
+  observations shown separately and any recall figure labelled as an
+  estimate.
+- Focusing a Goal prioritizes its new Concepts. Pausing excludes its new
+  material and keeps its notes, history and due practice. Unseen Concepts are
+  introduced prerequisite-first, with the note shown before the first
+  question, at most the Pace per rolling day.
+- A saved question shows one answer control, keeps the answer and explanation
+  hidden until it is graded, and holds its result until Next. A chosen option
+  means the exact option displayed. A question Scry cannot grade stays saved
+  and ungraded.
+- Choosing "I know this already" on an introduction records that observation
+  without scoring a review or skipping later due questions. Reading, knowing
+  and practising stay separate from graded Attempts.
+- Reference for the Concept a question assesses sits behind a visible gate
+  and is recorded as Assistance before it opens.
+- Editing a saved question keeps the wording, choices, answer and result that
+  were presented before; later occurrences use the new wording. Archiving a
+  question, Concept or Goal stops its future selection and keeps its content
+  and evidence.
+- A note that quotes supplied material or a web excerpt keeps the exact
+  evidence and its provenance. General knowledge is labelled and never
+  presented as quoted support.
+- An interrupted question from that notebook stays directly reachable.
+
+### Retired generation records
+
+- Saved requests, drafts, generated candidates, their defect reasons, model
+  attribution, raw responses and known or unknown usage stay readable and
+  exportable, unchanged.
+- An unsent draft from the retired creation screen stays copyable and is
+  never submitted.
+- Work that was queued, sent, uncertain or paused when generation was retired
+  is never claimed, published or restarted by a read, a timer, a restart or a
+  recovery.
+
+### Privacy
+
+- Only the approved Owner identity, signed in or holding a valid Owner token,
+  can read, export or change anything.
+- Cross-site requests are rejected. Text from the Owner, an agent or a model
+  is always rendered inert.
+- Private pages are not cached. After sign-out, loss of access or a change of
+  identity, Back, history and cached pages reveal nothing, and returning
+  revalidates access.
+- An alternate hostname may redirect a read, never replay a mutation.
+- Build and preview environments use synthetic data and hold no production
+  data, model, backup or deployment authority.
+- A verification-only sign-in reaches only an isolated practice space with
+  synthetic data. It never reaches the Owner's material, operator actions or
+  backups.
+- Signing in as the Owner grants no backup or restore capability.
+
+### Backup and recovery
+
+- A restart keeps every acknowledged answer and exposes unfinished work as
+  recoverable or failed, never forgotten. An incompatible saved state stops
+  Scry before it serves or changes anything.
+- A complete, integrity-checked backup is taken daily and before a release,
+  stored away from the serving machine and kept for 30 days. The targets are
+  at most 24 hours of lost work and 60 minutes to restore; they are targets,
+  not guarantees.
+- A backup counts only after its remote copy is read back and verified,
+  including every referenced file. An interrupted or failed backup is never
+  advertised as usable, stays visibly failed in settings, and leaves study
+  available.
+- Health reports unhealthy, naming a stale backup, when no verified remote
+  backup exists or the last is older than 26 hours. A separately authorized
+  trigger may request a backup; it cannot read the Owner's data or act as him.
+- A fresh, isolated environment can be restored from off-machine material
+  alone. A restore never overwrites acknowledged live work or reattaches an
+  old writer. Uncertain paid work stays paused after a restore and never
+  resends on its own; the Owner can deliberately resume future work from
+  settings, which leaves historical paused and unknown records unchanged.
+- Growth beyond storage capacity is refused before it commits, with the draft
+  kept. A capacity failure never becomes a backup success or a silent
+  deletion.
+- A personal export contains the supplied text, current content, history and
+  schedules in a documented portable form. Exporting changes nothing.
+
+### Spend
+
+- Paid judgment shares one allowance: 25 US dollars a week at the provider
+  and 3.50 US dollars in any rolling 24 hours in the application.
+- Each paid request reserves against the allowance before it is sent. A
+  request that was sent with an unknown outcome keeps its reservation until
+  the Owner deliberately resolves it; it is never retried for free.
+- The Spend ledger records the purpose and model of every entry and reports
+  spend by day, purpose and model.
+
+### Build identity
+
+- A Changelog link in the app's navigation shows the release notes included
+  in the serving build, never newer unpublished work, with the version and
+  the full source revision. It does not read or change study state and stays
+  behind the same private access.
+- Health responses identify that same version and revision without exposing
+  any of the Owner's material.
+
+### Failure reporting
+
+- An unexpected failure at the application boundary is reported to the
+  Owner's triage route with only a fixed failure category and the deployment
+  identity: never content, addresses, headers, credentials, raw errors or
+  response bodies. An ordinary access denial is not an incident.
+- Reporting is bounded and asynchronous. An unavailable or rejecting sink
+  never delays or changes a response, and study never depends on it.
+
+## Quality bars
+
+These are proposed budgets. The Owner approves them through use.
+
+- **Acknowledgement:** a tap or key press shows a pressed or pending response
+  within 100 ms at the 95th percentile on the Owner's phone, without waiting
+  for the network.
+- **Result:** when Scry can judge an answer without a paid call, the
+  committed result is visible within 300 ms at the 95th percentile on a
+  connection with at most 100 ms round trip. No budget is claimed for a
+  Jev-backed judgment.
+- **Next:** a prepared Next shows within 150 ms and an existing first review
+  within 2 seconds, both at the 95th percentile.
+- **Honest continuity:** at most one speculative next Prompt, never a
+  speculative success. A cancelled gesture or stale response never submits.
+- **Measurement:** a performance claim states its device, network, sample
+  count, failures and time-outs. A small sample shows a working path, not a
+  percentile. Browser emulation is not the feel of the Owner's phone.
+- **Approval:** the Owner approves aesthetics and usefulness. Verification
+  can find defects and measure these bars; it cannot grant that approval.

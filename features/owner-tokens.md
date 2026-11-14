@@ -2,7 +2,7 @@
 
 The owner, signed in through Access, mints a named Owner token in Settings. He
 saves its secret once, logs the `scry` CLI in with it, and later revokes it.
-Behavior authority: [US-014 / AG1](../SPEC.md#us-014-drive-scry-with-an-owner-token).
+Behavior authority: [SPEC § Owner tokens](../SPEC.md#owner-tokens) and [Agent access](../SPEC.md#agent-access).
 
 ## Sub-features
 

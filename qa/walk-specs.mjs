@@ -1,8 +1,31 @@
 import assert from 'node:assert/strict';
 
-// Current numbered criteria, scoped to synthetic browser/policy mechanics.
-// Live provider usefulness, production, real phone and independent hosted
-// recovery acceptance remain explicitly unverified in the receipt.
+// Journey walks, scoped to synthetic browser/policy mechanics. Live provider
+// usefulness, production, real phone and independent hosted recovery
+// acceptance remain explicitly unverified in the receipt.
+//
+// A journey ID is this harness's stable name for a set of walks; receipts and
+// critic fingerprints cite it. `capabilities` binds each journey to the
+// SPEC.md capability heading it proves, and qa/walk refuses to run when that
+// heading is gone. Add a walk here when its capability gains behavior.
+export const capabilities={
+ 'US-001':'Earlier concept notebook',
+ 'US-002':'Earlier concept notebook',
+ 'US-003':'Grading',
+ 'US-004':'Retired generation records',
+ 'US-006':'Earlier concept notebook',
+ 'US-007':'Grading',
+ 'US-008':'Grading',
+ 'US-009':'Earlier concept notebook',
+ 'US-010':'Earlier concept notebook',
+ 'US-011':'Earlier concept notebook',
+ 'US-013':'Retired generation records',
+ 'US-014':'Owner tokens',
+ 'US-015':'Library',
+ 'US-016':'Scheduling',
+ 'US-017':'Grading',
+ 'US-018':'Open into study',
+};
 const policy=(...names)=>async c=>c.policy(...names);
 const choice=async(c,index=0)=>{await c.page.locator('.choice').nth(index).click();await c.page.locator('[data-state="result"]').waitFor();};
 const map=async c=>{await c.page.goto(c.url('/map'));await c.page.getByRole('heading',{name:'A map of ideas.'}).waitFor();};

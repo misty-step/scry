@@ -96,8 +96,8 @@ and `continuous-library-runtime.json`; the phone/desktop continuous-study walk m
 show one primary Study action, closed Browse, and no false no-reviews dead end.
 
 For retained exact-text, Library or historical compatibility changes, use the
-existing guide and `qa/walk --stories "US-016 US-017"` (or the appropriate SPEC IDs).
-`qa/walk --all` discovers the active numbered stories. Do not treat an old
+existing guide and `qa/walk --stories "US-016 US-017"` (or the appropriate journeys).
+`qa/walk --all` runs every journey in `qa/walk-specs.mjs`, each bound to a SPEC capability. Do not treat an old
 concept/generation journey as current product intent.
 
 ## Evidence
@@ -156,7 +156,7 @@ No new runner is installed by this skill. Existing helpers are:
 - `qa/nato-focus.test.mjs`: atomic native NATO journey and JSON receipt.
 - `qa/keyed-mapping.test.mjs`: mappings, lessons and browser screenshots.
 - `qa/mcp-worker.test.mjs`: compiled MCP authoring-to-graded-review proof.
-- `qa/walk --stories "US-0NN"`: SPEC-indexed retained journeys.
+- `qa/walk --stories "US-0NN"`: retained journeys bound to SPEC capabilities.
 - `scripts/rust-dev`: optional disposable manual loopback session.
 - `scripts/scry-ci full`: existing aggregate source and runtime gate.
 

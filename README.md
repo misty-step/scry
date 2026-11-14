@@ -5,7 +5,7 @@ native review or the supplied NATO starter; Library is secondary. External
 agents supply content, while Scry grades answers and schedules recall. Native
 content generation is retired. Existing exact-text and concept-notebook
 material, interrupted practice and history remain preserved. [SPEC](SPEC.md)
-records the owner's 2026-10-27 direction and remaining acceptance work.
+is the present-tense target state.
 
 The application in this checkout is a ground-up **Rust + Cloudflare Workers**
 rewrite, authorized on October 7, 2026. A plain WASM Worker validates private
@@ -26,15 +26,14 @@ For the current origin and remaining proof, read the runbook's
 [dated promotion observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
 and the [current deployment procedure](docs/rust-cloudflare.md#reviewable-release-procedure).
 
-[Product intent](VISION.md) · [Stories and specification](SPEC.md) ·
+[Product intent](VISION.md) · [Specification](SPEC.md) ·
 [Design](DESIGN.md) · [Features](features/README.md) ·
 [Verification](docs/qa/system.md) · [Current production operations](docs/runbook.md)
 
 ## Start or resume work
 
-Read SPEC, especially its latest scope amendment and the relevant stories, before
-scoping work. GLOSSARY owns the words. VISION explains intent;
-USER_STORIES is only a compatibility index. Technical decisions live in ADRs.
+Read SPEC before scoping work; its Terms own the words. VISION explains
+intent. Technical decisions live in ADRs.
 Use the current operator request as authority; preserve overlapping work and
 inspect `git status --short --branch` and `git rev-parse HEAD` in the selected
 checkout. [GitHub issues](https://github.com/misty-step/scry/issues) own work
@@ -118,7 +117,7 @@ source endpoints alone do not establish deployed recovery support.
 ## Durable boundaries
 
 [ADR 004](docs/adr/004-rust-cloudflare-candidate.md) owns architecture and module
-boundaries. [SPEC](SPEC.md#adopted-behavioral-policies) owns learning, privacy,
+boundaries. [SPEC](SPEC.md#invariants) owns learning, privacy,
 spend and recovery policies; this entrypoint is not another copy.
 
 ## Deployment

@@ -1,7 +1,7 @@
 # NATO review
 
 Practise the 26 NATO phonetic words with server-owned deterministic grading.
-The current product rules are in [SPEC](../SPEC.md#nato-focused-review-2026-10-29).
+The current product rules are in [SPEC § NATO alphabet](../SPEC.md#nato-alphabet).
 
 ## Sub-features
 

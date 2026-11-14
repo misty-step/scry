@@ -4,7 +4,7 @@ The active replacement source is Rust/WASM on a plain Cloudflare Worker with a
 singleton SQLite Durable Object and private R2.
 [The runbook's dated serving observation](../runbook.md#rust-production-serving--observed-2026-10-20)
 owns production serving state. [VISION](../../VISION.md)
-explains intent, [SPEC](../../SPEC.md) alone owns stories and acceptance, and
+explains intent, [SPEC](../../SPEC.md) alone owns target behavior, and
 [README](../../README.md#start-or-resume-work) identifies work ownership.
 
 A native test, a workerd fixture, a browser interaction, live-provider material,
@@ -14,7 +14,7 @@ Go/retired-Worker receipts are historical observations, not transferred passes.
 
 ## Current retirement policy
 
-The [2026-10-27 retirement amendment](../../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406) takes precedence over historical
+Content generation and self-grading are [SPEC non-goals](../../SPEC.md#purpose-and-non-goals), which take precedence over historical
 generation/self-grading journeys. Current HTTP writes to those retired actions
 must return 410 without jobs, assets, receipts, reservations or provider calls.
 Native exact, choice and meaning grading remain supported; unavailable grading
@@ -26,7 +26,7 @@ backdoor. `tests/generation_retirement.rs` and
 
 ## Choose proof before running checks
 
-Read the affected story/criterion and design decision, then choose the smallest
+Read the affected SPEC capability and design decision, then choose the smallest
 proof that exercises the changed boundary. Reuse valid receipts when their
 source, environment, and behavior still apply. A documentation edit alone does
 not justify a model call or deployment.
@@ -124,21 +124,27 @@ status, open it if needed, and use its native pointer/keyboard tools and
 snapshots. The exe.dev VM scripts are historical. Do not silently replace a stalled
 harness with DOM `.click()` or mark unobserved cases passed. The Worker story
 walk must produce a fresh revision/environment/story-bound receipt; historical
-Go walks and their selectors are not rewrite proof. `qa/walk --all` discovers
-active US stories and their numbered criteria directly from SPEC; `--stories`
-selects a subset. It excludes superseded US-005, retired US-012, and stories whose
-evidence line reads `Evidence: pending`, without discarding their canonical
-definitions. The ticket that builds a pending story adds its walks and removes
-that line in the same change. Existing walk implementations and policy
-checks remain in `qa/walk-specs.mjs`; selection does not make them proof of all
-S criteria, real-provider quality, phone experience, or hosted recovery.
+Go walks and their selectors are not rewrite proof. `qa/walk --all` runs
+every journey in `qa/walk-specs.mjs`; `--stories` selects a subset. A journey ID
+such as `US-016` is the harness's stable name for a set of walks, which receipts
+and critic fingerprints cite. `qa/walk-specs.mjs` binds each journey to the
+SPEC capability heading it proves, and the walk refuses to start when that
+heading is missing. A change that adds behavior to a capability adds its walk
+in the same change. Selection does not make the walks proof of the whole
+capability, real-provider quality, phone experience, or hosted recovery.
 
-US-001.1 remains the retained Go schema 4→5 preservation contract. The gate
+Receipts and documents dated before 2026-11-14 cite numbered identifiers
+(`US-`, `S`, `D`, `UX`, `JEV-`, `NATO-` and similar) and dated headings. Those
+are defined in [SPEC at `979e432`](https://github.com/misty-step/scry/blob/979e432/SPEC.md),
+the last revision before the specification became one present-tense target
+state. They keep the meaning they had there.
+
+Journey US-001 walk 1 remains the retained Go schema 4→5 preservation check. The gate
 archives only `go.mod`, `go.sum`, `internal/store`, and `internal/learning` at
 `c6ba395a63814c1f973d8cda5057d54fbb587e9b`, verifies its pinned checksum, and
 runs `TestSchemaV4ToV5MigrationUS001` with Go 1.27.1 against disposable fixtures.
 Its separate `retained-go-compatibility` receipt and exported archive do not
-certify a Rust import or migration. US-001.2 uses the current Rust Worker browser.
+certify a Rust import or migration. US-001 walk 2 uses the current Rust Worker browser.
 No retained application or historical database is started by this check.
 
 Stop the run-owned process before cleanup. Preserve evidence and remove only

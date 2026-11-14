@@ -8,15 +8,14 @@ argument-hint: "[learning|ui|generation|recovery|gate|prod-smoke]"
 
 # Scry QA
 
-Current policy: the [2026-10-27 retirement amendment](../../../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406)
-retires native generation and new self-grading writes. Retained generation or
+Current policy: [SPEC](../../../SPEC.md#purpose-and-non-goals) makes native generation
+and self-grading non-goals. Retained generation or
 correction journeys below are historical compatibility instructions only;
 current HTTP must refuse them with 410 and no writes/provider work. Native
 answer grading remains required; unavailable grades stay saved and ungraded.
 Legacy `/create` retains its title/state for safe reads, but no capture form.
 Historical content, private ingress, assistance boundaries and application
-backup/restore validation remain unchanged. The [October 29 deployment
-amendment](../../../SPEC.md#minimal-deployment-2026-10-29) retires hosted recovery
+backup/restore validation remain unchanged. [AGENTS § Shipping](../../../AGENTS.md#shipping) retires hosted recovery
 drills and custom operational gates as deployment prerequisites.
 
 

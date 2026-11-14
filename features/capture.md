@@ -1,9 +1,9 @@
 # Retired generation and saved preparation history
 
-Native content generation and self-grading are retired under the
-[2026-10-27 amendment](../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406).
+Native content generation and self-grading are [non-goals](../SPEC.md#purpose-and-non-goals);
+[SPEC § Retired generation records](../SPEC.md#retired-generation-records) owns what stays readable.
 Existing requests, drafts, material, Attempts, Corrections and provider/spend
-history remain preserved. [S10](../SPEC.md#s10--keep-my-work-recoverable) still
+history remain preserved. [SPEC § Backup and recovery](../SPEC.md#backup-and-recovery)
 owns complete recovery.
 
 ## Sub-features

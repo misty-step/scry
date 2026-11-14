@@ -2,10 +2,8 @@
 
 Concept Home (`/`) is the primary destination. The Map shows goals and connections. Reference sits
 behind a visible assistance gate, and he can focus, pause, resume and pace his
-material. Stories: US-001, US-006, US-009, US-010. Intent:
-[S07](../SPEC.md#s07--manage-what-i-am-learning-us-001us-009us-010),
-[S08](../SPEC.md#s08--return-to-worthwhile-practice-us-009us-011) and
-[US-006](../SPEC.md#us-006-understand-a-questions-concept).
+material. Walk journeys: US-001, US-006, US-009, US-010. Intent:
+[SPEC § Earlier concept notebook](../SPEC.md#earlier-concept-notebook).
 
 ## Sub-features
 

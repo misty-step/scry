@@ -4,8 +4,7 @@
 
 Scry helps its Owner memorize externally supplied content with smart and simple
 grading using Jev. Scry owns assessment and scheduling; the Owner answers,
-never self-grades. The [current SPEC amendment](SPEC.md#smart-and-simple-grading-with-jev-2026-11-07)
-owns acceptance and separates intent from implementation choices. Historical
+never self-grades. [SPEC](SPEC.md#grading) owns the target behavior. Historical
 learning evidence is preserved; native content generation remains retired.
 This is direction, not a claim of delivered Jev support.
 
@@ -16,8 +15,8 @@ quizzes and study/reference materials, and relate to one another. The longer-ter
 goal includes material from text, images, URLs and videos, and estimating
 performance on related concepts from observed practice. These are product
 directions, not claims of implemented formats, independent material collections,
-or calibrated predictions. [SPEC](SPEC.md#scope-and-acceptance-status) governs
-the bounded concept-first front door; exact text practice remains available.
+or calibrated predictions. [SPEC](SPEC.md#earlier-concept-notebook) governs
+what remains of the concept notebook; exact text practice remains available.
 
 ## Earlier exact-recall direction (2026-10-20)
 
@@ -56,8 +55,8 @@ learning platform.
 
 ## Where things are decided
 
-[SPEC](SPEC.md) alone owns stories, acceptance criteria and policy.
-[GLOSSARY](GLOSSARY.md) owns the words. [DESIGN](DESIGN.md) owns visuals.
+[SPEC](SPEC.md) alone owns the target behavior, its terms and policy.
+[DESIGN](DESIGN.md) owns visuals.
 [ADRs](docs/adr/README.md) own technical decisions. [The runbook](docs/runbook.md)
 owns operational records. [QA](docs/qa/system.md) owns verification procedures.
 
