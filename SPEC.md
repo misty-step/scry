@@ -233,8 +233,8 @@ horizontal clipping, including with long questions and explanations.
 
 - Home offers one **Study** action and a closed, secondary **Browse**, which
   opens the lesson shelf and the Library. It resumes a held Prompt or result
-  without showing its answer or choosing another one. A Study has at most one
-  open Prompt or held result.
+  without showing its answer or choosing another one. Scry holds at most one
+  open Prompt or held result at a time.
 - Study and Next serve genuinely due, previously practised material first,
   interleaved across Studies: the least recently served Study wins, then due
   time, then a stable identity, so one overdue Work cannot monopolize a
@@ -382,7 +382,8 @@ horizontal clipping, including with long questions and explanations.
   resetting anything.
 - A mapping lesson is introduced at its Pace. A text lesson and focused NATO
   practice make their whole content available at once, without changing the
-  stored Pace.
+  stored Pace. Once a text lesson has been entered, Study may serve any of its
+  phrases.
 - Agent-supplied content stays reachable beside the Starter shelf wherever
   protected recall permits. A shared title or edition name never hides custom
   content as a starter.
@@ -619,7 +620,8 @@ horizontal clipping, including with long questions and explanations.
 - A verification-only sign-in reaches only an isolated practice space with
   synthetic data. It never reaches the Owner's material, operator actions or
   backups.
-- Signing in as the Owner grants no backup or restore capability.
+- The signed-in Owner can ask for a verified backup from settings. Signing in
+  grants no restore capability.
 
 ### Backup and recovery
 
