@@ -67,6 +67,7 @@ async function libraryFixture() {
           done(value);
         } catch (error) {reject(error);}
       });
+      child.stdin.on('error', error => {if (error.code !== 'EPIPE') reject(error);});
       child.stdin.end(input);
     });
     await cli(['login','--url',origin,'--token-stdin'], secret + '\n');

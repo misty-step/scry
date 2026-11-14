@@ -31,12 +31,12 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  const bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:name,INTERNAL_KEY:internalKey,SCRY_TEST_NOW_MS:String(at)};
  const artifact=resolve(process.env.SCRY_WORKER_ARTIFACT||'build');
  const wasmHash=sha(await readFile(join(artifact,'index_bg.wasm'))),mcpHash=sha(await readFile(binary));
- let egress=0,runtime,child,closed;
+ let egress=0,runtime,child,closed,stdinError=null;
  t.after(async()=>{
   let done;
   try {if(child){child.stdin.end();done=await Promise.race([closed,new Promise(resolve=>setTimeout(()=>resolve(null),2000).unref())]);if(!done){child.kill('SIGKILL');await closed;}}}
   finally {try {await runtime?.mf.dispose();} finally {await rm(directory,{recursive:true,force:true});}}
-  if(child){assert.ok(done,'MCP exits on EOF.');assert.equal(done[0],0);}
+  if(child){assert.ok(done,'MCP exits on EOF.');assert.equal(done[0],0);assert.equal(stdinError,null,'MCP accepted every frame until stdin EOF.');}
   assert.equal(egress,0,'No external calls from supplied-content/native grading.');
  });
  runtime=await createRuntime({port:0,name,inspect:true,testClock:true,bindings,egress:async()=>{egress++;throw Error('No external egress in MCP proof.');}});
@@ -54,10 +54,17 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  const secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await issued.text())?.[1];assert.ok(secret);
  const login=spawn(join(dirname(binary),'scry'),['login','--url',origin,'--token-stdin','--config',config,'--json'],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});
  let loginOutput='',loginError='';login.stdout.on('data',v=>loginOutput+=v);login.stderr.on('data',v=>loginError+=v);
- const loginClosed=once(login,'close');login.stdin.end(secret+'\n');assert.equal((await loginClosed)[0],0);
+ // Exit code and output decide; only a write failure other than a closed pipe is its own error.
+ let loginStdinError=null;login.stdin.on('error',error=>{if(error.code!=='EPIPE')loginStdinError=error;});
+ const loginClosed=once(login,'close');login.stdin.end(secret+'\n');assert.equal((await loginClosed)[0],0);assert.ifError(loginStdinError);
  assert.equal(loginError,'');assert.ok(!loginOutput.includes(secret));assert.equal(JSON.parse(loginOutput).owner,true);
 
  child=spawn(binary,['--config',config],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});closed=once(child,'close');
+ // The server reads frames until EOF, so a failed write means it stopped early.
+ // That fails the request in flight and the cleanup assertion above; it is
+ // never ignored and never an uncaught exception.
+ let stop;const stopped=new Promise((_,reject)=>{stop=reject;});stopped.catch(()=>{});
+ child.stdin.on('error',error=>{stdinError??=error;stop(Error('MCP stopped reading stdin.',{cause:error}));});
  let serial=0,stderr='';const pending=new Map();child.stderr.on('data',v=>stderr+=v);
  createInterface({input:child.stdout}).on('line',line=>{
   assert.ok(!line.includes(secret),'MCP never emits the Owner credential.');
@@ -65,7 +72,7 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
   pending.get(value.id)(value);pending.delete(value.id);
  });
  const send=value=>child.stdin.write(JSON.stringify(value)+'\n');
- const request=(method,params={})=>new Promise(done=>{const id=++serial;pending.set(id,done);send({jsonrpc:'2.0',id,method,params});});
+ const request=(method,params={})=>Promise.race([stopped,new Promise(done=>{const id=++serial;pending.set(id,done);send({jsonrpc:'2.0',id,method,params});})]);
  const call=async(name,args={})=>{
   const response=await request('tools/call',{name,arguments:args});assert.equal(response.error,undefined);
   assert.deepEqual(JSON.parse(response.result.content[0].text),response.result.structuredContent);
