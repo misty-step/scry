@@ -1,4 +1,4 @@
-import {enterMemory,enterMemoryPage} from './study-review.mjs';
+import {enterMemory,enterMemoryPage,assertStudySource} from './study-review.mjs';
 // Explicit, supplied starter through the same real native Library/Study forms.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -9,6 +9,7 @@ async function eligibleLetter(f){
  assert.ok(p&&!p.attempt_id,'An unanswered card is held');
  const card=rows['practice_cards/'+p.targets[0].card_id];
  assert.ok(card.state.schedule.due_ms<=Date.now(),'Ordinary review never selects future-due work');
+ assert.equal(p.phase,'quiz','The held letter is being quizzed');
  return p.prompt.cue;
 }
 export function nativeFields(html,action){
@@ -42,7 +43,9 @@ export async function starterJourney(){
   assert.equal((await f.post('/library/mapping/add',add)).headers.get('location'),path);
   assert.deepEqual(Object.fromEntries(Object.entries(await f.rows()).filter(([key])=>key!=='meta')),Object.fromEntries(Object.entries(afterAdd).filter(([key])=>key!=='meta')));
   const learn=await f.post('/practice/study/start',nativeFields(detail,'/practice/study/start'));assert.equal(learn.status,303);assert.equal(learn.headers.get('location'),'/recall');
-  const prompt=await f.get('/recall');assert.match(prompt,/data-state="exact-prompt"/);assert.doesNotMatch(prompt,/Alfa|Bravo/);
+  // A pair not yet practised is shown with its value before any Quiz.
+  const source=await f.get('/recall');assert.match(source,/data-state="exact-prompt"/);assertStudySource(source,'Alfa');assert.doesNotMatch(source,/Bravo/);
+  const prompt=await enterMemory(f,'/recall');assert.match(prompt,/data-state="exact-prompt"/);assert.doesNotMatch(prompt,/Alfa|Bravo/);
   const answer=nativeFields(prompt,'/practice/answer');assert.equal((await f.post('/practice/answer',{...answer,answer:'Alfa'})).status,303);
   const result=await f.get('/recall');assert.match(result,/data-verdict="Good"/);assert.match(result,/Alfa/);assert.doesNotMatch(result,/I was right|Count as a miss/);
   const domain=await f.rows(),library=await f.get('/library');assert.doesNotMatch(library,/id="nato-starter"/,'An existing deck does not repeat the Add promotion.');
@@ -63,9 +66,11 @@ export async function focusedJourney(){
   for(const extra of [{grade:'Good'},{answer:'Alfa'},{pace:'light'}]){const saved=await f.rows();assert.equal((await f.post('/practice/nato/start',{...start,...extra,operation_id:randomUUID()})).status,422);assert.deepEqual(await f.rows(),saved);}
   const missing={...start};delete missing.csrf;assert.equal((await f.post('/practice/nato/start',missing)).status,403);
   const starts=await Promise.all([f.post('/practice/nato/start',start),f.post('/practice/nato/start',start)]);assert.ok(starts.every(r=>r.status===303));
-  const prompt=await f.get('/?practice=nato');assert.match(prompt,/data-state="exact-prompt"/);assert.doesNotMatch(prompt,/Alfa|Bravo|Alphabet reference/);
-  const started=await f.rows();assert.equal(Object.keys(started).filter(k=>k.startsWith('practice_studies/')).length,1);assert.equal(Object.keys(started).filter(k=>k.startsWith('library_versions/')).length,1);
+  // Start practice shows the first letter with its code word and nothing to type into.
+  const source=await f.get('/?practice=nato');assert.match(source,/data-state="exact-prompt"/);assert.match(source,/aria-label="Letter A"/);assertStudySource(source,'Alfa');assert.doesNotMatch(source,/Bravo|Alphabet reference/);
+  const started=await f.rows();assert.equal(started.meta.practice.current.phase,'study');assert.equal(Object.keys(started).filter(k=>k.startsWith('practice_studies/')).length,1);assert.equal(Object.keys(started).filter(k=>k.startsWith('library_versions/')).length,1);
   assert.equal((await f.post('/practice/nato/start',{...start,operation_id:randomUUID()})).status,303);const resumed=await f.rows();assert.deepEqual(resumed.meta.practice,started.meta.practice);
+  const prompt=await enterMemory(f,'/?practice=nato');assert.match(prompt,/aria-label="Letter A"/);assert.doesNotMatch(prompt,/Alfa|Bravo|Alphabet reference/);
   const answer={...nativeFields(prompt,'/practice/answer'),answer:'Alpha'};
   const answers=await Promise.all([f.post('/practice/answer',answer),f.post('/practice/answer',answer)]);assert.ok(answers.every(r=>r.status===303));
   const result=await f.get('/');assert.match(result,/data-verdict="Again"/);assert.match(result,/data-result-metric="recall">0 \/ 1/);assert.match(result,/data-result-progress/);assert.match(result,/Alfa/);assert.match(result,/1<span class="nato-muted"> \/ 26 practiced/);
@@ -75,14 +80,15 @@ export async function focusedJourney(){
   // must not send the learner straight back to Alfa. No synthetic clock override.
   await new Promise(resolve=>setTimeout(resolve,65_000));
   assert.equal((await f.post('/practice/next',nativeFields(result,'/practice/next'))).status,303);
-  const next=await f.get('/?practice=nato');assert.match(next,/aria-label="Letter B"/);assert.doesNotMatch(next,/Alfa|Bravo|Alphabet reference/);
+  const nextSource=await f.get('/?practice=nato');assert.match(nextSource,/aria-label="Letter B"/);assertStudySource(nextSource,'Bravo');assert.doesNotMatch(nextSource,/Alfa|Alphabet reference/);
+  const next=await enterMemory(f,'/?practice=nato');assert.match(next,/aria-label="Letter B"/);assert.doesNotMatch(next,/Alfa|Bravo|Alphabet reference/);
   assert.equal((await f.post('/practice/reveal',nativeFields(next,'/practice/reveal'))).status,303);
   const disclosed=await f.get('/?practice=nato');assert.match(disclosed,/Bravo/);assert.match(disclosed,/1<span class="nato-muted"> \/ 26 practiced/);
   assert.equal((await f.post('/practice/answer',{...nativeFields(await enterMemory(f,'/?practice=nato'),'/practice/answer'),answer:'Bravo'})).status,303);
   const assisted=await f.get('/?practice=nato');assert.match(assisted,/With help/);assert.match(assisted,/1<span class="nato-muted"> \/ 26 practiced/);
   assert.equal((await f.post('/practice/next',nativeFields(assisted,'/practice/next'))).status,303);
   const afterHelp=await f.get('/?practice=nato');assert.match(afterHelp,/aria-label="Letter A"/);assert.doesNotMatch(afterHelp,/Alfa|Bravo/);
-  assert.equal(f.egress,0);return {status:'pass',delayed_next_advances:true,assisted_next_advances:true,one_action_start:true,simultaneous_start_and_answer_idempotent:true,strict_server_grading:true,held_on_refresh:true,assistance_does_not_count:true,actual_unique_practiced:1,egress:0};
+  assert.equal(f.egress,0);return {status:'pass',new_letter_studied_before_quiz:true,delayed_next_advances:true,assisted_next_advances:true,one_action_start:true,simultaneous_start_and_answer_idempotent:true,strict_server_grading:true,held_on_refresh:true,assistance_does_not_count:true,actual_unique_practiced:1,egress:0};
  }finally{await f.close();}
 }
 export async function starterWalk(browser,capture){
@@ -102,7 +108,12 @@ export async function starterWalk(browser,capture){
    };
    const activate=async button=>width<1000?button.tap():button.click();
    await page.goto(f.origin+'/?practice=nato');await page.getByRole('heading',{name:'From Alfa to Zulu.',exact:true}).waitFor();await layout();await shot('entry');
-   await activate(page.getByRole('button',{name:'Start practice',exact:true}));const input=page.getByLabel('Type your answer',{exact:true});await input.waitFor();assert.doesNotMatch(await page.content(),/Alfa|Bravo|Alphabet reference/);await shot('question');
+   await activate(page.getByRole('button',{name:'Start practice',exact:true}));const input=page.getByLabel('Type your answer',{exact:true});
+   // The new letter is studied first: its code word, no answer field, one action.
+   await page.locator('[data-study-phase="study"]').waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'A');await page.getByText('Alfa',{exact:true}).waitFor();
+   assert.equal(await page.locator('#answer,form[action="/practice/answer"],form[action="/practice/reveal"]').count(),0);assert.doesNotMatch(await page.content(),/Bravo|Alphabet reference/);
+   assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,0);await layout();await shot('study');
+   await enterMemoryPage(page);assert.doesNotMatch(await page.content(),/Alfa|Bravo|Alphabet reference/);await shot('question');
    if(!noJS)assert.equal(await input.evaluate(node=>node===document.activeElement),true,'New prompt receives focus');
    await input.fill('Alpha');
    if(width>=1000)await page.keyboard.press('Enter');else await activate(page.getByRole('button',{name:/^Check/}));
@@ -115,7 +126,8 @@ export async function starterWalk(browser,capture){
    await page.reload();await page.locator('[data-verdict="Again"]').waitFor();assert.deepEqual((await f.rows()).meta.practice,graded.meta.practice);
    if(width===390)await new Promise(resolve=>setTimeout(resolve,65_000));
    if(width>=1000){await page.keyboard.press('Enter');}else await activate(page.getByRole('button',{name:/^Next/}));
-   await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'B');assert.doesNotMatch(await page.content(),/Alfa|Bravo/);
+   await page.locator('[data-study-phase="study"]').waitFor();assert.equal(await page.locator('.nato-letter').innerText(),'B');await page.getByText('Bravo',{exact:true}).waitFor();
+   await enterMemoryPage(page);assert.equal(await page.locator('.nato-letter').innerText(),'B');assert.doesNotMatch(await page.content(),/Alfa|Bravo/);
    if(!noJS)assert.equal(await input.evaluate(node=>node===document.activeElement),true,'Next restores input focus');
    // Progress inspection is entirely read-only and must preserve a typed draft.
    const beforeInspect=await f.rows();await input.fill('Bra');
@@ -135,10 +147,10 @@ export async function starterWalk(browser,capture){
     await input.focus();
     await input.fill('Bravo');const saved=await f.rows();await context.setOffline(true);await activate(page.getByRole('button',{name:/^Check/}));await page.getByText('You are offline. Your draft is still here.',{exact:true}).waitFor();assert.deepEqual(await f.rows(),saved);assert.equal(await input.inputValue(),'Bravo');assert.equal(await page.locator('[data-verdict]').count(),0);await banner('offline');await shot('offline');await context.setOffline(false);
     await page.keyboard.press('Enter');await page.locator('[data-verdict="Good"]').waitFor();assert.equal(await page.locator('[data-result-metric="recall"]').innerText(),'1 / 1');await shot('graded-progress');assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,2);
-    await page.keyboard.press('Enter');await input.waitFor();const thirdLetter=await eligibleLetter(f);assert.equal(await page.locator('.nato-letter').innerText(),thirdLetter);
+    await page.keyboard.press('Enter');await enterMemoryPage(page);const thirdLetter=await eligibleLetter(f);assert.equal(await page.locator('.nato-letter').innerText(),thirdLetter);
     await input.fill('Not the code word '.repeat(100));await page.keyboard.press('Enter');await page.locator('[data-verdict="Again"]').waitFor();await page.getByText(natoWords[thirdLetter],{exact:true}).waitFor();await layout();await shot('long-wrong-answer');
     // A reduced viewport models browser keyboard occlusion, not a physical phone.
-    await page.keyboard.press('Enter');await input.waitFor();await page.setViewportSize({width,height:480});await layout();await shot('keyboard-viewport');await page.setViewportSize({width,height:844});
+    await page.keyboard.press('Enter');await enterMemoryPage(page);await page.setViewportSize({width,height:480});await layout();await shot('keyboard-viewport');await page.setViewportSize({width,height:844});
     // Lose only the browser response AFTER the real Worker commits. A retry
     // must reconcile the frozen operation, not invent optimistic success.
     const attemptsBefore=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
@@ -149,10 +161,10 @@ export async function starterWalk(browser,capture){
     assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attemptsBefore+1);await banner('reconcile');await shot('response-lost');
     await page.unroute('**/practice/answer');await activate(page.getByRole('button',{name:'Reconcile this attempt',exact:true}));
     await page.locator('[data-verdict="Good"]').waitFor();assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,attemptsBefore+1);row.response_loss_reconciles_once=true;
-    await page.keyboard.press('Enter');await input.waitFor();const fifthLetter=await eligibleLetter(f);const fifthWord=natoWords[fifthLetter];assert.ok(fifthWord);
+    await page.keyboard.press('Enter');await enterMemoryPage(page);const fifthLetter=await eligibleLetter(f);const fifthWord=natoWords[fifthLetter];assert.ok(fifthWord);
     await activate(page.getByRole('button',{name:'Show answer',exact:true}));await page.getByText(fifthWord,{exact:true}).waitFor();await enterMemoryPage(page);
     await input.fill(fifthWord);await page.keyboard.press('Enter');await page.locator('.nato-feedback').getByText('With help',{exact:true}).waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);
-    await page.keyboard.press('Enter');await input.waitFor();assert.equal(await page.locator('.nato-letter').innerText(),await eligibleLetter(f));assert.notEqual(await page.locator('.nato-letter').innerText(),fifthLetter,'Interleave another eligible letter');await shot('after-assisted-next');
+    await page.keyboard.press('Enter');await enterMemoryPage(page);assert.equal(await page.locator('.nato-letter').innerText(),await eligibleLetter(f));assert.notEqual(await page.locator('.nato-letter').innerText(),fifthLetter,'Interleave another eligible letter');await shot('after-assisted-next');
    }else{await input.fill('Bravo');await activate(page.getByRole('button',{name:/^Check/}));await page.locator('[data-verdict="Good"]').waitFor();await shot('good');}
    assert.deepEqual(errors,[]);assert.equal(f.egress,0);row.native_grading=true;row.reload_preserves_result=true;row.egress=0;
   }catch(error){row.status='fail';row.reason=error.stack||error.message;if(page)row.evidence.push(await capture(page,`nato-focus-${width}-${noJS?'native':'enhanced'}-failure.png`));}
@@ -183,7 +195,7 @@ async function letterContrast(page,letter){
 export async function seedProgressFixture(f){
    let html=await f.get('/?practice=nato');await f.post('/practice/nato/start',nativeFields(html,'/practice/nato/start'));
    for(let i=0;i<26;i++){
-    html=await f.get('/');
+    html=await enterMemory(f);
     assert.equal((await f.post('/practice/answer',{...nativeFields(html,'/practice/answer'),answer:natoWords[String.fromCharCode(65+i)]})).status,303);
     html=await f.get('/');assert.equal((await f.post('/practice/next',nativeFields(html,'/practice/next'))).status,303);
    }
@@ -282,7 +294,7 @@ export async function scheduledJourney(){
    return f.post('/practice/lesson/start',{...form,starter});
   };
   assert.equal((await choose('nato')).status,303);
-  let page=await f.get('/?practice=nato');
+  let page=await enterMemory(f,'/?practice=nato');
   assert.equal((await f.post('/practice/answer',{...nativeFields(page,'/practice/answer'),answer:'Alfa'})).status,303);
   const graded=await f.rows(),aCard=Object.entries(graded).find(([key,c])=>key.startsWith('practice_cards/')&&c.unit_index===0);
   assert.ok(aCard[1].state.schedule.due_ms>Date.now());
@@ -292,6 +304,7 @@ export async function scheduledJourney(){
   assert.deepEqual((await f.rows())[aCard[0]],aCard[1],'Selection does not reset future A');
   const words='Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliett Kilo Lima Mike November Oscar Papa Quebec Romeo Sierra Tango Uniform Victor Whiskey X-ray Yankee Zulu'.split(' ');
   for(const word of words){
+   page=await enterMemory(f,'/?practice=nato');
    assert.equal((await f.post('/practice/answer',{...nativeFields(page,'/practice/answer'),answer:word})).status,303);
    const result=await f.get('/?practice=nato');assert.match(result,/data-verdict="Good"/);
    assert.equal((await f.post('/practice/next',nativeFields(result,'/practice/next'))).status,303);

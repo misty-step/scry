@@ -26,10 +26,13 @@ fn mutate(a: &mut App, path: &str, extra: &[(&str, &str)]) -> MutationResult {
     engine::validate_app(a).unwrap();
     result
 }
+fn try_from_memory(a: &mut App) {
+    let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
+    mutate(a, "/practice/quiz", &[("prompt_id", &id)]);
+}
 fn answer(a: &mut App, text: &str) {
     if a.practice.current.as_ref().unwrap().source_visible() {
-        let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
-        mutate(a, "/practice/quiz", &[("prompt_id", &id)]);
+        try_from_memory(a);
     }
     let id = a.practice.current.as_ref().unwrap().prompt.id.clone();
     mutate(
@@ -62,7 +65,16 @@ fn starter_is_idempotent_and_recovery_preserves_all_evidence() {
         a.practice.current.as_ref().unwrap().prompt.scope,
         study::Scope::Whole
     ));
-    assert!(!a.practice.current.as_ref().unwrap().prompt.assisted);
+    // A set not yet practised is shown whole before its Quiz.
+    assert_eq!(
+        a.practice.current.as_ref().unwrap().phase,
+        Some(study::StudyPhase::Study)
+    );
+    assert!(a.practice.attempts.is_empty());
+    try_from_memory(&mut a);
+    let quiz = a.practice.current.as_ref().unwrap();
+    assert!(matches!(quiz.prompt.scope, study::Scope::Whole));
+    assert!(!quiz.prompt.assisted && a.practice.attempts.is_empty());
     answer(
         &mut a,
         "The Annunciation\nVisitation\nBirth of Jesus\nPresentation\nFinding of Jesus in the Temple",
@@ -197,6 +209,7 @@ fn client_grades_invalid_modes_and_stale_results_are_atomic() {
         "/practice/lesson/start",
         &[("starter", "rosary-joyful")],
     );
+    try_from_memory(&mut a);
     for (path, extra, status) in [
         (
             "/practice/lesson/start",
@@ -616,6 +629,8 @@ fn chooser_does_not_confuse_same_named_supplied_content_or_leak_its_metadata() {
     );
     a.library.works.values_mut().next().unwrap().title = "PRIVATE ANSWER BEARING TITLE".into();
     mutate(&mut a, "/practice/nato/start", &[]);
+    try_from_memory(&mut a);
+    assert!(a.practice.protected());
     let protected = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
     assert!(!protected.contains("PRIVATE ANSWER BEARING TITLE"));
     assert!(!protected.contains(&vid));

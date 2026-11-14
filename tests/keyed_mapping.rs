@@ -88,7 +88,14 @@ fn supplied_mapping_title_never_discloses_answer_before_assistance() {
         .unwrap()
         .to_string();
     o.call("/api/v1/learn", json!({"version_id":vid})).unwrap();
-    let response = o.call("/api/v1/next", json!({})).unwrap();
+    // Source study shows the supplied pair, never the supplied title.
+    let source = o.call("/api/v1/next", json!({})).unwrap();
+    assert_eq!(source["phase"], "study");
+    assert_eq!(source["prompt"]["cue"], "A\tAlfa\n");
+    assert!(!source.to_string().contains(title));
+    let html = scry::web::render(&o.app, "/recall", &BTreeMap::new(), o.now, None);
+    assert!(!html.contains(title) && !html.contains("id=\"answer\""));
+    let response = o.quiz();
     assert!(
         !response.to_string().contains("Alfa"),
         "Supplied title is answer-bearing metadata, not a permitted cue"
@@ -116,6 +123,8 @@ fn supplied_mapping_title_never_discloses_answer_before_assistance() {
         json!({"prompt_id":response["prompt"]["id"]}),
     )
     .unwrap();
+    // The revealed answer is on show: it is tried from memory again, with help recorded.
+    o.quiz();
     let answer = o.answer("Alfa");
     assert_eq!(answer["grade"]["verdict"], "Good");
     assert_eq!(answer["assisted"], true);
@@ -139,6 +148,7 @@ fn mapping_normalized_identity_reuses_version_and_study_across_legacy_hashes() {
         .to_string();
     let sid = o.call("/api/v1/learn", json!({"version_id":vid})).unwrap()["study"]["id"].clone();
     o.call("/api/v1/next", json!({})).unwrap();
+    o.quiz();
     assert_eq!(o.answer("A B")["grade"]["verdict"], "Good");
     let library = o.app.library.clone();
     let practice = o.app.practice.clone();
@@ -175,7 +185,8 @@ fn mapping_normalized_identity_reuses_version_and_study_across_legacy_hashes() {
 #[test]
 fn restored_mapping_title_is_hidden_without_rewriting_historical_receipt() {
     let mut o = Owner::new();
-    o.start(&[("A", "Alfa")]);
+    let source = o.study(&[("A", "Alfa")]);
+    o.quiz();
     let operation = format!("mapping-operation-{:06}", o.op);
     let title = "Alfa: supplied historical title";
     // Model a pre-fix frozen Prompt/receipt, rather than changing its history.
@@ -204,9 +215,12 @@ fn restored_mapping_title_is_hidden_without_rewriting_historical_receipt() {
     assert_eq!(o.app.operations[&operation], receipt);
     let before = o.app.clone();
     assert_eq!(
-        o.operation("/api/v1/next", json!({"operation_id":operation}))
-            .unwrap_err()
-            .status,
+        o.operation(
+            "/api/v1/quiz",
+            json!({"operation_id":operation,"prompt_id":source["id"]})
+        )
+        .unwrap_err()
+        .status,
         409
     );
     assert_eq!(o.app, before);
@@ -275,11 +289,39 @@ impl Owner {
             .unwrap()
             .into()
     }
-    fn start(&mut self, pairs: &[(&str, &str)]) -> Value {
+    /// A new pair is first presented as Source study: its question with its answer.
+    fn study(&mut self, pairs: &[(&str, &str)]) -> Value {
         let v = self.add(pairs);
         self.call("/api/v1/learn", json!({"version_id":v,"pace":"intense"}))
             .unwrap();
-        self.call("/api/v1/next", json!({})).unwrap()["prompt"].clone()
+        let source = self.call("/api/v1/next", json!({})).unwrap();
+        assert_eq!(source["phase"], "study");
+        assert_eq!(source["prompt"]["cue_level"], "read");
+        assert_eq!(
+            source["prompt"]["cue"],
+            format!("{}\t{}\n", pairs[0].0, pairs[0].1)
+        );
+        source["prompt"].clone()
+    }
+    /// Try from memory: the held source becomes the Quiz of the same pair.
+    fn quiz(&mut self) -> Value {
+        let held = self.app.practice.current.clone().unwrap();
+        let (cards, attempts) = (
+            self.app.practice.cards.clone(),
+            self.app.practice.attempts.clone(),
+        );
+        let quiz = self
+            .call("/api/v1/quiz", json!({"prompt_id":held.prompt.id}))
+            .unwrap();
+        assert_eq!(quiz["phase"], "quiz");
+        assert_eq!(quiz["prompt"]["unit_ids"], json!(held.prompt.unit_ids));
+        assert_eq!(self.app.practice.cards, cards);
+        assert_eq!(self.app.practice.attempts, attempts);
+        quiz
+    }
+    fn start(&mut self, pairs: &[(&str, &str)]) -> Value {
+        self.study(pairs);
+        self.quiz()["prompt"].clone()
     }
     fn answer(&mut self, answer: &str) -> Value {
         let prompt = self
@@ -403,6 +445,19 @@ fn mapping_reveal_is_durable_assistance_not_unaided_success_and_forged_grades_re
     assert_eq!(r["expected"][0]["text"], "Juliett");
     assert_eq!(o.app.practice.attempts.len(), 1);
     assert_eq!(o.app.practice.cards.values().next().unwrap().state, before);
+    let shown = o.app.clone();
+    assert_eq!(
+        o.call(
+            "/api/v1/answer",
+            json!({"prompt_id":p["id"],"answer":"Juliett"})
+        )
+        .unwrap_err()
+        .status,
+        409,
+        "An answer beside the revealed value is refused"
+    );
+    assert_eq!(o.app, shown);
+    o.quiz();
     let a = o.answer("Juliett");
     assert_eq!(a["grade"]["verdict"], "Good");
     assert_eq!(a["assisted"], true);
@@ -477,7 +532,14 @@ fn canonical_nato_all_26_pairs_are_independently_scheduled_and_repeat_learn_keep
             o.now += DAY_MS + 1;
             continue;
         }
+        // A new letter is studied, then quizzed from its key alone. A letter
+        // already answered comes back as a Quiz.
+        let studied = next["phase"] == "study";
+        let next = if studied { o.quiz() } else { next };
+        assert_eq!(next["phase"], "quiz");
+        assert_eq!(next["prompt"]["cue_level"], "mapping_key");
         let key = next["prompt"]["cue"].as_str().unwrap().to_string();
+        assert_eq!(studied, !seen.contains(&key), "{key}");
         let pair = pairs.iter().find(|p| p["key"] == key).unwrap();
         let a = o.answer(pair["value"].as_str().unwrap());
         assert_eq!(a["grade"]["verdict"], "Good");

@@ -46,6 +46,10 @@ impl Pace {
 pub enum Direction {
     Forward,
 }
+/// The form a Prompt takes. New Prompts use `Read` for Source study and
+/// `SectionHeading`, `WholeTitle` or `MappingKey` for a Quiz. The first-letter
+/// and previous-line forms, and a Card's own level, exist only in older records:
+/// they are replayed and shown, never used to choose what to present.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Cue {
@@ -63,6 +67,7 @@ impl Cue {
     fn assisted(self) -> bool {
         matches!(self, Self::Read | Self::FirstLetters | Self::FirstLetter)
     }
+    // Replay arithmetic for recorded Attempts. Presentation never reads it.
     fn fade(self) -> Self {
         match self {
             Self::Read => Self::FirstLetters,
@@ -96,7 +101,9 @@ pub struct Study {
     /// Explicit phrase/sequence lesson; does not alter retained Pace or due dates.
     #[serde(default, skip_serializing_if = "is_false")]
     pub lesson: bool,
-    /// App source/quiz semantics survive an exhausted or dismissed current prompt.
+    /// Set once a Prompt of this Study is held as study or Quiz, so its archive
+    /// names the phase format and a reader older than that format refuses it.
+    /// Presentation does not depend on it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub source_quiz: bool,
     pub status: Status,
@@ -162,7 +169,7 @@ pub enum StudyPhase {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Presentation {
-    /// Absent on retained/API guided presentations; immutable Attempts are unchanged.
+    /// Absent only on a Prompt held since an older record, which stays answerable once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<StudyPhase>,
     pub prompt: Prompt,
@@ -640,7 +647,11 @@ fn make_prompt(
     };
     let text = &all[first].text;
     let rendered = match cue {
-        Cue::Read => text.clone(),
+        // Source study shows the supplied Units of its scope, in order.
+        Cue::Read => cards
+            .iter()
+            .map(|c| all[c.unit_index].text.as_str())
+            .collect(),
         Cue::FirstLetters => grading::normalized_words(text)
             .iter()
             .filter_map(|w| w.chars().next())
@@ -685,30 +696,36 @@ fn make_prompt(
         attempt_id: None,
     }
 }
-/// Current app learning separates source reading from an actual memory quiz.
-/// Retained cue state is history, not permission to disclose a due quiz answer.
-fn make_ui_prompt(
+/// Whether the Owner has answered this Card. A reveal on its own is not practice.
+fn practised(app: &App, card: &Card) -> bool {
+    card.state.schedule.last_review_ms.is_some()
+        || app
+            .practice
+            .attempts
+            .values()
+            .any(|a| !a.disclosure && a.effects.iter().any(|e| e.card_id == card.id))
+}
+/// Every new Prompt is Source study or a Quiz. A Unit or whole list not yet
+/// practised is studied first; a text Recitation is a chosen challenge, prompted
+/// from its heading or title alone. A Card's retained cue level is never read.
+fn present(
     app: &App,
     study: &Study,
     cards: Vec<&Card>,
     scope: Scope,
-    cue: Cue,
     now: i64,
     seed: &str,
 ) -> Presentation {
-    let learned = cards.iter().any(|c| {
-        c.state.schedule.last_review_ms.is_some()
-            || app
-                .practice
-                .attempts
-                .values()
-                .any(|a| !a.disclosure && a.effects.iter().any(|e| e.card_id == c.id))
-    });
-    let source = cue.assisted() && !learned;
+    let kind = app.library.versions[&study.version_id].kind;
+    let source = match scope {
+        Scope::Unit { .. } => !practised(app, cards[0]),
+        Scope::Whole if kind == Kind::OrderedList => !cards.iter().all(|c| practised(app, c)),
+        Scope::Whole | Scope::Section { .. } => false,
+    };
     let cue = if source {
         Cue::Read
     } else {
-        quiz_cue(&scope, app.library.versions[&study.version_id].kind)
+        quiz_cue(&scope, kind)
     };
     let mut p = make_prompt(app, study, cards, scope, cue, now, seed);
     p.phase = Some(if source {
@@ -718,32 +735,13 @@ fn make_ui_prompt(
     });
     p
 }
-fn mark_current_ui(app: &mut App) {
-    let Some(old) = app
-        .practice
-        .current
-        .clone()
-        .filter(|p| p.attempt_id.is_none())
-    else {
-        return;
-    };
-    let study = &app.practice.studies[&old.prompt.study_id];
-    let cards = old
-        .targets
-        .iter()
-        .map(|t| &app.practice.cards[&t.card_id])
-        .collect();
-    let mut p = make_ui_prompt(
-        app,
-        study,
-        cards,
-        old.prompt.scope.clone(),
-        old.prompt.cue_level,
-        old.created_ms,
-        &old.prompt.id,
-    );
-    p.prompt.id = old.prompt.id;
-    p.revealed = old.revealed;
+/// Hold a new Prompt and mark its Study for the phase archive format.
+fn hold(app: &mut App, p: Presentation) {
+    app.practice
+        .studies
+        .get_mut(&p.prompt.study_id)
+        .expect("Prompt Study")
+        .source_quiz = true;
     app.practice.current = Some(p);
 }
 fn study_start(
@@ -763,23 +761,15 @@ fn study_start(
             "Start studying without answer or grading overrides.",
         ));
     }
-    let held_before = app.practice.current.is_some();
     let learned = mutate(app, "/practice/learn", fields, now, seed)?;
     let sid = learned.entity_id.expect("Study identity");
-    app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
     let mut result = next(
         app,
         &BTreeMap::from([("study_id".into(), sid.clone())]),
         now,
         seed,
     )?;
-    if !held_before {
-        mark_current_ui(app);
-    }
     result.entity_id = Some(sid);
-    if app.practice.current.is_some() {
-        result.data = Some(held(app)?);
-    }
     Ok(result)
 }
 fn quiz_cue(scope: &Scope, kind: Kind) -> Cue {
@@ -833,12 +823,7 @@ fn quiz(
     // Help belongs to this attempt: hiding a peek does not erase assistance.
     // Initial source reading has no Attempt and is not itself a successful recall.
     p.revealed = old.revealed;
-    app.practice
-        .studies
-        .get_mut(&p.prompt.study_id)
-        .unwrap()
-        .source_quiz = true;
-    app.practice.current = Some(p);
+    hold(app, p);
     Ok(response(None, held(app)?))
 }
 
@@ -862,6 +847,24 @@ fn introduce_card(app: &mut App, study: &Study, index: usize, now: i64, seed: &s
     cid
 }
 
+fn whole_list(app: &App, study: &Study) -> bool {
+    app.library.versions[&study.version_id].kind == Kind::OrderedList
+}
+fn introduced(app: &App, study: &Study) -> usize {
+    app.practice
+        .cards
+        .values()
+        .filter(|c| c.study_id == study.id)
+        .count()
+}
+/// A list begun item by item under an older record is recalled whole from now
+/// on. Its remaining items are new material, which only an active Study receives.
+fn list_waits(app: &App, study: &Study) -> bool {
+    whole_list(app, study)
+        && study.status != Status::Active
+        && introduced(app, study) < units(&app.library.versions[&study.version_id]).len()
+}
+
 /// Mixed review admits only content the learner has actually practised.
 /// Lesson entry may introduce a whole Version, but that is not review evidence.
 pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
@@ -879,6 +882,7 @@ pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
         .filter(|c| {
             app.practice.studies[&c.study_id].status != Status::Dropped
                 && eligible.contains(c.study_id.as_str())
+                && !list_waits(app, &app.practice.studies[&c.study_id])
                 && c.state.schedule.last_review_ms.is_some()
                 && c.state.schedule.due_ms <= now
                 && practised.contains(c.id.as_str())
@@ -896,13 +900,16 @@ enum ContinuousChoice {
 }
 
 fn continuous_limit(app: &App, s: &Study, now: i64) -> bool {
-    // Focused NATO's all-letters choice is not a catalog-wide learning budget.
-    app.practice
-        .cards
-        .values()
-        .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
-        .count()
-        < s.pace.limit()
+    // An ordered list is introduced whole. Focused NATO's all-letters choice
+    // is not a catalog-wide learning budget.
+    whole_list(app, s)
+        || app
+            .practice
+            .cards
+            .values()
+            .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
+            .count()
+            < s.pace.limit()
 }
 
 fn continuous_version_eligible(app: &App, v: &Version) -> bool {
@@ -953,7 +960,7 @@ fn continuous_scope_eligible(
 
 fn continuous_target_eligible(app: &App, study: &Study, index: usize) -> bool {
     let v = &app.library.versions[&study.version_id];
-    let whole = study.lesson && v.kind == Kind::OrderedList;
+    let whole = v.kind == Kind::OrderedList;
     let (start, end) = if whole {
         (0, units(v).len())
     } else {
@@ -1008,22 +1015,8 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         let choice = if let Some(c) = unfinished {
             Some(ContinuousChoice::Card(c.id.clone()))
         } else if continuous_limit(app, study, now)
-            && continuous_target_eligible(
-                app,
-                study,
-                app.practice
-                    .cards
-                    .values()
-                    .filter(|c| c.study_id == study.id)
-                    .count(),
-            )
-            && app
-                .practice
-                .cards
-                .values()
-                .filter(|c| c.study_id == study.id)
-                .count()
-                < units(&app.library.versions[&study.version_id]).len()
+            && continuous_target_eligible(app, study, introduced(app, study))
+            && introduced(app, study) < units(&app.library.versions[&study.version_id]).len()
         {
             Some(ContinuousChoice::Introduce(study.id.clone()))
         } else {
@@ -1190,45 +1183,18 @@ fn continuous_present(
                     sid
                 }
             };
-            app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
             let study = app.practice.studies[&sid].clone();
-            let index = app
-                .practice
-                .cards
-                .values()
-                .filter(|c| c.study_id == sid)
-                .count();
-            if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
-                for i in index..units(&app.library.versions[&study.version_id]).len() {
-                    introduce_card(app, &study, i, now, &format!("{seed}:unit:{i}"));
-                }
+            if whole_list(app, &study) {
                 lesson_present(app, &sid, 0, true, now, seed)?;
                 return Ok(());
             }
+            let index = introduced(app, &study);
             introduce_card(app, &study, index, now, seed)
         }
     };
-    let sid = app.practice.cards[&cid].study_id.clone();
-    app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
     let card = &app.practice.cards[&cid];
-    let study = &app.practice.studies[&card.study_id];
-    if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
-        let sid = study.id.clone();
-        lesson_present(app, &sid, 0, true, now, seed)?;
-    } else {
-        app.practice.current = Some(make_ui_prompt(
-            app,
-            study,
-            vec![card],
-            Scope::Unit {
-                unit_id: card.unit_id.clone(),
-                position: card.unit_index + 1,
-            },
-            card.state.cue,
-            now,
-            seed,
-        ));
-    }
+    let (sid, index) = (card.study_id.clone(), card.unit_index);
+    lesson_present(app, &sid, index, false, now, seed)?;
     Ok(())
 }
 
@@ -1289,29 +1255,25 @@ fn mixed_next(
 fn can_introduce(app: &App, s: &Study, now: i64) -> bool {
     s.status == Status::Active
         && study_reviewable(app, s)
-        && app
-            .practice
-            .cards
-            .values()
-            .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
-            .count()
-            < if s.nato_all_letters {
-                26
-            } else {
-                s.pace.limit()
-            }
-        && app
-            .practice
-            .cards
-            .values()
-            .filter(|c| c.study_id == s.id)
-            .count()
-            < units(&app.library.versions[&s.version_id]).len()
+        && (whole_list(app, s)
+            || app
+                .practice
+                .cards
+                .values()
+                .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
+                .count()
+                < if s.nato_all_letters {
+                    26
+                } else {
+                    s.pace.limit()
+                })
+        && introduced(app, s) < units(&app.library.versions[&s.version_id]).len()
 }
 /// Read-only availability uses the same pace and due conditions as scoped next.
 pub fn study_ready(app: &App, s: &Study, now: i64) -> bool {
     s.status != Status::Dropped
         && study_reviewable(app, s)
+        && !list_waits(app, s)
         && (can_introduce(app, s, now)
             || app
                 .practice
@@ -1333,11 +1295,6 @@ fn next(
             "Choose one Card or one Recitation scope.",
         ));
     }
-    let ui_phase = app
-        .practice
-        .current
-        .as_ref()
-        .is_some_and(|p| p.phase.is_some());
     app.practice.mixed_review = false;
     let after = field(fields, "after");
     if let Some(p) = &app.practice.current {
@@ -1410,10 +1367,9 @@ fn next(
                 "Mapping practice currently supports one key at a time, forward only.",
             ));
         }
-        let (scope, cue, ids) = match recite {
+        let (scope, ids) = match recite {
             "whole" => (
                 Scope::Whole,
-                Cue::WholeTitle,
                 units(v).iter().map(|u| u.id.as_str()).collect::<Vec<_>>(),
             ),
             "section" => {
@@ -1426,7 +1382,6 @@ fn next(
                     Scope::Section {
                         section_id: s.id.clone(),
                     },
-                    Cue::SectionHeading,
                     s.units.iter().map(|u| u.id.as_str()).collect(),
                 )
             }
@@ -1444,12 +1399,7 @@ fn next(
                     })
             })
             .collect::<AppResult<Vec<_>>>()?;
-        let build = if ui_phase || study.source_quiz || study.lesson || study.nato_all_letters {
-            make_ui_prompt
-        } else {
-            make_prompt
-        };
-        let presentation = build(app, study, cards, scope, cue, now, seed);
+        let presentation = present(app, study, cards, scope, now, seed);
         let expected_words = prompt_words(app, &presentation);
         if !fits_grading_capacity(
             expected_words,
@@ -1461,7 +1411,7 @@ fn next(
                 "This Recitation exceeds the 1,000,000-cell local grading capacity. Choose a smaller Section.",
             ));
         }
-        app.practice.current = Some(presentation);
+        hold(app, presentation);
     } else {
         let explicit = field(fields, "card_id");
         let eligible = reviewable_studies(app);
@@ -1473,6 +1423,7 @@ fn next(
                 .ok_or_else(|| AppError::new(404, "Card not found."))?;
             if (!sid.is_empty() && card.study_id != sid)
                 || app.practice.studies[&card.study_id].status == Status::Dropped
+                || list_waits(app, &app.practice.studies[&card.study_id])
             {
                 return Err(AppError::conflict());
             }
@@ -1486,6 +1437,7 @@ fn next(
                     (sid.is_empty() || c.study_id == sid)
                         && app.practice.studies[&c.study_id].status != Status::Dropped
                         && eligible.contains(c.study_id.as_str())
+                        && !list_waits(app, &app.practice.studies[&c.study_id])
                         && c.state.schedule.due_ms <= now
                         && nato_previous.as_ref() != Some(&c.id)
                 })
@@ -1511,13 +1463,13 @@ fn next(
                 .min_by_key(|s| (s.created_ms, &s.id))
                 .cloned();
             study.map(|study| {
-                let index = app
-                    .practice
-                    .cards
-                    .values()
-                    .filter(|c| c.study_id == study.id)
-                    .count();
-                introduce_card(app, &study, index, now, seed)
+                let index = introduced(app, &study);
+                if whole_list(app, &study) {
+                    // The rest of the list is introduced with it when presented.
+                    introduce_card(app, &study, index, now, &format!("{seed}:unit:{index}"))
+                } else {
+                    introduce_card(app, &study, index, now, seed)
+                }
             })
         };
         // If no other due/new work exists, a due missed letter may be retried.
@@ -1531,24 +1483,8 @@ fn next(
         });
         if let Some(cid) = chosen {
             let c = &app.practice.cards[&cid];
-            let study = &app.practice.studies[&c.study_id];
-            let build = if ui_phase || study.source_quiz || study.lesson || study.nato_all_letters {
-                make_ui_prompt
-            } else {
-                make_prompt
-            };
-            app.practice.current = Some(build(
-                app,
-                study,
-                vec![c],
-                Scope::Unit {
-                    unit_id: c.unit_id.clone(),
-                    position: c.unit_index + 1,
-                },
-                c.state.cue,
-                now,
-                seed,
-            ));
+            let (study, index) = (c.study_id.clone(), c.unit_index);
+            lesson_present(app, &study, index, false, now, seed)?;
         }
     }
     let mut result = response(
@@ -1789,7 +1725,6 @@ fn lesson_start(
     let sid = result.entity_id.expect("Study identity");
     let s = app.practice.studies.get_mut(&sid).unwrap();
     s.status = Status::Active;
-    s.source_quiz = true;
     s.lesson = app.library.versions[&vid].kind != Kind::KeyedMapping
         || crate::library::is_nato(&app.library.versions[&vid]);
     if crate::library::is_nato(&app.library.versions[&vid]) {
@@ -1810,22 +1745,12 @@ fn lesson_start(
         }
         app.practice.current = None;
         let mut result = next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)?;
-        mark_current_ui(app);
-        if app.practice.current.is_some() {
-            result.data = Some(held(app)?);
-        }
         result.redirect = route.into();
         return Ok(result);
     }
     let s = s.clone();
     let count = units(&app.library.versions[&vid]).len();
-    let introduced = app
-        .practice
-        .cards
-        .values()
-        .filter(|c| c.study_id == sid)
-        .count();
-    for index in introduced..count {
+    for index in introduced(app, &s)..count {
         introduce_card(app, &s, index, now, &format!("{seed}:unit:{index}"));
     }
     if resume.is_some() {
@@ -1841,6 +1766,8 @@ fn lesson_start(
         seed,
     )
 }
+/// Present one Unit, or the whole Version. An ordered list is always whole,
+/// however its Study was started: its remaining items are introduced with it.
 fn lesson_present(
     app: &mut App,
     sid: &str,
@@ -1853,11 +1780,19 @@ fn lesson_present(
         .practice
         .studies
         .get(sid)
-        .ok_or_else(AppError::conflict)?;
-    let v = &app.library.versions[&study.version_id];
-    if whole {
-        if v.kind == Kind::KeyedMapping {
+        .ok_or_else(AppError::conflict)?
+        .clone();
+    let kind = app.library.versions[&study.version_id].kind;
+    let p = if whole || kind == Kind::OrderedList {
+        if kind == Kind::KeyedMapping {
             return Err(AppError::new(422, "Mappings use individual key recall."));
+        }
+        if kind == Kind::OrderedList {
+            let count = units(&app.library.versions[&study.version_id]).len();
+            for i in introduced(app, &study)..count {
+                introduce_card(app, &study, i, now, &format!("{seed}:unit:{i}"));
+            }
+            app.practice.studies.get_mut(sid).unwrap().lesson = true;
         }
         let mut cards = app
             .practice
@@ -1866,7 +1801,7 @@ fn lesson_present(
             .filter(|c| c.study_id == sid)
             .collect::<Vec<_>>();
         cards.sort_by_key(|c| c.unit_index);
-        let p = make_ui_prompt(app, study, cards, Scope::Whole, Cue::WholeTitle, now, seed);
+        let p = present(app, &study, cards, Scope::Whole, now, seed);
         if !fits_grading_capacity(
             prompt_words(app, &p),
             prompt_words(app, &p),
@@ -1877,7 +1812,7 @@ fn lesson_present(
                 "This lesson exceeds local grading capacity. Choose a shorter text.",
             ));
         }
-        app.practice.current = Some(p);
+        p
     } else {
         let card = app
             .practice
@@ -1885,19 +1820,19 @@ fn lesson_present(
             .values()
             .find(|c| c.study_id == sid && c.unit_index == index)
             .ok_or_else(AppError::conflict)?;
-        app.practice.current = Some(make_ui_prompt(
+        present(
             app,
-            study,
+            &study,
             vec![card],
             Scope::Unit {
                 unit_id: card.unit_id.clone(),
                 position: index + 1,
             },
-            card.state.cue,
             now,
             seed,
-        ));
-    }
+        )
+    };
+    hold(app, p);
     Ok(response(None, held(app)?))
 }
 fn lesson_next(
@@ -1974,7 +1909,7 @@ fn lesson_next(
             .ok_or_else(AppError::conflict)?;
         // Feedback has disclosed this phrase. Retry teaches the same phrase
         // with a visible cue, never relabels it as a fresh unaided test.
-        app.practice.current = Some(make_prompt(
+        let mut retry = make_prompt(
             app,
             study,
             vec![card],
@@ -1982,10 +1917,10 @@ fn lesson_next(
             Cue::Read,
             now,
             seed,
-        ));
-        let current = app.practice.current.as_mut().unwrap();
-        current.phase = Some(StudyPhase::Study);
-        current.revealed = true; // feedback was already shown before retry
+        );
+        retry.phase = Some(StudyPhase::Study);
+        retry.revealed = true; // feedback was already shown before retry
+        hold(app, retry);
         return Ok(response(None, held(app)?));
     }
     if mode == "join" && v.kind == Kind::Text {
@@ -2001,14 +1936,13 @@ fn lesson_next(
             .filter(|c| c.study_id == sid && section.units.iter().any(|u| u.id == c.unit_id))
             .collect::<Vec<_>>();
         cards.sort_by_key(|c| c.unit_index);
-        let presentation = make_ui_prompt(
+        let presentation = present(
             app,
             study,
             cards,
             Scope::Section {
                 section_id: section.id.clone(),
             },
-            Cue::SectionHeading,
             now,
             seed,
         );
@@ -2022,7 +1956,7 @@ fn lesson_next(
                 "This joined passage exceeds local grading capacity.",
             ));
         }
-        app.practice.current = Some(presentation);
+        hold(app, presentation);
         return Ok(response(None, held(app)?));
     }
     let whole = v.kind == Kind::OrderedList || mode == "whole";
@@ -2191,7 +2125,6 @@ pub fn mutate(
                 .get_mut(&sid)
                 .expect("learn retains its Study");
             study.status = Status::Active;
-            study.source_quiz = true;
             study.nato_all_letters = true;
             next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)
         }
@@ -2620,6 +2553,7 @@ pub fn validate(app: &App) -> AppResult<()> {
         let v = app.library.versions.get(&a.version_id).ok_or_else(fail)?;
         if v.normalized_hash != a.version_hash
             || a.effects.is_empty()
+            || (!a.disclosure && source_only(v, &a.prompt))
             || a.prompt.unit_ids
                 != a.effects
                     .iter()
@@ -2773,6 +2707,14 @@ pub fn validate(app: &App) -> AppResult<()> {
             return Err(fail());
         }
         validate_targets(app, &current.prompt, &current.targets)?;
+        if current.phase != Some(StudyPhase::Study)
+            && source_only(
+                &app.library.versions[&current.prompt.version_id],
+                &current.prompt,
+            )
+        {
+            return Err(fail());
+        }
         if p.studies[&current.prompt.study_id].status == Status::Dropped
             || current.created_ms < p.studies[&current.prompt.study_id].created_ms
         {
@@ -2815,6 +2757,11 @@ fn valid_id(id: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
+/// The source of a mapping pair or a whole list is only ever studied: no older
+/// record answered beside one, and Scry refuses an answer against it.
+fn source_only(v: &Version, p: &Prompt) -> bool {
+    p.cue_level == Cue::Read && (v.kind == Kind::KeyedMapping || p.scope == Scope::Whole)
+}
 fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> {
     let fail = || AppError::new(422, "Invalid frozen Study Prompt.");
     let s = app.practice.studies.get(&p.study_id).ok_or_else(fail)?;
@@ -2825,7 +2772,11 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
         || p.version_hash != v.normalized_hash
         || targets.is_empty()
         || p.assisted != p.cue_level.assisted()
-        || (v.kind == Kind::KeyedMapping) != (p.cue_level == Cue::MappingKey)
+        // A pair is quizzed from its key and studied from its supplied Unit.
+        || match v.kind {
+            Kind::KeyedMapping => !matches!(p.cue_level, Cue::MappingKey | Cue::Read),
+            _ => p.cue_level == Cue::MappingKey,
+        }
         || p.unit_ids
             != targets
                 .iter()
@@ -2870,7 +2821,8 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
         Scope::Whole
             if first == 0
                 && targets.len() == all.len()
-                && p.cue_level == Cue::WholeTitle
+                && (p.cue_level == Cue::WholeTitle
+                    || (p.cue_level == Cue::Read && v.kind == Kind::OrderedList))
                 && p.context.is_none() => {}
         Scope::Section { section_id }
             if v.sections.iter().any(|s| {

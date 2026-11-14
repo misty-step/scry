@@ -285,7 +285,7 @@ export async function phoneLibraryWalk(browser, capture) {
       assert.deepEqual(backup.archive.app.practice,complete.app.practice);
       assert.equal(f.egress,0);
       row.criteria.push(6);
-      row.observed = {version:vid,study:study.id,attempt:attempt.id,duplicate_versions:0,duplicate_studies:0,first_attempt_assisted:true,held_reload:true,deliberate_next:true,search:'title, alias, opening words; edition-only honest miss',study_controls:['pause','resume','drop'],local_r2:{sha256:backup.sha256,bytes:backup.bytes},egress:0,spend:0};
+      row.observed = {version:vid,study:study.id,attempt:attempt.id,duplicate_versions:0,duplicate_studies:0,first_attempt_assisted:false,held_reload:true,deliberate_next:true,search:'title, alias, opening words; edition-only honest miss',study_controls:['pause','resume','drop'],local_r2:{sha256:backup.sha256,bytes:backup.bytes},egress:0,spend:0};
     } catch (error) {row.status='fail'; row.reason=error.message; row.evidence.push(await capture(page,`phone-library-${width}-${scheme}-${zoom?200:100}-failure.png`));}
     finally {row.cli=f.transcript; await context.close(); await f.close();}
   }
@@ -390,8 +390,10 @@ export async function phoneLibraryRecovery(browser, capture) {
     let current=(await f.cli(['next'])).practice;
     await page.goto(f.origin+'/recall'); await page.locator('[data-state="exact-prompt"]').waitFor();
     const cid=(await f.record('meta')).practice.current.targets[0].card_id;
-    for(let i=0;i<6;i++) {await f.cli(['answer',current.prompt.id,'--text-stdin'],firstUnit); current=(await f.cli(['next','--after',current.prompt.id,'--card',cid])).practice;}
-    assert.equal(current.prompt.cue_level,'previous_line'); assert.equal(current.prompt.assisted,false);
+    // The phrase is studied in the open; trying it from memory makes it protected recall.
+    assert.equal(current.phase,'study'); assert.ok((await page.content()).includes(firstUnit));
+    current=(await f.cli(['quiz',current.prompt.id])).practice;
+    assert.equal(current.phase,'quiz'); assert.equal(current.prompt.cue_level,'whole_title'); assert.equal(current.prompt.assisted,false);
     await page.reload(); await page.locator('[data-state="exact-prompt"]').waitFor();
     assert.ok(!(await page.content()).includes(firstUnit));
     const before=await f.rows(), priorAttempts=await count(f,'practice_attempts/'), card=(await f.record('practice_cards/'+cid)).state;
