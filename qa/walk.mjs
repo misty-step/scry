@@ -6,7 +6,7 @@ import {existsSync,readFileSync} from 'node:fs';
 import {mkdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {resolve,join} from 'node:path';
-import {specs} from './walk-specs.mjs';
+import {specs,capabilities} from './walk-specs.mjs';
 import {ownerJourney,buildCli} from './owner-api.mjs';
 import {libraryJourney} from './library.mjs';
 import {studyJourney} from './study.mjs';
@@ -20,13 +20,15 @@ import {phoneWalk,phoneRecovery} from './phone-stream.mjs';
 import {phoneLibraryWalk,phoneLibraryRecovery} from './phone-library.mjs';
 const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
 const source=readFileSync('SPEC.md','utf8');
-const sections=[...source.matchAll(/^## (US-\d{3})\b[^\n]*$/gm)];
-const live=sections.filter((m,i)=>!/^Superseded|^Retired|\(retired\)|^Evidence: pending$/m.test(source.slice(m.index,sections[i+1]?.index))).map(m=>m[1]);
+// Journey IDs are this harness's own names, kept stable for receipts. Each
+// journey proves one SPEC capability, bound here by that capability's heading.
+const live=Object.keys(specs);
+const headings=new Set([...source.matchAll(/^### (.+)$/gm)].map(m=>m[1].trim()));
+const unbound=[...new Set([...live,...Object.keys(capabilities)])].filter(id=>!specs[id]||!headings.has(capabilities[id]));
+if(unbound.length)throw Error(`spec binding drift: no SPEC capability heading or walk for [${unbound.map(id=>`${id} "${capabilities[id]??''}"`).join(', ')}]`);
 const argv=process.argv.slice(2);
 const selected=argv[0]==='--all'&&argv.length===1?live:argv[0]==='--stories'&&argv.length===2?[...new Set(argv[1].split(/\s+/).filter(Boolean))]:null;
-if(live.length!==Object.keys(specs).length||Object.keys(specs).some(id=>!live.includes(id)))throw Error(`story discovery drift: SPEC live IDs [${live.join(', ')}] do not match walk-specs IDs [${Object.keys(specs).join(', ')}]`);
 if(!selected?.length||selected.some(id=>!live.includes(id)))throw Error('usage: qa/walk --all | --stories "US-002 US-003"');
-for(const id of live){const i=sections.findIndex(m=>m[1]===id);const block=source.slice(sections[i].index,sections[i+1]?.index);const count=[...block.matchAll(/^\d+\. (?:WHEN|WHILE|WHERE|IF|THE\b|EACH|Export)/gm)].length;if(count!==specs[id]?.length)throw Error(`${id}: ${specs[id]?.length} walks for ${count} active criteria`);}
 if(process.env.SCRY_SKIP_BUILD!=='1')execFileSync('worker-build',['--release','--locked'],{stdio:'inherit',env:process.env});
 const require=createRequire(import.meta.url);
 let playwright;

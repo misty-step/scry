@@ -2,8 +2,8 @@
 
 This is the maintained navigation map for verifying and assessing Scry as its
 owner uses it. [VISION](../VISION.md) explains intent, [SPEC](../SPEC.md) alone
-owns stories and acceptance, and [DESIGN](../DESIGN.md) owns the NATO review canvas and retained notebook. Run it through [verify-scry](../.agents/skills/verify-scry/SKILL.md).
-US-012 is retired and its identifier remains reserved.
+owns target behavior, and [DESIGN](../DESIGN.md) owns the NATO review canvas and retained notebook. Run it through [verify-scry](../.agents/skills/verify-scry/SKILL.md).
+The `US-0NN` names below are `qa/walk` journey names, bound to SPEC capabilities in `qa/walk-specs.mjs`.
 
 ## Baseline preconditions
 
@@ -44,25 +44,25 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 
 ## Features
 
-- [Continuous study](../SPEC.md#continuous-study-2026-11-02-later-owner-direction): default Study → Next interleaves due subjects, then paced unfinished/unseen Library and canonical starter content; Browse stays secondary. `tests/mixed_review.rs` covers fair selection, immutable legacy policy/corrections, native due scheduling, whole sequences, replay and scope. The browser/runtime journey is `qa/mixed-review.mjs`. Existing agent `/api/v1/next` remains explicit scoped/general Study selection, not an implicit mixed-mode switch.
+- [Continuous study](../SPEC.md#open-into-study): default Study → Next interleaves due subjects, then paced unfinished/unseen Library and canonical starter content; Browse stays secondary. `tests/mixed_review.rs` covers fair selection, immutable legacy policy/corrections, native due scheduling, whole sequences, replay and scope. The browser/runtime journey is `qa/mixed-review.mjs`. Existing agent `/api/v1/next` remains explicit scoped/general Study selection, not an implicit mixed-mode switch.
 
 - [NATO review](nato-review.md): native start, server grading, assistance and honest progress.
 - [Choose and practise lessons](practice-lessons.md): visual topic shelf, prayer editions, Rosary sets, draft-preserving return and same-phrase retry.
 - [Baby readiness](baby-readiness.md): sourced Karp, everyday safety and Montessori-inspired short-answer practice.
 - [External-agent authoring and review](agent-authoring.md): compiled MCP/CLI through real Worker/SQLite, immutable supplied content and replay proof.
 
-- [Visual practice chooser](../SPEC.md#visual-practice-chooser-2026-11-01): inline grouped NATO, Saint Michael editions and Rosary sets; current-session return preserves the draft. `tests/lessons.rs` covers current identity, supplied-content collisions and protected metadata; `qa/lessons.mjs` covers native/enhanced phone/desktop browsing, return and switch reconciliation. Source-bound journey proof belongs to #445 and its PR; authenticated learner acceptance is separate.
+- [Visual practice chooser](../SPEC.md#lessons): inline grouped NATO, Saint Michael editions and Rosary sets; current-session return preserves the draft. `tests/lessons.rs` covers current identity, supplied-content collisions and protected metadata; `qa/lessons.mjs` covers native/enhanced phone/desktop browsing, return and switch reconciliation. Source-bound journey proof belongs to #445 and its PR; authenticated learner acceptance is separate.
 
-- [NATO-focused review](../SPEC.md#nato-focused-review-2026-10-29): Lessons → NATO → type → Check → Next (or the focused `/?practice=nato` entry). One atomic start, server grading, honest practiced-letter count and inline per-letter review/accuracy/due evidence (NATO-06–08). `qa/nato-focus.test.mjs` verifies the atomic local Worker journey; `qa/keyed-mapping.test.mjs` verifies native and enhanced phone/desktop flows and exports screenshots.
+- [NATO-focused review](../SPEC.md#nato-alphabet): Lessons → NATO → type → Check → Next (or the focused `/?practice=nato` entry). One atomic start, server grading, honest practiced-letter count and inline per-letter review/accuracy/due evidence (NATO-06–08). `qa/nato-focus.test.mjs` verifies the atomic local Worker journey; `qa/keyed-mapping.test.mjs` verifies native and enhanced phone/desktop flows and exports screenshots.
 
-- [Sign in with the QA account](sign-in.md): S09 QA sign-in and role, enrollment, signed-out, expired, wrong identity, alternate host, Doctor.
-- [Exact text practice](exact-study.md): US-016, US-017, US-018 phone Stream / AG1.
-- [Private Library](library.md): US-015 find and keep / AG1.
-- [One question and honest judgment](study.md): legacy concept notebook, US-002, US-003, US-007, US-008, US-011.
-- [Concepts, references, and goals](concepts.md): US-001, US-006, US-009, US-010.
-- [Owner tokens, API and CLI](owner-tokens.md): US-014 / AG1; hosted admission #335 UNPROVEN.
-- [Retired generation and saved preparation history](capture.md): 2026-10-27 retirement amendment; historical US-004/013/S11 evidence remains preserved.
-- [Changes in this build](../SPEC.md#s12--inspect-the-changes-in-this-build):
+- [Sign in with the QA account](sign-in.md): the verification-only sign-in and role, enrollment, signed-out, expired, wrong identity, alternate host, Doctor.
+- [Exact text practice](exact-study.md): journeys US-016, US-017, US-018.
+- [Private Library](library.md): journey US-015.
+- [One question and honest judgment](study.md): earlier concept notebook, journeys US-002, US-003, US-007, US-008, US-011.
+- [Concepts, references, and goals](concepts.md): journeys US-001, US-006, US-009, US-010.
+- [Owner tokens, API and CLI](owner-tokens.md): journey US-014; hosted admission #335 UNPROVEN.
+- [Retired generation and saved preparation history](capture.md): generation stays retired; journeys US-004 and US-013 keep its saved records and refusals proven.
+- [Changes in this build](../SPEC.md#build-identity):
   follow the footer's Changelog link to `/changelog`, then return through the
   header. `qa/browser-release.mjs` (inside `qa/walk --all`) covers phone and
   desktop in light and dark. Source: `src/web.rs`, `src/runtime.rs`.

@@ -52,6 +52,9 @@ async function fixture(t, twoUnits = false) {
       assert.equal(code, exit, JSON.stringify(body));
       done(body);
     } catch (error) {reject(error);}});
+    // A command that exits without reading stdin closes the pipe first; its
+    // exit code and output above still decide the result.
+    child.stdin.on('error', error => {if (error.code !== 'EPIPE') reject(error);});
     child.stdin.end(input);
   });
   await cli(['login', '--url', origin, '--token-stdin'], secret + '\n');

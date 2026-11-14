@@ -3,10 +3,9 @@
 The owner studies a Library Version source, then explicitly quizzes from memory. He gets an
 exact verdict and a word-by-word Diff, and on his phone the Stream opens
 straight into the next due Unit. Behavior authority:
-[US-016](../SPEC.md#us-016-learn-a-version-unit-by-unit),
-[US-017](../SPEC.md#us-017-get-an-exact-verdict-and-a-word-by-word-diff),
-[US-018](../SPEC.md#us-018-practise-exact-recall-on-my-phone) and
-[US-007](../SPEC.md#us-007-correct-a-grade-in-one-tap).
+[SPEC § Study, then quiz from memory](../SPEC.md#study-then-quiz-from-memory),
+[Scheduling](../SPEC.md#scheduling), [Grading](../SPEC.md#grading) and
+[Texts and prayers](../SPEC.md#texts-and-prayers).
 
 ## Sub-features
 
@@ -14,7 +13,7 @@ straight into the next due Unit. Behavior authority:
 - `study-prompt` shows source without an input, then Try from memory selects a hidden-source quiz with one field and one submit control. Historical phase-less API cues remain compatible.
 - `study-verdict` gives Good or Again with a Diff of correct, slipped, wrong, missing and extra words, held until Next.
 - `study-assist` records Show me or a cue as an assisted Attempt before showing it.
-- `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 under the [retirement amendment](../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406).
+- `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 because self-grading is a [non-goal](../SPEC.md#purpose-and-non-goals).
 - `study-caught-up` says when the next Card is due instead of inventing practice.
 - `study-cli` covers the same actions through `scry next`, `answer`, `due`, `history` and `export`.
 - `study-history` reads saved Attempts and appended Corrections from the footer's

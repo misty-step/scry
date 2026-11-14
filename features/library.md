@@ -2,7 +2,7 @@
 
 The owner searches his Library before adding a text, keeps each Work and Version
 once, and builds Studies on what is already there. Behavior authority:
-[US-015](../SPEC.md#us-015-find-a-work-before-creating-it).
+[SPEC § Library](../SPEC.md#library).
 [ADR 004](../docs/adr/004-rust-cloudflare-candidate.md#2026-10-20-library-storage-amendment-316)
 owns storage and rollback.
 
