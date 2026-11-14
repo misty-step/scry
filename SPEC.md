@@ -7,8 +7,9 @@ phone and computer and through an API and command line.
 
 This file is Scry's present-tense target state: what a rebuild must do for the
 Owner to experience the same product. [VISION](VISION.md) explains why,
-[DESIGN](DESIGN.md) owns visual decisions, [the decision records](docs/adr/README.md)
-own technical ones, [QA](docs/qa/system.md) owns verification and
+[DESIGN](DESIGN.md) owns visual decisions,
+[the decision records](docs/adr/README.md) own technical ones,
+[QA](docs/qa/system.md) owns verification and
 [the runbook](docs/runbook.md) owns operations.
 
 ## Purpose and non-goals
@@ -23,7 +24,12 @@ Scry is not, and does not become by implication:
   refines or repairs learning content. Every request to do so is refused
   before any job, record, upload, reservation or provider call exists.
 - **Self-graded.** There is no self-rating, client-supplied Verdict,
-  expected-answer override or Owner Correction of a grade.
+  expected-answer override or Owner Correction of a grade. A Verdict is never
+  overturned.
+- **A hint ladder.** Practice has two forms, Source study and Quiz. Scry does
+  not fade cues, show first letters or offer multiple choice.
+- **A media product.** Content is text. Scry does not accept, store or play
+  audio, images or video for practice.
 - **A product for anyone else.** No accounts or tokens for other people,
   signup, anonymous or public reading, public Library, sharing, billing or
   collaboration.
@@ -122,16 +128,15 @@ Specification, code, commits and conversation use these words.
 
 ### Earlier material
 
-- **Concept:** a teachable idea from the earlier concept notebook, with a
-  current note, saved questions and prerequisite links. It is not a Work or
-  Unit.
+- **Concept:** a teachable idea saved in the earlier concept notebook, with
+  its notes, questions and prerequisite links. It is not a Work or Unit.
 - **Goal:** a saved request from the earlier concept notebook that groups its
   Concepts. Memorization uses Study instead.
-- **Correction:** an Owner's override of a Verdict recorded in the past. Scry
-  no longer accepts new ones; saved ones stay readable and unchanged.
-- **Cue level:** how much of a Unit an older Prompt showed, from the full
-  text down to its title alone. Saved Cards and Attempts keep the Cue level
-  they were recorded at.
+- **Correction:** an Owner's override of a Verdict, found only in older
+  records. Scry accepts none; saved ones stay readable and unchanged.
+- **Cue level:** how much of a Unit a Prompt showed, found only in older
+  records. Scry shows it in history and never uses it to choose what to
+  present.
 - **Archived notebook:** the oldest notebook, kept read-only with nothing
   deleted, its final verified backup retained and no writer attached.
 
@@ -149,8 +154,8 @@ Specification, code, commits and conversation use these words.
 4. **History is never rewritten.** Attempts, Verdicts, Authorities, Diffs,
    saved Corrections, Versions and past schedules keep their original content
    and meaning. A result is never rejudged; it keeps the policy it was decided
-   under. A build that cannot honor newer saved meaning refuses it instead of
-   stripping it.
+   under. An older version of Scry refuses saved records it cannot honor in
+   full rather than dropping what it does not understand.
 5. **Supplied content is authoritative.** Scry never silently substitutes,
    samples, reorders or paraphrases a Version. Named editions stay distinct.
 6. **Each action happens once.** Every mutation carries an operation identity.
@@ -186,7 +191,7 @@ One thing leads at a time. Practice shows one subject and scope, one clear
 task (study this, or answer from memory), one answer field when quizzed, and
 one primary next action. Topic identity leads visually. Lessons, progress and
 optional details sit behind compact disclosures on the same screen. Library,
-history, settings, earlier practice and the changelog live in a quiet menu,
+history, settings, the earlier notebook and the changelog live in a quiet menu,
 and navigation is never duplicated in a footer.
 
 The loop is study, then **Try from memory**, then one typed answer and
@@ -233,16 +238,17 @@ horizontal clipping, including with long questions and explanations.
   bypasses a paused or dropped Work.
 - Due review and new learning stay distinct: an introduction is never
   labelled or counted as review evidence.
-- When nothing is eligible, Scry says **Rest for now** and offers Browse. It
-  does not invent due work, claim completion or show a misleading countdown.
-  A focused lesson with everything introduced and nothing due says so and
-  names the next scheduled time.
+- When nothing is eligible, Scry says **Rest for now**, offers Browse and,
+  when a review is scheduled, states when the next one falls due. It shows no
+  ticking countdown, invents no due work and claims no completion. This holds
+  under Study and inside a focused lesson alike.
 - Material Scry cannot grade stays in the Library and is never served by
   Study.
 
 ### Study, then quiz from memory
 
-- Source study shows the supplied material with no answer field and no
+- Anything not yet practised is first shown as Source study, whatever its
+  Kind. Source study shows the supplied material with no answer field and no
   grading controls. Scry refuses an answer submitted against a source being
   studied, from any client.
 - **Try from memory** deliberately replaces the held source with a Quiz of
@@ -253,8 +259,10 @@ horizontal clipping, including with long questions and explanations.
   retry assisted.
 - A mapping's source study keeps its authored question and any
   safety-bearing cue.
-- A Prompt an agent receives at an older Cue level stays answerable. The app
-  shows any visible source as study, never as a form to copy from.
+- A Prompt still held from an older record in a cue-bearing form can be
+  answered once; an answer given beside an answer-bearing cue is assisted.
+  Every Prompt after it is a Quiz. The app shows any visible source as study,
+  never as a form to copy from.
 
 ### Grading
 
@@ -281,8 +289,12 @@ horizontal clipping, including with long questions and explanations.
   without judging again.
 - When an assessment fails or is inconclusive, the answer stays saved and
   ungraded, Scry says so honestly, and the saved material and history stay
-  reachable. Scry never retries a paid assessment on its own, and no retry
-  sends the same assessment twice.
+  reachable. The Owner can ask for that answer to be checked again, which is
+  a new deliberate request. Scry never retries by itself, and no retry sends
+  the same assessment twice.
+- A Verdict cannot be overturned. Where the content was at fault, an agent
+  supplies a corrected Version or an alias; later practice uses it, and the
+  recorded Attempt stays as it was.
 
 ### Assistance
 
@@ -339,9 +351,12 @@ horizontal clipping, including with long questions and explanations.
   ungraded and fences that exact Prompt, so a late answer cannot grade a
   different question.
 - Browsing never imports or enrols. Deliberate selection imports the
-  immutable supplied content once and enters normal paced, scheduled practice
-  for that lesson. Selecting again returns the same content and Study without
+  immutable supplied content once and enters scheduled practice for that
+  lesson. Selecting again returns the same content and Study without
   resetting anything.
+- A mapping lesson is introduced at its Pace. A text lesson and focused NATO
+  practice make their whole content available at once, without changing the
+  stored Pace.
 - Agent-supplied content stays reachable beside the Starter shelf wherever
   protected recall permits. A shared title or edition name never hides custom
   content as a starter.
@@ -354,8 +369,6 @@ horizontal clipping, including with long questions and explanations.
 - A phrase Quiz names the Work. The previous phrase opens as context only
   when the Owner asks, without changing the draft, the Prompt or what counts
   as help.
-- Entering a text lesson deliberately introduces the selected short text
-  without changing the stored Pace.
 - Reciting a Section or a whole Version is prompted from its heading or title
   alone. Each Unit in a Recitation keeps its own attribution and Verdict,
   consistent with the assessment of the whole.
@@ -365,8 +378,8 @@ horizontal clipping, including with long questions and explanations.
 
 ### Ordered lists
 
-- An ordered list is recalled as one whole sequence, not as isolated cards.
-  Each Rosary set is one recall of its five mysteries in order.
+- An ordered list is recalled as one whole sequence and is never drilled item
+  by item. Each Rosary set is one recall of its five mysteries in order.
 - Grading recognizes the intended item identities and their order. Authored
   aliases are accepted, and the result shows the Version's own form.
 - The result reports missing, repeated and misplaced items. One omission does
@@ -374,8 +387,6 @@ horizontal clipping, including with long questions and explanations.
   transposition cannot earn a correct whole result.
 - Only components that are genuinely due change their schedule; the rest are
   optional early practice.
-- A list that is part of a larger Work, such as the Glorious Mysteries within
-  the Rosary, shows that Relation on both Works.
 
 ### Keyed mappings
 
@@ -385,24 +396,21 @@ horizontal clipping, including with long questions and explanations.
   accepted as a near match.
 - A year is accepted with or without AD or CE and graded as an exact number,
   unless the Version declares a range.
-- Reciting the whole set from a random start gives each pair its own
-  Verdict.
-- A mapping related to another Work, such as the Rosary day schedule and the
-  mysteries, shows that Relation on both Works.
+- A mapping is never recited as a whole set.
 
 ### NATO alphabet
 
 - Choosing the alphabet offers one **Start practice**. It imports the
-  canonical alphabet, starts or resumes its Study and begins with a letter,
-  with no Library, Version, Pace or setup screen. Starting again never
-  duplicates content, resets a schedule or replaces another Study's held
-  Prompt.
+  canonical alphabet, starts or resumes its Study and begins with its first
+  eligible letter, with no Library, Version, Pace or setup screen. Starting
+  again never duplicates content, resets a schedule or replaces another
+  Study's held Prompt.
 - Starting focused practice deliberately allows all 26 letters to be
   introduced. Under Study, the alphabet follows its Pace like any mapping.
 - The alphabet has all 26 official words, including Alfa, Juliett, Whiskey
   and X-ray, and is Spelling-strict. Case and surrounding space do not
-  matter, and "X-ray" and "X ray" are the same answer. A misspelling such as
-  "Alpha" or "Juliet" is a miss.
+  matter, and "X-ray" and "X ray" are the same answer. "Xray", "Alpha",
+  "Juliet" and letters split apart by punctuation are misses.
 - Practice serves due letters, then new ones, and never presents a letter
   that is not yet due as ordinary review. It prefers a different letter from
   the one just answered, returning to that one only when it is due and
@@ -458,7 +466,8 @@ horizontal clipping, including with long questions and explanations.
 - Correcting wording creates a new Version that supersedes the old one. The
   old Version and every Attempt against it stay unchanged.
 - Showing a Work or Version shows its Versions, Units, Provenance, Rights
-  status and Relations without changing any Study.
+  status and Relations without changing any Study. A Relation appears on both
+  of the Works it links, such as the Glorious Mysteries and the Rosary.
 - A Work or Version that no Study uses can be deleted. One that a Study uses
   cannot.
 - Learning a Version creates one Study for it. Learning it again returns that
@@ -503,8 +512,9 @@ horizontal clipping, including with long questions and explanations.
   existed. Revocation takes effect on that token's next request.
 - A committed mutation records which token acted, visible in history and
   export.
-- A token cannot request paid work unless it was created with that
-  permission, and is refused before any allowance is reserved.
+- A token carries paid permission only if it was created with it. An answer
+  submitted through a token without it is saved and judged without Jev, and
+  no allowance is reserved.
 - A token is never kept in browser storage, and browser sessions keep their
   cross-site protection.
 
@@ -514,15 +524,17 @@ horizontal clipping, including with long questions and explanations.
 - **Save draft** checkpoints the text typed for the exact unanswered Prompt.
   Saving never grades, advances, schedules or calls a paid service. Anyone
   acting with the Owner's authority, on any device or through a token, can
-  read it. The Owner can discard it; competing saves and discards settle on the newest. A
-  committed answer or a deliberate change of Prompt clears the checkpoint.
+  read it. The Owner can discard it; competing saves and discards settle on
+  the newest. A committed answer or a deliberate change of Prompt clears the
+  checkpoint.
 - With JavaScript, an edited answer is also checkpointed quietly after five
   seconds in the foreground. The editor stays usable, and the status
   distinguishes newer unsaved text from the acknowledged snapshot. Automatic
   saving does not start on load, reconnect, return to the foreground or
   unload. It stops after 512 automatic saves in a notebook and pauses on a
   capacity refusal; Save draft stays available.
-- Only acknowledged text can be relied on. A lost response may have
+- Only acknowledged text can be relied on. Text typed after the last
+  acknowledged save exists only in the open page. A lost response may have
   committed, and the Owner reconciles it deliberately against its original
   operation. Reconciliation never sends edits made while the outcome was
   unknown or the device was offline.
@@ -537,54 +549,28 @@ horizontal clipping, including with long questions and explanations.
 
 ### Earlier concept notebook
 
-- Material from the earlier concept notebook stays reachable through
-  secondary navigation: Goals, Concepts with their notes, saved questions and
-  history. Nothing is imported, rewritten or deleted.
-- A Concept page shows its current notes, its saved questions, its original
-  material and its prerequisite links in both directions, and keeps old
-  presented wording and review history. Opening it from a result does not
-  consume or change the current question.
-- The Map lists active Goals before paused ones and omits archived ones,
-  beside a decorative constellation, with an accessible list of Concepts,
-  their status and what is due. A
-  Concept is new, learning, solid or fading, with unaided, helped and missed
-  observations shown separately and any recall figure labelled as an
-  estimate.
-- Focusing a Goal prioritizes its new Concepts. Pausing excludes its new
-  material and keeps its notes, history and due practice. Unseen Concepts are
-  introduced prerequisite-first, with the note shown before the first
-  question, at most the Pace per rolling day.
-- A saved question shows one answer control, keeps the answer and explanation
-  hidden until it is graded, and holds its result until Next. Tapping an
-  option submits it, and it means the exact option displayed. A question Scry cannot grade stays saved
-  and ungraded.
-- Choosing "I know this already" on an introduction records that observation
-  without scoring a review or skipping later due questions. Reading, knowing
-  and practising stay separate from graded Attempts.
-- Reference for the Concept a question assesses sits behind a visible gate
-  and is recorded as Assistance before it opens. Until then, text and titles
-  drawn from that question's own source are withheld everywhere.
-- From a question or its result the Owner can flag a problem, correct the
-  wording used in future, or stop the question being selected.
-- Editing a saved question keeps the wording, choices, answer and result that
-  were presented before; later occurrences use the new wording. Archiving a
-  question, Concept or Goal stops its future selection and keeps its content
-  and evidence.
+- Everything saved in the earlier concept notebook stays reachable through
+  secondary navigation and in export: Goals, Concepts with their notes and
+  prerequisite links, saved questions with the wording, choices and answers
+  that were presented, and every recorded answer, result, Correction and
+  observation. Nothing is imported, rewritten or deleted.
+- It is history, not practice. Scry does not serve, schedule or grade its
+  questions, and Study never draws on it. A question that was left unanswered
+  is shown as unanswered.
 - A note that quotes supplied material or a web excerpt keeps the exact
   evidence and its provenance. General knowledge is labelled and never
   presented as quoted support.
-- An interrupted question from that notebook stays directly reachable.
 
 ### Retired generation records
 
 - Saved requests, drafts, photos and transcripts, generated candidates,
   their defect reasons, model attribution, raw responses and known or unknown
   usage stay readable and exportable, unchanged.
-- An unsent draft from the retired creation screen stays copyable and is
+- An unsent draft saved from the old creation screen stays copyable and is
   never submitted.
-- Work that was queued, sent, uncertain or paused when generation was retired
-  is never claimed, published or restarted by a read, a timer, a restart, a
-  recovery or the resumption of paused judgment.
+- Generation work saved as queued, sent, uncertain or paused is never
+  claimed, published or restarted by a read, a timer, a restart, a recovery
+  or the resumption of paused judgment.
 
 ### Privacy
 
@@ -609,9 +595,8 @@ horizontal clipping, including with long questions and explanations.
   recoverable or failed, never forgotten. An incompatible saved state stops
   Scry before it serves or changes anything.
 - A complete, integrity-checked backup is taken daily, stored away from the
-  serving machine and kept for 30 days. The targets are
-  at most 24 hours of lost work and 60 minutes to restore; they are targets,
-  not guarantees.
+  serving machine and kept for 30 days. The targets are at most 24 hours of
+  lost work and 60 minutes to restore; they are targets, not guarantees.
 - A backup counts only after its remote copy is read back and verified,
   including every referenced file. An interrupted or failed backup is never
   advertised as usable, stays visibly failed in settings, and leaves study
@@ -634,9 +619,12 @@ horizontal clipping, including with long questions and explanations.
 
 ### Spend
 
-- Paid judgment runs, and an answer leaves Scry to be judged, only where the
-  Owner has enabled it. Elsewhere an answer Scry cannot judge by itself stays
-  saved and ungraded.
+- Jev is paid judgment. It runs, and an answer leaves Scry to be judged,
+  only where the Owner has enabled it and the request carries paid
+  permission.
+- Without Jev, an answer is Good only when it matches the expected content or
+  an authored alias once case and spacing are set aside. Any other answer
+  stays saved and ungraded.
 - Paid judgment shares one allowance: 25 US dollars a week at the provider
   and 3.50 US dollars in any rolling 24 hours in the application.
 - Each paid request reserves against the allowance before it is sent. A
@@ -665,15 +653,13 @@ horizontal clipping, including with long questions and explanations.
 
 ## Quality bars
 
-These are proposed budgets. The Owner approves them through use.
-
 - **Acknowledgement:** a tap or key press shows a pressed or pending response
   within 100 ms at the 95th percentile on the Owner's phone, including with
   300 ms of network delay, without waiting for the network.
 - **Result:** when Scry can judge an answer without a paid call, the
   committed result is visible within 300 ms at the 95th percentile on a
-  connection with at most 100 ms round trip. No budget is claimed for a
-  Jev-backed judgment.
+  connection with at most 100 ms round trip. A Jev-backed judgment has no
+  time bar; the checking state shows until it resolves.
 - **Next:** a prepared Next shows within 150 ms and an existing first review
   within 2 seconds, both at the 95th percentile.
 - **Honest continuity:** at most one speculative next Prompt, never a
