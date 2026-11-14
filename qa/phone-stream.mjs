@@ -130,10 +130,16 @@ export async function phoneWalk(browser,capture) {
    assert.deepEqual((await f.cli(['next'])).practice.attempt,a,'Original Attempt stays immutable.');
    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_corrections/')).length,1);row.criteria.push(5);
    await page.getByRole('button',{name:'Next',exact:true}).click();
-   await page.locator('[data-state="exact-caught-up"]').waitFor();
+   // Nothing is held: opening practice offers one Study action and selects nothing.
+   await page.locator('[data-state="mixed-home"]').waitFor();
    const due=(await f.cli(['due'])).next_due_ms;
-   assert.ok(due>Date.now());assert.ok((await page.locator('main').innerText()).includes('Next due at'));
-   assert.equal(await page.locator('textarea').count(),0);await record('caught-up');row.criteria.push(4);
+   assert.ok(due>Date.now());
+   const idle=await f.rows();assert.equal(idle['meta'].practice.current,null);
+   assert.equal(await page.locator('form[action="/practice/review/start"]').count(),1);
+   assert.equal(await page.locator('textarea').count(),0);
+   await page.reload();await page.locator('[data-state="mixed-home"]').waitFor();
+   assert.deepEqual(await f.rows(),idle,'Opening practice with nothing held writes nothing');
+   await record('caught-up');row.criteria.push(4);
    await f.cli(['next','--card',f.cid]);await page.reload();await page.locator('[data-state="exact-prompt"]').waitFor();
    const before=(await f.record('practice_cards/'+f.cid)).state;
    const attempts=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;

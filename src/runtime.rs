@@ -1074,11 +1074,6 @@ impl DurableObject for LearningSpace {
             {
                 return app_error(e);
             }
-            if path == "/recall"
-                && let Err(e) = crate::study::ensure_stream(&mut app, now(), &random_id()?)
-            {
-                return app_error(e);
-            }
             if app != previous {
                 self.save(&mut app, Some(previous.revision))?;
             }

@@ -14,7 +14,7 @@ straight into the next due Unit. Behavior authority:
 - `study-verdict` gives Good or Again with a Diff of correct, slipped, wrong, missing and extra words, held until Next.
 - `study-assist` records Show me or a cue as an assisted Attempt before showing it.
 - `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 because self-grading is a [non-goal](../SPEC.md#purpose-and-non-goals).
-- `study-caught-up` says when the next Card is due instead of inventing practice.
+- `study-caught-up`: opening practice with nothing held selects nothing. It offers one Study action, or says Rest for now with Browse and the next scheduled review instead of inventing practice.
 - `study-cli` covers the same actions through `scry next`, `answer`, `due`, `history` and `export`.
 - `study-history` reads saved Attempts and appended Corrections from the footer's
   History link, with frozen wording, Diff, Authority and per-Unit schedule effects.
@@ -22,7 +22,7 @@ straight into the next due Unit. Behavior authority:
 ## How to get to it (user POV)
 
 - Phone or desktop: choose Review (`/recall`). Before a Study, Library offers search or supplied
-  text and Learn; afterwards the current Prompt or held result opens directly.
+  text and Learn; afterwards a held Prompt or result opens directly, and with nothing held one Study action takes the next Prompt.
   Review Home is `/`; saved earlier practice remains separate at `/notebook`.
 - Terminal: `scry learn VERSION`, then `scry next`, `scry quiz PROMPT` to leave source study, and `scry answer PROMPT --text-stdin`
   (see the [command reference](../docs/owner-api.md#text-study-and-practice)).

@@ -359,7 +359,7 @@ export async function phoneLibraryRecovery(browser, capture) {
     const longTitle='A deliberately long supplied title keeps every word available without displacing the correction from its learning moment';
     const longWord='counterrevolutionary'.repeat(4), longAnswer='misremembered'.repeat(6);
     const added=await f.cli(['version','add','--title',longTitle,'--kind','text','--name',edition,'--source',source,'--text-file',await f.file('long.txt',longWord+'.')]);
-    await f.cli(['learn',added.result.entity_id]);
+    await f.cli(['learn',added.result.entity_id]);await f.cli(['next']);
     await page.goto(f.origin+'/recall');
     const action=assertStudySource(await page.content(),longWord+'.');
     await page.locator(`form[action="${action.path}"] .primary`).tap();
@@ -387,8 +387,8 @@ export async function phoneLibraryRecovery(browser, capture) {
     await f.cli(['learn',vid]);
     await page.goto(f.origin+versionPath(vid));
     assert.ok((await page.locator('main').innerText()).includes(firstUnit));
-    await page.goto(f.origin+'/recall'); await page.locator('[data-state="exact-prompt"]').waitFor();
     let current=(await f.cli(['next'])).practice;
+    await page.goto(f.origin+'/recall'); await page.locator('[data-state="exact-prompt"]').waitFor();
     const cid=(await f.record('meta')).practice.current.targets[0].card_id;
     for(let i=0;i<6;i++) {await f.cli(['answer',current.prompt.id,'--text-stdin'],firstUnit); current=(await f.cli(['next','--after',current.prompt.id,'--card',cid])).practice;}
     assert.equal(current.prompt.cue_level,'previous_line'); assert.equal(current.prompt.assisted,false);

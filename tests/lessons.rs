@@ -631,7 +631,7 @@ fn chooser_returns_to_generic_exact_study_without_entering_nato_home() {
         .entity_id
         .unwrap();
     mutate(&mut a, "/practice/learn", &[("version_id", &vid)]);
-    study::ensure_stream(&mut a, NOW, "generic-current").unwrap();
+    mutate(&mut a, "/practice/next", &[]);
     let before = a.clone();
     let picker = scry::web::render(&a, "/lessons", &BTreeMap::new(), NOW, None);
     assert!(picker.contains("href=\"/recall\">Back to practice"));
