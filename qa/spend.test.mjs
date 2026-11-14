@@ -25,7 +25,7 @@ test('US-019.7 / #321: spend CLI → built Worker → byte-identical SQLite',asy
  const cli=(args,input='')=>new Promise((done,reject)=>{
   const proc=spawn(resolve('target/debug/scry'),[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});
   let out='',err='';proc.stdout.on('data',d=>out+=d);proc.stderr.on('data',d=>err+=d);proc.on('error',reject);
-  proc.on('exit',code=>{try{assert.ok(!secret||(!out.includes(secret)&&!err.includes(secret)));const value=JSON.parse(out);transcript.push({command:['scry',...args,'--json'].join(' '),exit:code,output:value});done({code,value});}catch(e){reject(e);}});proc.stdin.end(input);
+  proc.on('close',code=>{try{assert.ok(!secret||(!out.includes(secret)&&!err.includes(secret)));const value=JSON.parse(out);transcript.push({command:['scry',...args,'--json'].join(' '),exit:code,output:value});done({code,value});}catch(e){reject(e);}});proc.stdin.on('error',error=>{if(error.code!=='EPIPE')reject(error);});proc.stdin.end(input);
  });
  const files=async()=>{
   const result=[];

@@ -35,6 +35,7 @@ const cli=(args,input='')=>new Promise((ok,fail)=>{
  const child=spawn(cliPath,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});
  let out='',err='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>err+=d);child.on('error',fail);
  child.on('close',code=>{if(secret&&(out+err).includes(secret))return fail(Error('CLI echoed the token'));let value=null;try{value=JSON.parse(out);}catch{}ok({code,value,err:err.trim().slice(0,160)});});
+ child.stdin.on('error',error=>{if(error.code!=='EPIPE')fail(error);});
  child.stdin.end(input);
 });
 const transcript=[];

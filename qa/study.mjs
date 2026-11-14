@@ -70,7 +70,7 @@ export async function studyJourney({seedHistorical=true}={}){
  const state=async()=>Object.fromEntries((await rows()).map(r=>[r.key,JSON.parse(r.value)]));
  const req=(path,payload,token=secret)=>runtime.worker.fetch(origin+path,{...(payload?{method:'POST',body:JSON.stringify(payload)}:{}),headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'}});
  const cli=(args,input='')=>new Promise((done,reject)=>{
-  const p=spawn(resolve(process.env.SCRY_STUDY_CLI||'target/debug/scry'),[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',reject);p.on('exit',code=>{try{
+  const p=spawn(resolve(process.env.SCRY_STUDY_CLI||'target/debug/scry'),[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});let out='',err='';p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>err+=d);p.on('error',reject);p.on('close',code=>{try{
    assert.ok(!secret||(!out.includes(secret)&&!err.includes(secret)));const value=JSON.parse(out);
    const command=['scry',...args.map(a=>a.startsWith(temp)?a.replace(temp,'<fixture>'):a),'--json'].join(' ');
    fullTranscript.push({command,exit:code,output:value});

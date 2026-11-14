@@ -32,7 +32,7 @@ export async function phoneFixture({port=0,legacy=false}={}) {
  const secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await minted.text())[1];
  const cli=(args,input='',login=config)=>new Promise((done,reject)=>{
   const child=spawn(resolve(process.env.SCRY_STUDY_CLI||'target/debug/scry'),[...args,'--json','--config',login],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});let output='',error='';
-  child.stdout.on('data',s=>output+=s);child.stderr.on('data',s=>error+=s);child.on('error',reject);child.on('exit',code=>{try{assert.equal(code,0,'Compiled CLI refused synthetic operation.');assert.ok(!output.includes(secret)&&!error.includes(secret));done(JSON.parse(output));}catch(e){reject(e);}});child.stdin.end(input);
+  child.stdout.on('data',s=>output+=s);child.stderr.on('data',s=>error+=s);child.on('error',reject);child.on('close',code=>{try{assert.equal(code,0,'Compiled CLI refused synthetic operation.');assert.ok(!output.includes(secret)&&!error.includes(secret));done(JSON.parse(output));}catch(e){reject(e);}});child.stdin.on('error',error=>{if(error.code!=='EPIPE')reject(error);});child.stdin.end(input);
  });
  await cli(['login','--url',origin,'--token-stdin'],secret+'\n');
  const file=join(temp,'text.txt'),sections=join(temp,'sections.json');await writeFile(file,previousText+phoneText);await writeFile(sections,JSON.stringify([{heading:'Synthetic first article',units:[previousText,phoneText]}]));

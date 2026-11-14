@@ -55,14 +55,20 @@ async function fixture(t, {configExists = true} = {}) {
     else unsolicited.push(message);
   });
   const exit = once(child,'exit');
+  // The server reads frames until EOF, so a failed write means it stopped early.
+  // That fails the request in flight and the cleanup assertion below; it is
+  // never ignored and never an uncaught exception.
+  let stdinError = null, stop;
+  const stopped = new Promise((_,reject) => { stop = reject; }); stopped.catch(() => {});
+  child.stdin.on('error', error => { stdinError ??= error; stop(Error('MCP stopped reading stdin.',{cause:error})); });
   const send = message => child.stdin.write(JSON.stringify(message)+'\n');
-  const request = (method,params={},id=++serial) => new Promise(resolve => {
+  const request = (method,params={},id=++serial) => Promise.race([stopped,new Promise(resolve => {
     waiting.set(id,resolve); send({jsonrpc:'2.0',id,method,params});
-  });
+  })]);
   const call = (name,args={}) => request('tools/call',{name,arguments:args});
   const raw = bytes => {
     const response = unsolicited.length ? Promise.resolve(unsolicited.shift()) : new Promise(resolve => rawWaiters.push(resolve));
-    child.stdin.write(bytes); return response;
+    child.stdin.write(bytes); return Promise.race([stopped,response]);
   };
   const initialize = async (version='2025-11-25') => {
     const response = await request('initialize',{protocolVersion:version,capabilities:{},clientInfo:{name:'scry-wire-proof',version:'1'}});
@@ -77,6 +83,7 @@ async function fixture(t, {configExists = true} = {}) {
     await rm(directory,{recursive:true,force:true});
     assert.ok(ended,'MCP exits after stdin EOF.');
     assert.equal(ended?.[0],0);
+    assert.equal(stdinError,null,'MCP accepted every frame until stdin EOF.');
     assert.equal(stderr,'','No runtime logging, payloads or credentials on stderr.');
     assert.equal(waiting.size,0,'Every request completed.');
   });
@@ -329,7 +336,10 @@ test('Extracted shared client preserves compiled CLI login, errors and one trans
     const child = spawn(cliBinary,['--config',f.config,'--json',...args],{env:{PATH:process.env.PATH,HOME:f.directory},stdio:['pipe','pipe','pipe']});
     let stdout='',stderr='';
     child.stdout.on('data',part=>stdout+=part); child.stderr.on('data',part=>stderr+=part);
-    const exit=once(child,'exit'); child.stdin.end(input); const [code]=await exit;
+    // A refused command can exit without reading stdin; exit code and output below decide.
+    let stdinError=null; child.stdin.on('error',error=>{if(error.code!=='EPIPE')stdinError=error;});
+    const exit=once(child,'close'); child.stdin.end(input); const [code]=await exit;
+    assert.ifError(stdinError);
     assert.ok(!stdout.includes(secret) && !stderr.includes(secret),'CLI never reflects the Owner credential.');
     assert.ok(!stdout.includes(privateAnswer) && !stderr.includes(privateAnswer),'CLI errors never reflect the answer.');
     assert.equal(stderr,'');
