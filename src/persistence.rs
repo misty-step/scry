@@ -98,6 +98,15 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
                 result.insert(format!("practice_{field}/{id}"), bounded_json(&record)?);
             }
         }
+        // Present only in a judged notebook. The key leaves the metadata row,
+        // so a reader older than paid judgment refuses these rows by name.
+        if let Some(Value::Object(checks)) =
+            practice.as_object_mut().and_then(|p| p.remove("checks"))
+        {
+            for (id, record) in checks {
+                result.insert(format!("practice_checks/{id}"), bounded_json(&record)?);
+            }
+        }
     }
     if let Some(library) = object.remove("library") {
         for field in ["works", "versions", "relations"] {
@@ -156,6 +165,9 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
     if app.practice.answer_checkpoint.is_some() {
         result.insert("checkpoint_compatibility/v1".into(), "1".into());
     }
+    if judged(app) {
+        result.insert(JUDGMENT_MARKER.into(), "1".into());
+    }
     object.remove("owner_tokens");
     object.remove("study_version_refs");
     result.insert("meta".into(), bounded_json(&value)?);
@@ -172,8 +184,13 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
     }
     value["study_version_refs"] = serde_json::json!({});
     value["library"] = serde_json::json!({"works":{},"versions":{},"relations":{}});
+    if rows.keys().any(|key| key.starts_with("practice_checks/"))
+        && let Some(practice) = value.get_mut("practice").and_then(Value::as_object_mut)
+    {
+        practice.insert("checks".into(), serde_json::json!({}));
+    }
     for (key, data) in rows {
-        if key == "meta" || key == "checkpoint_compatibility/v1" {
+        if key == "meta" || key == "checkpoint_compatibility/v1" || key == JUDGMENT_MARKER {
             continue;
         }
         let (field, id) = key
@@ -293,6 +310,12 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             "Checkpoint compatibility marker is invalid.",
         ));
     }
+    if rows.get(JUDGMENT_MARKER).map(String::as_str) != judged(&app).then_some("1") {
+        return Err(AppError::new(
+            500,
+            "Judgment compatibility marker is invalid.",
+        ));
+    }
     if app.schema != SCHEMA {
         return Err(AppError::new(500, "A compatible Scry build is required."));
     }
@@ -312,7 +335,28 @@ pub fn sha256(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+const JUDGMENT_MARKER: &str = "judgment_compatibility/v1";
+const JUDGED_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-study-judged-v4";
+
+/// Whether this notebook holds anything of paid judgment: the Owner's switch,
+/// a Check, an Attempt left for Jev, or a receipt of either action. Only then
+/// are its rows and archive named so that an older reader refuses them whole.
+pub fn judged(app: &App) -> bool {
+    app.preferences.paid_judgment
+        || !app.practice.checks.is_empty()
+        || app.practice.attempts.values().any(|a| a.judgment.is_some())
+        || app.operations.values().any(|r| {
+            matches!(
+                r.path.as_deref(),
+                Some("/practice/check" | "/settings/judgment")
+            )
+        })
+}
+
 fn archive_format(app: &App) -> &'static str {
+    if judged(app) {
+        return JUDGED_ARCHIVE_FORMAT;
+    }
     if app.practice.answer_checkpoint.is_some() {
         return "scry-rust-durable-sqlite-checkpoint-v1";
     }

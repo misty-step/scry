@@ -89,13 +89,26 @@ pub fn mutate(
     now: i64,
     seed: &str,
 ) -> AppResult<MutationResult> {
+    mutate_browser(app, path, fields, now, seed, false)
+}
+
+/// The signed-in Owner's request where the serving Scry may reach Jev.
+/// `mutate` is this with `jev` false.
+pub fn mutate_browser(
+    app: &mut App,
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+    jev: bool,
+) -> AppResult<MutationResult> {
     if field(fields, "csrf") != app.csrf || app.csrf.len() < 24 {
         return Err(AppError::new(
             403,
             "Your session needs to be refreshed before saving.",
         ));
     }
-    mutate_as(app, path, fields, now, seed, MutationActor::Browser)
+    mutate_judged(app, path, fields, now, seed, MutationActor::Browser, jev)
 }
 
 pub fn mutate_as(
@@ -105,6 +118,22 @@ pub fn mutate_as(
     now: i64,
     seed: &str,
     actor: MutationActor<'_>,
+) -> AppResult<MutationResult> {
+    mutate_judged(app, path, fields, now, seed, actor, false)
+}
+
+/// `jev` says whether the serving Scry can reach Jev at all. A memorization
+/// answer is left for Jev only where that holds, the Owner has turned paid
+/// judgment on and the actor carries paid permission. Wherever `jev` is false,
+/// every answer is graded exactly as it was before paid judgment existed.
+pub fn mutate_judged(
+    app: &mut App,
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+    actor: MutationActor<'_>,
+    jev: bool,
 ) -> AppResult<MutationResult> {
     let operation = field(fields, "operation_id");
     if !(16..=128).contains(&operation.len())
@@ -135,7 +164,11 @@ pub fn mutate_as(
         return Err(owner_token::paid_refusal());
     }
     let mut next = app.clone();
-    let response = apply(&mut next, path, fields, now, seed)?;
+    let judging = crate::study::Judging {
+        capable: jev,
+        paid: actor.paid(),
+    };
+    let response = apply(&mut next, path, fields, now, seed, judging)?;
     if let Some(checkpoint) = &mut next.practice.answer_checkpoint
         && checkpoint.draft.as_ref().is_some_and(|draft| {
             next.practice.current.as_ref().is_none_or(|current| {
@@ -296,9 +329,10 @@ fn apply(
     fields: &BTreeMap<String, String>,
     now: i64,
     seed: &str,
+    judging: crate::study::Judging,
 ) -> AppResult<MutationResult> {
     if path.starts_with("/practice/") {
-        return crate::study::mutate(app, path, fields, now, seed);
+        return crate::study::mutate_judged(app, path, fields, now, seed, judging);
     }
     if path.starts_with("/library/") {
         return crate::library::mutate(app, path, fields, seed);
@@ -1271,6 +1305,12 @@ pub fn authorize_work(app: &App, work_id: &str, now: i64) -> AppResult<()> {
             app.assessments
                 .get(work_id)
                 .and_then(|a| a.acting_token.as_ref())
+        })
+        .or_else(|| {
+            app.practice
+                .checks
+                .get(work_id)
+                .and_then(|c| c.acting_token.as_ref())
         });
     if let Some(id) = token
         && app
@@ -1553,6 +1593,125 @@ fn claim_work_inner(
     }))
 }
 
+/// Claim the oldest queued Check of a memorization answer, or close it unsent.
+/// A claimed Check has its reservation and lease saved before anything leaves
+/// Scry. Nothing calls this until a sender for `check` work exists.
+pub fn claim_check_work(
+    app: &mut App,
+    now: i64,
+    lease: &str,
+    config: &WorkConfig,
+) -> AppResult<Option<Work>> {
+    use crate::study::{CheckStatus, Status};
+    if app.restored_paused {
+        return Ok(None);
+    }
+    recover_inner(app, now, false);
+    let Some(check) = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| c.status == CheckStatus::Queued)
+        .min_by_key(|c| (c.created_ms, c.sequence, &c.id))
+        .cloned()
+    else {
+        return Ok(None);
+    };
+    let attempt = app
+        .practice
+        .attempts
+        .get(&check.attempt_id)
+        .ok_or_else(AppError::conflict)?;
+    let recall = crate::study::recall_input(app, &attempt.prompt, &attempt.raw_answer);
+    let closed = if attempt
+        .judgment
+        .as_ref()
+        .is_none_or(|j| j.decided.is_some())
+    {
+        Some((
+            CheckStatus::Superseded,
+            "This answer already has its Verdict.".to_string(),
+        ))
+    } else if app
+        .practice
+        .studies
+        .get(&attempt.prompt.study_id)
+        .is_none_or(|s| s.status == Status::Dropped)
+    {
+        Some((
+            CheckStatus::Superseded,
+            "This Study was dropped before the check was sent.".into(),
+        ))
+    } else if !app.preferences.paid_judgment {
+        Some((
+            CheckStatus::Refused,
+            "Paid judgment was turned off before the check was sent.".into(),
+        ))
+    } else if !config.jev {
+        Some((
+            CheckStatus::Refused,
+            "Paid judgment is not available here. Nothing was sent.".into(),
+        ))
+    } else if recall.is_err() {
+        Some((
+            CheckStatus::Refused,
+            "This answer can no longer be sent. Nothing was sent.".into(),
+        ))
+    } else {
+        None
+    };
+    let request = recall
+        .ok()
+        .map(|input| generation::recall_request(&input, &config.jev_model));
+    let closed = closed.or_else(|| {
+        reserve(
+            app,
+            &check.id,
+            lease,
+            &config.jev_model,
+            "grade.recall",
+            now,
+        )
+        .err()
+        .map(|e| (CheckStatus::Refused, e.message))
+    });
+    app.revision += 1;
+    if let Some((status, reason)) = closed {
+        close_check(app, &check.id, status, &reason);
+        return Ok(None);
+    }
+    let sent = app
+        .practice
+        .checks
+        .get_mut(&check.id)
+        .expect("claimed Check");
+    sent.status = CheckStatus::Sent;
+    sent.lease = Some(lease.into());
+    sent.started_ms = Some(now);
+    Ok(Some(Work {
+        id: check.id,
+        lease: lease.into(),
+        kind: CHECK_WORK.into(),
+        request: request.expect("an open Check has its request"),
+        photo_key: None,
+    }))
+}
+/// The work kind of a memorization answer's Check.
+pub const CHECK_WORK: &str = "check";
+/// End a Check without a Verdict. The Attempt and its Cards are untouched.
+fn close_check(app: &mut App, id: &str, status: crate::study::CheckStatus, reason: &str) {
+    if let Some(check) = app.practice.checks.get_mut(id) {
+        check.status = status;
+        check.reason = Some(reason.into());
+    }
+}
+/// The sent Check this work belongs to, if it still awaits this lease.
+fn sent_check<'a>(app: &'a App, work: &Work) -> Option<&'a crate::study::Check> {
+    app.practice.checks.get(&work.id).filter(|c| {
+        c.status == crate::study::CheckStatus::Sent && c.lease.as_deref() == Some(&work.lease)
+    })
+}
+
 fn assessment_failed(app: &mut App, id: &str, message: &str, unknown: bool, now: i64) {
     if let Some(a) = app.assessments.get_mut(id) {
         a.status = if unknown { "unknown" } else { "failed" }.into();
@@ -1626,6 +1785,25 @@ fn recover_inner(app: &mut App, now: i64, legacy_generation: bool) -> bool {
         );
         changed = true;
     }
+    let checks: Vec<_> = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| {
+            c.status == crate::study::CheckStatus::Sent
+                && c.started_ms.is_some_and(|t| now - t >= 90_000)
+        })
+        .map(|c| c.id.clone())
+        .collect();
+    for c in checks {
+        close_check(
+            app,
+            &c,
+            crate::study::CheckStatus::Unknown,
+            "The check stopped before its outcome was confirmed. Its reserved usage is retained. Your answer remains saved and not graded.",
+        );
+        changed = true;
+    }
     if changed {
         app.revision += 1
     }
@@ -1664,7 +1842,22 @@ pub fn finish_work(
             end -= 1;
         }
         let bounded = raw[..end].to_owned();
-        if work.kind == "assessment" {
+        if work.kind == CHECK_WORK {
+            // A response to a Check no longer waiting on this lease is ledgered
+            // only. One that fails a fence or cannot be read closes the Check.
+            if sent_check(app, work).is_some() {
+                close_check(
+                    app,
+                    &work.id,
+                    if error.status == 409 {
+                        crate::study::CheckStatus::Superseded
+                    } else {
+                        crate::study::CheckStatus::Failed
+                    },
+                    &error.message,
+                );
+            }
+        } else if work.kind == "assessment" {
             if let Some(a) = app
                 .assessments
                 .get_mut(&work.id)
@@ -1804,7 +1997,22 @@ pub fn fail_received_work(
         end -= 1;
     }
     let bounded = raw[..end].to_owned();
-    if work.kind == "assessment" {
+    if work.kind == CHECK_WORK {
+        // The raw response lives in the ledger alone.
+        next.practice
+            .checks
+            .get(&work.id)
+            .filter(|c| c.lease.as_deref() == Some(work.lease.as_str()))
+            .ok_or_else(AppError::conflict)?;
+        if sent_check(&next, work).is_some() {
+            close_check(
+                &mut next,
+                &work.id,
+                crate::study::CheckStatus::Failed,
+                message,
+            );
+        }
+    } else if work.kind == "assessment" {
         let assessment = next
             .assessments
             .get_mut(&work.id)
@@ -1862,7 +2070,54 @@ fn finish_work_inner(
             "The response exceeded the safe size limit. Its paid outcome was saved.",
         ));
     }
-    if work.kind == "assessment" {
+    if work.kind == CHECK_WORK {
+        // Fences: this lease still awaits its response, the answer has no
+        // Verdict, its Version is as it was answered and its Study is kept.
+        let check = sent_check(&next, work).ok_or_else(AppError::conflict)?;
+        let attempt = next
+            .practice
+            .attempts
+            .get(&check.attempt_id)
+            .ok_or_else(AppError::conflict)?;
+        if attempt
+            .judgment
+            .as_ref()
+            .is_none_or(|j| j.decided.is_some())
+            || next
+                .library
+                .versions
+                .get(&attempt.version_id)
+                .is_none_or(|v| v.normalized_hash != attempt.version_hash)
+            || next
+                .practice
+                .studies
+                .get(&attempt.prompt.study_id)
+                .is_none_or(|s| s.status == crate::study::Status::Dropped)
+        {
+            return Err(AppError::conflict());
+        }
+        match generation::short_decision(&raw) {
+            Ok(decision) if decision.applied => crate::study::decide(
+                &mut next,
+                &work.id,
+                decision.outcome == "correct",
+                &model,
+                now,
+            )?,
+            Ok(_) => close_check(
+                &mut next,
+                &work.id,
+                crate::study::CheckStatus::Unsure,
+                "Jev could not decide this answer. It stays saved and not graded.",
+            ),
+            Err(e) => close_check(
+                &mut next,
+                &work.id,
+                crate::study::CheckStatus::Failed,
+                &e.message,
+            ),
+        }
+    } else if work.kind == "assessment" {
         let a = next
             .assessments
             .get(&work.id)
@@ -2015,7 +2270,19 @@ pub fn fail_work(
     unknown: bool,
     _now: i64,
 ) -> AppResult<()> {
-    if work.kind == "assessment" {
+    if work.kind == CHECK_WORK {
+        sent_check(app, work).ok_or_else(AppError::conflict)?;
+        close_check(
+            app,
+            &work.id,
+            if unknown {
+                crate::study::CheckStatus::Unknown
+            } else {
+                crate::study::CheckStatus::Failed
+            },
+            message,
+        );
+    } else if work.kind == "assessment" {
         let a = app
             .assessments
             .get(&work.id)
@@ -2435,6 +2702,12 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
             app.assessments
                 .values()
                 .filter_map(|a| a.acting_token.as_ref()),
+        )
+        .chain(
+            app.practice
+                .checks
+                .values()
+                .filter_map(|c| c.acting_token.as_ref()),
         )
     {
         if !app.owner_tokens.contains_key(id) {
@@ -2935,7 +3208,9 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
                 || spend.id.starts_with("legacy-import-critic-spend-"))
             && spend.cost_micros.is_none()
             && spend.reserved_micros >= RESERVATION;
-        if (!app.jobs.contains_key(&spend.work_id) && !app.assessments.contains_key(&spend.work_id))
+        if (!app.jobs.contains_key(&spend.work_id)
+            && !app.assessments.contains_key(&spend.work_id)
+            && !app.practice.checks.contains_key(&spend.work_id))
             || (spend.reserved_micros != RESERVATION && !imported_reservation)
             || spend.model.as_ref().is_some_and(|model| model.len() > 256)
             || spend
@@ -3545,6 +3820,23 @@ pub fn pause_for_restore(app: &mut App, now: i64) -> AppResult<()> {
         if !sent {
             app.assessments.get_mut(&aid).unwrap().status = "paused".into();
         }
+    }
+    // A queued Check is never sent from a restored notebook; a sent one has an
+    // uncertain paid outcome. Either leaves its answer saved and not graded.
+    for check in app.practice.checks.values_mut() {
+        let (status, reason) = match check.status {
+            crate::study::CheckStatus::Queued => (
+                crate::study::CheckStatus::Refused,
+                "The check was not sent from this restored notebook. Your answer is saved and not graded.",
+            ),
+            crate::study::CheckStatus::Sent => (
+                crate::study::CheckStatus::Unknown,
+                "Restored check has an uncertain paid outcome. Its usage is retained.",
+            ),
+            _ => continue,
+        };
+        check.status = status;
+        check.reason = Some(reason.into());
     }
     app.backup.error = Some(format!(
         "Restored into an isolated space at {now}; external work remains paused."
