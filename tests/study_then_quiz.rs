@@ -966,6 +966,91 @@ fn a_stored_item_drilled_list_answers_its_held_item_once_then_is_recalled_whole(
 }
 
 #[test]
+fn a_waiting_list_has_nothing_due_until_it_is_resumed() {
+    let (saved, mut o) = stored("ladder", "held_list_item");
+    let held = o.held();
+    let sid = held.prompt.study_id.clone();
+    let item = held.targets[0].card_id.clone();
+    answer_as_before(&saved, &mut o);
+    let due = |o: &Owner| -> Vec<String> {
+        serde_json::from_value(study::due(&o.app, o.now)["due"].clone()).unwrap()
+    };
+    let active = study::due(&o.app, o.now);
+    assert!(due(&o).contains(&item), "An active list is served whole");
+
+    // Paused with one item of five introduced: Study serves nothing from it,
+    // so nothing of it is due. Other Studies keep what they had.
+    o.act("/practice/pause", &[("study_id", &sid)]);
+    let rest = o
+        .act(
+            "/practice/next",
+            &[("after", &held.prompt.id), ("study_id", &sid)],
+        )
+        .data
+        .unwrap();
+    assert!(rest["prompt"].is_null());
+    let waiting = study::due(&o.app, o.now);
+    assert_eq!(rest["due"], waiting, "Rest reports the same due work");
+    assert!(!due(&o).contains(&item));
+    let others = serde_json::from_value::<Vec<String>>(active["due"].clone())
+        .unwrap()
+        .into_iter()
+        .filter(|id| id != &item)
+        .collect::<Vec<_>>();
+    assert_eq!(due(&o), others);
+    let other_due = o
+        .app
+        .practice
+        .cards
+        .values()
+        .filter(|c| c.study_id != sid)
+        .map(|c| c.state.schedule.due_ms)
+        .min();
+    assert_eq!(waiting["next_due_ms"], json!(other_due));
+    assert_eq!(
+        waiting["cards"], active["cards"],
+        "Its Card is still listed"
+    );
+    let mut across = Owner {
+        app: o.app.clone(),
+        n: o.n,
+        now: o.now,
+    };
+    let all = across.act("/practice/next", &[]).data.unwrap();
+    assert_ne!(
+        all["prompt"]["study_id"],
+        json!(sid),
+        "Next across Studies does not serve the waiting list either"
+    );
+
+    // Resumed, the list is due again and is served whole.
+    o.act("/practice/resume", &[("study_id", &sid)]);
+    assert!(due(&o).contains(&item));
+    o.act("/practice/next", &[("study_id", &sid)]);
+    assert_eq!(o.held().prompt.scope, Scope::Whole);
+    o.try_from_memory();
+    let attempt = o.answer_unaided();
+    assert_eq!(attempt.effects.len(), 5);
+
+    // A fully introduced list keeps its due reviews while paused.
+    o.act("/practice/pause", &[("study_id", &sid)]);
+    o.now += 400 * DAY_MS;
+    let list = attempt
+        .effects
+        .iter()
+        .map(|e| e.card_id.clone())
+        .collect::<Vec<_>>();
+    let listed = due(&o);
+    assert!(list.iter().all(|id| listed.contains(id)));
+    o.act(
+        "/practice/next",
+        &[("after", &attempt.prompt.id), ("study_id", &sid)],
+    );
+    assert_eq!(o.held().prompt.scope, Scope::Whole);
+    assert_eq!(o.held().phase, Some(StudyPhase::Quiz));
+}
+
+#[test]
 fn stored_quiz_first_prompts_stay_answerable_and_new_material_is_studied() {
     // A mapping pair held as a Quiz by the earlier API is answered as before.
     let (saved, mut o) = stored("ladder", "held_mapping_key");

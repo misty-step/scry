@@ -398,8 +398,9 @@ horizontal clipping, including with long questions and explanations.
 - A phrase Quiz names the Work. The previous phrase opens as context only
   when the Owner asks, without changing the draft, the Prompt or what counts
   as help.
-- A Recitation is prompted from its heading or title alone. It has one
-  Verdict for the whole and one for each Unit, consistent with each other.
+- A Recitation is offered only over phrases that have all been introduced, and
+  is prompted from its heading or title alone. It has one Verdict for the
+  whole and one for each Unit, consistent with each other.
 - Supplied Latin starter wording is unaccented. A named English Version is
   never substituted for another.
 
@@ -412,6 +413,9 @@ horizontal clipping, including with long questions and explanations.
 - The result reports missing, repeated and misplaced items. One omission does
   not cascade across the later correctly ordered items. A duplicate or a
   transposition cannot earn a correct whole result.
+- A list is recalled only when all its items have been introduced. A paused
+  Study does not finish introducing one, so such a list waits until the Study
+  is resumed.
 - Each item keeps its own Card. Only items that are genuinely due change
   their schedule; the rest count as optional early practice.
 
