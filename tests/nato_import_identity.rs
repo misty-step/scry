@@ -105,6 +105,15 @@ fn normalized_owner_import_dedupes_and_starts_focused_and_lessons_without_rewrit
             json!({"study_id":study}),
         )
         .unwrap();
+        // The supplied pair is studied before the agent's first answer.
+        let source = a.practice.current.as_ref().unwrap().prompt.id.clone();
+        api_mutate(
+            &mut a,
+            "/api/v1/quiz",
+            "nato-import-quiz",
+            json!({"prompt_id":source}),
+        )
+        .unwrap();
         let prompt = a.practice.current.as_ref().unwrap().prompt.clone();
         api_mutate(
             &mut a,

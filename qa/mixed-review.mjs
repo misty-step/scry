@@ -20,7 +20,9 @@ export async function mixedReviewFixture(){
   for(const id of ['nato','rosary-joyful','rosary-sorrowful']){
    await post(f,'/practice/lesson/start',lessonFields(await f.get('/lessons'),id));
    const rows=await f.rows(),p=current(rows);studies.push(p.prompt.study_id);
-   await post(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:'A deliberate synthetic miss'});
+   // A new letter or Rosary set is studied first; the miss answers its Quiz.
+   assertStudySource(await f.get('/'),expected(rows,p));
+   await post(f,'/practice/answer',{...nativeFields(await enterMemory(f),'/practice/answer'),answer:'A deliberate synthetic miss'});
   }
   await post(f,'/practice/lesson/start',lessonFields(await f.get('/lessons'),'st-michael-en'));
   await enterMemory(f);const guided=current(await f.rows());await post(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:expected(await f.rows(),guided)});
@@ -140,7 +142,11 @@ export async function continuousStudyWalk(browser,capture){
    row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-browse.png`));
    await library.click();await page.locator('h1').first().waitFor();assert.equal(new URL(page.url()).pathname,'/library');assert.deepEqual(await f.rows(),before,'Browsing to the Library writes nothing');
    await page.goto(f.origin+'/');await home.waitFor();assert.equal(await home.locator('.lesson-picker').getAttribute('open'),null);
-   await home.getByRole('button',{name:'Study',exact:true}).click();await page.locator('#answer').waitFor();
+   // Study's first subject is new: it is shown as source study before its Quiz.
+   await home.getByRole('button',{name:'Study',exact:true}).click();await page.locator('[data-study-phase="study"]').waitFor();
+   const studied=await f.rows();assert.equal(current(studied).phase,'study');assert.equal(await page.locator('#answer,form[action="/practice/answer"]').count(),0);assert.ok((await page.locator('[data-study-phase="study"]').innerText()).includes(expected(studied,current(studied))));
+   row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-first-study.png`));
+   await enterMemoryPage(page);await page.locator('#answer').waitFor();
    const first=current(await f.rows());await page.locator('#answer').fill('My held draft');await page.locator('.lesson-picker>summary').click();assert.equal(await page.locator('#answer').inputValue(),'My held draft');await page.locator('.lesson-picker>summary').click();assert.deepEqual(current(await f.rows()),first);
    let retried=false;
    for(let n=0;n<10;n++){

@@ -8,6 +8,9 @@ export async function autosaveBrowserWalk(browser,capture) {
   try {
     const page=await context.newPage();page.setDefaultTimeout(15000);
     await page.goto(f.origin+'/?practice=nato');await page.getByRole('button',{name:'Start practice'}).click();
+    // The first letter is studied first; drafts belong to its Quiz.
+    await page.locator('[data-study-phase="study"]').waitFor();assert.equal(await page.locator('#answer').count(),0);
+    await page.locator('form[action="/practice/quiz"] button').click();
     const answer=page.locator('#answer');await answer.waitFor();
     let release,observed;const waiting=new Promise(r=>release=r),started=new Promise(r=>observed=r);let saves=0;
     await page.route('**/practice/draft',async route=>{saves++;if(saves===1){observed();await waiting;}await route.continue();});

@@ -364,6 +364,19 @@ impl View<'_> {
                 && self.attempted_unaided(&c.id)
         })
     }
+    /// A mapping pair's authored question: its key, in study and in Quiz alike.
+    fn mapping_question(&self, prompt: &crate::study::Prompt) -> Option<&str> {
+        let v = self.app.library.versions.get(&prompt.version_id)?;
+        if v.kind != crate::library::Kind::KeyedMapping {
+            return None;
+        }
+        v.sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .find(|u| prompt.unit_ids.first() == Some(&u.id))
+            .and_then(|u| crate::library::mapping_pair(&u.text))
+            .map(|(key, _)| key)
+    }
     /// Context for a phrase Quiz: closed until asked for, and never the answer.
     fn previous_phrase(&self, p: &crate::study::Presentation) -> String {
         let v = &self.app.library.versions[&p.prompt.version_id];
@@ -776,11 +789,12 @@ impl View<'_> {
         let readiness = crate::lessons::catalog().into_iter().find(|l| {
             l.id.starts_with("baby-") && l.matches(&self.app.library.versions[&prompt.version_id])
         });
+        let question = self.mapping_question(prompt);
         let mut out = format!(
             "<section class=\"study exact-study{}\" data-state=\"{state}\" data-prompt-id=\"{}\">",
             if readiness.is_some() {
                 " mapping-study readiness-study"
-            } else if prompt.cue_level == crate::study::Cue::MappingKey {
+            } else if question.is_some() {
                 " mapping-study"
             } else {
                 ""
@@ -793,15 +807,22 @@ impl View<'_> {
         if let Some(a) = attempt {
             out.push_str(&self.exact_result(a));
         } else if p.source_visible() {
-            let _ = write!(
-                out,
-                "<h1>{}</h1>",
-                escape(if prompt.cue_level == crate::study::Cue::MappingKey {
-                    &prompt.cue
-                } else {
-                    crate::study::visible_prompt_title(prompt)
-                })
-            );
+            // A pair is studied under its authored question, safety cue included,
+            // set as its Quiz sets it.
+            if let (Some(lesson), Some(question)) = (&readiness, question) {
+                let _ = write!(
+                    out,
+                    "<p class=\"eyebrow\">{}</p><div class=\"exact-cue\"><h1 class=\"reading\">{}</h1></div>",
+                    escape(&lesson.input.title),
+                    escape(question)
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    "<h1>{}</h1>",
+                    escape(question.unwrap_or_else(|| crate::study::visible_prompt_title(prompt)))
+                );
+            }
             out.push_str(&self.source_study(p));
         } else {
             out.push_str("<span data-study-phase=\"quiz\" hidden></span>");
@@ -2093,13 +2114,7 @@ impl View<'_> {
                 }
             } else {
                 out.push_str(&self.previous_phrase(p));
-                let cue_label = match p.prompt.cue_level {
-                    Cue::Read => "Study",
-                    Cue::FirstLetters => "Type this phrase using the initials",
-                    Cue::FirstLetter => "Type this phrase using the first initial",
-                    _ => "Type this phrase from memory",
-                };
-                let _ = write!(out, "<p class=\"lesson-instruction\">{cue_label}</p>");
+                out.push_str("<p class=\"lesson-instruction\">Type this phrase from memory</p>");
                 if !p.prompt.cue.is_empty() && p.prompt.cue_level != Cue::WholeTitle {
                     let _ = write!(out, "<p class=\"lesson-cue\">{}</p>", escape(&p.prompt.cue));
                 }
@@ -2113,9 +2128,7 @@ impl View<'_> {
                 out.push_str("<p class=\"lesson-note\">Guided · with help</p>");
             }
             out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus>\n{}</textarea><button class=\"button primary\">Check answer</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""},escape(self.saved_answer(&p.prompt.id)) )));
-            if (!p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz))
-                && !matches!(p.prompt.cue_level, Cue::Read)
-            {
+            if !p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz) {
                 out.push_str(&self.practice_form(
                     "reveal",
                     "lesson-reveal",
@@ -2491,12 +2504,13 @@ impl View<'_> {
             } else {
                 "exact-prompt"
             };
+            let letter = self.mapping_question(prompt).unwrap_or(&prompt.cue);
             let _ = write!(
                 out,
                 "<div class=\"nato-stage\" data-state=\"{state}\" data-prompt-id=\"{}\"><div class=\"nato-cue-panel\"><h1 class=\"nato-letter\" id=\"nato-letter\" aria-label=\"Letter {}\">{}</h1></div><div class=\"nato-response-panel\">",
                 escape(&prompt.id),
-                escape(&prompt.cue),
-                escape(&prompt.cue)
+                escape(letter),
+                escape(letter)
             );
             if let Some(a) = attempt {
                 let good = a.grade.verdict == crate::grading::Verdict::Good;

@@ -259,21 +259,16 @@ fn phone_library_never_renders_protected_text_before_durable_help() {
     let cid = app.practice.current.as_ref().unwrap().targets[0]
         .card_id
         .clone();
-    for i in 0..6 {
-        let pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
-        action(
-            &mut app,
-            "/practice/answer",
-            &format!("phone-library-fade-answer-{i}"),
-            &[("prompt_id", &pid), ("answer", TEXT)],
-        );
-        action(
-            &mut app,
-            "/practice/next",
-            &format!("phone-library-fade-next-{i}"),
-            &[("after", &pid), ("card_id", &cid)],
-        );
-    }
+    // The supplied phrase is studied in the open; its Quiz is protected recall.
+    assert!(!app.practice.protected());
+    assert!(page(&app, &format!("/library/versions/{vid}")).contains(TEXT));
+    let source = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    action(
+        &mut app,
+        "/practice/quiz",
+        "phone-library-quiz-0001",
+        &[("prompt_id", &source)],
+    );
     assert!(app.practice.protected());
     let before = app.clone();
     let detail = format!("/library/versions/{vid}");
@@ -311,6 +306,14 @@ fn phone_library_never_renders_protected_text_before_durable_help() {
         app.practice.cards[&cid].state,
         before.practice.cards[&cid].state
     );
+    // The shown phrase is tried from memory again; the help stays recorded.
+    action(
+        &mut app,
+        "/practice/quiz",
+        "phone-library-quiz-0002",
+        &[("prompt_id", &pid)],
+    );
+    let pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
     engine::mutate(
         &mut app,
         "/practice/answer",
@@ -323,6 +326,7 @@ fn phone_library_never_renders_protected_text_before_durable_help() {
         "answer",
     )
     .unwrap();
+    assert!(app.practice.attempts.values().all(|a| a.assisted));
     action(
         &mut app,
         "/practice/next",

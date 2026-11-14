@@ -12,6 +12,8 @@ native feedback. [SPEC § Lessons](../SPEC.md#lessons) owns the target behavior.
 - With JavaScript enabled, an enhanced in-page switch away from a nonempty unsubmitted answer asks for confirmation. A confirmed switch keeps the answer read-only while its outcome is unresolved.
 - Prayer practice separates source study from hidden phrase, joined and whole-prayer quizzes.
 - A mistaken phrase shows expected wording and retries the same phrase.
+- A Rosary set not yet practised is shown whole, its five mysteries in order,
+  before its whole-sequence Quiz. An ordered list is never drilled item by item.
 - Rosary sequence practice identifies missing or misplaced mysteries.
 
 ## How to get to it (user POV)
@@ -25,8 +27,8 @@ separate. Return goes to the held current session, not a promised cross-lesson r
 
 `node --test qa/keyed-mapping.test.mjs` calls `lessonJourney` and `lessonWalk`
 from `qa/lessons.mjs`. Source study has no answer field; Try from memory is a fenced native transition.
-The browser journey starts a set through its native form,
-types a partial answer into `#answer`, opens/closes `.lesson-picker > summary`,
+The browser journey starts a set through its native form, studies it, tries it
+from memory, types a partial answer into `#answer`, opens/closes `.lesson-picker > summary`,
 and verifies the draft and frozen prompt are unchanged. It selects the prayer,
 types the next line by mistake, verifies the full expected current line, retries,
 and advances to phrase 2 only after the correct phrase. It also covers whole

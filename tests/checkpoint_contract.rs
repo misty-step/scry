@@ -24,7 +24,19 @@ fn presented() -> App {
         &[],
     )
     .unwrap();
+    try_from_memory(&mut app);
     app
+}
+/// New material is studied first; a draft belongs to the Quiz that follows.
+fn try_from_memory(app: &mut App) {
+    let source = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    mutation(
+        app,
+        "/practice/quiz",
+        "checkpoint-quiz-000001",
+        &[("prompt_id", &source)],
+    )
+    .unwrap();
 }
 
 #[test]
@@ -460,6 +472,7 @@ fn multiline_browser_transport_keeps_leading_and_internal_newlines_and_replays()
         &[("starter", "rosary-joyful")],
     )
     .unwrap();
+    try_from_memory(&mut app);
     let prompt = app.practice.current.as_ref().unwrap().prompt.id.clone();
     let mut fields = BTreeMap::from([
         ("csrf".into(), app.csrf.clone()),

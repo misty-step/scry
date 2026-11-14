@@ -9,6 +9,8 @@ memory practice, not medical advice, hands-on training, or certification.
 
 - Three externally authored mappings, 18 original prompts, checked-source notes.
 - Safety constraints remain in the visible question, not only hidden notes.
+- A pair not yet practised is first shown as its whole question with its answer
+  and Try from memory. Its Quiz shows the same question alone.
 - Native strict grading accepts normalized case/punctuation, not unsafe extra
   clauses, negation, or guessed fuzzy synonyms. No self-rating.
 - Focused Next stays in the chosen collection. Default Study serves due work first,
@@ -19,8 +21,8 @@ memory practice, not medical advice, hands-on training, or certification.
 ## How to get to it (user POV)
 
 Open Practice → Choose what to practise → Baby care, then choose Safe soothing,
-Everyday safety, or Montessori. Type the short answer, check it, and see native
-feedback and progress. Open Source notes after the answer for edition, safety
+Everyday safety, or Montessori. Study the pair, choose Try from memory, type the
+short answer, check it, and see native feedback and progress. Open Source notes after the answer for edition, safety
 context, and citations. Existing collections and review history remain intact.
 
 ## Driving it with verify-scry helpers
@@ -29,8 +31,8 @@ Use the existing `verify-scry` launch/doctor. Run `cargo test --locked --test
 baby_readiness` and `node --test qa/keyed-mapping.test.mjs`. The latter includes
 `babyJourney` against disposable real Worker/SQLite, then `babyWalk` at 320px
 without JavaScript and 390/1280px with enhancement. Evidence is under
-`target/keyed-mapping/baby-runtime.json`, `baby-protected.html`,
-`baby-source-notes.html`, and `baby-*.png`.
+`target/keyed-mapping/baby-runtime.json`, `baby-source-study.html`,
+`baby-protected.html`, `baby-source-notes.html`, and `baby-*.png`.
 
 ## Gotchas
 

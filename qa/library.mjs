@@ -188,7 +188,9 @@ export async function libraryJourney() {
    const another=await ok(['version','add','--title','Whole unused Work','--kind','text','--text-file',path]);const w=await ok(['version','show',another.result.entity_id]);
    await ok(['work','delete',w.work.id,'--revision','1']);assert.notEqual((await cli(['version','show',w.version.id])).code,0);
    const study=(await ok(['learn',oldId])).practice.study;
-   const prompt=(await ok(['next','--study',study.id])).practice.prompt;
+   // The Version's first Unit is studied, then answered as a Quiz.
+   const source=(await ok(['next','--study',study.id])).practice;assert.equal(source.phase,'study');
+   const prompt=(await ok(['quiz',source.prompt.id])).practice.prompt;
    assert.equal((await cli(['answer',prompt.id,'--text-stdin'],original.sections[0].units[0].text)).code,0);
    for(const status of ['pause','resume','drop']) {
     await ok(['study',status,study.id]);const revision=(await show()).work.revision;

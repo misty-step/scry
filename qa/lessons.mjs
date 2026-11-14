@@ -18,7 +18,14 @@ export async function lessonJourney(){
   await f.get('/lessons');assert.deepEqual(await f.rows(),initial,'Browsing never imports or schedules.');
   const start=selectedFields(shelf,'/practice/lesson/start','starter','rosary-joyful');
   for(const override of [{grade:'Good'},{answer:'known'},{pace:'intense'}]) {const before=await f.rows();assert.equal((await f.post('/practice/lesson/start',{...start,...override,operation_id:randomUUID()})).status,422);assert.deepEqual(await f.rows(),before);}
-  await submit(f,'/practice/lesson/start',start);let prompt=await f.get('/');let held=await f.rows();assert.equal(current(held).prompt.scope.kind,'whole');assert.equal(current(held).prompt.assisted,false);assert.doesNotMatch(prompt,/Annunciation|Visitation/);
+  await submit(f,'/practice/lesson/start',start);
+  // A set not yet practised is shown whole first: its title and five mysteries in order, with no answer.
+  const mysteries=['Annunciation','Visitation','Nativity','Presentation','Finding in the Temple'];
+  const rosarySource=await f.get('/');let held=await f.rows();assert.equal(current(held).prompt.scope.kind,'whole');assert.equal(current(held).phase,'study');
+  assert.equal(Object.keys(held).filter(k=>k.startsWith('practice_cards/')).length,5);assert.equal(Object.keys(held).filter(k=>k.startsWith('practice_attempts/')).length,0);
+  assertStudySource(rosarySource,'Annunciation');assert.match(rosarySource,/Joyful Mysteries/);
+  let shownAt=-1;for(const item of mysteries){const found=rosarySource.indexOf(`<p class="reading exact-expected">${item}`,shownAt+1);assert.ok(found>shownAt,item+' is shown in its order');shownAt=found;}
+  let prompt=await enterMemory(f);held=await f.rows();assert.equal(current(held).prompt.scope.kind,'whole');assert.equal(current(held).phase,'quiz');assert.equal(current(held).prompt.assisted,false);assert.doesNotMatch(prompt,/Annunciation|Visitation/);
   const checkpoint={...nativeFields(prompt,'/practice/answer'),generation:'0',answer:'\nFirst line\nSecond line'};
   const scope=JSON.parse(await f.get('/session/scope')).scope;const saved=await f.postScoped('/practice/draft',scope,checkpoint);assert.equal(saved.status,303,await saved.text());
   held=await f.rows();assert.equal(held.meta.practice.answer_checkpoint.draft.answer,checkpoint.answer,'Multipart form newline normalization preserves the textarea value.');
@@ -48,7 +55,7 @@ export async function lessonJourney(){
   const section=v.sections.find(s=>s.id===current(joined).prompt.scope.section_id);await submit(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:section.units.map(u=>u.text).join('')});
   await submit(f,'/practice/lesson/next',selectedFields(await f.get('/'),'/practice/lesson/next','mode','whole'));const whole=await f.rows();assert.equal(current(whole).prompt.scope.kind,'whole');assert.equal(current(whole).prompt.assisted,false);
   await submit(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:v.text});assert.match(await f.get('/'),/data-verdict="Good"/);assert.equal(f.egress,0);
-  return {status:'pass',catalog_read_only:true,ordered_omission_then_correct:true,source_view_not_copy_graded:true,wrong_continuation_guided_retry:true,retry_replay_and_stale_fenced:true,joined_section:true,cold_whole:true,egress:0};
+  return {status:'pass',catalog_read_only:true,ordered_list_studied_whole_before_quiz:true,ordered_omission_then_correct:true,source_view_not_copy_graded:true,wrong_continuation_guided_retry:true,retry_replay_and_stale_fenced:true,joined_section:true,cold_whole:true,egress:0};
  }finally{await f.close();}
 }
 export async function lessonWalk(browser,capture){
@@ -61,6 +68,11 @@ export async function lessonWalk(browser,capture){
    const activate=locator=>width<1000?locator.tap():locator.click();const shot=async name=>{assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);row.evidence.push(await capture(page,`lesson-${width}-${noJS?'native':'enhanced'}-${name}.png`));};
    await page.goto(f.origin+'/lessons');await shot('shelf');
    await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="rosary-joyful"]')}).locator('button'));
+   // The set is first shown whole: five mysteries in order and nothing to type into.
+   await page.locator('[data-study-phase="study"]').waitFor();assert.equal(await page.locator('#answer,form[action="/practice/answer"],form[action="/practice/reveal"]').count(),0);
+   assert.deepEqual((await page.locator('[data-study-phase="study"] .exact-expected').allInnerTexts()).map(text=>text.trim()),['Annunciation','Visitation','Nativity','Presentation','Finding in the Temple']);
+   assert.equal(await page.locator('.practice-heading h1').innerText(),'Joyful Mysteries');assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,0);await shot('sequence-study');
+   await enterMemoryPage(page);for(const item of ['Annunciation','Visitation','Nativity'])assert.ok(!(await page.content()).includes(item),'The Quiz carries no mystery.');await shot('sequence-quiz');
    await page.locator('#answer').waitFor();const beforeTyped=await f.rows();await page.locator('#answer').fill('Annunciation\nNativity');assert.deepEqual(await f.rows(),beforeTyped,'Typing alone never saves or creates evidence.');
    if(!noJS){
     await page.locator('#answer').fill('\nAnnunciation\nNativity');
@@ -169,8 +181,10 @@ export async function lessonWalk(browser,capture){
     await activate(page.getByRole('button',{name:'Reconcile this attempt',exact:true}));
     await page.locator('.nato-letter').waitFor();assert.deepEqual(current(await f.rows()),committed,'Switch response reconciliation keeps one prompt.');
    }
+   // The alphabet's first letter is new: it is studied, then quizzed.
+   await page.locator('.nato-letter').waitFor();const switched=current(await f.rows());assert.equal(switched.phase,'study');await enterMemoryPage(page);
    await page.locator('#answer').waitFor();
-   const afterLeave=await f.rows();assert.equal(Object.keys(afterLeave).filter(k=>k.startsWith('practice_attempts/')).length,attemptCount,'Explicit leave creates no synthetic miss or success.');assert.notEqual(current(afterLeave).prompt.id,current(beforeLeave).prompt.id);await shot('explicit-switch');
+   const afterLeave=await f.rows();assert.equal(Object.keys(afterLeave).filter(k=>k.startsWith('practice_attempts/')).length,attemptCount,'Explicit leave creates no synthetic miss or success.');assert.notEqual(current(afterLeave).prompt.id,current(beforeLeave).prompt.id);assert.deepEqual(current(afterLeave).prompt.unit_ids,switched.prompt.unit_ids);await shot('explicit-switch');
    // Inspect secondary surfaces after a real saved answer, never bypassing protection.
    await page.locator('#answer').fill('Alfa');await activate(page.locator('form[action="/practice/answer"] button'));await page.locator('[data-state="exact-result"]').waitFor();
    await page.goto(f.origin+'/library');assert.equal(await page.locator('#nato-starter').count(),0);assert.equal(await page.locator('footer').count(),0);await shot('library');

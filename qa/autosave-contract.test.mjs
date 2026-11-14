@@ -2,13 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {starterFixture,nativeFields} from './nato-starter.mjs';
+import {enterMemory} from './study-review.mjs';
+// Each fixture starts at source study; a draft belongs to the Quiz reached by Try from memory.
 
 test('automatic checkpoint returns a non-replacing scoped acknowledgment and replay reflects current state',async()=>{
   const f=await starterFixture();
   try {
     const start=nativeFields(await f.get('/?practice=nato'),'/practice/nato/start');
     assert.equal((await f.post('/practice/nato/start',start)).status,303);
-    const page=await f.get('/?practice=nato');
+    const page=await enterMemory(f,'/?practice=nato');
     const scope=JSON.parse(await f.get('/session/scope')).scope;
     const original={...nativeFields(page,'/practice/answer'),generation:'0',answer:'Al',operation_id:`autosave-${randomUUID()}`};
     const send=()=>f.postScoped('/practice/draft',scope,original,{'X-Scry-Checkpoint-Mode':'auto-v1'});
@@ -27,7 +29,7 @@ test('competing saves conflict and never overwrite the winning tab',async()=>{
   const f=await starterFixture();
   try {
     const start=nativeFields(await f.get('/?practice=nato'),'/practice/nato/start');assert.equal((await f.post('/practice/nato/start',start)).status,303);
-    const page=await f.get('/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope;
+    const page=await enterMemory(f,'/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope;
     const fields={...nativeFields(page,'/practice/answer'),generation:'0',answer:'winner',operation_id:`autosave-${randomUUID()}`};
     const headers={'X-Scry-Checkpoint-Mode':'auto-v1'};
     assert.equal((await f.postScoped('/practice/draft',scope,fields,headers)).status,200);
@@ -41,7 +43,7 @@ test('discard and question switch invalidate old save receipts without revealing
   const f=await starterFixture();
   try {
     const start=nativeFields(await f.get('/?practice=nato'),'/practice/nato/start');assert.equal((await f.post('/practice/nato/start',start)).status,303);
-    const page=await f.get('/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope,base=nativeFields(page,'/practice/answer'),headers={'X-Scry-Checkpoint-Mode':'auto-v1'};
+    const page=await enterMemory(f,'/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope,base=nativeFields(page,'/practice/answer'),headers={'X-Scry-Checkpoint-Mode':'auto-v1'};
     const first={...base,generation:'0',answer:'private synthetic',operation_id:`autosave-${randomUUID()}`};
     assert.equal((await f.postScoped('/practice/draft',scope,first,headers)).status,200);
     const discard={...base,generation:'1',operation_id:randomUUID()};assert.equal((await f.postScoped('/practice/draft/discard',scope,discard)).status,303);
@@ -60,7 +62,7 @@ test('automatic save requires the original scope and valid CSRF',async()=>{
   const f=await starterFixture();
   try {
     assert.equal((await f.post('/practice/nato/start',nativeFields(await f.get('/?practice=nato'),'/practice/nato/start'))).status,303);
-    const page=await f.get('/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope;
+    const page=await enterMemory(f,'/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope;
     const fields={...nativeFields(page,'/practice/answer'),generation:'0',answer:'synthetic',operation_id:`autosave-${randomUUID()}`};const mode={'X-Scry-Checkpoint-Mode':'auto-v1'};const before=await f.rows();
     assert.equal((await f.post('/practice/draft',fields)).status,403);
     assert.equal((await f.postScoped('/practice/draft','b'.repeat(64),fields,mode)).status,409);
@@ -73,7 +75,7 @@ test('automatic budget is shared by reloads, rejects new saves, and permits repl
   const f=await starterFixture();
   try {
     assert.equal((await f.post('/practice/nato/start',nativeFields(await f.get('/?practice=nato'),'/practice/nato/start'))).status,303);
-    const page=await f.get('/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope,base=nativeFields(page,'/practice/answer'),mode={'X-Scry-Checkpoint-Mode':'auto-v1'};let last;
+    const page=await enterMemory(f,'/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope,base=nativeFields(page,'/practice/answer'),mode={'X-Scry-Checkpoint-Mode':'auto-v1'};let last;
     for(let i=0;i<512;i++){
       last={...base,generation:String(i),answer:`answer ${i}`,operation_id:`autosave-${randomUUID()}`};const r=await f.postScoped('/practice/draft',scope,last,mode);assert.equal(r.status,200,`save ${i}`);const receipt=await r.json();assert.equal(receipt.remaining,511-i);
       if(i===255)await f.get('/?practice=nato');
@@ -89,7 +91,7 @@ test('a maximum-length LF-heavy textarea fits the bounded multipart save',async(
   const f=await starterFixture();
   try {
     const lessons=await f.get('/lessons');const selected=lessons.split('<form').find(part=>part.startsWith(' method="post" action="/practice/lesson/start"')&&part.split('</form>')[0].includes('name="starter" value="rosary-joyful"'));assert.ok(selected);assert.equal((await f.post('/practice/lesson/start',nativeFields('<form'+selected,'/practice/lesson/start'))).status,303);
-    const page=await f.get('/'),scope=JSON.parse(await f.get('/session/scope')).scope,answer='\n'.repeat(32768);
+    const page=await enterMemory(f),scope=JSON.parse(await f.get('/session/scope')).scope,answer='\n'.repeat(32768);
     const fields={...nativeFields(page,'/practice/answer'),generation:'0',answer,operation_id:`autosave-${randomUUID()}`};
     const saved=await f.postScoped('/practice/draft',scope,fields,{'X-Scry-Checkpoint-Mode':'auto-v1'});assert.equal(saved.status,200,await saved.text());assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft.answer,answer);
   } finally {await f.close();}

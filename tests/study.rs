@@ -92,23 +92,56 @@ impl Owner {
         self.call("/api/v1/answer", json!({"prompt_id":p,"answer":text}))
             .unwrap()
     }
-    fn fade_to_free(&mut self, text: &str) -> String {
-        self.next(None);
+    /// The next new Unit: shown as Source study, then tried from memory. Returns
+    /// its Card, held as a Free recall Quiz.
+    fn study_to_quiz(&mut self) -> String {
+        let source = self.next(None);
+        assert_eq!(source["phase"], "study");
+        assert_eq!(source["prompt"]["cue_level"], "read");
         let cid = self.app.practice.current.as_ref().unwrap().targets[0]
             .card_id
             .clone();
-        for i in 0..6 {
-            self.answer(text);
-            if i < 5 {
-                self.next(Some(&cid));
-            }
-        }
-        self.next(Some(&cid));
-        assert_eq!(
-            self.app.practice.current.as_ref().unwrap().prompt.cue_level,
-            Cue::PreviousLine
-        );
+        self.quiz();
         cid
+    }
+    /// Try from memory, also after a reveal has put the answer on show.
+    fn quiz(&mut self) -> Value {
+        let held = self.app.practice.current.clone().unwrap();
+        let attempts = self.app.practice.attempts.clone();
+        let cards = self.app.practice.cards.clone();
+        let quiz = self
+            .call("/api/v1/quiz", json!({"prompt_id":held.prompt.id}))
+            .unwrap();
+        assert_eq!(quiz["phase"], "quiz");
+        assert_eq!(quiz["prompt"]["assisted"], false);
+        assert_eq!(quiz["prompt"]["cue_level"], "whole_title");
+        assert_eq!(self.app.practice.attempts, attempts);
+        assert_eq!(self.app.practice.cards, cards);
+        quiz
+    }
+    /// Reveal the held Quiz, then try it from memory again: an assisted answer follows.
+    fn reveal_then_quiz(&mut self) -> Value {
+        let pid = self
+            .app
+            .practice
+            .current
+            .as_ref()
+            .unwrap()
+            .prompt
+            .id
+            .clone();
+        let shown = self
+            .call("/api/v1/reveal", json!({"prompt_id":pid}))
+            .unwrap();
+        let refused = self
+            .call("/api/v1/answer", json!({"prompt_id":pid,"answer":"copied"}))
+            .unwrap_err();
+        assert_eq!(
+            refused.status, 409,
+            "The shown text is no form to copy from"
+        );
+        self.quiz();
+        shown
     }
 }
 
@@ -117,13 +150,13 @@ fn exact_history_shows_a_valid_api_created_attempt_instead_of_false_empty() {
     let mut o = Owner::new();
     let v = o.add("We conceived a patient garden.\n", false);
     o.learn(&v, "steady");
-    o.next(None);
+    o.study_to_quiz();
     let answer = o.answer("We imagined a patient garden.");
     let attempt = &answer["attempt"];
     assert_eq!(o.app.practice.attempts.len(), 1);
     assert!(o.app.events.is_empty());
     assert_eq!(attempt["grade"]["verdict"], "Again");
-    assert_eq!(attempt["assisted"], true);
+    assert_eq!(attempt["assisted"], false);
     let before = o.app.clone();
     let html = scry::web::render(&o.app, "/history", &Default::default(), o.now, None);
     assert!(
@@ -140,24 +173,20 @@ fn exact_history_shows_a_valid_api_created_attempt_instead_of_false_empty() {
 }
 
 #[test]
-fn study_receipts_assistance_fading_free_recall_once_daily_and_lapse() {
+fn study_receipts_source_study_free_recall_due_scheduling_and_extra_practice() {
     let mut o = Owner::new();
     let v = o.add("We conceived a patient garden.\n", false);
     let s = o.learn(&v, "steady");
     assert_eq!(o.learn(&v, "light"), s);
     assert_eq!(o.app.practice.studies.len(), 1);
-    let cid = o.fade_to_free("We conceived a patient garden.");
+    let cid = o.study_to_quiz();
+    // Studying and trying from memory record nothing and schedule nothing.
     let c = o.app.practice.cards[&cid].clone();
     assert_eq!(c.state.schedule, learning::new_card(NOW));
-    assert!(
-        o.app
-            .practice
-            .attempts
-            .values()
-            .all(|a| a.assisted && a.effects.iter().all(|e| !e.scheduled))
-    );
+    assert!(o.app.practice.attempts.is_empty());
     let prompt = o.app.practice.current.as_ref().unwrap().prompt.clone();
-    assert_eq!(prompt.cue, "");
+    assert_eq!(prompt.cue, "Synthetic Creed");
+    assert_eq!(prompt.cue_level, Cue::WholeTitle);
     let encoded = serde_json::to_string(&prompt).unwrap();
     assert!(!encoded.contains("conceived"));
     let original = o.app.clone();
@@ -187,17 +216,24 @@ fn study_receipts_assistance_fading_free_recall_once_daily_and_lapse() {
     let extra = o.answer("We conceived a patient garden.");
     assert_eq!(extra["attempt"]["effects"][0]["extra_practice"], true);
     assert_eq!(o.app.practice.cards[&cid].state.schedule, scheduled);
-    assert_eq!(o.app.practice.cards[&cid].state.cue, Cue::SectionHeading);
-    o.next(Some(&cid));
+    // Every return of a practised phrase is a Quiz; no answer moves a cue level.
+    let quiz = |o: &mut Owner| {
+        let next = o.next(Some(&cid));
+        assert_eq!(next["phase"], "quiz");
+        assert_eq!(next["prompt"]["cue_level"], "whole_title");
+        assert_eq!(next["prompt"]["assisted"], false);
+        assert_eq!(o.app.practice.cards[&cid].state.cue, Cue::Read);
+    };
+    quiz(&mut o);
     let bad = o.answer("We imagined a patient garden.");
     assert_eq!(bad["attempt"]["grade"]["verdict"], "Again");
-    assert_eq!(o.app.practice.cards[&cid].state.cue, Cue::PreviousLine);
+    assert_eq!(bad["attempt"]["effects"][0]["extra_practice"], true);
     assert_eq!(o.app.practice.cards[&cid].state.schedule, scheduled);
     o.now += DAY_MS;
-    o.next(Some(&cid));
+    quiz(&mut o);
     let again = o.answer("Wrong words");
     assert_eq!(again["attempt"]["effects"][0]["scheduled"], true);
-    assert_eq!(o.app.practice.cards[&cid].state.cue, Cue::FirstLetter);
+    assert_eq!(o.app.practice.cards[&cid].state.cue, Cue::Read);
     assert_eq!(
         o.app.practice.cards[&cid].state.schedule,
         learning::schedule(&scheduled, 1, o.now).unwrap()
@@ -220,7 +256,7 @@ fn study_answer_replay_conflict_and_correction_keep_original() {
     let mut o = Owner::new();
     let v = o.add("We conceived a patient garden.\n", false);
     o.learn(&v, "steady");
-    let cid = o.fade_to_free("We conceived a patient garden.");
+    let cid = o.study_to_quiz();
     let p = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
     let data = json!({"operation_id":"study-answer-replay-id","prompt_id":p,"answer":"We imagined a patient garden."});
     let first = o.operation("/api/v1/answer", data.clone()).unwrap();
@@ -289,7 +325,7 @@ fn study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes() {
     let mut o = Owner::new();
     let v = o.add("We conceived a patient garden.\n", false);
     let sid = o.learn(&v, "steady");
-    let cid = o.fade_to_free("We conceived a patient garden.");
+    let cid = o.study_to_quiz();
     let p = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
     let before = o.app.practice.cards[&cid].state.clone();
     let shown = o.call("/api/v1/reveal", json!({"prompt_id":p})).unwrap();
@@ -303,6 +339,8 @@ fn study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes() {
     );
     let attempts = o.app.practice.attempts.len();
     o.call("/api/v1/reveal", json!({"prompt_id":p})).unwrap();
+    assert_eq!(o.app.practice.attempts.len(), attempts);
+    o.quiz();
     assert_eq!(o.app.practice.attempts.len(), attempts);
     let a = o.answer("We conceived a patient garden.");
     assert_eq!(a["attempt"]["assisted"], true);
@@ -332,7 +370,7 @@ fn study_reveal_lifecycle_real_delete_refusal_and_old_empty_bytes() {
     assert_eq!(o.app.study_version_refs[&sid], v);
     assert_eq!(o.learn(&v, "steady"), sid);
     assert_eq!(o.next(None)["prompt"], Value::Null);
-    assert_eq!(o.app.practice.attempts.len(), 8);
+    assert_eq!(o.app.practice.attempts.len(), 2);
     assert_eq!(o.app.spend, vec![]);
 }
 #[test]
@@ -341,7 +379,7 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
     let text = "We conceived a patient garden by the water.";
     let v = o.add(text, false);
     o.learn(&v, "steady");
-    let cid = o.fade_to_free(text);
+    let cid = o.study_to_quiz();
     let p = o.app.practice.current.as_ref().unwrap().prompt.clone();
     let query = [("__nonce".into(), "synthetic-render-nonce".into())].into();
     let page = scry::web::render(&o.app, "/recall", &query, NOW, None);
@@ -416,8 +454,11 @@ fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
         let v = o.add(expected, strict);
         o.add("We imagined a patient garden by the water.", false);
         o.learn(&v, "steady");
-        o.next(None);
+        // An answer given after a reveal is assisted, and its result says so.
+        o.study_to_quiz();
+        o.reveal_then_quiz();
         let a = o.answer(answer)["attempt"].clone();
+        assert_eq!(a["assisted"], true);
         let before = o.app.clone();
         let page = notebook_page(&o, "/recall");
         assert_eq!(o.app, before, "Rendering cannot mutate a held Attempt");
@@ -434,7 +475,7 @@ fn phone_result_discloses_complete_saved_diff_without_changing_authority() {
         assert!(!summary.contains("data-feedback-kind=\"correct\""));
         assert!(full.contains("<summary>Full answer</summary>"));
         assert!(full.contains("Synthetic Creed"));
-        assert!(full.contains("Read the Unit"));
+        assert!(full.contains("<p class=\"eyebrow\">Title</p>"));
         assert!(full.contains(answer));
         assert!(full.contains(expected));
         assert!(full.contains(a["grade"]["authority"]["name"].as_str().unwrap()));
@@ -492,7 +533,7 @@ fn study_recitation_grades_each_unit_and_strict_slips() {
     );
     let sid = o.learn(&v, "steady");
     for text in ["We conceived a patient garden,", "a gentle silver orchard."] {
-        o.fade_to_free(text);
+        o.study_to_quiz();
         o.answer(text);
     }
     let current = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
@@ -526,7 +567,7 @@ fn study_recitation_grades_each_unit_and_strict_slips() {
     let mut strict = Owner::new();
     let v = strict.add("We conceived a patient garden.\n", true);
     strict.learn(&v, "steady");
-    strict.next(None);
+    strict.study_to_quiz();
     let a = strict.answer("We concieved a patient garden.");
     assert_eq!(a["attempt"]["grade"]["verdict"], "Again");
     assert!(
@@ -566,7 +607,7 @@ fn study_paces_are_rolling_caps_and_recitation_never_introduces_units() {
         let s = o.learn(&v, pace);
         for i in 0..limit {
             let line = format!("Synthetic clause number {i}.");
-            let cid = o.fade_to_free(&line);
+            let cid = o.study_to_quiz();
             o.answer(&line);
             assert_eq!(o.app.practice.cards[&cid].unit_index, i);
         }
@@ -588,12 +629,12 @@ fn study_paces_are_rolling_caps_and_recitation_never_introduces_units() {
         o.now = NOW + DAY_MS - 1;
         for cid in ids {
             let index = o.app.practice.cards[&cid].unit_index;
-            o.next(Some(&cid));
+            assert_eq!(o.next(Some(&cid))["phase"], "quiz");
             o.answer(&format!("Synthetic clause number {index}."));
         }
         assert!(o.next(None)["prompt"].is_null());
         o.now += 1;
-        o.next(None);
+        assert_eq!(o.next(None)["phase"], "study");
         assert_eq!(
             o.app.practice.current.as_ref().unwrap().targets[0].unit_index,
             limit
@@ -605,15 +646,12 @@ fn populated_study_archive_requires_compatible_format_and_intact_payload_chunks(
     let mut o = Owner::new();
     let v = o.add("We conceived a patient garden.\n", false);
     o.learn(&v, "steady");
-    o.next(None);
+    o.study_to_quiz();
     o.answer("We concieved a patient garden.");
     let archive = persistence::Archive::new(o.app.clone(), vec![], NOW);
     let bytes = archive.encode().unwrap();
     let mut wrong: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(
-        wrong["format"],
-        "scry-rust-durable-sqlite-study-scheduled-v2"
-    );
+    assert_eq!(wrong["format"], "scry-rust-durable-sqlite-study-phase-v3");
     wrong["format"] = json!("scry-rust-durable-sqlite-library-v1");
     let wrong = serde_json::to_vec(&wrong).unwrap();
     assert!(persistence::Archive::decode(&wrong, &persistence::sha256(&wrong)).is_err());
@@ -656,7 +694,7 @@ fn study_oversized_alignment_refuses_without_consuming_prompt_or_receipt() {
     let text = "orchard ".repeat(1100);
     let v = o.add(&text, false);
     o.learn(&v, "steady");
-    o.next(None);
+    o.study_to_quiz();
     let before = o.app.clone();
     let prompt = before.practice.current.as_ref().unwrap().prompt.id.clone();
     let error = o
@@ -678,7 +716,7 @@ fn recitation_admission_checks_exact_answer_and_normalized_word_boundary() {
             let mut o = Owner::new();
             let v = o.add(&text, false);
             let sid = o.learn(&v, "steady");
-            o.next(None);
+            o.study_to_quiz();
             o.answer("");
             let before = o.app.clone();
             let before_rows = persistence::rows(&before).unwrap();
@@ -711,7 +749,7 @@ fn recitation_admission_includes_matching_sibling_scope() {
             let text = "orchard ".repeat(499);
             let v = o.add(&text, false);
             let sid = o.learn(&v, "steady");
-            o.next(None);
+            o.study_to_quiz();
             o.answer("");
             o.add(&"cedar ".repeat(sibling_words), false);
             let before = o.app.clone();
@@ -738,7 +776,7 @@ fn exact_stream_escapes_private_text_and_keeps_native_nonce_bound_forms() {
     let text = "Expected <svg onload=alert(1)> text.";
     let v = o.add(text, false);
     o.learn(&v, "steady");
-    o.fade_to_free(text);
+    o.study_to_quiz();
     let query = [("__nonce".into(), "one-render".into())].into();
     let other = [("__nonce".into(), "another-render".into())].into();
     let first = scry::web::render(&o.app, "/recall", &query, NOW, None);
@@ -764,18 +802,24 @@ fn study_old_disclosures_cannot_cross_a_new_protected_prompt() {
         let learn = json!({"operation_id":"replay-safe-learn-operation","version_id":v});
         let learned = o.operation("/api/v1/learn", learn.clone()).unwrap();
         let sid = learned["study"]["id"].as_str().unwrap();
+        // The source that was studied, the reveal and the answer all carry the text.
         let next = json!({"operation_id":"replay-old-next-operation","study_id":sid});
         let first = o.operation("/api/v1/next", next.clone()).unwrap();
-        let pid = first["prompt"]["id"].as_str().unwrap();
+        assert_eq!(first["phase"], "study");
+        assert_eq!(first["prompt"]["cue"], text);
         let cid = o.app.practice.current.as_ref().unwrap().targets[0]
             .card_id
             .clone();
+        let quizzed = o.quiz();
+        let pid = quizzed["prompt"]["id"].as_str().unwrap();
         let reveal = json!({"operation_id":"replay-old-reveal-operation","prompt_id":pid});
         let shown = o.operation("/api/v1/reveal", reveal.clone()).unwrap();
         assert_eq!(
             o.operation("/api/v1/reveal", reveal.clone()).unwrap(),
             shown
         );
+        let retried = o.quiz();
+        let pid = retried["prompt"]["id"].as_str().unwrap();
         let answer =
             json!({"operation_id":"replay-old-answer-operation","prompt_id":pid,"answer":text});
         let answered = o.operation("/api/v1/answer", answer.clone()).unwrap();
@@ -791,10 +835,6 @@ fn study_old_disclosures_cannot_cross_a_new_protected_prompt() {
             o.operation("/api/v1/correct", correct.clone()).unwrap(),
             corrected
         );
-        for _ in 0..6 {
-            o.next(Some(&cid));
-            o.answer(text);
-        }
         let after = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
         let section = &o.app.library.versions[&v].sections[0].id;
         let selection = match scope {
@@ -867,108 +907,131 @@ fn study_old_disclosures_cannot_cross_a_new_protected_prompt() {
 }
 
 #[test]
-fn study_explicit_reveal_breaks_success_runs_at_every_rung_and_correction() {
+fn study_explicit_reveal_never_earns_unaided_credit_and_a_correction_keeps_it() {
     let mut o = Owner::new();
     let text = "Copper lanterns shelter quiet gardens.";
     let v = o.add(text, false);
     o.learn(&v, "steady");
-    o.next(None);
-    let cid = o.app.practice.current.as_ref().unwrap().targets[0]
-        .card_id
-        .clone();
-    let rungs = [
-        Cue::Read,
-        Cue::FirstLetters,
-        Cue::FirstLetter,
-        Cue::PreviousLine,
-        Cue::SectionHeading,
-        Cue::WholeTitle,
-    ];
-    for (i, cue) in rungs.iter().enumerate() {
-        assert_eq!(
-            o.app.practice.current.as_ref().unwrap().prompt.cue_level,
-            *cue
-        );
-        o.answer(text);
-        assert_eq!(o.app.practice.cards[&cid].state.successes, 1);
-        o.next(Some(&cid));
-        let pid = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
-        o.call("/api/v1/reveal", json!({"prompt_id":pid})).unwrap();
-        let schedule = o.app.practice.cards[&cid].state.schedule.clone();
-        let copied = o.answer(text);
-        assert_eq!(
-            o.app.practice.cards[&cid].state.cue, *cue,
-            "A revealed Good must not fade {cue:?}."
-        );
-        assert_eq!(o.app.practice.cards[&cid].state.successes, 0);
-        assert_eq!(copied["attempt"]["revealed"], true);
-        assert_eq!(o.app.practice.cards[&cid].state.schedule, schedule);
-        o.next(Some(&cid));
-        o.answer(text);
-        o.next(Some(&cid));
-        let pid = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
-        o.call("/api/v1/reveal", json!({"prompt_id":pid})).unwrap();
-        let a = o.answer("Wrong words")["attempt"].clone();
-        assert_eq!(
-            o.app.practice.cards[&cid].state.cue, *cue,
-            "A revealed Again must not lapse."
-        );
-        assert_eq!(o.app.practice.cards[&cid].state.successes, 0);
-        let correction = json!({"operation_id":format!("revealed-correction-rung-{i}"),"prompt_id":pid,"attempt_id":a["id"],"verdict":"Good"});
-        let corrected = o.operation("/api/v1/correct", correction.clone()).unwrap();
-        assert_eq!(o.app.practice.cards[&cid].state.cue, *cue);
-        assert_eq!(
-            o.app.practice.cards[&cid].state.successes, 0,
-            "A Correction retains explicit Reveal."
-        );
-        let before = o.app.clone();
-        assert_eq!(
-            o.operation("/api/v1/correct", correction).unwrap(),
-            corrected
-        );
-        assert_eq!(o.app, before);
-        assert_eq!(json!(o.app.practice.attempts[a["id"].as_str().unwrap()]), a);
-        let bytes = persistence::Archive::new(o.app.clone(), vec![], o.now)
-            .encode()
-            .unwrap();
-        assert_eq!(
-            persistence::Archive::decode(&bytes, &persistence::sha256(&bytes))
-                .unwrap()
-                .app,
-            o.app
-        );
-        let mut dishonest: Value = serde_json::from_slice(&bytes).unwrap();
-        dishonest["app"]["practice"]["attempts"][copied["attempt"]["id"].as_str().unwrap()]["revealed"] =
-            json!(false);
-        let dishonest = serde_json::to_vec(&dishonest).unwrap();
-        assert!(
-            persistence::Archive::decode(&dishonest, &persistence::sha256(&dishonest)).is_err()
-        );
-        for _ in 0..2 {
-            o.next(Some(&cid));
-            o.answer(text);
-        }
-        let next_cue = rungs[(i + 1).min(rungs.len() - 1)];
-        assert_eq!(o.app.practice.cards[&cid].state.cue, next_cue);
-        assert_eq!(o.app.practice.cards[&cid].state.successes, 0);
-        o.next(Some(&cid));
-    }
+    let cid = o.study_to_quiz();
+    o.answer(text);
+    let state = o.app.practice.cards[&cid].state.clone();
+    assert_eq!(state.schedule.reps, 1);
+    // A revealed Good is not recall: no schedule credit, no success run.
+    o.now += DAY_MS;
+    o.next(Some(&cid));
+    o.reveal_then_quiz();
+    let copied = o.answer(text);
+    assert_eq!(copied["attempt"]["revealed"], true);
+    assert_eq!(copied["attempt"]["assisted"], true);
+    assert_eq!(copied["attempt"]["effects"][0]["scheduled"], false);
+    assert_eq!(o.app.practice.cards[&cid].state, state);
+    // A revealed Again is not a lapse either.
+    o.next(Some(&cid));
+    o.reveal_then_quiz();
+    let pid = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let a = o.answer("Wrong words")["attempt"].clone();
+    assert_eq!(a["revealed"], true);
+    assert_eq!(o.app.practice.cards[&cid].state, state);
+    let correction = json!({"operation_id":"revealed-correction-operation","prompt_id":pid,"attempt_id":a["id"],"verdict":"Good"});
+    let corrected = o.operation("/api/v1/correct", correction.clone()).unwrap();
+    assert_eq!(
+        o.app.practice.cards[&cid].state, state,
+        "A Correction retains explicit Reveal."
+    );
+    let before = o.app.clone();
+    assert_eq!(
+        o.operation("/api/v1/correct", correction).unwrap(),
+        corrected
+    );
+    assert_eq!(o.app, before);
+    assert_eq!(json!(o.app.practice.attempts[a["id"].as_str().unwrap()]), a);
+    let bytes = persistence::Archive::new(o.app.clone(), vec![], o.now)
+        .encode()
+        .unwrap();
+    assert_eq!(
+        persistence::Archive::decode(&bytes, &persistence::sha256(&bytes))
+            .unwrap()
+            .app,
+        o.app
+    );
+    let mut dishonest: Value = serde_json::from_slice(&bytes).unwrap();
+    dishonest["app"]["practice"]["attempts"][copied["attempt"]["id"].as_str().unwrap()]["revealed"] =
+        json!(false);
+    let dishonest = serde_json::to_vec(&dishonest).unwrap();
+    assert!(persistence::Archive::decode(&dishonest, &persistence::sha256(&dishonest)).is_err());
+    // The next unaided answer to the due Card is recall, and schedules it.
+    o.next(Some(&cid));
+    let unaided = o.answer(text);
+    assert_eq!(unaided["attempt"]["assisted"], false);
+    assert_eq!(unaided["attempt"]["effects"][0]["scheduled"], true);
+    assert_eq!(o.app.practice.cards[&cid].state.schedule.reps, 2);
 }
 
 #[test]
 fn study_old_free_prompt_context_cannot_disclose_a_new_target() {
+    // A notebook stored under the earlier cue ladder: its free Prompt for phrase 2
+    // carried phrase 1 as context, and it now holds an unaided Prompt.
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/cue-ladder-legacy.json")).unwrap();
+    let saved = &fixture["ladder"]["states"]["held_mapping_key"];
+    let mut app = persistence::Archive::decode(
+        saved["archive"].as_str().unwrap().as_bytes(),
+        saved["sha256"].as_str().unwrap(),
+    )
+    .unwrap()
+    .app;
+    assert!(app.practice.protected());
+    let mut fenced = 0;
+    for request in fixture["ladder"]["requests"].as_array().unwrap() {
+        let fields: std::collections::BTreeMap<String, String> =
+            serde_json::from_value(request["fields"].clone()).unwrap();
+        let Some(receipt) = app.operations.get(&fields["operation_id"]) else {
+            continue;
+        };
+        let Some(prompt) = receipt.result.data.as_ref().map(|d| d["prompt"].clone()) else {
+            continue;
+        };
+        if prompt["cue_level"] != "previous_line" || !prompt["context"].is_string() {
+            continue;
+        }
+        assert_eq!(prompt["assisted"], false);
+        let before = app.clone();
+        assert_eq!(
+            engine::mutate(
+                &mut app,
+                request["path"].as_str().unwrap(),
+                &fields,
+                request["now_ms"].as_i64().unwrap(),
+                request["seed"].as_str().unwrap(),
+            )
+            .unwrap_err()
+            .status,
+            409
+        );
+        assert_eq!(app, before);
+        fenced += 1;
+    }
+    assert!(
+        fenced > 0,
+        "The stored free Prompt with context was replayed"
+    );
+
+    // Today the previous phrase accompanies only the source being studied, and
+    // that receipt is fenced the same way.
     let mut o = Owner::new();
     let first = "Copper lanterns shelter quiet gardens.";
     let second = "Amber streams carry patient wishes.";
     let v = o.add(&format!("{first}\n{second}"), false);
     o.learn(&v, "steady");
-    let cid = o.fade_to_free(first);
+    let cid = o.study_to_quiz();
     o.answer(first);
-    o.fade_to_free(second);
-    let operation = json!({"operation_id":"old-free-prompt-with-context"});
+    let after = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let operation = json!({"operation_id":"source-prompt-with-context","after":after});
     let old = o.operation("/api/v1/next", operation.clone()).unwrap();
-    assert_eq!(old["prompt"]["assisted"], false);
+    assert_eq!(old["phase"], "study");
     assert_eq!(old["prompt"]["context"].as_str().unwrap().trim(), first);
+    let quiz = o.quiz();
+    assert!(quiz["prompt"]["context"].is_null());
     o.answer(second);
     o.next(Some(&cid));
     let before = o.app.clone();
@@ -983,7 +1046,7 @@ fn diagnostic_study_fixture() -> App {
     let mut o = Owner::new();
     let v = o.add("Copper lanterns shelter quiet gardens.", false);
     let sid = o.learn(&v, "steady");
-    o.next(None);
+    o.study_to_quiz();
     o.answer("Copper lanterns shelter quiet gardens.");
     o.call("/api/v1/studies/drop", json!({"study_id":sid}))
         .unwrap();
@@ -1322,7 +1385,7 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
             let mut o = mixed_notebook(exact != "none");
             if exact == "caught-up" {
                 let text = "A separate authored exact Unit.";
-                o.fade_to_free(text);
+                o.study_to_quiz();
                 o.answer(text);
                 o.next(None);
                 assert!(o.app.practice.current.is_none());
@@ -1422,7 +1485,7 @@ fn exact_history_preserves_original_correction_wording_and_dropped_study() {
     let text = "We conceived a patient garden by the water.\n";
     let v = o.add(text, false);
     let sid = o.learn(&v, "steady");
-    o.next(None);
+    o.study_to_quiz();
     let result = o.answer("We concieved a tired garden the water extra.");
     let aid = result["attempt"]["id"].as_str().unwrap();
     let original = o.app.practice.attempts[aid].clone();
@@ -1480,13 +1543,14 @@ fn exact_history_distinguishes_reveal_from_empty_answer_and_orders_by_sequence()
     let text = "We conceived a patient garden.\n";
     let v = o.add(text, false);
     o.learn(&v, "steady");
-    let cid = o.fade_to_free(text);
+    let cid = o.study_to_quiz();
     let before = notebook_page(&o, "/history");
     assert!(before.contains("History is hidden while you answer from memory."));
     assert!(!before.contains(text) && !before.contains("data-attempt-id"));
     let pid = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
     let shown = o.call("/api/v1/reveal", json!({"prompt_id":pid})).unwrap();
     let disclosure = shown["disclosure_attempt_id"].as_str().unwrap();
+    o.quiz();
     let empty = o.answer("");
     let empty_id = empty["attempt"]["id"].as_str().unwrap();
     let html = notebook_page(&o, "/history");
@@ -1531,13 +1595,10 @@ fn exact_history_keeps_mixed_recitation_effects_and_scope_honest() {
     let second = "The lantern lights our path.\n";
     let v = o.call("/api/v1/library/versions", json!({"data":{"title":"Two quiet lines","name":"Original wording","kind":"text","text":format!("{first}{second}"),"sections":[{"heading":"The garden","units":[first]},{"heading":"The lantern","units":[second]}]}})).unwrap()["id"].as_str().unwrap().to_owned();
     let sid = o.learn(&v, "steady");
-    let cid = o.fade_to_free(first);
+    let cid = o.study_to_quiz();
     o.answer(first); // Unit 1 is now scheduled today.
-    o.next(None);
-    assert_ne!(
-        o.app.practice.current.as_ref().unwrap().targets[0].card_id,
-        cid
-    );
+    assert_ne!(o.study_to_quiz(), cid);
+    o.reveal_then_quiz();
     o.answer(second); // Unit 2 is introduced, but still assisted and unscheduled.
     let after = o.app.practice.current.as_ref().unwrap().prompt.id.clone();
     o.call(
@@ -1574,6 +1635,7 @@ fn exact_history_keeps_mixed_recitation_effects_and_scope_honest() {
 #[test]
 fn exact_history_escapes_saved_words_and_coexists_with_legacy_privacy() {
     let mut o = mixed_notebook(true);
+    o.quiz();
     let exact = o.answer("Exact answer <img src=x onerror=alert(1)> & saved");
     let aid = exact["attempt"]["id"].as_str().unwrap();
     assert!(o.app.protected_goal().is_some());

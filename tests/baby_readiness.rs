@@ -20,6 +20,37 @@ fn mutate_at(a: &mut App, path: &str, extra: &[(&str, &str)], now: i64) -> Mutat
 fn new_app() -> App {
     App::new("synthetic-baby-csrf-at-least-32".into())
 }
+/// A pair not yet practised is studied first; this moves on to its Quiz.
+fn try_from_memory(a: &mut App) {
+    try_from_memory_at(a, NOW)
+}
+fn try_from_memory_at(a: &mut App, now: i64) {
+    let p = a.practice.current.clone().unwrap();
+    assert_eq!(p.phase, Some(scry::study::StudyPhase::Study));
+    let (cards, attempts) = (a.practice.cards.clone(), a.practice.attempts.clone());
+    mutate_at(a, "/practice/quiz", &[("prompt_id", &p.prompt.id)], now);
+    assert_eq!(a.practice.cards, cards);
+    assert_eq!(a.practice.attempts, attempts);
+    let quiz = a.practice.current.as_ref().unwrap();
+    assert_eq!(quiz.phase, Some(scry::study::StudyPhase::Quiz));
+    assert_eq!(quiz.prompt.unit_ids, p.prompt.unit_ids);
+}
+fn held_page(a: &App, lesson: &str) -> String {
+    scry::web::render(
+        a,
+        "/",
+        &BTreeMap::from([("practice".into(), lesson.into())]),
+        NOW,
+        None,
+    )
+}
+fn escaped(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('\"', "&quot;")
+        .replace('\'', "&#39;")
+}
 #[test]
 fn starter_browsing_is_read_only_and_mappings_import_without_study() {
     let a = new_app();
@@ -117,26 +148,50 @@ fn each_baby_prompt_grades_exactly_without_partial_unsafe_credit() {
                 );
             }
         }
-        let page = scry::web::render(
-            &a,
-            "/",
-            &BTreeMap::from([("practice".into(), l.id.clone())]),
-            NOW,
-            None,
+        let unit = &a.library.versions[&first.prompt.version_id].sections[0].units[0];
+        let (question, answer) = scry::library::mapping_pair(&unit.text).unwrap();
+        let question = escaped(question);
+        let shown = format!(
+            "<p class=\"reading exact-expected\">{}</p>",
+            escaped(answer)
         );
+        // First the authored question with its answer, and nothing to type into.
+        assert_eq!(first.phase, Some(scry::study::StudyPhase::Study));
+        let page = held_page(&a, &l.id);
         assert!(page.contains("mapping-study"));
         assert!(!page.contains("nato-letter"));
         assert!(page.contains("readiness-study"));
-        let cue = first
-            .prompt
-            .cue
-            .replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;")
-            .replace('\"', "&quot;")
-            .replace('\'', "&#39;");
-        assert!(page.contains(&cue), "entire safety cue remains visible");
+        assert!(
+            page.contains(&question),
+            "entire safety cue remains visible"
+        );
+        assert!(page.contains(&shown) && page.contains("Try from memory"));
+        assert!(!page.contains("id=\"answer\"") && !page.contains("action=\"/practice/answer\""));
+        // Then the same question alone.
+        try_from_memory(&mut a);
+        let page = held_page(&a, &l.id);
+        assert!(page.contains("mapping-study") && page.contains("readiness-study"));
+        assert!(
+            page.contains(&question),
+            "entire safety cue remains visible"
+        );
+        assert!(!page.contains("exact-expected") && page.contains("id=\"answer\""));
+        assert_eq!(
+            a.practice.current.as_ref().unwrap().prompt.cue,
+            scry::library::mapping_pair(&unit_text(&a)).unwrap().0
+        );
     }
+}
+fn unit_text(a: &App) -> String {
+    let p = &a.practice.current.as_ref().unwrap().prompt;
+    a.library.versions[&p.version_id]
+        .sections
+        .iter()
+        .flat_map(|s| &s.units)
+        .find(|u| u.id == p.unit_ids[0])
+        .unwrap()
+        .text
+        .clone()
 }
 #[test]
 fn starter_switch_and_reveal_preserve_history_and_help_does_not_schedule() {
@@ -146,6 +201,7 @@ fn starter_switch_and_reveal_preserve_history_and_help_does_not_schedule() {
         "/practice/lesson/start",
         &[("starter", "baby-soothing")],
     );
+    try_from_memory(&mut a);
     let p = a.practice.current.clone().unwrap();
     let schedule = a.practice.cards[&p.targets[0].card_id]
         .state
@@ -202,6 +258,7 @@ fn focused_next_preserves_subject_and_source_notes_require_disclosure() {
         &[("starter", "baby-soothing")],
     );
     assert_eq!(route.redirect, "/?practice=baby-soothing");
+    try_from_memory(&mut a);
     let p = a.practice.current.clone().unwrap();
     let answer = scry::library::mapping_pair(
         &a.library.versions[&p.prompt.version_id].sections[0].units[0].text,
@@ -244,6 +301,9 @@ fn focused_next_preserves_subject_and_source_notes_require_disclosure() {
 }
 
 fn answer_current(a: &mut App, now: i64) -> String {
+    if a.practice.current.as_ref().unwrap().source_visible() {
+        try_from_memory_at(a, now);
+    }
     let p = a.practice.current.clone().unwrap();
     let v = &a.library.versions[&p.prompt.version_id];
     let u = v
