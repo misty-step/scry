@@ -139,8 +139,10 @@ struct Next {
 #[serde(deny_unknown_fields)]
 struct Answer {
     operation_id: String,
-    prompt_id: String,
-    answer: String,
+    prompt_id: Option<String>,
+    answer: Option<String>,
+    /// Alone, asks for another check of this saved answer instead of answering.
+    attempt_id: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -359,14 +361,31 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
         "scry_answer" => {
             let input: Answer = parse(args)?;
             operation(&input.operation_id)?;
-            identity(&input.prompt_id)?;
-            if input.answer.len() > crate::library::TEXT_BYTES {
-                return Err("answer must be at most 256 KiB of UTF-8; an empty answer is a miss.");
+            match (input.prompt_id, input.answer, input.attempt_id) {
+                (Some(prompt_id), Some(answer), None) => {
+                    identity(&prompt_id)?;
+                    if answer.len() > crate::library::TEXT_BYTES {
+                        return Err(
+                            "answer must be at most 256 KiB of UTF-8; an empty answer is a miss.",
+                        );
+                    }
+                    Ok(write(
+                        "/api/v1/answer",
+                        json!({"operation_id":input.operation_id,"prompt_id":prompt_id,"answer":answer}),
+                    ))
+                }
+                // Check again: a new paid check of the same saved answer.
+                (None, None, Some(attempt_id)) => {
+                    identity(&attempt_id)?;
+                    Ok(write(
+                        "/api/v1/check",
+                        json!({"operation_id":input.operation_id,"attempt_id":attempt_id}),
+                    ))
+                }
+                _ => Err(
+                    "Use prompt_id with answer to answer, or attempt_id alone to check a saved answer again.",
+                ),
             }
-            Ok(write(
-                "/api/v1/answer",
-                json!({"operation_id":input.operation_id,"prompt_id":input.prompt_id,"answer":input.answer}),
-            ))
         }
         "scry_reveal" | "scry_quiz" => {
             let input: Reveal = parse(args)?;

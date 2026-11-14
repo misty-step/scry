@@ -167,11 +167,18 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_answer",
-            "Submit the learner's raw answer; native Scry grades and schedules. Empty answer is a miss. No verdict, rating, correct flag or self-grade is accepted.",
-            object(
-                json!({"operation_id":operation(),"prompt_id":id(),"answer":{"type":"string","maxLength":262144,"description":"At most 256 KiB UTF-8, unchanged raw learner answer."}}),
-                &["operation_id", "prompt_id", "answer"],
-            ),
+            "Submit the learner's raw answer with prompt_id and answer; native Scry grades and schedules. Empty answer is a miss. No verdict, rating, correct flag or self-grade is accepted. Where the Owner has turned paid judgment on and the Owner token carries paid permission, a mismatch is saved with no Verdict and practice.judgment.state is checking: repeat the same operation later, or read history, for its outcome. Check again: with attempt_id alone, ask for one more paid check of a saved answer whose state is ungraded; at most three checks per answer.",
+            {
+                let mut input = object(
+                    json!({"operation_id":operation(),"prompt_id":id(),"answer":{"type":"string","maxLength":262144,"description":"At most 256 KiB UTF-8, unchanged raw learner answer."},"attempt_id":id()}),
+                    &["operation_id"],
+                );
+                input["oneOf"] = json!([
+                    {"required":["prompt_id","answer"],"not":{"required":["attempt_id"]}},
+                    {"required":["attempt_id"],"not":{"anyOf":[{"required":["prompt_id"]},{"required":["answer"]}]}}
+                ]);
+                input
+            },
             false,
         ),
         (

@@ -11,7 +11,7 @@ Behavior authority: [SPEC § Owner tokens](../SPEC.md#owner-tokens) and [Agent a
 - `token-act` lets an unexpired, unrevoked token act as the Owner for every API action.
 - `token-refuse` refuses missing, malformed, expired and revoked tokens identically.
 - `token-revoke` refuses the token's next request.
-- `token-paid` refuses paid work for tokens without paid permission.
+- `token-paid` refuses paid work for tokens without paid permission. An answer submitted with such a token is graded locally and never sent to Jev; `scry check` is refused. Paid judgment itself is turned on or off only in Settings → Paid judgment by the signed-in Owner, never by a token ([paid judgment](../docs/owner-api.md#paid-judgment-jev)).
 - `mcp-supplied` exposes supplied-content schema, validation/import and native practice through [stdio MCP](../docs/mcp.md), using the existing private CLI login; no generation or caller grade.
 - `token-spend` reports spend through `scry spend --by day|purpose|model` and `GET /api/v1/spend` (US-019.7 slice, #321).
 

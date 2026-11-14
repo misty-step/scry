@@ -487,3 +487,5 @@ body.private-suspended .page-frame { visibility: hidden; }
 .lesson-stage:has(.sequence-feedback) .result-progress strong {font-size:16px;letter-spacing:0}
 .lesson-answer summary::after {content:'⌄';margin-left:auto}
 .lesson-answer[open]>summary::after {content:'⌃'}
+/* A saved answer with no Verdict gives its reason directly under the heading. */
+.feedback+.notice {margin-top:0}
