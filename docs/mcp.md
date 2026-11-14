@@ -55,7 +55,8 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 | `scry_next` | Current Prompt/held result; deliberate `after` releases an answered Prompt |
 | `scry_lesson_start` | Start/resume one supplied or bundled authored lesson; explicit `after` or `leave` controls a switch |
 | `scry_lesson_next` | Advance phrases, join their authored Section, try the whole text, or practise from the middle |
-| `scry_answer` | Raw learner answer, graded by Scry; no verdict/rating/correct field. With `attempt_id` alone: check a saved answer again |
+| `scry_answer` | Raw learner answer, graded by Scry; no verdict/rating/correct field |
+| `scry_check` | Check again: one more paid check of a saved answer that has no Verdict |
 | `scry_reveal` | Record assistance before disclosing the target |
 | `scry_quiz` | Deliberately hide the held source and start a memory quiz; no grade or schedule credit |
 
@@ -71,10 +72,12 @@ Where the Owner has turned paid judgment on and the login's Owner token carries
 paid permission, `scry_answer` may return `practice.judgment.state: "checking"`:
 the answer is saved with no Verdict while Jev judges it. Repeat the same
 `scry_answer` call (same `operation_id` and arguments) to read `decided` or
-`ungraded`. For an `ungraded` answer, `scry_answer` with `operation_id` and
-`attempt_id` only asks for one more paid check of the same Attempt, under the
-[Owner API's rules](owner-api.md#paid-judgment-jev). The adapter has no tool
-that turns paid judgment on or off.
+`ungraded`. For an `ungraded` answer, `scry_check` with `operation_id` and
+`attempt_id` asks for one more paid check of the same Attempt, under the
+[Owner API's rules](owner-api.md#paid-judgment-jev): each check reserves 0.50
+US dollars of the daily allowance and an answer is checked at most three times.
+It returns the same `practice.judgment`, in state `checking`. The adapter has
+no tool that turns paid judgment on or off.
 
 Search before import; show the returned `result.entity_id` to inspect what was
 stored. A new agent must not infer that the running Worker matches its binary's

@@ -718,8 +718,10 @@ test('the API, the CLI and the tool server report the judgment state and can ask
   const tool=async(name,args)=>(await request('tools/call',{name,arguments:args})).result;
   assert.equal((await request('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'judgment-journey',version:'1'}})).result.protocolVersion,'2025-11-25');
   child.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');
-  const listed=(await request('tools/list')).result.tools.find(entry=>entry.name==='scry_answer');
-  assert.ok(listed.inputSchema.properties.attempt_id,'The answer tool carries the check-again action.');assert.match(listed.description,/Check again/);
+  const tools=(await request('tools/list')).result.tools,listed=name=>tools.find(entry=>entry.name===name);
+  assert.deepEqual(listed('scry_check').inputSchema.required,['operation_id','attempt_id']);assert.match(listed('scry_check').description,/Check again/);
+  assert.deepEqual(listed('scry_answer').inputSchema.required,['operation_id','prompt_id','answer']);assert.equal(listed('scry_answer').inputSchema.properties.attempt_id,undefined);
+  for(const name of ['scry_answer','scry_check'])for(const combinator of ['oneOf','anyOf','allOf','not'])assert.equal(listed(name).inputSchema[combinator],undefined,`${name} has no top-level ${combinator}`);
   const id=label=>`judgment-mcp-${label}-${randomUUID()}`;
   shown=(await tool('scry_next',{operation_id:id('next'),after:quiz.prompt.id,study_id:study})).structuredContent.practice;
   quiz=(await tool('scry_quiz',{operation_id:id('quiz'),prompt_id:shown.prompt.id})).structuredContent.practice;
@@ -729,11 +731,11 @@ test('the API, the CLI and the tool server report the judgment state and can ask
   assert.equal(told.isError,false);assert.equal(told.structuredContent.practice.judgment.state,'checking');
   const third=told.structuredContent.result.entity_id;
   await n.settle(n.closed(third),'the tool server check');
-  for(const invalid of [{operation_id:id('bad'),prompt_id:quiz.prompt.id,answer:'x',attempt_id:third},{operation_id:id('bad'),prompt_id:quiz.prompt.id},{operation_id:id('bad')},{operation_id:id('bad'),attempt_id:third,verdict:'Good'}]){
-    const result=await tool('scry_answer',invalid);assert.equal(result.isError,true);assert.equal(result.structuredContent.error.code,'invalid_arguments');
+  for(const [name,invalid] of [['scry_answer',{operation_id:id('bad'),prompt_id:quiz.prompt.id,answer:'x',attempt_id:third}],['scry_answer',{operation_id:id('bad'),attempt_id:third}],['scry_check',{operation_id:id('bad')}],['scry_check',{operation_id:id('bad'),attempt_id:third,verdict:'Good'}],['scry_check',{operation_id:id('bad'),attempt_id:third,answer:'x'}]]){
+    const result=await tool(name,invalid);assert.equal(result.isError,true);assert.equal(result.structuredContent.error.code,'invalid_arguments');
   }
   n.jev.respond=()=>reject();
-  told=await tool('scry_answer',{operation_id:id('check'),attempt_id:third});
+  told=await tool('scry_check',{operation_id:id('check'),attempt_id:third});
   assert.equal(told.isError,false);assert.equal(told.structuredContent.practice.judgment.state,'checking');assert.equal(told.structuredContent.practice.attempt.id,third);
   state=await n.settle(n.closed(third),'the repeated tool server check');
   told=await tool('scry_answer',said);

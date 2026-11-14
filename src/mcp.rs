@@ -139,10 +139,14 @@ struct Next {
 #[serde(deny_unknown_fields)]
 struct Answer {
     operation_id: String,
-    prompt_id: Option<String>,
-    answer: Option<String>,
-    /// Alone, asks for another check of this saved answer instead of answering.
-    attempt_id: Option<String>,
+    prompt_id: String,
+    answer: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Check {
+    operation_id: String,
+    attempt_id: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -361,31 +365,24 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
         "scry_answer" => {
             let input: Answer = parse(args)?;
             operation(&input.operation_id)?;
-            match (input.prompt_id, input.answer, input.attempt_id) {
-                (Some(prompt_id), Some(answer), None) => {
-                    identity(&prompt_id)?;
-                    if answer.len() > crate::library::TEXT_BYTES {
-                        return Err(
-                            "answer must be at most 256 KiB of UTF-8; an empty answer is a miss.",
-                        );
-                    }
-                    Ok(write(
-                        "/api/v1/answer",
-                        json!({"operation_id":input.operation_id,"prompt_id":prompt_id,"answer":answer}),
-                    ))
-                }
-                // Check again: a new paid check of the same saved answer.
-                (None, None, Some(attempt_id)) => {
-                    identity(&attempt_id)?;
-                    Ok(write(
-                        "/api/v1/check",
-                        json!({"operation_id":input.operation_id,"attempt_id":attempt_id}),
-                    ))
-                }
-                _ => Err(
-                    "Use prompt_id with answer to answer, or attempt_id alone to check a saved answer again.",
-                ),
+            identity(&input.prompt_id)?;
+            if input.answer.len() > crate::library::TEXT_BYTES {
+                return Err("answer must be at most 256 KiB of UTF-8; an empty answer is a miss.");
             }
+            Ok(write(
+                "/api/v1/answer",
+                json!({"operation_id":input.operation_id,"prompt_id":input.prompt_id,"answer":input.answer}),
+            ))
+        }
+        // Check again: a new paid check of the same saved answer.
+        "scry_check" => {
+            let input: Check = parse(args)?;
+            operation(&input.operation_id)?;
+            identity(&input.attempt_id)?;
+            Ok(write(
+                "/api/v1/check",
+                json!({"operation_id":input.operation_id,"attempt_id":input.attempt_id}),
+            ))
         }
         "scry_reveal" | "scry_quiz" => {
             let input: Reveal = parse(args)?;
@@ -706,6 +703,92 @@ mod lesson_tests {
             schema::tools()
                 .iter()
                 .any(|tool| tool["name"] == "scry_quiz")
+        );
+    }
+    #[test]
+    fn check_again_is_its_own_tool_and_answer_takes_no_attempt() {
+        let op = "check-mcp-operation-0001";
+        let args = json!({"operation_id":op,"attempt_id":"a".repeat(32)});
+        match prepare("scry_check", args.clone()).unwrap() {
+            Call::Api { path, payload } => {
+                assert_eq!(path, "/api/v1/check");
+                assert_eq!(payload.unwrap(), args);
+            }
+            _ => panic!("not API"),
+        }
+        for field in ["verdict", "grade", "answer", "prompt_id", "paid_judgment"] {
+            let mut supplied = args.clone();
+            supplied[field] = json!("Good");
+            assert!(prepare("scry_check", supplied).is_err());
+        }
+        assert!(prepare("scry_check", json!({"operation_id":op})).is_err());
+        assert!(
+            prepare(
+                "scry_check",
+                json!({"operation_id":op,"attempt_id":"short"})
+            )
+            .is_err()
+        );
+        // The answer tool is what it was: a Prompt and a raw answer, nothing else.
+        let answer = json!({"operation_id":op,"prompt_id":"b".repeat(32),"answer":"Alfa"});
+        assert!(matches!(
+            prepare("scry_answer", answer.clone()).unwrap(),
+            Call::Api { path, .. } if path == "/api/v1/answer"
+        ));
+        let mut overloaded = answer.clone();
+        overloaded["attempt_id"] = json!("a".repeat(32));
+        assert!(prepare("scry_answer", overloaded).is_err());
+        assert!(prepare("scry_answer", args).is_err());
+        let tools = schema::tools();
+        let schema = |name: &str| {
+            tools
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .unwrap_or_else(|| panic!("{name} is listed"))["inputSchema"]
+                .clone()
+        };
+        assert_eq!(
+            schema("scry_answer")["required"],
+            json!(["operation_id", "prompt_id", "answer"])
+        );
+        assert!(
+            schema("scry_answer")["properties"]
+                .get("attempt_id")
+                .is_none()
+        );
+        assert_eq!(
+            schema("scry_check")["required"],
+            json!(["operation_id", "attempt_id"])
+        );
+    }
+    /// Common tool-calling clients refuse a tool whose input schema combines
+    /// schemas at its top level, and with it the whole server. The two manifest
+    /// tools have carried a top-level `allOf` since before this test; they are
+    /// named here so that no other tool gains one unnoticed.
+    #[test]
+    fn every_tool_is_named_once_and_no_other_input_schema_has_a_top_level_combinator() {
+        let tools = schema::tools();
+        let mut listed = tools
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        let mut named = schema::NAMES.to_vec();
+        listed.sort_unstable();
+        named.sort_unstable();
+        assert_eq!(listed, named);
+        let mut combined = Vec::new();
+        for tool in &tools {
+            let input = tool["inputSchema"].as_object().unwrap();
+            assert_eq!(input["type"], "object", "{}", tool["name"]);
+            for combinator in ["oneOf", "anyOf", "allOf", "not", "if", "then", "else"] {
+                if input.contains_key(combinator) {
+                    combined.push((tool["name"].as_str().unwrap(), combinator));
+                }
+            }
+        }
+        assert_eq!(
+            combined,
+            [("scry_validate", "allOf"), ("scry_import", "allOf")]
         );
     }
     #[test]
