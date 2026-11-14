@@ -589,6 +589,17 @@ fn active(app: &App, fields: &BTreeMap<String, String>, answered: bool) -> AppRe
     }
     Ok(p.clone())
 }
+/// A Prompt held under an earlier release may cover a scope recovery refuses,
+/// such as a Recitation over Units not all introduced. It is never answered or
+/// revealed into history, where it could not be removed; leaving it closes it.
+fn recordable(app: &App, p: &Presentation) -> AppResult<()> {
+    validate_targets(app, &p.prompt, &p.targets).map_err(|_| {
+        AppError::new(
+            409,
+            "This held Prompt cannot be recorded. Leave it to continue.",
+        )
+    })
+}
 /// Cap automatic receipts across tabs and reloads without changing receipt format.
 pub const AUTOSAVE_RECEIPT_LIMIT: usize = 512;
 pub const AUTOSAVE_OPERATION_PREFIX: &str = "autosave-";
@@ -735,14 +746,44 @@ fn present(
     });
     p
 }
-/// Hold a new Prompt and mark its Study for the phase archive format.
-fn hold(app: &mut App, p: Presentation) {
+/// Hold a new Prompt and mark its Study for the phase archive format. A Prompt
+/// that recovery would refuse is never held: stored state is validated only
+/// when an archive is written or read, so it must be refused here, before it
+/// can be answered into history.
+fn hold(app: &mut App, p: Presentation) -> AppResult<()> {
+    validate_targets(app, &p.prompt, &p.targets)?;
     app.practice
         .studies
         .get_mut(&p.prompt.study_id)
         .expect("Prompt Study")
         .source_quiz = true;
     app.practice.current = Some(p);
+    Ok(())
+}
+const NOT_INTRODUCED: &str = "Introduce every Unit in this scope before Recitation.";
+/// The Cards of a Recitation, in the order of its scope. A Recitation covers
+/// every Unit of its Section or Version, so each must already be introduced.
+/// Nothing is introduced here: a refusal leaves the notebook as it was.
+fn recitation_cards<'a>(
+    app: &'a App,
+    sid: &str,
+    scope: impl Iterator<Item = &'a crate::library::Unit>,
+) -> AppResult<Vec<&'a Card>> {
+    let introduced = app
+        .practice
+        .cards
+        .values()
+        .filter(|c| c.study_id == sid)
+        .map(|c| (c.unit_id.as_str(), c))
+        .collect::<BTreeMap<_, _>>();
+    scope
+        .map(|u| {
+            introduced
+                .get(u.id.as_str())
+                .copied()
+                .ok_or_else(|| AppError::new(409, NOT_INTRODUCED))
+        })
+        .collect()
 }
 fn study_start(
     app: &mut App,
@@ -823,7 +864,7 @@ fn quiz(
     // Help belongs to this attempt: hiding a peek does not erase assistance.
     // Initial source reading has no Attempt and is not itself a successful recall.
     p.revealed = old.revealed;
-    hold(app, p);
+    hold(app, p)?;
     Ok(response(None, held(app)?))
 }
 
@@ -1367,11 +1408,8 @@ fn next(
                 "Mapping practice currently supports one key at a time, forward only.",
             ));
         }
-        let (scope, ids) = match recite {
-            "whole" => (
-                Scope::Whole,
-                units(v).iter().map(|u| u.id.as_str()).collect::<Vec<_>>(),
-            ),
+        let (scope, scoped) = match recite {
+            "whole" => (Scope::Whole, units(v)),
             "section" => {
                 let s = v
                     .sections
@@ -1382,23 +1420,12 @@ fn next(
                     Scope::Section {
                         section_id: s.id.clone(),
                     },
-                    s.units.iter().map(|u| u.id.as_str()).collect(),
+                    s.units.iter().collect(),
                 )
             }
             _ => return Err(AppError::new(422, "Use recite=whole|section.")),
         };
-        let cards = ids
-            .iter()
-            .map(|uid| {
-                app.practice
-                    .cards
-                    .values()
-                    .find(|c| c.study_id == sid && &c.unit_id == uid)
-                    .ok_or_else(|| {
-                        AppError::new(409, "Introduce every Unit in this scope before Recitation.")
-                    })
-            })
-            .collect::<AppResult<Vec<_>>>()?;
+        let cards = recitation_cards(app, sid, scoped.into_iter())?;
         let presentation = present(app, study, cards, scope, now, seed);
         let expected_words = prompt_words(app, &presentation);
         if !fits_grading_capacity(
@@ -1411,7 +1438,7 @@ fn next(
                 "This Recitation exceeds the 1,000,000-cell local grading capacity. Choose a smaller Section.",
             ));
         }
-        hold(app, presentation);
+        hold(app, presentation)?;
     } else {
         let explicit = field(fields, "card_id");
         let eligible = reviewable_studies(app);
@@ -1794,13 +1821,10 @@ fn lesson_present(
             }
             app.practice.studies.get_mut(sid).unwrap().lesson = true;
         }
-        let mut cards = app
-            .practice
-            .cards
-            .values()
-            .filter(|c| c.study_id == sid)
-            .collect::<Vec<_>>();
-        cards.sort_by_key(|c| c.unit_index);
+        // A list has just been introduced whole. A text is recited whole only
+        // once every phrase has been: Units arrive at Pace, never as a side effect.
+        let version = &app.library.versions[&study.version_id];
+        let cards = recitation_cards(app, sid, units(version).into_iter())?;
         let p = present(app, &study, cards, Scope::Whole, now, seed);
         if !fits_grading_capacity(
             prompt_words(app, &p),
@@ -1832,7 +1856,7 @@ fn lesson_present(
             seed,
         )
     };
-    hold(app, p);
+    hold(app, p)?;
     Ok(response(None, held(app)?))
 }
 fn lesson_next(
@@ -1920,7 +1944,7 @@ fn lesson_next(
         );
         retry.phase = Some(StudyPhase::Study);
         retry.revealed = true; // feedback was already shown before retry
-        hold(app, retry);
+        hold(app, retry)?;
         return Ok(response(None, held(app)?));
     }
     if mode == "join" && v.kind == Kind::Text {
@@ -1929,13 +1953,7 @@ fn lesson_next(
             .iter()
             .find(|s| s.units.iter().any(|u| u.id == p.targets[0].unit_id))
             .ok_or_else(AppError::conflict)?;
-        let mut cards = app
-            .practice
-            .cards
-            .values()
-            .filter(|c| c.study_id == sid && section.units.iter().any(|u| u.id == c.unit_id))
-            .collect::<Vec<_>>();
-        cards.sort_by_key(|c| c.unit_index);
+        let cards = recitation_cards(app, &sid, section.units.iter())?;
         let presentation = present(
             app,
             study,
@@ -1956,7 +1974,7 @@ fn lesson_next(
                 "This joined passage exceeds local grading capacity.",
             ));
         }
-        hold(app, presentation);
+        hold(app, presentation)?;
         return Ok(response(None, held(app)?));
     }
     let whole = v.kind == Kind::OrderedList || mode == "whole";
@@ -2190,6 +2208,7 @@ pub fn mutate(
         "/practice/reveal" => {
             let p = active(app, fields, false)?;
             reviewable(&app.library.versions[&p.prompt.version_id])?;
+            recordable(app, &p)?;
             let v = &app.library.versions[&p.prompt.version_id];
             let all = units(v);
             let expected = p
@@ -2248,6 +2267,7 @@ pub fn mutate(
         "/practice/answer" => {
             let p = active(app, fields, false)?;
             reviewable(&app.library.versions[&p.prompt.version_id])?;
+            recordable(app, &p)?;
             if p.phase == Some(StudyPhase::Study) {
                 return Err(AppError::new(
                     409,
@@ -2405,7 +2425,12 @@ pub fn due(app: &App, now: i64) -> Value {
         })
         .collect::<Vec<_>>();
     cards.sort_by_key(|c| (c.state.schedule.due_ms, &c.study_id, c.unit_index));
-    json!({"cards":cards,"due":cards.iter().filter(|c|c.state.schedule.due_ms<=now).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":cards.iter().map(|c|c.state.schedule.due_ms).min()})
+    // Due is what Study will serve. A list that waits to be resumed serves nothing.
+    let served = cards
+        .iter()
+        .filter(|c| !list_waits(app, &app.practice.studies[&c.study_id]))
+        .collect::<Vec<_>>();
+    json!({"cards":cards,"due":served.iter().filter(|c|c.state.schedule.due_ms<=now).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":served.iter().map(|c|c.state.schedule.due_ms).min()})
 }
 pub fn history(app: &App) -> AppResult<Value> {
     if app.practice.protected() || app.protected_goal().is_some() {
