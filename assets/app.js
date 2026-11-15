@@ -501,7 +501,9 @@
     clearTimeout(pollTimer);
     if (!document.querySelector('#main[data-poll], [data-poll]')) return;
     pollTimer = setTimeout(async () => {
-      const currentState = document.querySelector('[data-state]')?.getAttribute('data-state');
+      // The element that asks to be polled names the state, where it has one: a
+      // lesson's result sits inside the lesson's own outer state.
+      const currentState = (document.querySelector('[data-poll][data-state]') || document.querySelector('[data-state]'))?.getAttribute('data-state');
       const preserveDrafts = currentState === 'goal';
       if (pending || suspended || !navigator.onLine || inactive() || document.querySelector('form[aria-busy]') || (!preserveDrafts && (document.activeElement?.matches('textarea,input,select') || [...document.forms].some(form => dirtyForms.has(form))))) { schedulePoll(); return; }
       const sequence = pageSequence;
@@ -515,7 +517,7 @@
         const doc = await safePage(response, valid);
         if (doc && response.ok && !pending && valid() && mayInstallPoll(doc, preserveDrafts)) {
           // Never replace an editable page or an unanswered question just to poll.
-          if (['concept-home', 'checking', 'checking-reference', 'checking-paused', 'pending', 'preparing', 'preparation-paused', 'preparation-stopped', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false, preserveDrafts);
+          if (['concept-home', 'checking', 'checking-reference', 'checking-paused', 'exact-checking', 'pending', 'preparing', 'preparation-paused', 'preparation-stopped', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false, preserveDrafts);
         }
       } catch { /* Poll reads never retry paid work or imply success. */ }
       finally { clearTimeout(timeout); if (pollRequest === controller) pollRequest = null; }

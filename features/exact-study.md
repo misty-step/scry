@@ -12,6 +12,7 @@ straight into the next due Unit. Behavior authority:
 - `study-learn` creates one Study per Version (`scry learn`).
 - `study-prompt` shows source without an input, then Try from memory selects a hidden-source quiz with one field and one submit control. This holds for every Kind and every client; a cue-bearing Prompt held from an older record can still be answered once.
 - `study-verdict` gives Good or Again with a Diff of correct, slipped, wrong, missing and extra words, held until Next.
+- `study-judged` (off unless the Owner turns on Paid judgment in Settings): a mismatch is saved with no Verdict and shows `[data-state="exact-checking"]`, which looks again by itself with JavaScript and offers Refresh without. Jev's answer becomes Good or Again labelled "Judged by Jev", with the Diff shown as "comparison, not the Verdict"; anything else is `[data-state="exact-ungraded"]`, "Saved, not graded", with its reason and Check again (`scry check ATTEMPT`, tool `scry_check`). A Card whose check is open is not served again.
 - `study-assist` records Show me as assistance before showing it; the retry that follows is assisted.
 - `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 because self-grading is a [non-goal](../SPEC.md#purpose-and-non-goals).
 - `study-caught-up`: opening practice with nothing held selects nothing. It offers one Study action, or says Rest for now with Browse and the next scheduled review instead of inventing practice.
@@ -54,6 +55,15 @@ Preconditions:
   from real engine operations; `qa/study.mjs` retains SQLite/restart/R2 parity.
   Exact Prompt protection gates all historical wording; a protected legacy
   question gates exact Attempts and preserves its per-concept history fence.
+- **Paid judgment.** `node --test qa/judgment.test.mjs` drives the built Worker
+  against a synthetic Jev endpoint inside the test process: the switch, the
+  three cases in which nothing is sent, every outcome of a check, exactly-once
+  sending, Check again, the API, CLI and tool server, the `judged-v4` archive and
+  phone-width pages with and without JavaScript. Set `SCRY_JUDGMENT_OLD_WORKER`
+  to a build of the source before paid judgment to run the previous-Worker
+  refusal, and `SCRY_JUDGMENT_SHOTS` to keep the screenshots elsewhere than
+  `target/judgment`. `tests/judgment.rs` and `tests/judgment_off.rs` hold the
+  native state machine and the proof that off is unchanged.
 - **Story walk.** `qa/walk --stories "US-016 US-017 US-018"` covers every
   criterion. The CLI-only US-016/017 walks need no browser. US-018 retains light
   and dark at 320/390/1280px, 100/200% text at 320/390px, keyboard and no-JS forms. Native Full answer

@@ -13,6 +13,7 @@ pub(super) const NAMES: &[&str] = &[
     "scry_due",
     "scry_next",
     "scry_answer",
+    "scry_check",
     "scry_reveal",
     "scry_quiz",
 ];
@@ -167,10 +168,19 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_answer",
-            "Submit the learner's raw answer; native Scry grades and schedules. Empty answer is a miss. No verdict, rating, correct flag or self-grade is accepted.",
+            "Submit the learner's raw answer; native Scry grades and schedules. Empty answer is a miss. No verdict, rating, correct flag or self-grade is accepted. Where the Owner has turned paid judgment on and the Owner token carries paid permission, a mismatch is saved with no Verdict and practice.judgment.state is checking: repeat the same operation later, or read history, for its outcome. Use scry_check to have a saved answer whose state is ungraded checked again.",
             object(
                 json!({"operation_id":operation(),"prompt_id":id(),"answer":{"type":"string","maxLength":262144,"description":"At most 256 KiB UTF-8, unchanged raw learner answer."}}),
                 &["operation_id", "prompt_id", "answer"],
+            ),
+            false,
+        ),
+        (
+            "scry_check",
+            "Check again: ask Jev for one more paid judgment of a saved answer whose practice.judgment.state is ungraded (Jev was unsure, failed, was refused or could not be reached). It is a new check of the same Attempt, never a second answer, and applies only where the Owner has turned paid judgment on and the Owner token carries paid permission. Each check reserves 0.50 US dollars of the daily allowance before it is sent, and an answer is checked at most three times. Returns the saved Attempt with practice.judgment.state checking: repeat the same operation later, or read history, for decided (verdict Good or Again) or ungraded with its reason. Refused, with nothing written, while a check is open, once the answer has its Verdict, when the allowance is used or after three checks.",
+            object(
+                json!({"operation_id":operation(),"attempt_id":id()}),
+                &["operation_id", "attempt_id"],
             ),
             false,
         ),

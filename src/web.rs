@@ -693,11 +693,7 @@ impl View<'_> {
         let ready = study.is_none_or(|s| crate::study::study_ready(self.app, s, self.now));
         if !ready {
             let sid = study.map(|s| s.id.as_str());
-            return self.rest(
-                &lesson.input.title,
-                self.next_review(|s| Some(s.id.as_str()) == sid),
-                "",
-            );
+            return self.rest(&lesson.input.title, |s| Some(s.id.as_str()) == sid, "");
         }
         let sid = study.map(|s| s.id.as_str());
         let timing = match next {
@@ -829,8 +825,19 @@ impl View<'_> {
                     "exact-form",
                     if secondary { "" } else { "data-next" },
                     &format!(
-                        "{}<button class=\"{}\">Next</button>",
+                        "{}{}<button class=\"{}\">Next</button>",
                         hidden("after", &a.prompt.id),
+                        // A focused mapping lesson stays in its own Study.
+                        if !self.app.practice.mixed_review
+                            && crate::lessons::mapping_route(
+                                &self.app.library.versions[&a.version_id]
+                            )
+                            .is_some()
+                        {
+                            hidden("study_id", &a.prompt.study_id)
+                        } else {
+                            String::new()
+                        },
                         if secondary {
                             "text-button"
                         } else {
@@ -1195,9 +1202,16 @@ impl View<'_> {
     fn judged_comparison(&self, a: &crate::study::Attempt, expected: &str) -> String {
         let mut out = format!("<h2>Expected text</h2>{expected}");
         let version = &self.app.library.versions[&a.version_id];
-        if version.kind == crate::library::Kind::OrderedList {
-            let count = a.card_units().len();
-            if let Ok(feedback) = crate::ordered::feedback(version, 0..count, &a.raw_answer) {
+        if version.kind == crate::library::Kind::OrderedList
+            && let Some(judgment) = &a.judgment
+        {
+            // The same items the comparison graded: the Prompt's own scope,
+            // which a Section of a longer list does not start at its first item.
+            let count = judgment.targets.len();
+            let start = judgment.targets[0].unit_index;
+            if let Ok(feedback) =
+                crate::ordered::feedback(version, start..start + count, &a.raw_answer)
+            {
                 let _ = write!(
                     out,
                     "<h2>Item-by-item comparison, not the Verdict</h2><p class=\"fineprint\">{} of {count} items matched · {} in order.</p>",
@@ -2696,7 +2710,7 @@ impl View<'_> {
                 "<button class=\"button primary\"><span>Study</span><span aria-hidden=\"true\">→</span></button>",
             ));
         } else {
-            return self.rest("All subjects", self.next_review(|_| true), "");
+            return self.rest("All subjects", |_| true, "");
         }
         out.push_str("</div>");
         out.push_str(&self.browse());
@@ -2735,8 +2749,25 @@ impl View<'_> {
             .min()
     }
     /// The one nothing-due state, under Study and inside a focused lesson.
-    /// `tools` are the lesson's own disclosures, shown after Browse.
-    fn rest(&self, context: &str, next_review: Option<i64>, tools: &str) -> String {
+    /// `tools` are the lesson's own disclosures, shown after Browse. While an
+    /// answer in scope is still with Jev there is nothing to rest from yet: the
+    /// page says the answer is being checked and looks again by itself.
+    fn rest(
+        &self,
+        context: &str,
+        in_scope: impl Fn(&crate::study::Study) -> bool,
+        tools: &str,
+    ) -> String {
+        if let Some(a) = crate::study::checking_attempt(self.app, &in_scope) {
+            return format!(
+                "<section class=\"nato-screen study-home\" data-state=\"exact-checking\" data-poll><div class=\"study-entry\"><p class=\"study-context\">{}</p><div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h1>Checking it.</h1><p>Jev is judging your answer. Nothing else is due until it has a Verdict.</p></div><div class=\"answer-pair\"><span>You answered</span><p>{}</p></div><a class=\"text-link\" href=\"{}\">Refresh</a> <a class=\"text-link\" href=\"/history\">History</a></div>{}{tools}</section>",
+                escape(context),
+                escape(&a.raw_answer),
+                escape(self.path),
+                self.browse()
+            );
+        }
+        let next_review = self.next_review(&in_scope);
         let mut out = format!(
             "<section class=\"nato-screen study-home\" data-state=\"rest\"><div class=\"study-entry\"><p class=\"study-context\">{}</p><h1>Rest for now</h1>",
             escape(context)
@@ -2938,7 +2969,7 @@ impl View<'_> {
                 } else {
                     return self.rest(
                         "NATO alphabet",
-                        self.next_review(|s| nato_versions.contains(s.version_id.as_str())),
+                        |s| nato_versions.contains(s.version_id.as_str()),
                         &format!(
                             "<div class=\"practice-tools\">{}{}</div>",
                             self.nato_progress(),
@@ -3665,6 +3696,56 @@ impl View<'_> {
         out.push_str("</details>");
         out
     }
+    /// The Owner's switch for paid judgment. It says what leaves Scry and what
+    /// each check reserves before it offers anything, and offers no control
+    /// where this Scry cannot reach Jev. A page rendered without the runtime's
+    /// answer to that question shows no section at all.
+    fn paid_judgment(&self) -> String {
+        let Some(capable) = self.query.get("__judgment") else {
+            return String::new();
+        };
+        let reserve = RESERVATION as f64 / 1_000_000.0;
+        let allowance = DAILY_ALLOWANCE as f64 / 1_000_000.0;
+        let on = self.app.preferences.paid_judgment;
+        let explain = format!(
+            "<p>When this is on, an answer that is not an exact match is saved and then sent to Jev, a paid judgment service, to be judged. Your answer and the expected text leave Scry for that check. So does what names the question: the Work's title and the place in it, a mapping's key, and the accepted aliases of a list's items. Each check reserves ${reserve:.2} of the ${allowance:.2} daily allowance before it is sent. Spelling-strict content, empty answers and exact matches are never sent.</p>"
+        );
+        let switch = |value: &str, label: &str, class: &str| {
+            self.form(
+                "/settings/judgment",
+                "paid-judgment",
+                "judgment-form",
+                "",
+                &format!(
+                    "{}<button class=\"button {class}\">{label}</button>",
+                    hidden("paid_judgment", value)
+                ),
+            )
+        };
+        let body = if capable != "true" {
+            format!(
+                "<p data-paid-judgment=\"unavailable\"><strong>Paid judgment is not available here.</strong> Nothing leaves Scry: every answer is graded by exact comparison.</p>{}",
+                if on {
+                    "<p class=\"fineprint\">It is turned on in this notebook and stays unused here.</p>"
+                } else {
+                    ""
+                }
+            )
+        } else if on {
+            format!(
+                "<p data-paid-judgment=\"on\"><strong>Paid judgment is on.</strong></p>{explain}{}",
+                switch("off", "Turn paid judgment off", "secondary")
+            )
+        } else {
+            format!(
+                "<p data-paid-judgment=\"off\"><strong>Paid judgment is off.</strong> Nothing leaves Scry: every answer is graded by exact comparison.</p>{explain}{}",
+                switch("on", "Turn paid judgment on", "primary")
+            )
+        };
+        format!(
+            "<section class=\"settings-section\" id=\"paid-judgment\"><h2>Paid judgment</h2>{body}</section>"
+        )
+    }
     fn settings(&self) -> String {
         let mut pace =
             String::from("<fieldset class=\"pace-options\"><legend>New items per day</legend>");
@@ -3727,6 +3808,7 @@ impl View<'_> {
                 .unwrap_or_default()
         );
         out.push_str(&self.owner_tokens());
+        out.push_str(&self.paid_judgment());
         if self.query.get("__synthetic").is_some_and(|v| v == "true") {
             out.push_str("<p class=\"synthetic-note\">This is an isolated synthetic notebook. It does not prove production access, model usefulness, or remote recovery.</p>");
         }

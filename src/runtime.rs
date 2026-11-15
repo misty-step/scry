@@ -1196,7 +1196,9 @@ impl DurableObject for LearningSpace {
                 .query_pairs()
                 .map(|(k, v)| (k.into_owned(), v.into_owned()))
                 .collect();
-            let query = view_query(&self.env, &external_query, self.preparation_ready())?;
+            let mut query = view_query(&self.env, &external_query, self.preparation_ready())?;
+            // Settings offers the paid judgment switch only where Jev is reachable.
+            query.insert("__judgment".into(), self.judgment_capable().to_string());
             self.arm().await?;
             // Alarm installation can yield to another owner request. Render
             // and mark only the latest allowed reference content after it.
@@ -1605,7 +1607,13 @@ impl DurableObject for LearningSpace {
         if !app.restored_paused {
             let config = self.work_config();
             let lease = random_id()?;
-            match engine::claim_grading_work(&mut app, now(), &lease, &config) {
+            // The earlier concept notebook's assessment is claimed first, as
+            // before. Only when it claims nothing is a queued Check claimed.
+            let claimed = match engine::claim_grading_work(&mut app, now(), &lease, &config) {
+                Ok(None) => engine::claim_check_work(&mut app, now(), &lease, &config),
+                claimed => claimed,
+            };
+            match claimed {
                 Err(e) => return app_error(e),
                 Ok(work) => {
                     if app.revision != before {
@@ -2062,11 +2070,11 @@ impl LearningSpace {
     fn preparation_ready(&self) -> bool {
         false
     }
-    /// Whether an answer may be left for Jev to judge. Nothing sends a Check
-    /// yet, so this is false and every answer is graded locally, whatever is
-    /// bound or stored. The sender turns it into `work_config().jev`.
+    /// Whether this Scry can reach Jev at all: its key, model and endpoint are
+    /// bound and the space is the Owner's own, never a QA or synthetic one.
+    /// Where this is false every answer is graded locally and nothing is sent.
     fn judgment_capable(&self) -> bool {
-        false
+        self.work_config().jev
     }
     async fn arm(&self) -> Result<()> {
         if variable(&self.env, "SCRY_ENV") == "restore" {
@@ -2091,6 +2099,17 @@ impl LearningSpace {
                 }
                 if assessment.status == "sent" {
                     alarm = alarm.min(assessment.started_ms.unwrap_or(timestamp) + RECOVERY_MS);
+                }
+            }
+            // A queued Check is claimed by the next alarm; a sent one is
+            // recovered once its outcome can no longer arrive.
+            for check in app.practice.checks.values() {
+                match check.status {
+                    crate::study::CheckStatus::Queued => alarm = alarm.min(timestamp + 1000),
+                    crate::study::CheckStatus::Sent => {
+                        alarm = alarm.min(check.started_ms.unwrap_or(timestamp) + RECOVERY_MS)
+                    }
+                    _ => {}
                 }
             }
         }
@@ -2134,7 +2153,7 @@ impl LearningSpace {
         &self,
         work: &engine::Work,
     ) -> std::result::Result<(String, String, Option<u64>, Option<String>), (String, bool)> {
-        if work.kind != "assessment" {
+        if work.kind != "assessment" && work.kind != engine::CHECK_WORK {
             return Err(("Native content generation is retired.".into(), false));
         }
         if !self.external_work_allowed() {
@@ -2244,6 +2263,9 @@ impl LearningSpace {
             .load()
             .map_err(|_| ("Saved state is unavailable.".into(), false))?;
         engine::authorize_work(&current, &work.id, now()).map_err(|e| (e.message, false))?;
+        if !engine::awaits_send(&current, work) {
+            return Err(("This check is no longer waiting to be sent.".into(), false));
+        }
         let headers = Headers::new();
         headers
             .set("Authorization", &format!("Bearer {key}"))

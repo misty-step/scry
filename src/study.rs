@@ -1126,6 +1126,85 @@ fn list_waits(app: &App, study: &Study) -> bool {
         && introduced(app, study) < units(&app.library.versions[&study.version_id]).len()
 }
 
+/// Cards whose newest Attempt is still with Jev: its Check is queued or sent
+/// and nothing has touched the Card since. Study, Next and a Lesson's Next do
+/// not choose such a Card, because answering it again would leave Jev's
+/// Verdict recorded as superseded, with no effect on the schedule. A whole
+/// list is one Prompt, so one waiting item holds its list back. This is a rule
+/// of selection only: nothing is stored, and a Card or scope the Owner names
+/// outright is still presented.
+pub fn awaiting_verdict(app: &App) -> BTreeSet<String> {
+    let mut waiting = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| c.status.open())
+        .filter_map(|c| app.practice.attempts.get(&c.attempt_id))
+        .filter_map(|a| a.judgment.as_ref().filter(|j| j.decided.is_none()))
+        .flat_map(|j| &j.targets)
+        .filter(|t| {
+            app.practice
+                .cards
+                .get(&t.card_id)
+                .is_some_and(|c| c.revision == t.revision + 1 && c.state == t.before)
+        })
+        .map(|t| t.card_id.clone())
+        .collect::<BTreeSet<_>>();
+    let lists = waiting
+        .iter()
+        .map(|id| app.practice.cards[id].study_id.as_str())
+        .filter(|sid| whole_list(app, &app.practice.studies[*sid]))
+        .collect::<BTreeSet<_>>();
+    if !lists.is_empty() {
+        waiting.extend(
+            app.practice
+                .cards
+                .values()
+                .filter(|c| lists.contains(c.study_id.as_str()))
+                .map(|c| c.id.clone()),
+        );
+    }
+    waiting
+}
+/// Whether presenting this Study's list whole would re-ask a waiting item.
+fn list_awaits(app: &App, study: &Study, waiting: &BTreeSet<String>) -> bool {
+    whole_list(app, study)
+        && app
+            .practice
+            .cards
+            .values()
+            .any(|c| c.study_id == study.id && waiting.contains(&c.id))
+}
+/// The held result is still with Jev, so it stays held when nothing else is
+/// eligible: the Owner sees it being checked, not an empty page.
+fn held_awaits(app: &App, p: &Presentation) -> bool {
+    p.attempt_id.as_ref().is_some_and(|aid| {
+        app.practice
+            .checks
+            .values()
+            .any(|c| &c.attempt_id == aid && c.status.open())
+    })
+}
+/// The newest answer still with Jev among the Studies in scope, if its Card
+/// is still waiting: what a nothing-due page shows instead of rest.
+pub fn checking_attempt(app: &App, in_scope: impl Fn(&Study) -> bool) -> Option<&Attempt> {
+    let waiting = awaiting_verdict(app);
+    app.practice
+        .checks
+        .values()
+        .filter(|c| c.status.open())
+        .filter_map(|c| app.practice.attempts.get(&c.attempt_id))
+        .filter(|a| {
+            a.card_ids().any(|id| waiting.contains(id))
+                && app
+                    .practice
+                    .studies
+                    .get(&a.prompt.study_id)
+                    .is_some_and(|s| s.status != Status::Dropped && in_scope(s))
+        })
+        .max_by_key(|a| (a.sequence, &a.id))
+}
+
 /// Mixed review admits only content the learner has actually practised.
 /// Lesson entry may introduce a whole Version, but that is not review evidence.
 pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
@@ -1236,10 +1315,12 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         let served = last.entry(&a.prompt.study_id).or_default();
         *served = (*served).max(a.sequence);
     }
+    let waiting = awaiting_verdict(app);
     if let Some(c) = mixed_cards(app, now)
         .into_iter()
         .filter(|c| {
-            continuous_target_eligible(app, &app.practice.studies[&c.study_id], c.unit_index)
+            !waiting.contains(&c.id)
+                && continuous_target_eligible(app, &app.practice.studies[&c.study_id], c.unit_index)
         })
         .min_by_key(|c| {
             (
@@ -1270,12 +1351,14 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
             .filter(|c| {
                 c.study_id == study.id
                     && c.state.schedule.last_review_ms.is_none()
+                    && !waiting.contains(&c.id)
                     && continuous_target_eligible(app, study, c.unit_index)
             })
             .min_by_key(|c| c.unit_index);
         let choice = if let Some(c) = unfinished {
             Some(ContinuousChoice::Card(c.id.clone()))
         } else if continuous_limit(app, study, now)
+            && !list_awaits(app, study, &waiting)
             && continuous_target_eligible(app, study, introduced(app, study))
             && introduced(app, study) < units(&app.library.versions[&study.version_id]).len()
         {
@@ -1499,10 +1582,13 @@ fn mixed_next(
     } else if !after.is_empty() || !leave.is_empty() {
         return Err(AppError::conflict());
     }
-    app.practice.current = None;
+    let leaving = app.practice.current.take();
     app.practice.mixed_review = true;
     if let Some(choice) = continuous_choice(app, now) {
         continuous_present(app, choice, now, seed)?;
+    }
+    if app.practice.current.is_none() {
+        app.practice.current = leaving.filter(|p| held_awaits(app, p));
     }
     Ok(response(
         None,
@@ -1532,15 +1618,14 @@ fn can_introduce(app: &App, s: &Study, now: i64) -> bool {
 }
 /// Read-only availability uses the same pace and due conditions as scoped next.
 pub fn study_ready(app: &App, s: &Study, now: i64) -> bool {
+    let waiting = awaiting_verdict(app);
     s.status != Status::Dropped
         && study_reviewable(app, s)
         && !list_waits(app, s)
         && (can_introduce(app, s, now)
-            || app
-                .practice
-                .cards
-                .values()
-                .any(|c| c.study_id == s.id && c.state.schedule.due_ms <= now))
+            || app.practice.cards.values().any(|c| {
+                c.study_id == s.id && c.state.schedule.due_ms <= now && !waiting.contains(&c.id)
+            }))
 }
 fn next(
     app: &mut App,
@@ -1605,7 +1690,8 @@ fn next(
             && field(fields, "recite").is_empty())
         .then(|| p.targets[0].card_id.clone())
     });
-    app.practice.current = None;
+    let leaving = app.practice.current.take();
+    let waiting = awaiting_verdict(app);
     let sid = field(fields, "study_id");
     if !sid.is_empty() {
         let study = app
@@ -1687,6 +1773,7 @@ fn next(
                         && !list_waits(app, &app.practice.studies[&c.study_id])
                         && c.state.schedule.due_ms <= now
                         && nato_previous.as_ref() != Some(&c.id)
+                        && !waiting.contains(&c.id)
                 })
                 .min_by_key(|c| {
                     (
@@ -1706,7 +1793,7 @@ fn next(
                 .studies
                 .values()
                 .filter(|s| (sid.is_empty() || s.id == sid) && s.status == Status::Active)
-                .filter(|s| can_introduce(app, s, now))
+                .filter(|s| can_introduce(app, s, now) && !list_awaits(app, s, &waiting))
                 .min_by_key(|s| (s.created_ms, &s.id))
                 .cloned();
             study.map(|study| {
@@ -1726,6 +1813,7 @@ fn next(
                 (sid.is_empty() || c.study_id == sid)
                     && app.practice.studies[&c.study_id].status != Status::Dropped
                     && c.state.schedule.due_ms <= now
+                    && !waiting.contains(id)
             })
         });
         if let Some(cid) = chosen {
@@ -1733,6 +1821,9 @@ fn next(
             let (study, index) = (c.study_id.clone(), c.unit_index);
             lesson_present(app, &study, index, false, now, seed)?;
         }
+    }
+    if app.practice.current.is_none() {
+        app.practice.current = leaving.filter(|p| held_awaits(app, p));
     }
     let mut result = response(
         None,
@@ -2003,15 +2094,37 @@ fn lesson_start(
     if resume.is_some() {
         return Ok(response(None, held(app)?));
     }
+    // Begin at the first phrase whose answer is not still with Jev. Where
+    // every phrase, or the list, is waiting, nothing new is asked.
+    let waiting = awaiting_verdict(app);
+    let whole = app.library.versions[&vid].kind == Kind::OrderedList;
+    let first = if whole {
+        (!list_awaits(app, &s, &waiting)).then_some(0)
+    } else {
+        (0..count).find(|i| {
+            app.practice
+                .cards
+                .values()
+                .find(|c| c.study_id == sid && c.unit_index == *i)
+                .is_none_or(|c| !waiting.contains(&c.id))
+        })
+    };
+    let Some(first) = first else {
+        if app
+            .practice
+            .current
+            .as_ref()
+            .is_some_and(|p| held_awaits(app, p))
+        {
+            return Ok(response(None, held(app)?));
+        }
+        return Err(AppError::new(
+            409,
+            "Your answer in this lesson is still being checked. Its Verdict comes first.",
+        ));
+    };
     app.practice.current = None;
-    lesson_present(
-        app,
-        &sid,
-        0,
-        app.library.versions[&vid].kind == Kind::OrderedList,
-        now,
-        seed,
-    )
+    lesson_present(app, &sid, first, whole, now, seed)
 }
 /// Present one Unit, or the whole Version. An ordered list is always whole,
 /// however its Study was started: its remaining items are introduced with it.
@@ -2142,6 +2255,9 @@ fn lesson_next(
         result.redirect = "/?practice=nato".into();
         return Ok(result);
     }
+    // A phrase, passage or list whose answer is still with Jev is not asked
+    // again: the held result stays, still being checked.
+    let waiting = awaiting_verdict(app);
     if mode == "retry" {
         if v.kind != Kind::Text || !matches!(p.prompt.scope, Scope::Unit { .. }) {
             return Err(AppError::new(422, "Retry is for one text phrase."));
@@ -2151,6 +2267,9 @@ fn lesson_next(
             .cards
             .get(&p.targets[0].card_id)
             .ok_or_else(AppError::conflict)?;
+        if waiting.contains(&card.id) {
+            return Ok(response(None, held(app)?));
+        }
         // Feedback has disclosed this phrase. Retry teaches the same phrase
         // with a visible cue, never relabels it as a fresh unaided test.
         let mut retry = make_prompt(
@@ -2174,6 +2293,9 @@ fn lesson_next(
             .find(|s| s.units.iter().any(|u| u.id == p.targets[0].unit_id))
             .ok_or_else(AppError::conflict)?;
         let cards = recitation_cards(app, &sid, section.units.iter())?;
+        if cards.iter().any(|c| waiting.contains(&c.id)) {
+            return Ok(response(None, held(app)?));
+        }
         let presentation = present(
             app,
             study,
@@ -2198,8 +2320,9 @@ fn lesson_next(
         return Ok(response(None, held(app)?));
     }
     let whole = v.kind == Kind::OrderedList || mode == "whole";
-    let index = if mode == "middle" {
-        units(v).len() / 2
+    let count = units(v).len();
+    let start = if mode == "middle" {
+        count / 2
     } else if matches!(p.prompt.scope, Scope::Whole) {
         0
     } else {
@@ -2208,9 +2331,32 @@ fn lesson_next(
             .expect("a held prompt has targets")
             .unit_index
             + 1)
-            % units(v).len()
+            % count
     };
-    lesson_present(app, &sid, index, whole, now, seed)
+    let in_study = |c: &&Card| c.study_id == sid;
+    let index = if whole {
+        (!app
+            .practice
+            .cards
+            .values()
+            .filter(in_study)
+            .any(|c| waiting.contains(&c.id)))
+        .then_some(start)
+    } else {
+        // The next phrase in order whose answer is not still with Jev.
+        (0..count).map(|step| (start + step) % count).find(|i| {
+            app.practice
+                .cards
+                .values()
+                .filter(in_study)
+                .find(|c| c.unit_index == *i)
+                .is_none_or(|c| !waiting.contains(&c.id))
+        })
+    };
+    match index {
+        Some(index) => lesson_present(app, &sid, index, whole, now, seed),
+        None => Ok(response(None, held(app)?)),
+    }
 }
 
 fn draft_text_valid(prompt: &Prompt, answer: &str) -> bool {
@@ -2866,12 +3012,6 @@ pub fn mutate_judged(
             if !judging.paid {
                 return Err(crate::owner_token::paid_refusal());
             }
-            if !judging.capable || !app.preferences.paid_judgment {
-                return Err(AppError::new(
-                    409,
-                    "Paid judgment is off. Your answer stays saved and not graded.",
-                ));
-            }
             let aid = field(fields, "attempt_id");
             let a = app
                 .practice
@@ -2881,6 +3021,12 @@ pub fn mutate_judged(
             let judgment = a.judgment.as_ref().ok_or_else(|| {
                 AppError::new(409, "Scry graded this answer. It has no check to repeat.")
             })?;
+            if !judging.capable || !app.preferences.paid_judgment {
+                return Err(AppError::new(
+                    409,
+                    "Paid judgment is off. Your answer stays saved and not graded.",
+                ));
+            }
             // The saved answer and its comparison are answer-bearing.
             if app.practice.protected() {
                 return Err(AppError::new(
@@ -3034,7 +3180,14 @@ pub fn due(app: &App, now: i64) -> Value {
         .iter()
         .filter(|c| !list_waits(app, &app.practice.studies[&c.study_id]))
         .collect::<Vec<_>>();
-    json!({"cards":cards,"due":served.iter().filter(|c|c.state.schedule.due_ms<=now).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":served.iter().map(|c|c.state.schedule.due_ms).min()})
+    // A Card whose answer is still with Jev is not served until it has a
+    // Verdict or is left not graded. It is named apart, only where one exists.
+    let waiting = awaiting_verdict(app);
+    let mut due = json!({"cards":cards,"due":served.iter().filter(|c|c.state.schedule.due_ms<=now&&!waiting.contains(&c.id)).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":served.iter().map(|c|c.state.schedule.due_ms).min()});
+    if !waiting.is_empty() {
+        due["checking"] = json!(waiting);
+    }
+    due
 }
 pub fn history(app: &App) -> AppResult<Value> {
     if app.practice.protected() || app.protected_goal().is_some() {
