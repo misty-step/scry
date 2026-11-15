@@ -328,6 +328,7 @@ fn no_page_serves_an_earlier_question() {
                 "Practice this idea",
                 "Next question",
                 "Check my answer",
+                ">Check<",
                 "Show me the answer",
                 "Retry native check",
                 "Resume meaning checks →",

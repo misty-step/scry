@@ -902,20 +902,42 @@ fn recordable(app: &App, p: &Presentation) -> AppResult<()> {
         )
     })
 }
-/// Cap automatic receipts across tabs and reloads without changing receipt format.
+/// A notebook keeps the receipts of its newest automatic saves, at most this many.
 pub const AUTOSAVE_RECEIPT_LIMIT: usize = 512;
 pub const AUTOSAVE_OPERATION_PREFIX: &str = "autosave-";
 
-pub fn autosave_remaining(app: &App) -> usize {
-    let used = app
+/// A checkpoint replaces its predecessor, so automatic saving never runs out:
+/// before a new automatic save, the receipts of the oldest ones beyond the
+/// newest `AUTOSAVE_RECEIPT_LIMIT - 1` are dropped. Receipts keep their format
+/// and nothing else is touched. Generations only grow, so a replay of a dropped
+/// save expects an older generation and is refused as a conflict; it is never
+/// applied twice. A notebook below the limit is left byte for byte as it was.
+pub fn make_room_for_autosave(app: &mut App) {
+    let mut automatic = app
         .operations
         .iter()
         .filter(|(id, receipt)| {
             id.starts_with(AUTOSAVE_OPERATION_PREFIX)
                 && receipt.path.as_deref() == Some("/practice/draft")
         })
-        .count();
-    AUTOSAVE_RECEIPT_LIMIT.saturating_sub(used)
+        .map(|(id, receipt)| {
+            let generation = receipt
+                .result
+                .data
+                .as_ref()
+                .and_then(|data| data.get("draft_generation"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            (generation, id.clone())
+        })
+        .collect::<Vec<_>>();
+    let Some(excess) = (automatic.len() + 1).checked_sub(AUTOSAVE_RECEIPT_LIMIT) else {
+        return;
+    };
+    automatic.sort();
+    for (_, id) in automatic.into_iter().take(excess) {
+        app.operations.remove(&id);
+    }
 }
 
 pub fn checkpoint_current(app: &App, fields: &BTreeMap<String, String>, generation: u64) -> bool {
@@ -2635,6 +2657,30 @@ fn lesson_next(
     }
 }
 
+/// The checkpoint generation a save or discard expects. The enhanced page and
+/// agents name it. A native form names the notebook revision its page was
+/// drawn from instead: any write since then, another tab's save included, is a
+/// conflict, so a stale page never overwrites a newer draft or Prompt.
+fn expected_generation(app: &App, fields: &BTreeMap<String, String>) -> AppResult<u64> {
+    let required = || AppError::new(422, "A draft generation is required.");
+    if fields.contains_key("generation") {
+        return field(fields, "generation")
+            .parse::<u64>()
+            .map_err(|_| required());
+    }
+    let revision = field(fields, "revision")
+        .parse::<u64>()
+        .map_err(|_| required())?;
+    if revision != app.revision {
+        return Err(AppError::conflict());
+    }
+    Ok(app
+        .practice
+        .answer_checkpoint
+        .as_ref()
+        .map_or(0, |checkpoint| checkpoint.generation))
+}
+
 fn draft_text_valid(prompt: &Prompt, answer: &str) -> bool {
     answer.len() <= 32768
         && !answer.contains(['\r', '\0'])
@@ -2952,15 +2998,12 @@ pub fn mutate_judged(
             if current.phase == Some(StudyPhase::Study) {
                 return Err(AppError::conflict());
             }
-            let expected = field(fields, "generation")
-                .parse::<u64>()
-                .map_err(|_| AppError::new(422, "A draft generation is required."))?;
             let current_generation = app
                 .practice
                 .answer_checkpoint
                 .as_ref()
                 .map_or(0, |s| s.generation);
-            if expected != current_generation {
+            if expected_generation(app, fields)? != current_generation {
                 return Err(AppError::conflict());
             }
             let answer = fields
@@ -2988,11 +3031,12 @@ pub fn mutate_judged(
             ))
         }
         "/practice/draft/discard" => {
+            // A native form also sends the text in its field; discarding ignores it.
             if fields.keys().any(|k| {
                 !matches!(
                     k.as_str(),
                     "csrf" | "operation_id" | "revision" | "prompt_id" | "generation"
-                )
+                ) && !(k == "answer" && !fields.contains_key("generation"))
             }) {
                 return Err(AppError::new(
                     422,
@@ -3000,9 +3044,7 @@ pub fn mutate_judged(
                 ));
             }
             let current = active(app, fields, false)?;
-            let expected = field(fields, "generation")
-                .parse::<u64>()
-                .map_err(|_| AppError::new(422, "A draft generation is required."))?;
+            let expected = expected_generation(app, fields)?;
             let checkpoint = app
                 .practice
                 .answer_checkpoint
@@ -3106,6 +3148,14 @@ pub fn mutate_judged(
             Ok(response(Some(study.id.clone()), json!({"study":study})))
         }
         "/practice/pause" | "/practice/resume" | "/practice/drop" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "study_id"
+                )
+            }) {
+                return Err(AppError::new(422, "Choose a Study only."));
+            }
             let sid = field(fields, "study_id");
             let s = app
                 .practice

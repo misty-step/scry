@@ -242,7 +242,7 @@ export async function phoneLibraryWalk(browser, capture) {
       await shot('first-prompt');
       await page.setViewportSize({width,height:844});
       await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter a tired garden.');
-      await activate(page.getByRole('button',{name:'Check my answer',exact:true}));
+      await activate(page.getByRole('button',{name:'Check',exact:true}));
       await page.locator('[data-state="exact-result"]').waitFor();
       row.arrival=await feedbackArrival(page,capture,`phone-library-${width}-${scheme}-${zoom?200:100}-arrival.png`,zoom);
       row.evidence.push(row.arrival.evidence);
@@ -270,14 +270,16 @@ export async function phoneLibraryWalk(browser, capture) {
         await page.goto(f.origin + versionPath(vid));
         await activate(page.getByText('Manage Study',{exact:true}));
         await Promise.all([
-          page.waitForURL(f.origin + '/recall',{waitUntil:'domcontentloaded'}),
+          // A Study control returns to the Version page it was pressed on.
+          page.waitForURL(f.origin + versionPath(vid),{waitUntil:'domcontentloaded'}),
           activate(page.getByRole('button',{name:action,exact:true}))
         ]);
-        await page.locator(status==='dropped'?'[data-state="library"]':'[data-state="exact-prompt"]').waitFor();
+        await page.getByText('Manage Study',{exact:true}).waitFor();
         assert.equal((await f.record('practice_studies/'+study.id)).status,status);
         assert.equal(await count(f,'practice_attempts/'),1,'Study controls retain the first Attempt.');
         assert.deepEqual((await f.cli(['version','show',vid])).version,original.version);
       }
+      await activate(page.getByRole('link',{name:'Return to practice',exact:true}));
       await page.getByLabel('Find a text',{exact:true}).waitFor();
       await shot('dropped-return');
       const complete = await f.cli(['export']);
@@ -367,7 +369,7 @@ export async function phoneLibraryRecovery(browser, capture) {
     const action=assertStudySource(await page.content(),longWord+'.');
     await page.locator(`form[action="${action.path}"] .primary`).tap();
     await page.getByLabel('Your answer',{exact:true}).fill(longAnswer);
-    await page.getByRole('button',{name:'Check my answer',exact:true}).tap();
+    await page.getByRole('button',{name:'Check',exact:true}).tap();
     await page.locator('[data-state="exact-result"]').waitFor();
     await layout(page,true);
     const original=(await f.cli(['next'])).practice.attempt;

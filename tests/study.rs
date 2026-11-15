@@ -388,7 +388,7 @@ fn phone_stream_uses_shared_prompt_verdict_diff_and_correction_receipts() {
     assert!(page.contains("data-state=\"exact-prompt\""));
     assert!(!page.contains(text));
     assert_eq!(page.matches("<textarea").count(), 1);
-    assert_eq!(page.matches(">Check my answer<").count(), 1);
+    assert_eq!(page.matches(">Check<").count(), 1);
     let a = o.answer("We concieved a tired garden the water extra.");
     let page = scry::web::render(&o.app, "/recall", &query, NOW, None);
     assert!(page.contains("data-verdict=\"Again\""));

@@ -234,7 +234,7 @@ fn phone_library_search_validation_and_understanding_remain_honest() {
         api::library_form_fields(&mut oversized).unwrap_err().status,
         422
     );
-    assert!(page(&app, "/notebook").contains("href=\"/\">Review</a>"));
+    assert!(page(&app, "/notebook").contains("href=\"/\">Practice</a>"));
     assert!(page(&app, "/notebook").contains("href=\"/library\">Library</a>"));
     assert!(!page(&app, "/notebook").contains("href=\"/create\""));
 }

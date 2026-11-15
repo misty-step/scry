@@ -453,8 +453,12 @@ body.private-suspended .page-frame { visibility: hidden; }
 #scope-recovery { position: fixed; z-index: 1000; top: max(1rem, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(36rem, calc(100% - 2rem)); padding: 1.25rem; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule-2); border-radius: 5px; }
 #scope-recovery button { font: inherit; padding: .75rem 1rem; }
 
-/* The explicit checkpoint requires enhanced, scope-bound submission. */
-[data-checkpoint-save][hidden], [data-checkpoint-discard][hidden], [data-checkpoint-custody][hidden] {display:none}
+/* Save draft is a native form action, shown with or without JavaScript; its
+   markup keeps an older hidden attribute. Discard sits beside a saved draft only. */
+[data-checkpoint-save][hidden], [data-checkpoint-discard][data-checkpoint-present="true"][hidden] {display:inline-flex}
+[data-checkpoint-custody][hidden] {display:block}
+.answer-form [data-checkpoint-custody] {margin:12px 0 0;font-size:13px;line-height:1.5;color:var(--ink-3)}
+[data-checkpoint-discard][data-checkpoint-present="false"] {display:none}
 
 /* One canonical sequence, with submitted positions beside it. */
 .sequence-feedback {margin:12px 0;padding-left:22px}
@@ -479,3 +483,6 @@ body.private-suspended .page-frame { visibility: hidden; }
 .question-record{border-top:1px solid var(--rule);padding:4px 0}.question-record:last-of-type{border-bottom:1px solid var(--rule)}.question-record>summary{cursor:pointer;min-height:44px;padding:12px 0;font-size:14px;color:var(--ink-2)}.question-record[open]>summary{margin-bottom:12px}
 .question-answers{margin-top:42px}.question-answers h2{font-size:25px}.record-entry{padding:18px 0 6px;border-top:1px solid var(--rule)}.record-answer{font-family:var(--serif);font-size:17px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:12px}.record-entry .fineprint{margin-bottom:8px;overflow-wrap:anywhere}.record-correction{font-size:14px;color:var(--ink-2);border-left:2px solid var(--helped);padding-left:12px}
 .related-archived{margin:0 17px 10px -9px}
+/* Save draft and its discard are secondary to Check on every answer form. */
+.answer-form [data-checkpoint-save], .answer-form [data-checkpoint-discard] {width:100%;margin-top:12px;background:transparent;border-color:var(--rule-2);color:var(--ink)}
+.nato-answer [data-checkpoint-save], .nato-answer [data-checkpoint-discard] {margin-top:0}

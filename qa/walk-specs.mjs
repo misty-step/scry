@@ -48,7 +48,7 @@ const shows=async(c,state)=>c.page.locator(`[data-state="${state}"]`).waitFor();
 // Earlier practice offers nothing to answer, reveal, retry, dismiss or correct.
 const readOnly=async c=>{
  assert.equal(await c.page.locator('main form,main button,main textarea,main [data-choice],main [data-poll],.choice').count(),0,'Earlier practice is read-only');
- assert.equal(await c.page.getByRole('button',{name:/Next question|Check my answer|I was right|Count as a miss|Retry|Show me/}).count(),0);
+ assert.equal(await c.page.getByRole('button',{name:/Next question|Check my answer|^Check$|I was right|Count as a miss|Retry|Show me/}).count(),0);
 };
 // Reading changed no stored row of the space on screen.
 const unchanged=async(c,before)=>assert.deepEqual(await c.rows(),before,'A read wrote to the notebook');

@@ -144,6 +144,11 @@ impl View<'_> {
         )
     }
     fn saved_answer(&self, prompt_id: &str) -> &str {
+        if self.query.get("__typed_prompt").map(String::as_str) == Some(prompt_id)
+            && let Some(typed) = self.query.get("__typed")
+        {
+            return typed;
+        }
         self.app
             .practice
             .answer_checkpoint
@@ -935,9 +940,6 @@ impl View<'_> {
             escape(&prompt.id),
             Self::judged_poll(judged)
         );
-        if self.app.practice.mixed_review {
-            out.push_str("<p class=\"eyebrow\">All subjects</p>");
-        }
         if let Some(a) = attempt.filter(|_| judged.is_some()) {
             let retry = self.form(
                 "/practice/lesson/next",
@@ -1029,7 +1031,18 @@ impl View<'_> {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
             }
             if p.revealed && p.phase != Some(crate::study::StudyPhase::Quiz) {
-                out.push_str("<section class=\"exact-disclosure\"><h2>The Unit</h2><p class=\"fineprint\">Assistance is recorded.</p>");
+                // A text's Unit is a phrase, as its lessons call it.
+                let unit = if self.app.library.versions[&prompt.version_id].kind
+                    == crate::library::Kind::Text
+                {
+                    "The phrase"
+                } else {
+                    "The Unit"
+                };
+                let _ = write!(
+                    out,
+                    "<section class=\"exact-disclosure\"><h2>{unit}</h2><p class=\"fineprint\">Assistance is recorded.</p>"
+                );
                 out.push_str(&self.exact_expected());
                 out.push_str("</section>");
             }
@@ -1059,7 +1072,7 @@ impl View<'_> {
                 "answer-form exact-answer-form",
                 "data-answer-limit=\"32768\"",
                 &format!(
-                    "{}{answer}<button class=\"button primary\">Check my answer</button>",
+                    "{}{answer}<button class=\"button primary\">Check</button>",
                     hidden("prompt_id", &prompt.id)
                 ),
             ));
@@ -1121,7 +1134,7 @@ impl View<'_> {
         if let Some(context) = &prompt.context {
             let _ = write!(
                 out,
-                "<div class=\"exact-context\"><p class=\"eyebrow\">Previous Unit</p><p class=\"reading\">{}</p></div>",
+                "<div class=\"exact-context\"><p class=\"eyebrow\">Previous phrase</p><p class=\"reading\">{}</p></div>",
                 escape(context)
             );
         }
@@ -2069,9 +2082,6 @@ impl View<'_> {
             escape(&p.prompt.id),
             Self::judged_poll(judged)
         );
-        if self.app.practice.mixed_review {
-            out.push_str("<p class=\"eyebrow\">All subjects</p>");
-        }
         if let Some(a) = a.filter(|_| judged.is_some()) {
             let retry = self.form(
                 "/practice/lesson/next",
@@ -2415,7 +2425,7 @@ impl View<'_> {
             if p.prompt.assisted || p.revealed {
                 out.push_str("<p class=\"lesson-note\">Guided · with help</p>");
             }
-            out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus>\n{}</textarea><button class=\"button primary\">Check answer</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""},escape(self.saved_answer(&p.prompt.id)) )));
+            out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus>\n{}</textarea><button class=\"button primary\">Check</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""},escape(self.saved_answer(&p.prompt.id)) )));
             if !p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz) {
                 out.push_str(&self.practice_form(
                     "reveal",
@@ -2681,11 +2691,7 @@ impl View<'_> {
             "<section class=\"nato-screen study-home\" data-state=\"mixed-home\"><div class=\"study-entry\">",
         );
         if let Some(subject) = preview {
-            let _ = write!(
-                out,
-                "<p class=\"study-context\">All subjects</p><h1>{}</h1>",
-                escape(&subject)
-            );
+            let _ = write!(out, "<h1>{}</h1>", escape(&subject));
             out.push_str(&self.form(
                 "/practice/review/start",
                 "mixed-start",
@@ -2694,7 +2700,7 @@ impl View<'_> {
                 "<button class=\"button primary\"><span>Study</span><span aria-hidden=\"true\">→</span></button>",
             ));
         } else {
-            return self.rest("All subjects", |_| true, "");
+            return self.rest("Study", |_| true, "");
         }
         out.push_str("</div>");
         out.push_str(&self.browse());
@@ -2792,9 +2798,6 @@ impl View<'_> {
         let mut out = format!(
             "<section class=\"nato-screen\" data-state=\"nato-home\"><div class=\"nato-meta\"><span><i class=\"signal-dot\" aria-hidden=\"true\"></i>NATO alphabet</span><span title=\"Unique letters answered without revealing the answer; not a mastery score\">{practiced}<span class=\"nato-muted\"> / 26 practiced</span></span></div>"
         );
-        if self.app.practice.mixed_review {
-            out.push_str("<p class=\"eyebrow\">All subjects</p>");
-        }
         if let Some(p) = self.app.practice.current.as_ref().filter(|p| {
             self.app
                 .library
@@ -2912,7 +2915,7 @@ impl View<'_> {
                 );
             }
             if other_prompt {
-                out.push_str("<h1>Your review is waiting.</h1><p>Finish your saved question before starting NATO.</p><a class=\"button primary\" href=\"/recall\">Resume review</a>");
+                out.push_str("<h1>Your practice is waiting.</h1><p>Finish your saved question before starting NATO.</p><a class=\"button primary\" href=\"/recall\">Resume practice</a>");
             } else if has_study && self.query.get("practice").is_some_and(|v| v == "nato") {
                 let has_eligible = self.app.practice.studies.values().any(|s| {
                     nato_versions.contains(s.version_id.as_str())
@@ -3904,7 +3907,7 @@ impl View<'_> {
     }
     fn not_found(&self) -> String {
         format!(
-            "<section class=\"empty-stage\" data-state=\"not-found\">{}<p class=\"eyebrow\">A page has gone astray</p><h1>Nothing on this page.</h1><p class=\"lede\">Your saved notebook is still here. Return to your practice or explore the map.</p><a class=\"button primary\" href=\"/\">Back to review →</a></section>",
+            "<section class=\"empty-stage\" data-state=\"not-found\">{}<p class=\"eyebrow\">A page has gone astray</p><h1>Nothing on this page.</h1><p class=\"lede\">Your saved notebook is still here. Return to your practice or explore the map.</p><a class=\"button primary\" href=\"/\">Back to practice →</a></section>",
             emblem("large")
         )
     }
@@ -4064,6 +4067,19 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
     }
 }
 
+/// Pause, resume, drop and Pace are pressed on a Study's Version page; the
+/// browser returns there, whether the action commits or is refused.
+pub fn study_control_page(app: &App, path: &str, study_id: Option<&str>) -> Option<String> {
+    if !matches!(
+        path,
+        "/practice/pause" | "/practice/resume" | "/practice/drop" | "/practice/pace"
+    ) {
+        return None;
+    }
+    let study = app.practice.studies.get(study_id?)?;
+    Some(format!("/library/versions/{}", study.version_id))
+}
+
 pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
     if path == "/library/mapping/add" {
         "/library"
@@ -4178,7 +4194,7 @@ pub fn render(
         "/recall" | "/library" => view.library(),
         "/library/add" => view.library_add(),
         "/notebook" => format!(
-            "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/\">Review</a><a href=\"/map\">Map</a></nav>{}",
+            "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/\">Practice</a><a href=\"/map\">Map</a></nav>{}",
             view.earlier()
         ),
         "/create" | "/add" => view.create(),
@@ -4232,7 +4248,7 @@ pub fn error_page(app: &App, status: u16, message: &str, now_ms: i64) -> String 
         "A moment to pause."
     };
     let content = format!(
-        "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Back to review →</a></section>",
+        "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Back to practice →</a></section>",
         emblem("large"),
         escape(message)
     );
