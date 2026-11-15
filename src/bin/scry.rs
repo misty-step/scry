@@ -106,7 +106,9 @@ mod cli {
         result
     }
     fn draft(args: &mut Vec<String>) -> Result<scry::library::VersionInput> {
-        use scry::library::{Kind, Rights, SectionInput, VersionInput};
+        use scry::library::{
+            Kind, Provenance, RelationInput, RelationKind, Rights, SectionInput, VersionInput,
+        };
         let title = option(args, "--title")?.ok_or("Use --title WORK_TITLE.")?;
         let kind = match option(args, "--kind")?.as_deref() {
             Some("text") => Kind::Text,
@@ -137,7 +139,26 @@ mod cli {
             Some("licensed") => Rights::Licensed,
             _ => return Err("Use --rights private_only|public_domain|licensed."),
         };
+        let provenance = match option(args, "--provenance")?.as_deref() {
+            None | Some("supplied") => Provenance::Supplied,
+            Some("model_from_memory") => Provenance::ModelFromMemory,
+            Some("checked_against_sources") => Provenance::CheckedAgainstSources,
+            _ => {
+                return Err("Use --provenance supplied|model_from_memory|checked_against_sources.");
+            }
+        };
+        let mut relations = Vec::new();
+        for (name, kind) in [
+            ("--part-of", RelationKind::PartOf),
+            ("--related-to", RelationKind::RelatedTo),
+        ] {
+            while let Some(work) = option(args, name)? {
+                relations.push(RelationInput { kind, work });
+            }
+        }
         Ok(VersionInput {
+            provenance,
+            relations,
             title,
             kind,
             text,
@@ -511,7 +532,9 @@ mod cli {
             };
             let data = draft(&mut args)?;
             if args.len() != if supersede { 3 } else { 2 } {
-                return Err("Unexpected Version arguments.");
+                return Err(
+                    "Usage: scry version add|supersede [VERSION --revision N] --title TITLE --kind text|ordered_list|keyed_mapping --text-file PATH [--name EDITION] [--alias NAME] [--source CITATION] [--rights private_only|public_domain|licensed] [--provenance supplied|model_from_memory|checked_against_sources] [--part-of WORK] [--related-to WORK] [--sections-file PATH] [--ordered-aliases-file PATH] [--spelling-strict]",
+                );
             }
             let mut payload = json!({"operation_id":operation,"data":data});
             if let Some(rev) = rev {

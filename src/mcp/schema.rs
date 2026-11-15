@@ -38,7 +38,9 @@ fn common_metadata() -> Value {
         "aliases":{"type":"array","maxItems":32,"items":{"type":"string","minLength":1,"maxLength":240}},
         "sources":{"type":"array","maxItems":32,"items":{"type":"string","minLength":1,"maxLength":2048},"description":"Caller-supplied citations; never fetched."},
         "rights":{"type":"string","enum":["private_only","public_domain","licensed"],"default":"private_only"},
-        "spelling_strict":{"type":"boolean"}
+        "spelling_strict":{"type":"boolean"},
+        "provenance":{"type":"string","enum":["supplied","model_from_memory","checked_against_sources"],"default":"supplied","description":"How the text was obtained: supplied by the Owner or his agent, written by a model from memory, or checked against the cited sources (which then must be listed)."},
+        "relations":{"type":"array","maxItems":32,"description":"Relations from this Version's Work to Works already in the Library, named by title or alias. Checked at import, not by local validation. A text already in the Library returns its Version and adds nothing.","items":object(json!({"kind":choices(&["part_of","related_to"]),"work":{"type":"string","minLength":1,"maxLength":240}}),&["kind","work"])}
     })
 }
 pub(super) fn manifests() -> Value {
@@ -54,7 +56,7 @@ pub(super) fn manifests() -> Value {
     json!({"schema_dialect":"https://json-schema.org/draft/2020-12/schema",
         "version":object(version,&["title","kind","text"]),
         "mapping":object(mapping,&["title","direction","pairs"]),
-        "validation_scope":"Local shape/domain validation only; remote duplicates, policy, capacity, study admission and hosted access are not checked.",
+        "validation_scope":"Local shape/domain validation only; remote duplicates, related Works, policy, capacity, study admission and hosted access are not checked.",
         "limits":"All domain text limits are UTF-8 bytes, not characters. JSON Schema bounds are supplemented by the native Library validator.",
         "multimedia":"Not implemented in this slice; no media URL is fetched.",
         "study_support":"Text, ordered lists and forward keyed mappings. Authored Lessons introduce up to 128 phrases/items and preserve existing schedules."})

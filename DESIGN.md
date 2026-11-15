@@ -206,6 +206,12 @@ choose the wording. An honest miss offers Add a text, never generation by
 surprise. Adding needs only Title and Text; edition/source live in a disclosure.
 The Version shows the exact saved wording and one Learn action, with optional
 3/6/12 Pace. Repeating either action reuses saved content and Study.
+A Work's title links to its page: aliases, context, Relations and its Versions.
+Relations are plain fineprint lines with linked names ("Part of", "Includes",
+"Related to"), on both Works they link; a correction and the Version it
+supersedes name each other ("Corrects", "Corrected by") above the edition
+disclosure. Provenance shares the Rights line inside that disclosure. No
+relations editor, graph or badge.
 
 Unanswered protected practice gates the entire Library before any answer-bearing
 content is rendered. Opening it deliberately records help first. Native forms,

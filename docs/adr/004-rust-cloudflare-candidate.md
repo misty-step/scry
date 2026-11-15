@@ -229,3 +229,33 @@ An older writer cannot safely handle populated practice. Rollback requires a
 compatible build that retains these records, not deletion or an older binary.
 Local SQLite/R2 restart and fresh restore proof do not authorize activation or
 establish independent hosted recovery.
+
+## 2026-11-15 Library corrections, Provenance and manifest Relations
+
+This amends the #316 rules on duplicates and supersession to match
+[SPEC § Library](../../SPEC.md#library). Add looks for a Version with the same
+normalized text before it resolves names, so a duplicate returns the existing
+Version, creates nothing and attaches nothing, whatever Work the supplied title
+or aliases name. Different ordered-list boundaries, mapping pairs or grading
+policy behind the same normalized text still conflict rather than reuse a
+Version that would grade differently. A correction skips that lookup: it always
+creates a new Version with a `supersedes` Relation, including when only case,
+punctuation or spacing changed. A correction identical in every stored field is
+refused, and a Version that already has a correction is corrected through the
+newer one, because a Version is superseded at most once.
+
+`Provenance` gains `model_from_memory` and `checked_against_sources`; the latter
+requires a cited source. Manifests may declare `part_of` and `related_to`
+Relations to Works already in the Library, named by title or alias; they use the
+existing `Relation` variants. Both new manifest fields are omitted when empty,
+so browser and CLI payloads, operation hashes and receipts keep their bytes.
+
+Normalized hashes are no longer unique across Versions, since a correction can
+equal another Version's text. A Library that holds a Provenance other than
+supplied, or two Versions with one normalized hash, writes the row
+`library_compatibility/v1` and archives as `scry-rust-durable-sqlite-library-v5`,
+ahead of every earlier name. A reader before this amendment refuses both: the
+row by its unknown key, the archive by its format name or unknown Provenance.
+Any other notebook keeps its rows, archive bytes, hash and format name.
+Part-of and related-to Relations need no new name: earlier readers already
+validate and keep them.

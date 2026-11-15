@@ -140,6 +140,8 @@ pub fn library_form_fields(fields: &mut BTreeMap<String, String>) -> AppResult<(
         spelling_strict: false,
         ordered_aliases: Default::default(),
         sections: None,
+        provenance: crate::library::Provenance::Supplied,
+        relations: vec![],
     };
     fields.insert(
         "data".into(),
