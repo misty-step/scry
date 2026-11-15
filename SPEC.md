@@ -387,6 +387,9 @@ horizontal clipping, including with long questions and explanations.
   imports the immutable supplied content once and enters scheduled practice
   for that lesson. Selecting again returns the same content and Study without
   resetting anything.
+- A copy of a starter's text already in the Library never blocks that
+  starter. A copy the Owner already studies is kept as that lesson; otherwise
+  the starter's own wording is imported beside the copy, which is unchanged.
 - A mapping lesson is introduced at its Pace. A text lesson and focused NATO
   practice make their whole content available at once, without changing the
   stored Pace. Once a text lesson has been entered, Study may serve any of its
