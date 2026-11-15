@@ -436,6 +436,10 @@ pub enum RecallKind {
     Text,
     OrderedList,
     Mapping,
+    /// A reverse Card: the prompt is a pair's value and the answer its key.
+    MappingReverse,
+    /// A pair its author flagged safety-bearing.
+    MappingSafety,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RecallScope {
@@ -465,6 +469,12 @@ impl RecallInput {
             }
             RecallKind::Mapping => {
                 "Recall the value that expected_answer gives for the key in prompt. Reject another key's value, an incomplete value, or a negation or reversal of the expected practice."
+            }
+            RecallKind::MappingReverse => {
+                "Recall the key that expected_answer gives for the value in prompt. Reject another value's key or an incomplete key."
+            }
+            RecallKind::MappingSafety => {
+                "State the safe practice that expected_answer gives for the question in prompt, as that practice itself. Reject a dangerous alternative, a negation, a reversal, an incomplete practice or added unsafe words. Judge only whether it is the same practice, never whether another practice is clinically acceptable."
             }
         }
     }

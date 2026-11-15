@@ -32,6 +32,9 @@ pub fn mapping_words(text: &str) -> Vec<String> {
         .collect()
 }
 pub const MAPPING_GRADER_VERSION: &str = "1;unicode=17.0.0;mapping=1";
+/// The mapping profile where the year rule decided the Verdict. An Attempt the
+/// rule did not decide keeps `MAPPING_GRADER_VERSION`.
+pub const MAPPING_YEAR_GRADER_VERSION: &str = "1;unicode=17.0.0;mapping=1;year=1";
 
 pub const AUTHORITY: &str = "exact-v2";
 pub const GRADER_VERSION: &str = "1;unicode=17.0.0";
@@ -294,6 +297,85 @@ fn grade_with_policy(
         diff,
         wrong_version_hint,
     })
+}
+
+/// The position of a year among mapping words: one to four digits, alone or
+/// with one AD or CE marker before or after it, written with or without stops.
+fn year_index(tokens: &[unicode::Token]) -> Option<usize> {
+    let words: Vec<&str> = tokens.iter().map(|t| t.normalized.as_str()).collect();
+    let era = |words: &[&str]| matches!(words, ["ad"] | ["ce"] | ["a", "d"] | ["c", "e"]);
+    let i = words
+        .iter()
+        .position(|w| (1..=4).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_digit()))?;
+    let (before, after) = (&words[..i], &words[i + 1..]);
+    ((before.is_empty() && (after.is_empty() || era(after))) || (after.is_empty() && era(before)))
+        .then_some(i)
+}
+
+/// Whether an expected mapping answer and a typed one both name a year, and
+/// so are graded as exact numbers: the same digits, with or without AD or CE.
+pub fn mapping_years(expected: &str, answer: &str) -> Option<bool> {
+    let (e, t) = (
+        unicode::mapping_tokens(expected),
+        unicode::mapping_tokens(answer),
+    );
+    let (i, j) = (year_index(&e)?, year_index(&t)?);
+    Some(e[i].normalized == t[j].normalized)
+}
+
+/// `grade_mapping`, then the year rule: where a single expected value is a
+/// year and the answer names a year, they are compared as exact numbers, with
+/// or without AD or CE, and the Diff compares the numbers alone. Where that
+/// grade differs from `grade_mapping`'s it is recorded under
+/// `MAPPING_YEAR_GRADER_VERSION`; every other answer keeps its plain grade.
+pub fn grade_mapping_year(
+    version: Version<'_>,
+    units: Range<usize>,
+    answer: &str,
+) -> Result<Grade, GradeError> {
+    let plain = grade_mapping(version, units.clone(), answer)?;
+    if plain.verdict == Verdict::Good || units.len() != 1 {
+        return Ok(plain);
+    }
+    let (e, t) = (
+        unicode::mapping_tokens(version.units[units.start]),
+        unicode::mapping_tokens(answer),
+    );
+    let (Some(i), Some(j)) = (year_index(&e), year_index(&t)) else {
+        return Ok(plain);
+    };
+    let (expected, typed) = (e[i].word.clone(), t[j].word.clone());
+    let (verdict, change) = if e[i].normalized == t[j].normalized {
+        (Verdict::Good, Change::Correct { expected, typed })
+    } else {
+        (
+            Verdict::Again,
+            Change::Wrong {
+                expected,
+                typed,
+                out_of_order: false,
+            },
+        )
+    };
+    let year = Grade {
+        authority: Authority {
+            name: AUTHORITY.into(),
+            grader_version: MAPPING_YEAR_GRADER_VERSION.into(),
+        },
+        verdict,
+        units: vec![UnitVerdict {
+            unit_index: units.start,
+            verdict,
+        }],
+        diff: vec![Diff {
+            unit_index: units.start,
+            change,
+        }],
+        wrong_version_hint: None,
+    };
+    let same =
+        year.verdict == plain.verdict && year.units == plain.units && year.diff == plain.diff;
+    Ok(if same { plain } else { year })
 }
 
 /// One edit must change a letter, not a digit, apostrophe, symbol or diacritic.

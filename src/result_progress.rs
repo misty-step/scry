@@ -32,6 +32,8 @@ pub fn summarize(app: &App, answer: &study::Attempt) -> Evidence {
                 && a.version_hash == answer.version_hash
                 && a.prompt.scope == answer.prompt.scope
                 && a.prompt.unit_ids == answer.prompt.unit_ids
+                // A pair's two directions are two Cards with their own evidence.
+                && study::attempt_direction(app, a) == study::attempt_direction(app, answer)
         })
         .collect::<Vec<_>>();
     history.sort_by_key(|a| (a.created_ms, a.sequence, a.id.as_str()));

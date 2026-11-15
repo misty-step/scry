@@ -49,18 +49,20 @@ pub(super) fn manifests() -> Value {
     version["kind"] = choices(&["text", "ordered_list", "keyed_mapping"]);
     version["text"] = json!({"type":"string","minLength":1,"maxLength":262144,"description":"At most 256 KiB of UTF-8; supplied Units must join to these bytes exactly."});
     version["sections"] = json!({"type":["array","null"],"maxItems":4096,"description":"At most 8192 Units total. Omit for native segmentation.","items":object(json!({"heading":{"type":"string","maxLength":240},"units":{"type":"array","minItems":1,"maxItems":8192,"items":{"type":"string","minLength":1}}}),&["heading","units"])});
+    version["direction"] = json!({"type":"string","enum":["forward","both"],"default":"forward","description":"Keyed mappings only; as the mapping schema's direction."});
+    version["safety_bearing"] = json!({"type":"array","maxItems":8192,"uniqueItems":true,"items":{"type":"integer","minimum":0},"description":"Keyed mappings only: zero-based positions of safety-bearing pairs."});
     version["ordered_aliases"] = json!({"type":"object","maxProperties":128,"description":"Ordered lists only: zero-based flattened item index to explicit accepted aliases. Canonical and alias identities must be unique across items.","additionalProperties":{"type":"array","maxItems":16,"items":{"type":"string","minLength":1,"maxLength":240}}});
     let mut mapping = common_metadata();
-    mapping["direction"] = choices(&["forward"]);
+    mapping["direction"] = json!({"type":"string","enum":["forward","both"],"description":"forward: each Prompt shows a key and asks for its value. both: each pair is also asked in reverse, its value shown and its key asked; values must then be unique too, and no pair may be safety-bearing, since a safety condition stays in its question."});
     mapping["spelling_strict"]["default"] = json!(true);
-    mapping["pairs"] = json!({"type":"array","minItems":1,"maxItems":8192,"description":"Unique normalized keys, nonempty key/value, no control characters or surrounding whitespace. Combined stored text must fit 256 KiB.","items":object(json!({"key":{"type":"string","minLength":1,"maxLength":240},"value":{"type":"string","minLength":1,"maxLength":4096}}),&["key","value"])});
+    mapping["pairs"] = json!({"type":"array","minItems":1,"maxItems":8192,"description":"Unique normalized keys, nonempty key/value, no control characters or surrounding whitespace. Combined stored text must fit 256 KiB. A value that is a year (one to four digits, optionally with AD or CE) accepts the year with or without AD or CE, as an exact number.","items":object(json!({"key":{"type":"string","minLength":1,"maxLength":240},"value":{"type":"string","minLength":1,"maxLength":4096},"safety_bearing":{"type":"boolean","default":false,"description":"Its author's flag: the value is a safe practice the answer must state itself. Keep the critical safety condition in the key."}}),&["key","value"])});
     json!({"schema_dialect":"https://json-schema.org/draft/2020-12/schema",
         "version":object(version,&["title","kind","text"]),
         "mapping":object(mapping,&["title","direction","pairs"]),
         "validation_scope":"Local shape/domain validation only; remote duplicates, related Works, policy, capacity, study admission and hosted access are not checked.",
         "limits":"All domain text limits are UTF-8 bytes, not characters. JSON Schema bounds are supplemented by the native Library validator.",
         "multimedia":"Not implemented in this slice; no media URL is fetched.",
-        "study_support":"Text, ordered lists and forward keyed mappings. A text or list lesson introduces every phrase or item at once and a mapping lesson its pairs at its Pace, preserving existing schedules."})
+        "study_support":"Text, ordered lists and keyed mappings, forward or both ways. A text or list lesson introduces every phrase or item at once and a mapping lesson its pairs at its Pace, preserving existing schedules."})
 }
 
 pub(super) fn tools() -> Vec<Value> {

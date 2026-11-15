@@ -283,6 +283,14 @@ impl View<'_> {
     }
     /// A mapping pair's authored question: its key, in study and in Quiz alike.
     fn mapping_question(&self, prompt: &crate::study::Prompt) -> Option<&str> {
+        self.mapping_question_in(prompt, crate::study::Direction::Forward)
+    }
+    /// A pair's question in a Card's direction: its key forward, its value in reverse.
+    fn mapping_question_in(
+        &self,
+        prompt: &crate::study::Prompt,
+        direction: crate::study::Direction,
+    ) -> Option<&str> {
         let v = self.app.library.versions.get(&prompt.version_id)?;
         if v.kind != crate::library::Kind::KeyedMapping {
             return None;
@@ -292,7 +300,37 @@ impl View<'_> {
             .flat_map(|s| &s.units)
             .find(|u| prompt.unit_ids.first() == Some(&u.id))
             .and_then(|u| crate::library::mapping_pair(&u.text))
-            .map(|(key, _)| key)
+            .map(|(key, value)| {
+                if direction == crate::study::Direction::Reverse {
+                    value
+                } else {
+                    key
+                }
+            })
+    }
+    /// The authored safety flag, said before the answer, in study and Quiz alike.
+    fn safety_cue(prompt: &crate::study::Prompt) -> &'static str {
+        if prompt.safety_bearing {
+            "<p class=\"fineprint safety-cue\">Safety practice: answer with the safe practice itself.</p>"
+        } else {
+            ""
+        }
+    }
+    /// Which other pair a mapping miss belongs to, if any.
+    fn wrong_pair(feedback: &crate::study::MappingFeedback) -> String {
+        if let Some(key) = &feedback.answered_key {
+            format!(
+                "<p class=\"fineprint\">That answer belongs to key {}.</p>",
+                escape(key)
+            )
+        } else if let Some(value) = &feedback.answered_value {
+            format!(
+                "<p class=\"fineprint\">That answer is the key for {}.</p>",
+                escape(value)
+            )
+        } else {
+            String::new()
+        }
     }
     /// Context for a phrase Quiz: closed until asked for, and never the answer.
     fn previous_phrase(&self, p: &crate::study::Presentation) -> String {
@@ -727,7 +765,11 @@ impl View<'_> {
         }
         let mapping = v.kind == crate::library::Kind::KeyedMapping
             && crate::library::validate_mapping(v).is_ok();
+        if mapping && v.direction == crate::library::MappingDirection::Both {
+            out.push_str("<p class=\"fineprint\">Practised both ways: from each key to its value, and from each value to its key.</p>");
+        }
         out.push_str("<div class=\"library-text\" aria-label=\"Saved text\">");
+        let mut position = 0;
         for section in &v.sections {
             let _ = write!(out, "<section><h2>{}</h2>", escape(&section.heading));
             if mapping {
@@ -736,10 +778,16 @@ impl View<'_> {
                     let (key, value) = crate::library::mapping_pair(&unit.text).unwrap();
                     let _ = write!(
                         out,
-                        "<div><dt>{}</dt><dd>{}</dd></div>",
+                        "<div><dt>{}</dt><dd>{}{}</dd></div>",
                         escape(key),
-                        escape(value)
+                        escape(value),
+                        if v.safety_bearing.contains(&position) {
+                            " <span class=\"fineprint\">· Safety practice</span>"
+                        } else {
+                            ""
+                        }
                     );
+                    position += 1;
                 }
                 out.push_str("</dl>");
             } else {
@@ -873,7 +921,8 @@ impl View<'_> {
         let readiness = crate::lessons::catalog().into_iter().find(|l| {
             l.id.starts_with("baby-") && l.matches(&self.app.library.versions[&prompt.version_id])
         });
-        let question = self.mapping_question(prompt);
+        let direction = crate::study::prompt_direction(self.app, prompt, &p.targets);
+        let question = self.mapping_question_in(prompt, direction);
         let mut out = format!(
             "<section class=\"study exact-study{}\" data-state=\"{state}\" data-prompt-id=\"{}\"{}>",
             if readiness.is_some() {
@@ -953,6 +1002,7 @@ impl View<'_> {
                     escape(question.unwrap_or_else(|| crate::study::visible_prompt_title(prompt)))
                 );
             }
+            out.push_str(Self::safety_cue(prompt));
             out.push_str(&self.source_study(p));
         } else {
             out.push_str("<span data-study-phase=\"quiz\" hidden></span>");
@@ -974,6 +1024,7 @@ impl View<'_> {
                     out.push_str(&self.previous_phrase(p));
                 }
             }
+            out.push_str(Self::safety_cue(prompt));
             if prompt.assisted || p.revealed {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
             }
@@ -982,7 +1033,10 @@ impl View<'_> {
                 out.push_str(&self.exact_expected());
                 out.push_str("</section>");
             }
-            let mapping = prompt.cue_level == crate::study::Cue::MappingKey;
+            let mapping = matches!(
+                prompt.cue_level,
+                crate::study::Cue::MappingKey | crate::study::Cue::MappingValue
+            );
             let saved = escape(self.saved_answer(&prompt.id));
             let answer = if mapping {
                 format!(
@@ -1080,6 +1134,7 @@ impl View<'_> {
                 Cue::SectionHeading => "Section",
                 Cue::WholeTitle => "Title",
                 Cue::MappingKey => "Key",
+                Cue::MappingValue => "Value",
             };
             let _ = write!(
                 out,
@@ -1094,6 +1149,7 @@ impl View<'_> {
             return String::new();
         };
         let version = &self.app.library.versions[&p.prompt.version_id];
+        let direction = crate::study::prompt_direction(self.app, &p.prompt, &p.targets);
         version
             .sections
             .iter()
@@ -1102,7 +1158,7 @@ impl View<'_> {
             .map(|u| {
                 format!(
                     "<p class=\"reading exact-expected\">{}</p>",
-                    escape(crate::study::expected_unit(version, u))
+                    escape(crate::study::expected_answer(version, u, direction))
                 )
             })
             .collect()
@@ -1115,36 +1171,38 @@ impl View<'_> {
             "<div class=\"feedback feedback-{}\" role=\"status\"><h1 data-verdict=\"{verdict}\">{verdict}.</h1></div>",
             if good { "correct" } else { "miss" },
         );
-        let mapping = a.prompt.cue_level == crate::study::Cue::MappingKey;
+        let mapping = matches!(
+            a.prompt.cue_level,
+            crate::study::Cue::MappingKey | crate::study::Cue::MappingValue
+        );
         if mapping {
             let _ = write!(
                 out,
                 "<p class=\"mapping-result\"><span>{}</span> <span aria-hidden=\"true\">→</span> <strong>{}</strong></p>",
                 escape(&a.prompt.cue),
-                escape(crate::study::expected_unit(
+                escape(crate::study::expected_answer(
                     &self.app.library.versions[&a.version_id],
                     self.app.library.versions[&a.version_id]
                         .sections
                         .iter()
                         .flat_map(|s| &s.units)
                         .find(|u| u.id == a.prompt.unit_ids[0])
-                        .unwrap()
+                        .unwrap(),
+                    crate::study::attempt_direction(self.app, a)
                 ))
             );
             if let Some(feedback) = crate::study::mapping_feedback(self.app, a) {
-                if let Some(answered_key) = feedback.answered_key {
-                    let _ = write!(
-                        out,
-                        "<p class=\"fineprint\">That answer belongs to key {}.</p>",
-                        escape(&answered_key)
-                    );
+                if feedback.kind == "wrong_key" {
+                    out.push_str(&Self::wrong_pair(&feedback));
                 } else if feedback.kind == "spelling" {
                     out.push_str(
                         "<p class=\"fineprint\">Spelling mismatch: use the answer shown above.</p>",
                     );
                 }
             }
-            if !good && self.app.library.versions[&a.version_id].spelling_strict {
+            if !good && a.prompt.safety_bearing {
+                out.push_str("<p class=\"fineprint\">A safety answer states the safe practice itself: no other practice, negation or added words.</p>");
+            } else if !good && self.app.library.versions[&a.version_id].spelling_strict {
                 out.push_str(if crate::lessons::mapping_route(&self.app.library.versions[&a.version_id]).is_some() { "<p class=\"fineprint\">Use the short answer shown above.</p>" } else { "<p class=\"fineprint\">Official spelling matters. Scry checks your answer; no self-rating.</p>" });
             }
         }
@@ -1410,22 +1468,18 @@ impl View<'_> {
             if good { "correct" } else { "miss" },
             Self::judged_by(decided)
         );
-        if a.prompt.cue_level == crate::study::Cue::MappingKey
-            && let Some(feedback) = crate::study::mapping_feedback(self.app, a)
+        if matches!(
+            a.prompt.cue_level,
+            crate::study::Cue::MappingKey | crate::study::Cue::MappingValue
+        ) && let Some(feedback) = crate::study::mapping_feedback(self.app, a)
         {
             let _ = write!(
                 out,
                 "<p class=\"mapping-result\"><span>{}</span> <span aria-hidden=\"true\">→</span> <strong>{}</strong></p>",
-                escape(&feedback.key),
+                escape(&a.prompt.cue),
                 escape(&feedback.expected)
             );
-            if let Some(answered_key) = feedback.answered_key {
-                let _ = write!(
-                    out,
-                    "<p class=\"fineprint\">That answer belongs to key {}.</p>",
-                    escape(&answered_key)
-                );
-            }
+            out.push_str(&Self::wrong_pair(&feedback));
         }
         if good
             && (version.kind == crate::library::Kind::OrderedList
@@ -2428,7 +2482,10 @@ impl View<'_> {
             crate::study::Scope::Whole => "Full text",
             crate::study::Scope::Section { .. } => "This passage",
             crate::study::Scope::Unit { .. }
-                if a.prompt.cue_level == crate::study::Cue::MappingKey =>
+                if matches!(
+                    a.prompt.cue_level,
+                    crate::study::Cue::MappingKey | crate::study::Cue::MappingValue
+                ) =>
             {
                 if self
                     .app
@@ -3333,6 +3390,12 @@ impl View<'_> {
         use crate::{grading::Verdict, study::Scope};
         let version = &self.app.library.versions[&a.version_id];
         let scope = match &a.prompt.scope {
+            Scope::Unit { position, .. }
+                if crate::study::attempt_direction(self.app, a)
+                    == crate::study::Direction::Reverse =>
+            {
+                format!("Unit {position}, in reverse")
+            }
             Scope::Unit { position, .. } => format!("Unit {position}"),
             Scope::Section { section_id } => format!(
                 "Section: {}",

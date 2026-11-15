@@ -17,6 +17,24 @@ that caused them. The Map's eyebrow is “Earlier concept notebook” and its le
 “Nothing is saved in the earlier concept notebook.” and offers no Library link.
 Nothing added is a control.
 
+## A pair in either direction — 2026-11-15
+
+A reverse Card looks like its forward sibling with the roles swapped. Its
+Source study leads with the value as the serif h1 and shows the key below it
+as the source, with one Try from memory. Its Quiz says “Recall the matching
+key” and gives the value under a small uppercase “Value” label; the forward
+Quiz keeps “Key”. The result line reads value → key. A miss that belongs to
+another pair says so in one fineprint line: “That answer belongs to key …”
+forward, “That answer is the key for …” in reverse. A safety-bearing pair adds
+one fineprint line under its question, in study and Quiz alike: “Safety
+practice: answer with the safe practice itself.” Its miss says, in place of
+the spelling note, “A safety answer states the safe practice itself: no other
+practice, negation or added words.” The Version page says once,
+in fineprint, “Practised both ways: from each key to its value, and from each
+value to its key.” and marks a flagged pair's value “· Safety practice”. No
+badge, colour or icon carries either meaning alone. History names a reverse
+Attempt's scope “Unit N, in reverse”.
+
 ## Nothing on the earlier notebook is a control — 2026-11-15
 
 No page of the earlier concept notebook holds a form. The Map shows a Goal's

@@ -168,7 +168,7 @@ fn validate(format: &str, data: Value) -> InputResult<Value> {
     let mut input = match format {
         "version" => parse::<VersionInput>(data)?,
         "mapping" => parse::<MappingInput>(data)?.into_version()
-            .map_err(|_| "Invalid mapping: use unique keys, direction forward, and nonempty key/value pairs without control characters or surrounding whitespace.")?,
+            .map_err(|_| "Invalid mapping: use unique keys, direction forward or both (both needs unique values and no safety-bearing pair), and nonempty key/value pairs without control characters or surrounding whitespace.")?,
         _ => return Err("format must be version or mapping."),
     };
     // The Works a manifest relates to exist only in the remote Library.
@@ -214,7 +214,7 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
             Ok(Call::Local(
                 json!({"adapter":"scry-mcp","protocol_version":PROTOCOL_VERSION,
                 "formats":["version","mapping"],"grading":"native_only","generation":false,
-                "self_grading":false,"multimedia":false,"mapping_direction":"forward",
+                "self_grading":false,"multimedia":false,"mapping_direction":["forward","both"],
                 "remote_capabilities_checked":false,"hosted_admission":"unverified",
                 "instructions":INSTRUCTIONS,"max_message_bytes":MAX_MESSAGE_BYTES,
                 "mutation_ids":"required; preserve across retries and restarts",

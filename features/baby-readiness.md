@@ -12,7 +12,12 @@ memory practice, not medical advice, hands-on training, or certification.
 - A pair not yet practised is first shown as its whole question with its answer
   and Try from memory. Its Quiz shows the same question alone.
 - Native strict grading accepts normalized case/punctuation, not unsafe extra
-  clauses, negation, or guessed fuzzy synonyms. No self-rating.
+  clauses, negation, or guessed fuzzy synonyms. No self-rating. The starters
+  are Spelling-strict, so paid judgment never sees them.
+- The shipped starters carry no `safety_bearing` flag: adding one would make
+  their manifests differ from the Versions already in the Owner's notebook.
+  An agent's own mapping can flag a pair; it then shows a safety cue in study
+  and Quiz and is judged as the safe practice itself.
 - Focused Next stays in the chosen collection. Default Study serves due work first,
   then introduces paced unseen collections. Browsing never imports or enrolls content.
 - Source notes are available in Library after answering or recording help;

@@ -3,8 +3,7 @@
 `scry-mcp` is a small native adapter over the same Owner HTTP client as `scry`.
 External agents author content; Scry validates, stores and grades it. It does
 not generate content, accept a caller's grade, manage tokens, or expose arbitrary
-HTTP/filesystem actions. Multimedia and reverse mapping authoring are not yet
-supported. This is local source support, **not proof of hosted admission**;
+HTTP/filesystem actions. Multimedia is not supported. This is local source support, **not proof of hosted admission**;
 [#335](https://github.com/misty-step/scry/issues/335) remains unverified.
 
 ## Connect
@@ -47,7 +46,7 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 | Tool | Purpose |
 | --- | --- |
 | `scry_capabilities` | Adapter limits and supported subset; not a remote health check |
-| `scry_schema` | Machine-readable Version and forward mapping manifest schemas |
+| `scry_schema` | Machine-readable Version and mapping manifest schemas |
 | `scry_search` / `scry_show` | Existing private Library reads, with the native assistance fence |
 | `scry_validate` | Native structural validation in a disposable empty local Library |
 | `scry_import` | Existing Version or mapping import; no automatic Study |
@@ -67,8 +66,13 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 is described as an object and Scry's native validator checks it whole against
 the schema `format` names. Import additionally requires
 `operation_id`. Version drafts use the existing Library shape. Mapping drafts
-use `title`, `direction: "forward"`, and `pairs: [{"key":"A","value":"Alfa"}]`,
-plus the supported optional metadata. Both reuse native Library validation.
+use `title`, `direction` (`"forward"`, or `"both"` to practise each pair in
+reverse too, which needs unique values and no safety-bearing pair), and
+`pairs: [{"key":"A","value":"Alfa"}]`, where a pair may add
+`"safety_bearing": true`, plus the supported optional metadata. A year value
+accepts the year with or without AD or CE, as an exact number. A reverse
+Prompt has `cue_level: "mapping_value"` and shows the value; see the Owner API
+guide for the result's `mapping_feedback`. Both reuse native Library validation.
 Both formats take an optional `provenance` (`supplied`, the default,
 `model_from_memory` or `checked_against_sources`, which needs a source) and
 `relations`, an array of `{"kind":"part_of"|"related_to","work":"TITLE OR ALIAS"}`

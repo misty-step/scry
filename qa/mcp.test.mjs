@@ -154,7 +154,15 @@ test('Auth-free schema and native validation, not remote acceptance; strict auth
   assert.equal(capabilities.generation,false); assert.equal(capabilities.self_grading,false);
   assert.equal(capabilities.multimedia,false); assert.equal(capabilities.hosted_admission,'unverified');
   const schemas = data(await f.call('scry_schema'));
-  assert.deepEqual(schemas.mapping.properties.direction.enum,['forward']);
+  // SPEC § Keyed mappings: practised in each direction its Version declares.
+  assert.deepEqual(schemas.mapping.properties.direction.enum,['forward','both']);
+  assert.equal(schemas.mapping.properties.pairs.items.properties.safety_bearing.type,'boolean');
+  assert.deepEqual(capabilities.mapping_direction,['forward','both']);
+  const reverseDuplicate={...mapping,direction:'both',pairs:[{key:'A',value:'Same'},{key:'B',value:'same'}]};
+  assert.equal((await f.call('scry_validate',{format:'mapping',data:reverseDuplicate})).result.isError,true);
+  const safetyBoth={...mapping,direction:'both',pairs:[{key:'A hazard',value:'step back',safety_bearing:true}]};
+  assert.equal((await f.call('scry_validate',{format:'mapping',data:safetyBoth})).result.isError,true);
+  assert.equal(data(await f.call('scry_validate',{format:'mapping',data:{...mapping,direction:'both'}})).valid,true);
   for(const [format,draft] of [['version',version],['mapping',mapping]]) {
     const checked = data(await f.call('scry_validate',{format,data:draft}));
     assert.equal(checked.valid,true); assert.equal(checked.scope,'local_structure_only');

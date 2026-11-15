@@ -273,3 +273,31 @@ Part-of and related-to Relations need no new name: earlier readers already
 validate and keep them. Validation refuses a part-of cycle, which admission
 never creates and no earlier build could store, with one traversal that is
 linear in the number of Relations.
+
+**Amendment 2026-11-15: keyed-mapping directions, safety-bearing pairs and
+years.** A keyed-mapping `Version` may store `direction: "both"` and
+`safety_bearing`, the zero-based positions of pairs its author flagged; both
+are omitted when forward or empty, so every earlier Version keeps its bytes
+and its text-only normalized hash. Validation refuses either on another Kind,
+`both` with two values equal under mapping normalization, and `both` with any
+safety-bearing pair (its safety condition must stay in its question, the
+key). Dedupe treats a different direction or flag set as a different
+Version and says so. A `Card` gains the `reverse` direction and a `Cue` gains
+`mapping_value`; a reverse Card is introduced with its Unit's forward Card at
+the same moment, so Pace and "introduced" count forward Cards, one per Unit.
+A `Prompt` stores `safety_bearing: true` only for a flagged pair.
+
+The year rule is a second mapping profile, not a change to `;mapping=1`: an
+Attempt it decided records grader version `1;unicode=17.0.0;mapping=1;year=1`
+and replay regrades each Attempt under the version it recorded, so earlier
+Attempts that the rule would now accept stay as they were decided.
+
+A notebook holding any of these (a declared Version, a reverse Card or a year
+Attempt) writes the row `mapping_compatibility/v1` and archives as
+`scry-rust-durable-sqlite-mapping-v6`, ahead of every earlier name. Earlier
+readers refuse the row by its unknown key and the archive by its format name;
+without the row, an earlier reader would silently drop `safety_bearing`, so the
+row is load-bearing. A differential over NATO and the three baby-care starters
+practised forward produced identical rows, archive bytes and format name on
+`6ace75e` and on this amendment; `tests/mapping_stored_bytes.rs` pins those
+hashes. The shipped starters are unchanged and carry no safety flag.

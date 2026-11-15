@@ -171,6 +171,9 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
     if crate::library::uses_corrections_and_provenance(&app.library) {
         result.insert(LIBRARY_MARKER.into(), "1".into());
     }
+    if mapped(app) {
+        result.insert(MAPPING_MARKER.into(), "1".into());
+    }
     object.remove("owner_tokens");
     object.remove("study_version_refs");
     result.insert("meta".into(), bounded_json(&value)?);
@@ -197,6 +200,7 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             || key == "checkpoint_compatibility/v1"
             || key == JUDGMENT_MARKER
             || key == LIBRARY_MARKER
+            || key == MAPPING_MARKER
         {
             continue;
         }
@@ -331,6 +335,12 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             "Library compatibility marker is invalid.",
         ));
     }
+    if rows.get(MAPPING_MARKER).map(String::as_str) != mapped(&app).then_some("1") {
+        return Err(AppError::new(
+            500,
+            "Mapping compatibility marker is invalid.",
+        ));
+    }
     if app.schema != SCHEMA {
         return Err(AppError::new(500, "A compatible Scry build is required."));
     }
@@ -357,6 +367,29 @@ const JUDGED_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-study-judged-v4";
 /// refuses the row by name, and the archive by its format name.
 const LIBRARY_MARKER: &str = "library_compatibility/v1";
 const LIBRARY_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-library-v5";
+/// Present only where the notebook holds a keyed-mapping capability that an
+/// earlier Worker would silently drop or regrade: a Version practised in both
+/// directions or with safety-bearing pairs, a reverse Card, or an Attempt the
+/// year rule decided. An older reader refuses the row by name, and the
+/// archive by its format name.
+const MAPPING_MARKER: &str = "mapping_compatibility/v1";
+const MAPPING_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-mapping-v6";
+
+/// Whether this notebook uses a keyed-mapping capability; see `MAPPING_MARKER`.
+pub fn mapped(app: &App) -> bool {
+    app.library
+        .versions
+        .values()
+        .any(crate::library::uses_mapping_capabilities)
+        || app
+            .practice
+            .cards
+            .values()
+            .any(|c| c.direction != crate::study::Direction::Forward)
+        || app.practice.attempts.values().any(|a| {
+            a.grade.authority.grader_version == crate::grading::MAPPING_YEAR_GRADER_VERSION
+        })
+}
 
 /// Whether this notebook holds anything of paid judgment: the Owner's switch,
 /// a Check, an Attempt left for Jev, or a receipt of either action. Only then
@@ -374,6 +407,9 @@ pub fn judged(app: &App) -> bool {
 }
 
 fn archive_format(app: &App) -> &'static str {
+    if mapped(app) {
+        return MAPPING_ARCHIVE_FORMAT;
+    }
     if crate::library::uses_corrections_and_provenance(&app.library) {
         return LIBRARY_ARCHIVE_FORMAT;
     }

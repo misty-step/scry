@@ -153,6 +153,19 @@ mod cli {
                 return Err("Use --provenance supplied|model_from_memory|checked_against_sources.");
             }
         };
+        let direction = match option(args, "--direction")?.as_deref() {
+            None | Some("forward") => scry::library::MappingDirection::Forward,
+            Some("both") => scry::library::MappingDirection::Both,
+            _ => return Err("Use --direction forward|both."),
+        };
+        let mut safety_bearing = std::collections::BTreeSet::new();
+        while let Some(position) = option(args, "--safety-bearing")? {
+            safety_bearing.insert(
+                position
+                    .parse::<usize>()
+                    .map_err(|_| "Use --safety-bearing with a zero-based pair position.")?,
+            );
+        }
         let mut relations = Vec::new();
         for (name, kind) in [
             ("--part-of", RelationKind::PartOf),
@@ -165,6 +178,8 @@ mod cli {
         Ok(VersionInput {
             provenance,
             relations,
+            direction,
+            safety_bearing,
             title,
             kind,
             text,
@@ -523,7 +538,7 @@ mod cli {
                 return Err("Mapping manifest exceeds 1 MiB.");
             }
             let data: scry::library::MappingInput = serde_json::from_slice(&bytes).map_err(
-                |_| "Use a supplied mapping manifest with direction forward and key/value pairs.",
+                |_| "Use a supplied mapping manifest with direction forward or both and key/value pairs.",
             )?;
             data.clone()
                 .into_version()
@@ -547,7 +562,7 @@ mod cli {
             let data = draft(&mut args)?;
             if args.len() != if supersede { 3 } else { 2 } {
                 return Err(
-                    "Usage: scry version add|supersede [VERSION --revision N] --title TITLE --kind text|ordered_list|keyed_mapping --text-file PATH [--name EDITION] [--alias NAME] [--source CITATION] [--rights private_only|public_domain|licensed] [--provenance supplied|model_from_memory|checked_against_sources] [--part-of WORK] [--related-to WORK] [--sections-file PATH] [--ordered-aliases-file PATH] [--spelling-strict]",
+                    "Usage: scry version add|supersede [VERSION --revision N] --title TITLE --kind text|ordered_list|keyed_mapping --text-file PATH [--name EDITION] [--alias NAME] [--source CITATION] [--rights private_only|public_domain|licensed] [--provenance supplied|model_from_memory|checked_against_sources] [--part-of WORK] [--related-to WORK] [--sections-file PATH] [--ordered-aliases-file PATH] [--spelling-strict] [--direction forward|both] [--safety-bearing PAIR_POSITION]",
                 );
             }
             let mut payload = json!({"operation_id":operation,"data":data});
