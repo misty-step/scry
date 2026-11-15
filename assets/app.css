@@ -475,3 +475,7 @@ body.private-suspended .page-frame { visibility: hidden; }
 .feedback+.notice {margin-top:0}
 /* A saved question's draft history sits clear of the line above it. */
 [data-state=earlier-question] .notice {margin-top:28px}
+/* A saved question's record: earlier versions and a draft fold away; each recorded answer is one ruled entry. */
+.question-record{border-top:1px solid var(--rule);padding:4px 0}.question-record:last-of-type{border-bottom:1px solid var(--rule)}.question-record>summary{cursor:pointer;min-height:44px;padding:12px 0;font-size:14px;color:var(--ink-2)}.question-record[open]>summary{margin-bottom:12px}
+.question-answers{margin-top:42px}.question-answers h2{font-size:25px}.record-entry{padding:18px 0 6px;border-top:1px solid var(--rule)}.record-answer{font-family:var(--serif);font-size:17px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;margin-bottom:12px}.record-entry .fineprint{margin-bottom:8px;overflow-wrap:anywhere}.record-correction{font-size:14px;color:var(--ink-2);border-left:2px solid var(--helped);padding-left:12px}
+.related-archived{margin:0 17px 10px -9px}

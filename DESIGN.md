@@ -1,5 +1,22 @@
 # Scry: a recall instrument
 
+## Everything saved in the earlier notebook is reachable — 2026-11-15
+
+Archived Goals, Concepts and questions are listed where their live siblings
+are, after them, with a quiet “Archived” label; their pages open. A Concept's
+page shows every note in the order saved, each with its provenance; with more
+than one, each carries its date. Its back link is “← Your map”. A saved
+question's page leads with its current version, then folds each earlier
+version and a “Fix draft, saved and never applied” into native disclosures,
+then lists “Recorded answers”: one ruled entry each, a fine meta line (result,
+date, Authority, version), the answer in the reading face, any Correction as an
+indented line (“Your Correction: counted as recalled”) and each saved check by
+a fixed status label and its policy. “Schedule resets” follow with the feedback
+that caused them. The Map's eyebrow is “Earlier concept notebook” and its lede
+“Every Goal and Concept saved before Study, as it was left.”; an empty Map says
+“Nothing is saved in the earlier concept notebook.” and offers no Library link.
+Nothing added is a control.
+
 ## Nothing on the earlier notebook is a control — 2026-11-15
 
 No page of the earlier concept notebook holds a form. The Map shows a Goal's

@@ -151,14 +151,18 @@ export async function conceptHomeWalk(browser,capture){
    const loaded=await rows(),held=await state();
    const goals=held.records.filter(r=>r.key.startsWith('goals/')).map(r=>JSON.parse(r.value)).filter(goal=>goal.archived);assert.equal(goals.length,1);
    await page.goto(url+'/map');await page.locator('[data-state="map"]').waitFor();
-   assert.equal(await page.locator(`a[href="/goals/${goals[0].id}"]`).count(),0);
+   // It stays on the Map, after the live Goals and labelled archived.
+   const archived=page.locator('.goal-map').filter({has:page.locator(`h2 a[href="/goals/${goals[0].id}"]`)});
+   assert.equal(await archived.count(),1);assert.match(await archived.locator('.goal-meta').innerText(),/ · Archived/);
    await activate(headerHome());await home().waitFor();
    assert.equal(await home().locator('.home-concepts a').count(),0);assert.equal(await home().getByRole('link',{name:'Start practice',exact:true}).count(),0);
    await stable(held);await shot('archived-goal-home');
    for(const concept of held.records.filter(r=>r.key.startsWith('concepts/')).map(r=>JSON.parse(r.value))){
     await page.goto(url+`/concepts/${concept.id}`);await page.getByRole('heading',{name:concept.name,exact:true}).waitFor();
     await page.getByText('Archived: retained for reference.',{exact:true}).waitFor();await readOnly();
-    assert.equal(await page.locator('.connected').count(),0);
+    // Its links to the other archived Concepts stay, each labelled archived.
+    const links=await page.locator('.connected a.concept-chip').count();
+    assert.equal(await page.locator('.connected .related-archived').count(),links);
    }
    await page.goto(url+'/notebook');await page.locator('[data-state="earlier-result"]').waitFor();await readOnly();
    assert.deepEqual(await rows(),loaded,'Reading the earlier notebook writes nothing');

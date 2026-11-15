@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {crawl,menuLinks,assertReachable} from './earlier-fixture.mjs';
 
 // Journey walks, scoped to synthetic browser/policy mechanics. Live provider
 // usefulness, production, real phone and independent hosted recovery
@@ -102,6 +103,29 @@ export const specs={
    for(const saved of Object.values(app.goals).filter(goal=>goal.photo))assert.equal((await c.page.request.get(c.at(`/photos/${saved.id}`))).status(),200);
    await unchanged(c,before);
    c.policy('every_state_round_trips_byte_for_byte','every_state_passes_full_validation','historical_schedule_policy_and_assistance_cannot_be_forged');
+  },
+  async c=>{
+   // In the browser at phone width, from the Menu and following only links:
+   // every Goal, Concept, note, question version, choice, draft, recorded
+   // answer, Correction, reset, feedback entry, saved check and photo. Each
+   // page holds at 390 px without horizontal scrolling.
+   const app=c.app,before=await c.rows();
+   await c.page.goto(c.at('/'));
+   const site=await crawl(async path=>{
+    const response=await c.page.goto(c.at(path));assert.equal(response.status(),200,path);
+    assert.equal(await c.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`Horizontal overflow at 390px on ${path}`);
+    return response.text();
+   },menuLinks(await c.page.content()));
+   assertReachable(site,app,'US-001');
+   for(const goal of Object.values(app.goals).filter(goal=>goal.photo))assert.ok(site.links.has(`/photos/${goal.id}`),'The photo is linked');
+   // The question with two versions and a Correction's answer open in place.
+   const edited=Object.values(app.questions).find(q=>q.versions.length>1);
+   await c.page.goto(c.at(`/questions/${edited.id}/edit`));await c.page.locator(`#version-${edited.versions[0].version}>summary`).tap();
+   await c.page.getByText(edited.versions[0].prompt,{exact:true}).waitFor();
+   const corrected=app.events.find(e=>app.overrides.some(o=>o.event_id===e.id));
+   await c.page.goto(c.at(`/questions/${corrected.question_id}/edit#attempt-${corrected.id}`));
+   await c.page.locator(`#attempt-${corrected.id} .record-correction`).waitFor();
+   await unchanged(c,before);
   }],
  'US-002':[
   // A question that was left unanswered is shown as unanswered, with what was presented.
@@ -196,7 +220,7 @@ export const specs={
    const question=Object.values(app.questions).find(q=>!q.archived&&q.versions.at(-1).choices.length);
    await c.page.goto(c.at(`/questions/${question.id}/edit`));await shows(c,'earlier-question');
    await c.page.getByRole('heading',{level:1,name:question.versions.at(-1).prompt,exact:true}).waitFor();
-   assert.deepEqual(await c.page.locator('main ol li').allTextContents(),question.versions.at(-1).choices);
+   assert.deepEqual(await c.page.locator('main .question-current ol li').allTextContents(),question.versions.at(-1).choices);
    assert.equal((await c.page.locator('.answer-pair dd').first().innerText()).trim(),question.versions.at(-1).answer);
    await c.page.goto(c.at('/settings'));await shows(c,'settings');
    assert.equal(await c.page.locator('input[name="pace"],form[action="/settings"]').count(),0,'Settings sets no earlier pace');
