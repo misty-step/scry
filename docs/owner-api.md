@@ -312,14 +312,16 @@ After an answer, `mapping_feedback` names `kind` (`correct`, `wrong_key`,
 `spelling`, `mismatch` or `ungraded`), `key` and `expected`. An answer that
 is another pair's value is `wrong_key` with `answered_key`; in reverse, another
 pair's key is `wrong_key` with `answered_value` and `direction: "reverse"`.
-Such an answer is never accepted: when paid judgment would judge it and Jev
-accepts it, the check closes unsure and the answer stays saved and not graded.
+Such an answer is the wrong key, decided by Scry at once whether paid judgment
+is on or off: Verdict Again under `exact-v2`, the Card scheduled from it like any
+other local miss, and no Check, reservation or request.
 
 A value that is a year (one to four digits, alone or with AD or CE before or
 after, with or without stops) accepts the same digits with or without AD or CE.
-It is graded as an exact number: another year, or a year before the era such
-as `44 BC`, is a miss, and with paid judgment on a year-shaped wrong answer is
-never sent. An Attempt the year rule decided records grader version
+It is graded by Scry as an exact number, and a year before the common era
+(`44 BC`) is graded as written: `44` or `44 BCE` is a miss for it. A year answer
+(one to four digits with or without AD, CE, BC or BCE) to a year value is never
+sent to Jev, whether paid judgment is on or off. An Attempt the year rule decided records grader version
 `1;unicode=17.0.0;mapping=1;year=1`; every other mapping Attempt keeps
 `;mapping=1`, and replay regrades each under the version it recorded. A
 safety-bearing pair never uses the year rule. With paid judgment on, Jev judges

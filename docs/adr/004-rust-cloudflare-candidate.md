@@ -292,6 +292,13 @@ Attempt it decided records grader version `1;unicode=17.0.0;mapping=1;year=1`
 and replay regrades each Attempt under the version it recorded, so earlier
 Attempts that the rule would now accept stay as they were decided.
 
+Two kinds of answer never reach Jev, even with paid judgment on: a year answer
+to a year value, and an answer that is exactly another pair's value (or, in
+reverse, its key). Both are decided locally under `exact-v2` and need no new
+stored shape: a local Again is what the switch-off path already writes.
+Earlier Attempts that were sent to Jev for such an answer keep their judgment;
+validation does not require that they had not been sent.
+
 A notebook holding any of these (a declared Version, a reverse Card or a year
 Attempt) writes the row `mapping_compatibility/v1` and archives as
 `scry-rust-durable-sqlite-mapping-v6`, ahead of every earlier name. Earlier

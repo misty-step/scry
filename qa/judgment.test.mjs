@@ -202,6 +202,26 @@ test('switch off: nothing leaves Scry and the stored result is the one before pa
   }finally{await n.close();}
 });
 
+test('switch on: the wrong key is Scry\'s own Again at once, and nothing is sent',{timeout:60000},async()=>{
+  const n=await notebook();
+  try{
+    await n.turnOn();
+    await n.study(await n.addMapping('Synthetic harbour practice',HARBOUR));
+    // SPEC § Keyed mappings: exactly another pair's value is the wrong key, never sent to be judged.
+    const {attempt}=await n.answer('Sound the  horn');
+    await sleep(1600); // An alarm would have claimed a queued Check by now.
+    const state=await n.state(),saved=state.attempts[attempt];
+    assert.equal(saved.judgment,undefined);assert.equal(saved.grade.verdict,'Again');assert.equal(saved.grade.authority.name,'exact-v2');
+    assert.equal(saved.effects.length,1);assert.equal(saved.effects[0].verdict,'Again');
+    assert.deepEqual(state.cards[saved.effects[0].card_id].state,saved.effects[0].after);
+    assert.ok(!state.keys.some(key=>key.startsWith('practice_checks/')),'No Check exists.');
+    assert.deepEqual(state.spend,[],'Nothing is reserved.');
+    const result=await n.page('/recall');
+    assert.match(result,/data-verdict="Again"/);assert.match(result,/That answer belongs to key In fog\./);assert.doesNotMatch(result,/Judged by Jev|data-poll/);
+    assert.equal(n.jev.sent.length,0,'The wrong key never reaches Jev.');
+  }finally{await n.close();}
+});
+
 test('the switch is the signed-in Owner\'s, replay-safe, and a token without paid permission sends nothing',{timeout:90000},async()=>{
   const n=await notebook();
   try{

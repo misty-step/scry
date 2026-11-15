@@ -111,9 +111,11 @@ A manifest declared `"direction": "both"` also practises each pair in reverse:
 its own Source study, led by the value, then a Quiz that shows the value and
 asks **Recall the matching key**. The pair counts once against Pace, each
 direction keeps its own Card, and the other direction of the pair just
-answered waits while anything else is eligible. Another pair's value (or, in
-reverse, key) is named as the wrong key and never accepted. A year value takes
-the year with or without AD or CE, as an exact number. A pair flagged
+answered waits while anything else is eligible. An answer that is exactly
+another pair's value (or, in reverse, key) is Scry's own Again, named as the
+wrong key and never sent to Jev, with paid judgment on or off. A year value
+takes the year with or without AD or CE, as an exact number; a year before the
+common era is graded as written; a year answer is never sent to Jev. A pair flagged
 `safety_bearing` says **Safety practice: answer with the safe practice
 itself.** in study and Quiz, and may not be practised in reverse.
 
@@ -121,7 +123,7 @@ itself.** in study and Quiz, and may not be practised in reverse.
 `tests/mapping_stored_bytes.rs`, `qa/keyed-mapping.test.mjs` and
 `qa/mapping-spec.test.mjs` own keyed mappings. The canonical
 `examples/nato-alphabet.json` is supplied content, not generated runtime output.
-Choice scaffolding, random-start sets, a declared year range and multimedia are
+Choice scaffolding, random-start sets and multimedia are
 not implemented; hosted #335 remains unverified.
 
 

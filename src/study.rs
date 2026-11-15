@@ -631,25 +631,6 @@ pub(crate) fn other_pair<'a>(
             }) == answer
         })
 }
-/// Whether a mapping answer is another pair's value, or in reverse another
-/// pair's key: the wrong key, whatever any judge says of it.
-pub fn belongs_to_another_pair(app: &App, attempt: &Attempt) -> bool {
-    let Some(version) = app.library.versions.get(&attempt.version_id) else {
-        return false;
-    };
-    version.kind == Kind::KeyedMapping
-        && units(version)
-            .get(attempt.first_unit_index())
-            .is_some_and(|unit| {
-                other_pair(
-                    version,
-                    &unit.id,
-                    attempt_direction(app, attempt),
-                    &attempt.raw_answer,
-                )
-                .is_some()
-            })
-}
 pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback> {
     let version = &app.library.versions[&attempt.version_id];
     if version.kind != Kind::KeyedMapping {
@@ -2812,14 +2793,28 @@ pub(crate) fn recall_input(app: &App, prompt: &Prompt, answer: &str) -> AppResul
 /// Spelling-strict content any other answer is Again; an empty answer is a
 /// miss; and an answer too large to send is graded by the comparison alone.
 fn judgeable(app: &App, prompt: &Prompt, answer: &str, grade: &Grade) -> bool {
+    let version = &app.library.versions[&prompt.version_id];
     grade.verdict == Verdict::Again
-        && !app.library.versions[&prompt.version_id].spelling_strict
+        && !version.spelling_strict
         && !answer.trim().is_empty()
+        // Exactly another pair's value, or in reverse its key, is the wrong
+        // key: Scry's own Again, never sent to be judged.
+        && !(version.kind == Kind::KeyedMapping
+            && prompt.unit_ids.first().is_some_and(|unit| {
+                let direction = if prompt.cue_level == Cue::MappingValue {
+                    Direction::Reverse
+                } else {
+                    Direction::Forward
+                };
+                other_pair(version, unit, direction, answer).is_some()
+            }))
         && recall_input(app, prompt, answer).is_ok_and(|input| {
             input.bytes() <= RECALL_LIMIT
-                // A year is graded as an exact number: another year is a miss.
+                // A year is graded by Scry as an exact number, and one before
+                // the common era as written: a year answer is never judged.
                 && !(matches!(input.kind, RecallKind::Mapping | RecallKind::MappingReverse)
-                    && grading::mapping_years(&input.expected_answer, answer).is_some())
+                    && grading::mapping_year_shaped(&input.expected_answer)
+                    && grading::mapping_year_shaped(answer))
         })
 }
 /// Give an Attempt the Verdict Jev decided, once. Each Card is scheduled only

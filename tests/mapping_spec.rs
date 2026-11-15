@@ -521,8 +521,51 @@ fn with_paid_judgment_on_a_different_year_is_a_local_miss_never_sent() {
         "an exact number is not sent to Jev"
     );
     assert!(o.app.practice.checks.is_empty());
+    // A year before the common era is graded as written, by Scry alone.
+    for answer in ["1066 BC", "1066 B.C.E."] {
+        o.again();
+        let r = o.answer(answer);
+        assert_eq!(verdict(&r), "Again", "{answer}");
+        assert!(r["attempt"]["judgment"].is_null(), "{answer}");
+    }
+    o.next(&sid);
+    let r = o.answer("800 BC");
+    assert_eq!(verdict(&r), "Again");
+    assert!(r["attempt"]["judgment"].is_null());
+    // "44 BC" is a year: "44 BCE" is not the same written year, and is never sent.
+    loop {
+        o.next(&sid);
+        let unit = o.held()["prompt"]["unit_ids"][0].clone();
+        let founding = serde_json::to_value(
+            &o.app.library.versions[&o.held()["prompt"]["version_id"]
+                .as_str()
+                .unwrap()
+                .to_string()]
+                .sections[0]
+                .units[2]
+                .id,
+        )
+        .unwrap();
+        if unit == founding {
+            break;
+        }
+        o.answer(if o.held_card()["unit_index"] == 0 {
+            "1066"
+        } else {
+            "AD 800"
+        });
+    }
+    let r = o.answer("44 BCE");
+    assert_eq!(verdict(&r), "Again");
+    assert!(r["attempt"]["judgment"].is_null());
+    let r = {
+        o.again();
+        o.answer("44 BC")
+    };
+    assert_eq!(verdict(&r), "Good");
+    assert!(o.app.practice.checks.is_empty() && o.app.spend.is_empty());
     o.again();
-    let r = o.answer("the year of the synthetic battle");
+    let r = o.answer("the year of the synthetic founding");
     assert!(
         !r["attempt"]["judgment"].is_null(),
         "other wording is still judged"
@@ -541,45 +584,59 @@ fn config() -> WorkConfig {
     }
 }
 
+/// SPEC § Keyed mappings: "An answer that is exactly another pair's value, or
+/// another pair's key in reverse, is Again and is identified as the wrong key.
+/// It is never accepted as a near match and never sent to be judged."
 #[test]
-fn another_pairs_value_is_never_accepted_even_when_jev_accepts_it() {
+fn with_paid_judgment_on_the_wrong_key_is_a_local_miss_never_sent() {
     let mut o = Owner::judged();
     let vid = o
-        .add(json!({"title":"Synthetic harbour","direction":"forward","spelling_strict":false,"pairs":[
-            {"key":"Before leaving the berth","value":"check the bilge pump"},
-            {"key":"In fog","value":"sound the horn"}
-        ]}))
+        .add(
+            json!({"title":"Synthetic harbour","direction":"both","spelling_strict":false,"pairs":[
+                {"key":"Before leaving the berth","value":"check the bilge pump"},
+                {"key":"In fog","value":"sound the horn"}
+            ]}),
+        )
         .unwrap();
     let sid = o.learn(&vid, "intense");
     o.next(&sid);
-    let r = o.answer("sound the horn");
-    let aid = r["attempt"]["id"].as_str().unwrap().to_string();
-    assert!(!r["attempt"]["judgment"].is_null());
-    let work = engine::claim_check_work(&mut o.app, o.now, "mapping-spec-lease-1", &config())
-        .unwrap()
-        .expect("a queued Check");
-    let accept = json!({"answers":{"verdict":{"choice":"accept","probabilities":{"accept":0.98,"reject":0.01,"unsure":0.01}},"identity":{"noul":0.02},"injection":{"noul":0.0}}}).to_string();
-    engine::finish_work(
-        &mut o.app,
-        &work,
-        accept,
-        "synthetic-jev-2026".into(),
-        Some(12_000),
-        o.now,
-    )
-    .unwrap();
-    o.sound();
-    let attempt = &o.app.practice.attempts[&aid];
-    assert_eq!(attempt.verdict(), None, "the wrong key is never Good");
-    assert!(attempt.effects.is_empty());
-    let check = serde_json::to_value(o.app.practice.checks.values().next().unwrap()).unwrap();
-    assert_eq!(check["status"], "unsure");
+    // Forward: another pair's value, under the exact grader's normalization.
+    let r = o.answer("Sound  the HORN");
+    assert_eq!(verdict(&r), "Again");
     assert!(
-        check["reason"]
-            .as_str()
-            .unwrap()
-            .contains("belongs to another pair")
+        r["attempt"]["judgment"].is_null(),
+        "never sent to be judged"
     );
+    assert_eq!(r["attempt"]["grade"]["authority"]["name"], "exact-v2");
+    assert_eq!(r["mapping_feedback"]["kind"], "wrong_key");
+    assert_eq!(r["mapping_feedback"]["answered_key"], "In fog");
+    assert_eq!(r["attempt"]["effects"][0]["scheduled"], true);
+    assert!(o.app.practice.checks.is_empty() && o.app.spend.is_empty());
+    // Reverse: another pair's key.
+    loop {
+        o.next(&sid);
+        if o.held_card()["direction"] == "reverse" && o.held_card()["unit_index"] == 0 {
+            break;
+        }
+        let unit = o.held_card()["unit_index"].as_u64().unwrap() as usize;
+        let answer = if o.held_card()["direction"] == "reverse" {
+            ["Before leaving the berth", "In fog"][unit]
+        } else {
+            ["check the bilge pump", "sound the horn"][unit]
+        };
+        o.answer(answer);
+    }
+    let r = o.answer("in fog");
+    assert_eq!(verdict(&r), "Again");
+    assert!(r["attempt"]["judgment"].is_null());
+    assert_eq!(r["mapping_feedback"]["kind"], "wrong_key");
+    assert_eq!(r["mapping_feedback"]["answered_value"], "sound the horn");
+    assert!(o.app.practice.checks.is_empty() && o.app.spend.is_empty());
+    // Any other wrong answer is still judged.
+    o.again();
+    let r = o.answer("before casting off");
+    assert!(!r["attempt"]["judgment"].is_null());
+    assert_eq!(o.app.practice.checks.len(), 1);
 }
 
 // --- Safety-bearing pairs ----------------------------------------------------

@@ -1288,18 +1288,7 @@ fn finish_work_inner(
         {
             return Err(AppError::conflict());
         }
-        // An answer that belongs to another pair is the wrong key, never a
-        // near match: Jev's accept of it leaves it saved and not graded.
-        let other_pair = crate::study::belongs_to_another_pair(&next, attempt);
         match generation::short_decision(&raw) {
-            Ok(decision) if decision.applied && decision.outcome == "correct" && other_pair => {
-                close_check(
-                    &mut next,
-                    &work.id,
-                    crate::study::CheckStatus::Unsure,
-                    "This answer belongs to another pair, so it is not accepted. It stays saved and not graded.",
-                )
-            }
             Ok(decision) if decision.applied => crate::study::decide(
                 &mut next,
                 &work.id,

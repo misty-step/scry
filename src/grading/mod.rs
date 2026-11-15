@@ -312,6 +312,35 @@ fn year_index(tokens: &[unicode::Token]) -> Option<usize> {
         .then_some(i)
 }
 
+/// Whether a mapping text names a year in any era: one to four digits, alone
+/// or with AD, CE, BC or BCE before or after. Such an answer to a year value is
+/// graded by Scry alone, as written or by the year rule, and never judged.
+pub fn mapping_year_shaped(text: &str) -> bool {
+    let words = mapping_words(text);
+    let words: Vec<&str> = words.iter().map(String::as_str).collect();
+    let era = |w: &[&str]| {
+        matches!(
+            w,
+            ["ad"]
+                | ["ce"]
+                | ["bc"]
+                | ["bce"]
+                | ["a", "d"]
+                | ["c", "e"]
+                | ["b", "c"]
+                | ["b", "c", "e"]
+        )
+    };
+    let Some(i) = words
+        .iter()
+        .position(|w| (1..=4).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_digit()))
+    else {
+        return false;
+    };
+    let (before, after) = (&words[..i], &words[i + 1..]);
+    (before.is_empty() && (after.is_empty() || era(after))) || (after.is_empty() && era(before))
+}
+
 /// Whether an expected mapping answer and a typed one both name a year, and
 /// so are graded as exact numbers: the same digits, with or without AD or CE.
 pub fn mapping_years(expected: &str, answer: &str) -> Option<bool> {

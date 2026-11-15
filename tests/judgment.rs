@@ -536,8 +536,24 @@ fn a_different_identity_is_rejected_and_a_risky_accept_is_not_a_grade() {
     let mut o = Owner::new().mapping();
     let card = o.target();
     let before = o.card(&card).clone();
-    // Another key's value.
+    // Another key's value is the wrong key: Scry's own Again at once, never
+    // sent to be judged (SPEC § Keyed mappings).
     let aid = o.answer("sound the horn");
+    let a = o.attempt(&aid).clone();
+    assert_eq!(a.verdict(), Some(Verdict::Again));
+    assert!(a.judgment.is_none());
+    assert_eq!(a.authority().unwrap().name, "exact-v2");
+    assert!(o.checks(&aid).is_empty());
+    assert!(o.app.spend.is_empty());
+    assert!(o.claim().is_none());
+    assert_eq!(o.card(&card).state, a.effects[0].after);
+    let wire = o.wire(&aid);
+    assert_eq!(wire["mapping_feedback"]["kind"], "wrong_key");
+    assert_eq!(wire["mapping_feedback"]["answered_key"], "In fog");
+
+    // A different identity that is no pair's value is judged, and rejected.
+    o.next_card(&card);
+    let aid = o.answer("fill the fuel tank");
     o.judge(reject());
     let a = o.attempt(&aid).clone();
     assert_eq!(a.verdict(), Some(Verdict::Again));
@@ -550,9 +566,6 @@ fn a_different_identity_is_rejected_and_a_risky_accept_is_not_a_grade() {
         before.state.schedule.lapses
     );
     assert!(o.card(&card).state.schedule.last_review_ms.is_some());
-    let wire = o.wire(&aid);
-    assert_eq!(wire["mapping_feedback"]["kind"], "wrong_key");
-    assert_eq!(wire["mapping_feedback"]["answered_key"], "In fog");
 
     // An accept that may name a different thing is no Verdict at all.
     o.next_card(&card);
