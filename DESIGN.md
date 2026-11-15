@@ -1,5 +1,18 @@
 # Scry: a recall instrument
 
+## Earlier practice is history — 2026-11-15
+
+The earlier concept notebook is shown, never practised. Earlier practice keeps
+the reading column and the question as the page's one heading, and replaces
+every control with what was saved: the choices that were presented as plain
+numbered text and “Not answered.”; or the saved answer with one quiet line
+naming the stored status of its check; or the held Verdict with its Authority
+and the answer pair. No form, button, More menu, poll or assistance gate appears
+there, and no Goal or Concept page leads to practice. With nothing held it says
+so in one sentence under the page title. This supersedes “One question, one
+action, a held result” and the assistance fence below for the earlier notebook;
+Study keeps its own protection.
+
 ## Continuous study — 2026-11-02
 
 The default canvas is one subject preview and one Study action. Due work comes

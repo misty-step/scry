@@ -94,13 +94,14 @@ struct View<'a> {
     now: i64,
 }
 
+/// What `/notebook` leads with when no question is held: nothing, or where
+/// the notebook's saved generation requests stopped.
 #[derive(Clone, Copy)]
 enum EmptyState<'a> {
-    FirstRun,
+    Nothing,
     Preparing,
     Paused,
     Stopped(&'a Goal),
-    CaughtUp,
 }
 
 impl View<'_> {
@@ -141,20 +142,6 @@ impl View<'_> {
             job.map_or(&goal.status, |j| &j.status),
             job.and_then(|j| j.error.as_deref()),
         )
-    }
-    fn check_paused(&self, occurrence: &Occurrence) -> bool {
-        self.effective_phase(
-            occurrence
-                .assessment_id
-                .as_ref()
-                .and_then(|id| self.app.assessments.get(id))
-                .map(|assessment| assessment.status.as_str())
-                .unwrap_or("queued"),
-            None,
-        ) == "notebook-paused"
-    }
-    fn resume_link(&self) -> &'static str {
-        "<a class=\"text-link\" href=\"/settings#preparation\">Resume meaning checks →</a>"
     }
     fn saved_answer(&self, prompt_id: &str) -> &str {
         self.app
@@ -206,41 +193,11 @@ impl View<'_> {
             hidden("revision", &self.app.revision.to_string())
         )
     }
-    fn review_form(
-        &self,
-        action: &str,
-        suffix: &str,
-        class: &str,
-        extra: &str,
-        body: &str,
-    ) -> String {
-        let id = self
-            .app
-            .occurrence
-            .as_ref()
-            .map(|o| o.id.as_str())
-            .unwrap_or("");
-        self.form(
-            &format!("/review/{action}"),
-            suffix,
-            class,
-            extra,
-            &format!("{}{body}", hidden("occurrence_id", id)),
-        )
-    }
     fn goal_title(&self, goal: &Goal) -> String {
-        if self.app.protected_goal() == Some(goal.id.as_str()) {
-            "Current study".to_string()
-        } else {
-            escape(&goal.title)
-        }
+        escape(&goal.title)
     }
     fn concept_name(&self, concept: &Concept) -> String {
-        if self.app.protected_concept(&concept.id) {
-            "Current idea".into()
-        } else {
-            escape(&idea_title(self.app, concept))
-        }
+        escape(&idea_title(self.app, concept))
     }
     fn active_concept(&self, concept: &Concept) -> bool {
         !concept.archived
@@ -255,7 +212,7 @@ impl View<'_> {
     fn study_chip(&self, concept: &Concept) -> (String, String) {
         let goal = self.app.goals.get(&concept.goal_id);
         match goal {
-            Some(g) if legacy_idea(concept) && !self.app.protected_concept(&concept.id) => {
+            Some(g) if legacy_idea(concept) => {
                 (self.goal_title(g), format!("/goals/{}", escape(&g.id)))
             }
             _ => (
@@ -274,46 +231,6 @@ impl View<'_> {
         } else {
             format!("<p class=\"{class}\">{}</p>", escape(summary))
         }
-    }
-    fn gate(&self, destination: &str) -> String {
-        if self
-            .app
-            .occurrence
-            .as_ref()
-            .is_some_and(|occurrence| occurrence.phase == "checking")
-        {
-            if self
-                .app
-                .occurrence
-                .as_ref()
-                .is_some_and(|o| self.check_paused(o))
-            {
-                return format!(
-                    "<section class=\"empty-stage gate\" data-state=\"checking-paused\"><p class=\"eyebrow\">Your answer is saved</p><h1>Your meaning check is paused.</h1><p class=\"lede\">Resume meaning checks in Settings to continue. Your answer stays ungraded and this reference stays protected.</p>{}</section>",
-                    self.resume_link()
-                );
-            }
-            return format!(
-                "<section class=\"empty-stage gate\" data-state=\"checking-reference\" data-poll>{}<p class=\"eyebrow\">Your answer is saved</p><h1>Your check is still in progress.</h1><p class=\"lede\">This reference may contain the answer. It will be available after the check finishes.</p><div class=\"actions\"><a class=\"button primary\" href=\"{}\">Return to your saved answer →</a></div></section>",
-                emblem("large"),
-                legacy_home(self.app)
-            );
-        }
-        let action = self.review_form(
-            "help",
-            "reference",
-            "",
-            "",
-            &format!(
-                "{}<button class=\"button primary\">Look it up</button>",
-                hidden("return_to", destination)
-            ),
-        );
-        format!(
-            "<section class=\"empty-stage gate\" data-state=\"gate\">{}<p class=\"eyebrow\">A little help is part of learning</p><h1>Open your reference?</h1><p class=\"lede\">Your notes may contain the answer. Opening them records this attempt as helped practice.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"{}\">Keep trying</a></div></section>",
-            emblem("large"),
-            legacy_home(self.app)
-        )
     }
     fn pending(&self) -> String {
         let mut out = String::new();
@@ -1436,133 +1353,104 @@ impl View<'_> {
             d.unit_index
         )
     }
-    fn study(&self) -> String {
+    /// The earlier concept notebook's held question, as it was left. It is
+    /// history: nothing here is a form, and no state of it asks to be polled.
+    fn earlier(&self) -> String {
         let Some(o) = self.app.occurrence.as_ref() else {
-            return self.empty();
+            return self.earlier_empty();
         };
-        let concept = self.app.concepts.get(&o.concept_id);
-        if o.phase == "intro" {
-            let mut out = format!(
-                "<section class=\"study intro\" data-state=\"intro\"><p class=\"eyebrow\"><span class=\"small-star\" aria-hidden=\"true\">✦</span> A new idea</p><h1>{}</h1>",
-                concept
-                    .map(|c| self.concept_name(c))
-                    .unwrap_or_else(|| "A useful starting point".into())
-            );
-            if let Some(c) = concept {
-                out.push_str(&self.lede("lede", c));
-                out.push_str(&self.notes(c));
-            }
-            out.push_str("<div class=\"thumb-actions\">");
-            out.push_str(&self.review_form("intro", "read", "", "", &format!("{}<button class=\"button primary\">Start practicing <span aria-hidden=\"true\">→</span></button>",hidden("known","false"))));
-            out.push_str(&self.review_form(
-                "intro",
-                "known",
-                "",
-                "",
-                &format!(
-                    "{}<button class=\"text-button\">I know this already</button>",
-                    hidden("known", "true")
-                ),
-            ));
-            out.push_str("</div><p class=\"fineprint\">Reading is a starting point. Your practice tells us what to revisit.</p></section>");
-            return format!("{}{out}", self.pending());
-        }
-        let mut out = String::from("<section class=\"study\"");
-        let _ = write!(out, " data-state=\"{}\">", escape(&o.phase));
-        if let Some(c) = concept {
+        let state = if o.phase == "result" && o.result.is_some() {
+            "earlier-result"
+        } else if o.answer.is_some() {
+            "earlier-ungraded"
+        } else {
+            "earlier-unanswered"
+        };
+        let mut out = format!("<section class=\"study\" data-state=\"{state}\">");
+        if let Some(c) = self.app.concepts.get(&o.concept_id) {
             let (label, href) = self.study_chip(c);
-            if o.phase == "result" || o.assisted {
-                let _ = write!(
-                    out,
-                    "<a class=\"concept-chip\" href=\"{href}\"><span aria-hidden=\"true\">✦</span>{label}</a>"
-                );
-            } else {
-                let _ = write!(
-                    out,
-                    "<span class=\"concept-chip\"><span aria-hidden=\"true\">✦</span>{label}</span>"
-                );
-            }
+            let _ = write!(
+                out,
+                "<a class=\"concept-chip\" href=\"{href}\"><span aria-hidden=\"true\">✦</span>{label}</a>"
+            );
         }
         let _ = write!(
             out,
             "<h1 class=\"question\">{}</h1>",
             escape(&o.presentation.prompt)
         );
-        match o.phase.as_str() {
-            "result" => out.push_str(&self.result(o)),
-            "self" | "self-check" => out.push_str(&self.self_check(o)),
-            "checking" | "pending" => {
-                if self.check_paused(o) {
-                    out.push_str("<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h2>Your meaning check is paused.</h2><p>Resume meaning checks in Settings to continue. Your answer stays ungraded.</p></div>");
-                } else {
-                    out.push_str("<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h2>Checking your meaning.</h2><p>You can leave and come back. Your question will stay here.</p></div>");
-                }
-                if let Some(answer) = &o.answer {
-                    let _ = write!(
-                        out,
-                        "<div class=\"answer-pair\"><span>You answered</span><p>{}</p></div>",
-                        escape(answer)
-                    );
-                }
-                if self.check_paused(o) {
-                    out.push_str(self.resume_link());
-                } else {
-                    let _ = write!(
-                        out,
-                        "<a class=\"text-link\" href=\"{}\">Check again</a>",
-                        legacy_home(self.app)
-                    );
-                }
-            }
-            _ => out.push_str(&self.question(o)),
-        }
+        out.push_str(&match state {
+            "earlier-result" => self.earlier_result(o),
+            "earlier-ungraded" => self.earlier_ungraded(o),
+            _ => self.earlier_unanswered(o),
+        });
         out.push_str("</section>");
         format!("{}{out}", self.pending())
     }
-    fn question(&self, o: &Occurrence) -> String {
+    fn earlier_unanswered(&self, o: &Occurrence) -> String {
         let mut out = String::new();
-        if o.assisted {
-            out.push_str(
-                "<p class=\"helped-label\">Helped practice · the reference was opened</p>",
-            );
-        }
-        if o.presentation.kind == "choice" || o.presentation.kind == "mcq" {
-            let mut choices = String::from(
-                "<fieldset class=\"choice-fieldset\"><legend class=\"sr-only\">Choose an answer</legend>",
-            );
-            for (index, choice) in o.presentation.choices.iter().enumerate() {
-                let _ = write!(
-                    choices,
-                    "<button class=\"choice\" name=\"answer\" value=\"{}\" data-choice=\"{}\"><span class=\"choice-key\" aria-hidden=\"true\">{}</span><span>{}</span><span class=\"choice-arrow\" aria-hidden=\"true\">↗</span></button>",
-                    escape(choice),
-                    index + 1,
-                    index + 1,
-                    escape(choice)
-                );
+        if !o.presentation.choices.is_empty() {
+            out.push_str("<ol class=\"reading earlier-choices\">");
+            for choice in &o.presentation.choices {
+                let _ = write!(out, "<li>{}</li>", escape(choice));
             }
-            choices.push_str("</fieldset>");
-            out.push_str(&self.review_form(
-                "answer",
-                "answer",
-                "answer-form choice-form",
-                "",
-                &choices,
-            ));
-            out.push_str("<p class=\"control-hint\">Choose one answer. <span class=\"keyboard-hint\">Or press its number.</span></p>");
-        } else {
-            let field = format!(
-                "<label class=\"answer-label\" for=\"answer\">{}<span>Take a moment. Say it your way.</span></label><textarea id=\"answer\" name=\"answer\" rows=\"3\" maxlength=\"4000\" placeholder=\"Your answer, from memory…\" required autocomplete=\"off\" spellcheck=\"false\">{}</textarea><div class=\"thumb-actions answer-actions\"><button class=\"button primary\">Check my answer <span aria-hidden=\"true\">→</span></button></div>",
-                if o.presentation.kind == "explain" {
-                    "Explain your thinking"
-                } else {
-                    "What comes to mind?"
-                },
-                escape(o.answer.as_deref().unwrap_or(""))
-            );
-            out.push_str(&self.review_form("answer", "answer", "answer-form", "", &field));
+            out.push_str("</ol>");
         }
-        out.push_str(&self.more(o));
+        out.push_str("<div class=\"feedback feedback-self\"><div><h2>Not answered.</h2><p>Scry no longer serves or grades the earlier concept notebook.</p></div></div>");
+        if o.assisted {
+            out.push_str("<p class=\"helped-label\">The reference had been opened.</p>");
+        }
         out
+    }
+    /// A saved answer with no Verdict. The check is named by its stored
+    /// status alone; the message stored with it stays in export.
+    fn earlier_ungraded(&self, o: &Occurrence) -> String {
+        let status = o
+            .assessment_id
+            .as_ref()
+            .and_then(|id| self.app.assessments.get(id))
+            .map(|check| check.status.as_str());
+        let (name, label) = match status {
+            Some("queued") => ("queued", "Check recorded: queued, never sent."),
+            Some("sent") => ("sent", "Check recorded: sent, never confirmed."),
+            Some("failed") => ("failed", "Check recorded: failed."),
+            Some("unknown") => ("unknown", "Check recorded: outcome unknown."),
+            Some("paused") => ("paused", "Check recorded: paused, never sent."),
+            Some("unsure") => ("unsure", "Check recorded: inconclusive."),
+            Some("superseded") => ("superseded", "Check recorded: superseded."),
+            Some(_) => ("recorded", "A check was recorded."),
+            None => ("none", "No check was recorded."),
+        };
+        format!(
+            "<div class=\"feedback feedback-self\"><div><h2>Your answer is saved, not graded.</h2><p data-check=\"{name}\">{label}</p></div></div>{}",
+            self.answer_pair(o)
+        )
+    }
+    fn earlier_result(&self, o: &Occurrence) -> String {
+        let Some(result) = &o.result else {
+            return String::new();
+        };
+        let helped = o.assisted || result.outcome == "helped" || result.authority == "reveal";
+        let correct = matches!(
+            result.outcome.as_str(),
+            "correct" | "success" | "recalled" | "warm_correct"
+        );
+        let (class, icon, title) = if helped {
+            ("helped", "◉", "With help.")
+        } else if correct {
+            ("correct", "✓", "Recalled.")
+        } else {
+            ("miss", "×", "Missed.")
+        };
+        let authority = if result.corrected {
+            "Your Correction"
+        } else {
+            authority_label(&result.authority)
+        };
+        format!(
+            "<div class=\"feedback feedback-{class}\"><span class=\"result-mark\" aria-hidden=\"true\">{icon}</span><div><h2>{title}</h2><p>{authority}</p></div></div>{}",
+            self.answer_pair(o)
+        )
     }
     fn answer_pair(&self, o: &Occurrence) -> String {
         format!(
@@ -1578,133 +1466,18 @@ impl View<'_> {
             provenance(&o.presentation.basis, &o.presentation.quotes)
         )
     }
-    fn result(&self, o: &Occurrence) -> String {
-        let Some(result) = &o.result else {
-            return "<p role=\"status\">Your result is being reconciled. Refresh to see the saved outcome.</p>".into();
-        };
-        let helped = o.assisted || result.outcome == "helped" || result.authority == "reveal";
-        let correct = matches!(
-            result.outcome.as_str(),
-            "correct" | "success" | "recalled" | "warm_correct"
-        );
-        let (class, icon, title) = if helped {
-            ("helped", "◉", "With a little help.")
-        } else if correct {
-            ("correct", "✓", "You recalled it.")
-        } else {
-            ("miss", "×", "Not quite yet.")
-        };
-        let authority = if result.corrected {
-            "You corrected this grade"
-        } else {
-            match result.authority.as_str() {
-                "exact" => "Matched the saved answer",
-                "jev" => "Checked the meaning",
-                "learner" => "You checked your answer",
-                "reveal" => "You chose to see the answer",
-                _ => "Saved learning record",
-            }
-        };
-        let mut out = format!(
-            "<div class=\"feedback feedback-{class}\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"><span class=\"result-mark\" aria-hidden=\"true\">{icon}</span><div><h2>{title}</h2><p>{authority}{}</p></div></div>{}",
-            if helped {
-                " · recorded as helped practice"
-            } else {
-                ""
-            },
-            self.answer_pair(o)
-        );
-        out.push_str("<div class=\"thumb-actions result-actions\">");
-        out.push_str(&self.review_form("next","next","","data-next", "<button class=\"button primary\">Next question <span aria-hidden=\"true\">→</span></button>"));
-        out.push_str("</div>");
-        if let Some(c) = self.app.concepts.get(&o.concept_id) {
-            let _ = write!(
-                out,
-                "<a class=\"text-link reference-link\" href=\"/concepts/{}\">Read the explanation for this idea <span aria-hidden=\"true\">↗</span></a>",
-                escape(&c.id)
-            );
-        }
-        out.push_str(&self.more(o));
-        out
-    }
-    fn self_check(&self, o: &Occurrence) -> String {
-        let assessment = o
-            .assessment_id
-            .as_ref()
-            .and_then(|id| self.app.assessments.get(id));
-        let mut out = format!(
-            "<div class=\"feedback feedback-self\" role=\"status\"><h2>Your answer is saved, not graded.</h2><p>A native verdict is unavailable for this earlier activity. Self-grading is retired; your answer, history and schedule are unchanged.</p></div>{}<p><a class=\"text-link\" href=\"/\">Return to native review</a></p>",
-            self.answer_pair(o)
-        );
-        if self.check_paused(o) {
-            out.push_str(self.resume_link());
-        } else if assessment
-            .is_some_and(|a| matches!(a.status.as_str(), "failed" | "unknown" | "superseded"))
-        {
-            out.push_str(&self.review_form(
-                "retry",
-                "retry",
-                "",
-                "",
-                "<button class=\"text-button\">Retry native check</button>",
-            ));
-        }
-        out
-    }
-    fn more(&self, o: &Occurrence) -> String {
-        let mut out = String::from(
-            "<details class=\"overflow\"><summary>More <span aria-hidden=\"true\">＋</span></summary><div class=\"overflow-menu\">",
-        );
-        if o.phase == "question" {
-            out.push_str(&self.review_form(
-                "reveal",
-                "reveal",
-                "",
-                "",
-                "<button>Show me the answer</button>",
-            ));
-            let _ = write!(
-                out,
-                "<a href=\"/gate?concept={}\">Look it up in my notes</a>",
-                escape(&o.concept_id)
-            );
-        }
-        let _ = write!(
-            out,
-            "<a href=\"/questions/{}/edit\">Edit this question</a>",
-            escape(&o.question_id)
-        );
-        out.push_str(&self.form(&format!("/questions/{}/dispute",o.question_id),"dispute","","",&format!("{}<details class=\"dispute-fields\"><summary>Flag faulty material</summary><label for=\"dispute-text\">What needs fixing?</label><textarea id=\"dispute-text\" name=\"text\" rows=\"2\" maxlength=\"4000\" required></textarea><label class=\"checkbox-label\"><input type=\"checkbox\" name=\"reset\" value=\"true\"> Reset this question’s schedule</label><button>Save the concern</button></details>",format_args!("{}{}",hidden("content_version",&o.presentation.version.to_string()),hidden("schedule_version",&self.app.questions.get(&o.question_id).map(|q|q.schedule_version).unwrap_or(o.schedule_version).to_string())))));
-        out.push_str(&self.form(
-            &format!("/questions/{}/archive", o.question_id),
-            "archive",
-            "",
-            "",
-            "<button class=\"danger\">Archive this question</button>",
-        ));
-        out.push_str("</div></details>");
-        out
-    }
     fn empty_state(&self) -> EmptyState<'_> {
-        let mut state = EmptyState::FirstRun;
+        let mut state = EmptyState::Nothing;
         for goal in self.app.goals.values().filter(|g| !g.archived) {
             if goal.paused {
-                if matches!(state, EmptyState::FirstRun) {
-                    state = EmptyState::CaughtUp;
-                }
                 continue;
             }
-            let phase = self.goal_phase(goal);
-            match phase {
+            match self.goal_phase(goal) {
                 "notebook-paused" => return EmptyState::Paused,
                 "queued" | "candidates" | "sent" | "critic-sent" | "preparing" => {
                     return EmptyState::Preparing;
                 }
-                "ready" | "partial" | "imported-unfinished" => {
-                    if matches!(state, EmptyState::FirstRun) {
-                        state = EmptyState::CaughtUp;
-                    }
-                }
+                "ready" | "partial" | "imported-unfinished" => {}
                 _ => {
                     if !matches!(state, EmptyState::Stopped(previous) if previous.created_ms >= goal.created_ms)
                     {
@@ -1715,18 +1488,11 @@ impl View<'_> {
         }
         state
     }
-    fn empty(&self) -> String {
-        let state = self.empty_state();
-        let any = !matches!(state, EmptyState::FirstRun);
-        let due = self
-            .app
-            .questions
-            .values()
-            .filter(|q| !q.archived)
-            .map(|q| q.card.due_ms)
-            .filter(|d| *d > self.now)
-            .min();
-        let demo = if !any && self.query.get("__synthetic").is_some_and(|v| v == "true") {
+    /// Nothing is held and nothing is selected: the notebook is history. A
+    /// saved generation request still says where it stopped, as before.
+    fn earlier_empty(&self) -> String {
+        let saved = !self.app.goals.is_empty() || !self.app.events.is_empty();
+        let demo = if !saved && self.query.get("__synthetic").is_some_and(|v| v == "true") {
             self.form(
                 "/__fixture",
                 "fixture",
@@ -1737,38 +1503,50 @@ impl View<'_> {
         } else {
             String::new()
         };
-        let (state_name, title, desc) = match state {
-            EmptyState::FirstRun => ("empty","Follow your curiosity.","Choose externally authored material from Library. Scry helps you remember it with native answer grading.".to_string()),
-            EmptyState::Preparing => ("preparing","Your saved request is preserved.","Native content generation is retired. Your request and any existing material remain available.".to_string()),
-            EmptyState::Paused => ("preparation-paused","Preparation is paused.","Your requests are saved. Native content generation is retired. Meaning checks can resume separately in Settings. Your existing notes and practice are still available.".to_string()),
-            EmptyState::Stopped(_) => ("preparation-stopped","Your request needs attention.","Your input is saved, but preparation is not running. Open the request to see what stopped it and choose what to do next.".to_string()),
-            EmptyState::CaughtUp => ("caught-up","A good place to pause.",due.map(|d|format!("You're caught up for now. Your next practice is {}.",relative(d,self.now))).unwrap_or_else(||"You have no eligible questions right now. Read your saved notes or choose material from Library.".into())),
-        };
-        let (destination, action) = match state {
-            EmptyState::Paused => ("/settings#preparation".into(), "Resume meaning checks"),
+        let (state_name, title, desc, destination, action) = match self.empty_state() {
+            EmptyState::Nothing => {
+                let lede = if saved {
+                    "No question is held. Scry no longer serves or grades this notebook; everything saved is on the Map and in History."
+                } else {
+                    "Nothing is saved in the earlier concept notebook."
+                };
+                return format!(
+                    "{demo}{}<section class=\"empty-stage\" data-state=\"earlier-empty\">{}<h1>Earlier practice</h1><p class=\"lede\">{lede}</p></section>",
+                    self.pending(),
+                    emblem("large")
+                );
+            }
+            EmptyState::Preparing => (
+                "preparing",
+                "Your saved request is preserved.",
+                "Native content generation is retired. Your request and any existing material remain available.",
+                "/library".to_string(),
+                "Browse Library",
+            ),
+            EmptyState::Paused => (
+                "preparation-paused",
+                "Preparation is paused.",
+                "Your requests are saved. Native content generation is retired. Meaning checks can resume separately in Settings. Your existing notes and practice are still available.",
+                "/settings#preparation".to_string(),
+                "Resume meaning checks",
+            ),
             EmptyState::Stopped(goal) => (
+                "preparation-stopped",
+                "Your request needs attention.",
+                "Your input is saved, but preparation is not running. Open the request to see what stopped it and choose what to do next.",
                 format!("/goals/{}", escape(&goal.id)),
                 "Review your saved request",
             ),
-            _ => ("/library".into(), "Browse Library"),
         };
         format!(
-            "{demo}{}<section class=\"empty-stage\" data-state=\"{state_name}\">{}<p class=\"eyebrow\">A private space for understanding</p><h1>{title}</h1><p class=\"lede\">{desc}</p><div class=\"actions\"><a class=\"button primary\" href=\"{destination}\">{action} <span aria-hidden=\"true\">→</span></a>{}</div><div class=\"notebook-margin\"><span>01 / Curiosity</span><span>Understanding starts with a question.</span></div></section>",
+            "{demo}{}<section class=\"empty-stage\" data-state=\"{state_name}\">{}<p class=\"eyebrow\">A private space for understanding</p><h1>{title}</h1><p class=\"lede\">{desc}</p><div class=\"actions\"><a class=\"button primary\" href=\"{destination}\">{action} <span aria-hidden=\"true\">→</span></a><a class=\"text-link\" href=\"/map\">Explore your map ↗</a></div><div class=\"notebook-margin\"><span>01 / Curiosity</span><span>Understanding starts with a question.</span></div></section>",
             self.pending(),
-            emblem("large"),
-            if any {
-                "<a class=\"text-link\" href=\"/map\">Explore your map ↗</a>"
-            } else {
-                ""
-            }
+            emblem("large")
         )
     }
     fn nato_reference(&self) -> String {
         // A reference must never disclose an answer behind a protected prompt.
-        if self.app.practice.protected()
-            || self.app.protected_goal().is_some()
-            || self.app.occurrence.is_some()
-        {
+        if self.app.practice.protected() {
             return String::new();
         }
         let input = crate::library::nato_input().expect("bundled NATO content is valid");
@@ -2922,8 +2700,7 @@ impl View<'_> {
             });
             let other_prompt = self.app.practice.current.is_some();
             out.push_str("<div class=\"nato-stage nato-welcome\">");
-            if !other_prompt && self.app.protected_goal().is_none() && self.app.occurrence.is_none()
-            {
+            if !other_prompt {
                 out.push_str(
                     "<div class=\"nato-specimen\" aria-hidden=\"true\">Aa<span>Alfa</span></div>",
                 );
@@ -2982,11 +2759,7 @@ impl View<'_> {
                     ("A little, often.", "", "Continue practice")
                 } else {
                     (
-                        if self.app.occurrence.is_some() || self.app.protected_goal().is_some() {
-                            "Learn the alphabet."
-                        } else {
-                            "From Alfa to Zulu."
-                        },
+                        "From Alfa to Zulu.",
                         "26 code words. One answer at a time.",
                         "Start practice",
                     )
@@ -3113,9 +2886,6 @@ impl View<'_> {
         let Some(g) = self.app.goals.get(id) else {
             return self.not_found();
         };
-        if self.app.protected_goal() == Some(id) {
-            return self.gate(&format!("/goals/{id}"));
-        }
         let mut out = format!(
             "<article class=\"reference-page\" data-state=\"goal\"><a class=\"back-link\" href=\"/map\">← Your map</a><div class=\"page-heading\"><p class=\"eyebrow\">A page in your notebook</p><h1>{}</h1><p class=\"fineprint\">Saved {}{}</p></div>",
             escape(&g.title),
@@ -3131,24 +2901,16 @@ impl View<'_> {
                 if let Some(c) = self.app.concepts.get(id).filter(|c| !c.archived) {
                     let _ = write!(
                         out,
-                        "<section class=\"reference-idea\"><h2><a href=\"/concepts/{}\">{}</a></h2>{}{}<a class=\"text-link\" href=\"/concepts/{}\">Explore this idea &amp; practice ↗</a></section>",
+                        "<section class=\"reference-idea\"><h2><a href=\"/concepts/{}\">{}</a></h2>{}{}<a class=\"text-link\" href=\"/concepts/{}\">Explore this idea ↗</a></section>",
                         escape(&c.id),
                         self.concept_name(c),
                         self.lede("lede small", c),
-                        if self.app.protected_concept(&c.id) {
-                            "<p>This idea is in your current question. Open its page to record assistance before reading.</p>".into()
-                        } else {
-                            self.notes(c)
-                        },
+                        self.notes(c),
                         escape(&c.id)
                     );
                 }
             }
-            let _ = write!(
-                out,
-                "</section><a class=\"button primary\" href=\"{}\">Go to practice →</a>",
-                legacy_home(self.app)
-            );
+            out.push_str("</section>");
         }
         let _ = write!(
             out,
@@ -3234,9 +2996,6 @@ impl View<'_> {
         let Some(c) = self.app.concepts.get(id) else {
             return self.not_found();
         };
-        if self.app.protected_concept(id) {
-            return self.gate(&format!("/concepts/{id}"));
-        }
         let state = concept_evidence(self.app, c, self.now);
         let unaided = state.unaided;
         let helped = state.helped;
@@ -3247,16 +3006,10 @@ impl View<'_> {
             self.lede("lede", c),
             self.notes(c),
             recall_label(self.app, c, self.now),
-            if !self.active_concept(c) {
-                "<p>Archived: retained for reference.</p>".into()
+            if self.active_concept(c) {
+                ""
             } else {
-                self.form(
-                    &format!("/concepts/{id}/practice"),
-                    "practice",
-                    "",
-                    "",
-                    "<button class=\"button primary\">Practice this idea →</button>",
-                )
+                "<p>Archived: retained for reference.</p>"
             },
             tally(&state)
         );
@@ -3268,24 +3021,13 @@ impl View<'_> {
             .filter(|q| q.concept_id == id && !q.archived)
         {
             let content = q.content();
-            let protected = self.app.protected_concept(&q.concept_id);
             let _ = write!(
                 out,
-                "<details class=\"question-reference\"><summary>{}</summary>",
-                escape(&content.prompt)
+                "<details class=\"question-reference\"><summary>{}</summary><div class=\"reading\"><p><strong>{}</strong></p><p>{}</p></div>",
+                escape(&content.prompt),
+                escape(&content.answer),
+                escape(&content.explanation)
             );
-            if protected {
-                out.push_str(
-                    "<p>The answer stays private while your current attempt is unaided.</p>",
-                );
-            } else {
-                let _ = write!(
-                    out,
-                    "<div class=\"reading\"><p><strong>{}</strong></p><p>{}</p></div>",
-                    escape(&content.answer),
-                    escape(&content.explanation)
-                );
-            }
             let _ = write!(
                 out,
                 "<a class=\"text-link\" href=\"/questions/{}/edit\">Edit future wording ↗</a></details>",
@@ -3367,14 +3109,10 @@ impl View<'_> {
         }
         if !self.app.practice.attempts.is_empty() {
             out.push_str("<section aria-label=\"Exact recall\"><h2>Exact recall</h2>");
-            if self.app.protected_goal().is_some() {
-                out.push_str("<p class=\"fineprint\">History is hidden while you answer from memory.</p><a class=\"text-link\" href=\"/notebook\">Return to the question</a>");
-            } else {
-                let mut attempts = self.app.practice.attempts.values().collect::<Vec<_>>();
-                attempts.sort_by_key(|a| std::cmp::Reverse(a.sequence));
-                for attempt in attempts {
-                    out.push_str(&self.exact_history_attempt(attempt));
-                }
+            let mut attempts = self.app.practice.attempts.values().collect::<Vec<_>>();
+            attempts.sort_by_key(|a| std::cmp::Reverse(a.sequence));
+            for attempt in attempts {
+                out.push_str(&self.exact_history_attempt(attempt));
             }
             out.push_str("</section>");
         }
@@ -3405,10 +3143,6 @@ impl View<'_> {
             out.push_str("</details>");
         }
         for event in self.app.events.iter().rev() {
-            if self.app.protected_concept(&event.concept_id) {
-                out.push_str("<p class=\"fineprint\">An earlier attempt is hidden while you work on its question from memory.</p>");
-                continue;
-            }
             let corrected = self.app.overrides.iter().any(|o| o.event_id == event.id);
             let outcome = if event.is_ungraded() {
                 "Ungraded"
@@ -3775,7 +3509,7 @@ impl View<'_> {
         let backup=match self.app.backup.completed_ms{Some(time)=>format!("Last verified backup: {}.{}",date(time),if self.now-time>DAY_MS{" A fresh backup needs attention."}else{""}),None=>"No verified remote backup is recorded. Recovery needs attention before personal use.".into()};
         let resume = if self.app.restored_paused {
             format!(
-                "<section class=\"notice\" id=\"preparation\"><h2>Preparation is paused.</h2><p>This restored notebook has background work paused. Resume queued and future meaning checks when you are ready. Native content generation stays retired. Historical uncertain work stays stopped; its allowance and your learning history stay saved.</p>{}</section>",
+                "<section class=\"notice\" id=\"preparation\"><h2>Preparation is paused.</h2><p>This restored notebook has background work paused. Resume future meaning checks when you are ready. Native content generation stays retired. Historical uncertain work stays stopped; its allowance and your learning history stay saved.</p>{}</section>",
                 self.form(
                     "/settings/resume",
                     "resume",
@@ -3830,9 +3564,6 @@ impl View<'_> {
         let Some(q) = self.app.questions.get(id) else {
             return self.not_found();
         };
-        if self.app.protected_concept(&q.concept_id) {
-            return self.gate(&format!("/questions/{id}/edit"));
-        }
         let use_draft = q.draft_for_version == Some(q.content().version)
             && q.draft.is_some()
             && !self.query.get("current").is_some_and(|v| v == "true");
@@ -3958,7 +3689,7 @@ pub fn changelog() -> String {
         escape(VERSION),
         escape(SOURCE_REVISION)
     );
-    shell("Changelog", "/changelog", &content, None, false, false, "/")
+    shell("Changelog", "/changelog", &content, None, false, "/")
 }
 
 #[cfg(test)]
@@ -4014,10 +3745,6 @@ fn exact_stream_active(app: &App) -> bool {
             .any(|s| s.status != crate::study::Status::Dropped)
 }
 
-fn legacy_home(_app: &App) -> &'static str {
-    "/notebook"
-}
-
 pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
     if matches!(path, "/library/version/add" | "/library/mapping/add") {
         redirect.strip_prefix("/api/v1").unwrap_or("/library")
@@ -4045,14 +3772,17 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
         } else {
             "/recall"
         }
+    } else if path == "/settings/resume" && redirect == "/" {
+        // Resuming is done from Settings and returns there.
+        "/settings"
     } else if redirect == "/"
         && (path.starts_with("/review/")
-            || path == "/settings/resume"
             || path
                 .strip_prefix("/concepts/")
                 .is_some_and(|p| p.ends_with("/practice")))
     {
-        legacy_home(app)
+        // A retired earlier-notebook action is refused on the page it came from.
+        "/notebook"
     } else {
         redirect
     }
@@ -4151,29 +3881,12 @@ pub fn render(
         "/library/add" => view.library_add(),
         "/notebook" => format!(
             "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/\">Review</a><a href=\"/map\">Map</a></nav>{}",
-            view.study()
+            view.earlier()
         ),
         "/create" | "/add" => view.create(),
         "/map" => view.map(),
         "/history" => view.history(),
         "/settings" => view.settings(),
-        "/gate" => {
-            let target = query
-                .get("return_to")
-                .filter(|v| v.starts_with('/') && !v.starts_with("//"))
-                .cloned()
-                .unwrap_or_else(|| {
-                    format!(
-                        "/concepts/{}",
-                        query
-                            .get("concept")
-                            .cloned()
-                            .or_else(|| app.occurrence.as_ref().map(|o| o.concept_id.clone()))
-                            .unwrap_or_default()
-                    )
-                });
-            view.gate(&target)
-        }
         _ => {
             let segments: Vec<_> = path.trim_matches('/').split('/').collect();
             match segments.as_slice() {
@@ -4196,18 +3909,12 @@ pub fn render(
         "/settings" => "Settings",
         _ => "Your notebook",
     };
-    let poll = path != "/"
-        && app
-            .occurrence
-            .as_ref()
-            .is_some_and(|o| matches!(o.phase.as_str(), "checking" | "pending"));
     shell(
         title,
         path,
         &content,
         notice,
         query.get("__synthetic").is_some_and(|v| v == "true"),
-        poll,
         if exact_stream_active(app) {
             "/recall"
         } else {
@@ -4236,7 +3943,6 @@ pub fn error_page(app: &App, status: u16, message: &str, now_ms: i64) -> String 
         &content,
         None,
         false,
-        false,
         if exact_stream_active(app) {
             "/recall"
         } else {
@@ -4251,14 +3957,13 @@ fn shell(
     content: &str,
     notice: Option<&str>,
     synthetic: bool,
-    poll: bool,
     practice_href: &str,
 ) -> String {
     let notice = notice
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"{practice_href}\" {}>Practice</a><a href=\"/lessons\">Lessons</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a><a href=\"/changelog\">Changelog</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"{practice_href}\" {}>Practice</a><a href=\"/lessons\">Lessons</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a><a href=\"/changelog\">Changelog</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" >{notice}{content}</main></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if path == "/" || path == "/map" || path.starts_with("/concepts/") {
@@ -4270,8 +3975,7 @@ fn shell(
             "<div class=\"synthetic-badge\">Synthetic notebook · isolated preview</div>"
         } else {
             ""
-        },
-        if poll { "data-poll" } else { "" }
+        }
     ).replace("#f5f2ea", if content.contains("nato-screen") { "#f0efe9" } else { "#f5f2ea" })
      .replace("#191e1d", if content.contains("nato-screen") { "#151719" } else { "#191e1d" })
 }
@@ -4581,13 +4285,5 @@ pub fn token_created(secret: &str) -> String {
         "<section><h1>Save your Owner token</h1><p>This secret is shown once. Use <code>scry login --token-stdin</code> to save it on your computer.</p><textarea aria-label=\"Owner token secret\" readonly>{}</textarea><p><a href=\"/settings#owner-tokens\">Return to Owner tokens</a></p></section>",
         escape(secret)
     );
-    shell(
-        "Owner token",
-        "/settings",
-        &content,
-        None,
-        false,
-        false,
-        "/",
-    )
+    shell("Owner token", "/settings", &content, None, false, "/")
 }

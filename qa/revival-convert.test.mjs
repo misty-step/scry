@@ -405,7 +405,7 @@ for (const mode of ['learner-correct', 'learner-missed']) {
       assert.deepEqual(restored.events, app.events);
       assert.deepEqual(restored.questions, app.questions);
       assert.deepEqual(restored.occurrence, app.occurrence);
-      assert.match(await (await active.worker.fetch(origin + '/notebook')).text(), /You checked your answer/);
+      assert.match(await (await active.worker.fetch(origin + '/notebook')).text(), /data-state="earlier-result"[\s\S]*Self-checked/);
       assert.match(await (await active.worker.fetch(origin + '/history')).text(), /Self-checked/);
       assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
       const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
@@ -456,13 +456,17 @@ for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-recall-wron
       assert.deepEqual(restored.questions, app.questions);
       assert.deepEqual(restored.occurrence, app.occurrence);
       assert.deepEqual(restored.revival_go, app.revival_go);
-      // Deliberate Next dismisses the imported held result, not its history.
+      // The imported held result is history: Next is refused and it stays held.
       const fields = {csrf: restored.csrf, occurrence_id: restored.occurrence.id,
         operation_id: 'synthetic-next-after-go-noop'};
       const next = await active.worker.fetch(origin + '/review/next', {method: 'POST', redirect: 'manual',
         headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
         body: new URLSearchParams(fields)});
-      assert.equal(next.status, 303);
+      assert.equal(next.status, 410);
+      const refused = (await read()).app;
+      assert.deepEqual(refused.occurrence, app.occurrence);
+      assert.deepEqual(refused.events, app.events);
+      assert.deepEqual(refused.operations, restored.operations);
       const snapshot = await active.worker.scheduled({cron: '17 3 * * *'});
       assert.equal(snapshot.outcome, 'ok');
       const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');

@@ -26,8 +26,8 @@ The `US-0NN` names below are `qa/walk` journey names, bound to SPEC capabilities
   have their own PASS/FAIL/UNPROVEN and `checks.jsonl` output contracts.
   Do not assume those outputs exist for every runtime or CLI command.
 - Prefer roles, labels and `data-state` handles over CSS position.
-- Drive write flows only against run-owned local spaces. On production, every
-  page GET may write to the space it renders (see [sign-in](sign-in.md#gotchas)).
+- Drive write flows only against run-owned local spaces. A page GET writes
+  nothing except the first read of an unused space (see [sign-in](sign-in.md#gotchas)).
 
 ## Proof and skip reporting
 
@@ -58,7 +58,7 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 - [Sign in with the QA account](sign-in.md): the verification-only sign-in and role, enrollment, signed-out, expired, wrong identity, alternate host, Doctor.
 - [Exact text practice](exact-study.md): journeys US-016, US-017, US-018.
 - [Private Library](library.md): journey US-015.
-- [One question and honest judgment](study.md): earlier concept notebook, journeys US-002, US-003, US-007, US-008, US-011.
+- [The earlier concept notebook as history](study.md): Earlier practice, journeys US-002, US-003, US-007, US-008, US-011.
 - [Concepts, references, and goals](concepts.md): journeys US-001, US-006, US-009, US-010.
 - [Owner tokens, API and CLI](owner-tokens.md): journey US-014; hosted admission #335 UNPROVEN.
 - [Retired generation and saved preparation history](capture.md): generation stays retired; journeys US-004 and US-013 keep its saved records and refusals proven.
