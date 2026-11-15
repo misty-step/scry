@@ -2473,8 +2473,17 @@ impl View<'_> {
         if !self.app.practice.protected() {
             let _ = write!(
                 out,
-                "<details name=\"practice-tools\" class=\"lesson-edition\"><summary>More</summary><p><strong>{}</strong></p><p>Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment.</p><ul>",
-                escape(&v.name)
+                "<details name=\"practice-tools\" class=\"lesson-edition\"><summary>More</summary><p><strong>{}</strong></p><p>{}</p><ul>",
+                escape(&v.name),
+                // Only where Jev is reachable and would be asked about this text.
+                if self.app.preferences.paid_judgment
+                    && !v.spelling_strict
+                    && self.query.get("__judgment").is_some_and(|c| c == "true")
+                {
+                    "Scry checks the typed wording, ignoring case and punctuation, and Jev checks an answer Scry cannot match. No pronunciation assessment."
+                } else {
+                    "Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment."
+                }
             );
             for source in &v.sources {
                 let absolute_http = source
@@ -2944,7 +2953,7 @@ impl View<'_> {
                 );
             }
             if other_prompt {
-                out.push_str("<h1>Your practice is waiting.</h1><p>Finish your saved question before starting NATO.</p><a class=\"button primary\" href=\"/recall\">Resume practice</a>");
+                out.push_str("<h1>Another Prompt is open.</h1><p>Finish your saved question before starting NATO.</p><a class=\"button primary\" href=\"/recall\">Resume practice</a>");
             } else if has_study && self.query.get("practice").is_some_and(|v| v == "nato") {
                 let has_eligible = self.app.practice.studies.values().any(|s| {
                     nato_versions.contains(s.version_id.as_str())
@@ -2971,7 +2980,7 @@ impl View<'_> {
                         if self.review_due(|s| nato_versions.contains(s.version_id.as_str())) {
                             "<h1>Ready to review.</h1>"
                         } else {
-                            "<h1>A little, often.</h1>"
+                            "<h1>NATO alphabet</h1>"
                         },
                     );
                     out.push_str(&self.form(
@@ -2994,7 +3003,7 @@ impl View<'_> {
                 }
             } else {
                 let (title, desc, action) = if has_study {
-                    ("A little, often.", "", "Continue practice")
+                    ("NATO alphabet", "", "Continue practice")
                 } else {
                     (
                         "From Alfa to Zulu.",
@@ -3831,7 +3840,7 @@ impl View<'_> {
         let allowance = DAILY_ALLOWANCE as f64 / 1_000_000.0;
         let on = self.app.preferences.paid_judgment;
         let explain = format!(
-            "<p>When this is on, an answer that is not an exact match is saved and then sent to Jev, a paid judgment service, to be judged. Your answer and the expected text leave Scry for that check. So does what names the question: the Work's title and the place in it, a mapping's key or, in reverse, its value, and the accepted aliases of a list's items. Each check reserves ${reserve:.2} of the ${allowance:.2} daily allowance before it is sent. Spelling-strict content, empty answers and exact matches are never sent.</p>"
+            "<p>When this is on, an answer that is not an exact match is saved and then sent to Jev, a paid judgment service, to be judged. Your answer and the expected text leave Scry for that check. So does what names the question: the Work's title and the place in it, a mapping's key or, in reverse, its value, and the accepted aliases of a list's items. Each check reserves ${reserve:.2} of the ${allowance:.2} daily allowance before it is sent. Spelling-strict content, empty answers, exact matches and answers in another Version's wording are never sent.</p>"
         );
         let switch = |value: &str, label: &str, class: &str| {
             self.form(
@@ -4475,9 +4484,9 @@ pub fn error_page(app: &App, status: u16, message: &str, now_ms: i64) -> String 
     let title = if status == 401 || status == 403 {
         "Your private notebook is locked."
     } else if status == 409 {
-        "Let's return to what is saved."
+        "This conflicts with what is saved."
     } else {
-        "A moment to pause."
+        "Scry could not complete this request."
     };
     let content = format!(
         "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Back to practice →</a></section>",
@@ -4485,7 +4494,7 @@ pub fn error_page(app: &App, status: u16, message: &str, now_ms: i64) -> String 
         escape(message)
     );
     shell(
-        "A moment to pause",
+        "Request not completed",
         "/",
         &content,
         None,

@@ -65,6 +65,10 @@ impl Owner {
             .into()
     }
     fn next(&mut self, card: Option<&str>) -> Value {
+        self.next_in(None, card)
+    }
+    /// Next within one Study, or across Studies when none is named.
+    fn next_in(&mut self, study: Option<&str>, card: Option<&str>) -> Value {
         let after = self
             .app
             .practice
@@ -78,6 +82,9 @@ impl Owner {
         }
         if let Some(card) = card {
             d["card_id"] = json!(card)
+        }
+        if let Some(study) = study {
+            d["study_id"] = json!(study)
         }
         self.call("/api/v1/next", d).unwrap()
     }
@@ -97,7 +104,12 @@ impl Owner {
     /// The next new Unit: shown as Source study, then tried from memory. Returns
     /// its Card, held as a Free recall Quiz.
     fn study_to_quiz(&mut self) -> String {
-        let source = self.next(None);
+        self.study_to_quiz_in(None)
+    }
+    /// The same, within one Study: Study never serves material it cannot
+    /// grade, but a Next that names its Study does.
+    fn study_to_quiz_in(&mut self, study: Option<&str>) -> String {
+        let source = self.next_in(study, None);
         assert_eq!(source["phase"], "study");
         assert_eq!(source["prompt"]["cue_level"], "read");
         let cid = self.app.practice.current.as_ref().unwrap().targets[0]
@@ -695,8 +707,8 @@ fn study_oversized_alignment_refuses_without_consuming_prompt_or_receipt() {
     let mut o = Owner::new();
     let text = "orchard ".repeat(1100);
     let v = o.add(&text, false);
-    o.learn(&v, "steady");
-    o.study_to_quiz();
+    let sid = o.learn(&v, "steady");
+    o.study_to_quiz_in(Some(&sid));
     let before = o.app.clone();
     let prompt = before.practice.current.as_ref().unwrap().prompt.id.clone();
     let error = o
@@ -718,7 +730,7 @@ fn recitation_admission_checks_exact_answer_and_normalized_word_boundary() {
             let mut o = Owner::new();
             let v = o.add(&text, false);
             let sid = o.learn(&v, "steady");
-            o.study_to_quiz();
+            o.study_to_quiz_in(Some(&sid));
             o.answer("");
             let before = o.app.clone();
             let before_rows = persistence::rows(&before).unwrap();

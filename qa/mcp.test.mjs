@@ -297,6 +297,35 @@ test('Fixed structured failures, assistance-fence conflict and no redirect forwa
   assert.equal(error(await f.call('scry_due')).code,'invalid_response','JSON escapes cannot bypass credential reflection refusal.');
 });
 
+test('A refusal keeps its own bounded plain-text reason, never the request or credential', {timeout:15000}, async t => {
+  const f = await fixture(t); await f.initialize();
+  let status = 422, body = {error:'Choose a Section of this Version.'};
+  f.setHandler(async (_request,response) => { response.statusCode=status; response.end(JSON.stringify(body)); });
+  for(const [code,expected,phrase] of [[401,'unauthorized','Owner authorization required.'],[403,'forbidden','Request refused.'],[404,'api_error','API request failed.'],[409,'conflict','Operation conflict.'],[413,'api_error','API request failed.'],[422,'validation_failed','API request failed.']]) {
+    status=code;
+    const received = error(await f.call('scry_due'));
+    assert.deepEqual([received.code,received.status,received.message],[expected,code,`${phrase} Choose a Section of this Version.`]);
+  }
+  // A reason that is the fixed phrase is not repeated.
+  status=401; body={error:'Owner authorization required.'};
+  assert.equal(error(await f.call('scry_due')).message,'Owner authorization required.');
+  // Plain text: control characters become spaces, and a long reason is cut.
+  status=422; body={error:'Line one.\n\u001b[31mLine two.'};
+  assert.equal(error(await f.call('scry_due')).message,'API request failed. Line one. [31mLine two.');
+  body={error:'word '.repeat(400)};
+  const long=error(await f.call('scry_due')).message;
+  assert.equal([...long].length,'API request failed. '.length+300); assert.ok(long.endsWith('…'));
+  // A reason that is not a JSON error string, or that repeats the request's
+  // own text, keeps the fixed phrase.
+  body={error:{nested:'Not plain text.'}};
+  assert.equal(error(await f.call('scry_due')).message,'API request failed.');
+  body={error:`Refused: ${privateAnswer}`};
+  const echoed=error(await f.call('scry_answer',{operation_id:operation('echo'),prompt_id:prompt,answer:privateAnswer}));
+  assert.equal(echoed.message,'API request failed.'); assert.equal(echoed.outcome_unknown,false);
+  // Neither the proxy's nor the server's failure text is a refusal reason.
+  for(status of [302,500,502]) { body={error:'Upstream diagnostic.'}; assert.equal(error(await f.call('scry_due')).message,'API request failed.'); }
+});
+
 test('Proxy errors and malformed 2xx objects never settle an unknown mutation', {timeout:15000}, async t => {
   const f = await fixture(t); await f.initialize();
   const answer={operation_id:operation('proxy'),prompt_id:prompt,answer:privateAnswer};
@@ -370,6 +399,11 @@ test('Extracted shared client preserves compiled CLI login, errors and one trans
     });
     const received=await cli(['whoami']); assert.equal(received.code,1);
     assert.equal(received.body.error,({401:'Owner authorization required.',403:'Request refused.',409:'Operation conflict.'})[status] || 'API request failed.');
+  }
+  // A refusal's own reason passes through, with the same exit code and shape.
+  for(const status of [403,409,422]) {
+    f.setHandler(async (_request,response)=>{response.statusCode=status;response.end(JSON.stringify({error:'This Owner token has no paid permission.'}));});
+    assert.deepEqual(await cli(['whoami']),{code:1,body:{error:`${({403:'Request refused.',409:'Operation conflict.'})[status] || 'API request failed.'} This Owner token has no paid permission.`}});
   }
   const before=f.seen.length;
   f.setHandler(async request=>request.socket.destroy());
