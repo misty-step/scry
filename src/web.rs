@@ -1410,17 +1410,7 @@ impl View<'_> {
             .as_ref()
             .and_then(|id| self.app.assessments.get(id))
             .map(|check| check.status.as_str());
-        let (name, label) = match status {
-            Some("queued") => ("queued", "Check recorded: queued, never sent."),
-            Some("sent") => ("sent", "Check recorded: sent, never confirmed."),
-            Some("failed") => ("failed", "Check recorded: failed."),
-            Some("unknown") => ("unknown", "Check recorded: outcome unknown."),
-            Some("paused") => ("paused", "Check recorded: paused, never sent."),
-            Some("unsure") => ("unsure", "Check recorded: inconclusive."),
-            Some("superseded") => ("superseded", "Check recorded: superseded."),
-            Some(_) => ("recorded", "A check was recorded."),
-            None => ("none", "No check was recorded."),
-        };
+        let (name, label) = status.map_or(("none", "No check was recorded."), check_label);
         format!(
             "<div class=\"feedback feedback-self\"><div><h2>Your answer is saved, not graded.</h2><p data-check=\"{name}\">{label}</p></div></div>{}",
             self.answer_pair(o)
@@ -2797,41 +2787,52 @@ impl View<'_> {
         )
     }
     fn map(&self) -> String {
-        let mut goals: Vec<_> = self.app.goals.values().filter(|g| !g.archived).collect();
-        goals.sort_by_key(|g| (g.paused, !g.focused, g.created_ms));
+        // Live Goals first, as before; archived ones after them, labelled.
+        let mut goals: Vec<_> = self.app.goals.values().collect();
+        goals.sort_by_key(|g| (g.archived, g.paused, !g.focused, g.created_ms));
         let mut out = String::from(
-            "<section class=\"map-page\" data-state=\"map\"><div class=\"page-heading\"><p class=\"eyebrow\">Your growing understanding</p><h1>A map of ideas.</h1><p class=\"lede\">Follow the connections. Revisit a note.</p></div>",
+            "<section class=\"map-page\" data-state=\"map\"><div class=\"page-heading\"><p class=\"eyebrow\">Earlier concept notebook</p><h1>A map of ideas.</h1><p class=\"lede\">Every Goal and Concept saved before Study, as it was left.</p></div>",
         );
         if goals.is_empty() {
-            out.push_str("<div class=\"quiet-empty\"><p>Your map begins with one curiosity.</p><a class=\"button primary\" href=\"/library\">Open Library →</a></div>");
+            out.push_str(
+                "<p class=\"quiet-empty\">Nothing is saved in the earlier concept notebook.</p>",
+            );
         }
         for (index, goal) in goals.iter().enumerate() {
-            let concepts: Vec<_> = goal
+            let all: Vec<_> = goal
                 .concept_ids
                 .iter()
                 .filter_map(|id| self.app.concepts.get(id))
-                .filter(|c| !c.archived)
                 .collect();
+            let live: Vec<_> = all.iter().copied().filter(|c| !c.archived).collect();
             let _ = write!(
                 out,
-                "<article class=\"goal-map {}\"><div class=\"goal-map-heading\"><span class=\"folio\">{:02}</span><div><h2><a href=\"/goals/{}\">{}</a></h2><p class=\"goal-meta\">{} ideas{}{} · {}</p></div></div>",
-                if goal.paused { "paused" } else { "" },
+                "<article class=\"goal-map {}\"><div class=\"goal-map-heading\"><span class=\"folio\">{:02}</span><div><h2><a href=\"/goals/{}\">{}</a></h2><p class=\"goal-meta\">{} ideas{}{}{} · {}</p></div></div>",
+                if goal.paused || goal.archived {
+                    "paused"
+                } else {
+                    ""
+                },
                 index + 1,
                 escape(&goal.id),
                 self.goal_title(goal),
-                concepts.len(),
+                live.len(),
                 if goal.focused { " · In focus" } else { "" },
                 if goal.paused { " · Paused" } else { "" },
+                if goal.archived { " · Archived" } else { "" },
                 status_label(self.goal_phase(goal))
             );
-            out.push_str(&constellation(&concepts));
+            if !live.is_empty() {
+                out.push_str(&constellation(&live));
+            }
             out.push_str("<ol class=\"concept-list\">");
-            for c in concepts {
+            for c in live.iter().chain(all.iter().filter(|c| c.archived)) {
                 let _ = write!(
                     out,
-                    "<li><a href=\"/concepts/{}\"><span class=\"idea-dot\" aria-hidden=\"true\"></span><span>{}</span><span class=\"idea-status\">{}</span><span aria-hidden=\"true\">↗</span></a></li>",
+                    "<li><a href=\"/concepts/{}\"><span class=\"idea-dot\" aria-hidden=\"true\"></span><span>{}</span><span class=\"idea-status\">{}{}</span><span aria-hidden=\"true\">↗</span></a></li>",
                     escape(&c.id),
                     self.concept_name(c),
+                    if c.archived { "Archived · " } else { "" },
                     answers_recorded(self.app, c)
                 );
             }
@@ -2842,9 +2843,7 @@ impl View<'_> {
                 escape(&goal.id)
             );
         }
-        out.push_str(
-            "<a class=\"text-link add-curiosity\" href=\"/library\">Browse Library</a></section>",
-        );
+        out.push_str("</section>");
         out
     }
     fn goal(&self, id: &str) -> String {
@@ -2862,18 +2861,31 @@ impl View<'_> {
         }
         if !g.concept_ids.is_empty() {
             out.push_str("<section class=\"reference-contents\"><p class=\"eyebrow\">The useful starting point</p>");
-            for id in &g.concept_ids {
-                if let Some(c) = self.app.concepts.get(id).filter(|c| !c.archived) {
-                    let _ = write!(
-                        out,
-                        "<section class=\"reference-idea\"><h2><a href=\"/concepts/{}\">{}</a></h2>{}{}<a class=\"text-link\" href=\"/concepts/{}\">Explore this idea ↗</a></section>",
-                        escape(&c.id),
-                        self.concept_name(c),
-                        self.lede("lede small", c),
-                        self.notes(c),
-                        escape(&c.id)
-                    );
-                }
+            let concepts: Vec<_> = g
+                .concept_ids
+                .iter()
+                .filter_map(|id| self.app.concepts.get(id))
+                .collect();
+            // Archived Concepts follow the live ones, labelled.
+            for c in concepts
+                .iter()
+                .filter(|c| !c.archived)
+                .chain(concepts.iter().filter(|c| c.archived))
+            {
+                let _ = write!(
+                    out,
+                    "<section class=\"reference-idea\"><h2><a href=\"/concepts/{}\">{}</a></h2>{}{}{}<a class=\"text-link\" href=\"/concepts/{}\">Explore this idea ↗</a></section>",
+                    escape(&c.id),
+                    self.concept_name(c),
+                    if c.archived {
+                        "<p class=\"fineprint\">Archived</p>"
+                    } else {
+                        ""
+                    },
+                    self.lede("lede small", c),
+                    self.notes(c),
+                    escape(&c.id)
+                );
             }
             out.push_str("</section>");
         }
@@ -2889,6 +2901,13 @@ impl View<'_> {
                 ))
                 .unwrap_or_default()
         );
+        if g.photo.is_some() {
+            let _ = write!(
+                out,
+                "<a class=\"text-link\" href=\"/photos/{}\">The photo you sent ↗</a>",
+                escape(&g.id)
+            );
+        }
         out.push_str(&self.feedback_history(id, None));
         out.push_str("</article>");
         out
@@ -2957,10 +2976,15 @@ impl View<'_> {
         let helped = state.helped;
         let missed = state.missed;
         let mut out = format!(
-            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\"><h2>Notes</h2>{}</section><section class=\"practice-evidence\"><h2>Recorded answers</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">Graded answers to its saved questions, as recorded. History lists every answer.</p>{}</section>{}",
+            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/map\">← Your map</a><div class=\"page-heading\"><h1>{}</h1>{}{}</div><section class=\"concept-study\"><h2>Notes</h2>{}</section><section class=\"practice-evidence\"><h2>Recorded answers</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">Graded answers to its saved questions, as recorded. History lists every answer.</p>{}</section>{}",
             self.concept_name(c),
             self.lede("lede", c),
-            self.notes(c),
+            if c.already_known {
+                "<p class=\"fineprint\">Marked as already known.</p>"
+            } else {
+                ""
+            },
+            all_notes(self.app, c),
             if self.active_concept(c) {
                 ""
             } else {
@@ -2969,17 +2993,28 @@ impl View<'_> {
             tally(&state)
         );
         out.push_str("<section class=\"saved-questions\"><h3>Saved questions</h3>");
-        for q in self
+        let questions: Vec<_> = self
             .app
             .questions
             .values()
-            .filter(|q| q.concept_id == id && !q.archived)
+            .filter(|q| q.concept_id == id)
+            .collect();
+        // Archived questions follow the live ones, labelled.
+        for q in questions
+            .iter()
+            .filter(|q| !q.archived)
+            .chain(questions.iter().filter(|q| q.archived))
         {
             let content = q.content();
             let _ = write!(
                 out,
-                "<details class=\"question-reference\"><summary>{}</summary><div class=\"reading\"><p><strong>{}</strong></p><p>{}</p></div>",
+                "<details class=\"question-reference\"><summary>{}{}</summary><div class=\"reading\"><p><strong>{}</strong></p><p>{}</p></div>",
                 escape(&content.prompt),
+                if q.archived {
+                    " <span class=\"fineprint\">Archived</span>"
+                } else {
+                    ""
+                },
                 escape(&content.answer),
                 escape(&content.explanation)
             );
@@ -2997,40 +3032,32 @@ impl View<'_> {
                 escape(&g.id)
             );
         }
-        let dependents: Vec<_> = self
+        // Links to archived Concepts stay, labelled, after the live ones.
+        let mut dependents: Vec<_> = self
             .app
             .concepts
             .values()
-            .filter(|other| self.active_concept(other) && other.prerequisites.contains(&c.id))
+            .filter(|other| other.prerequisites.contains(&c.id))
             .collect();
-        let prerequisites: Vec<_> = c
+        dependents.sort_by_key(|p| !self.active_concept(p));
+        let mut prerequisites: Vec<_> = c
             .prerequisites
             .iter()
             .filter_map(|id| self.app.concepts.get(id))
-            .filter(|p| self.active_concept(p))
             .collect();
+        prerequisites.sort_by_key(|p| !self.active_concept(p));
         if !prerequisites.is_empty() || !dependents.is_empty() {
             out.push_str("<section class=\"connected\"><h2>Related</h2>");
             if !prerequisites.is_empty() {
                 out.push_str("<h3>Builds on</h3>");
                 for p in prerequisites {
-                    let _ = write!(
-                        out,
-                        "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>",
-                        escape(&p.id),
-                        self.concept_name(p)
-                    );
+                    out.push_str(&self.related_chip(p));
                 }
             }
             if !dependents.is_empty() {
                 out.push_str("<h3>Used by</h3>");
                 for p in dependents {
-                    let _ = write!(
-                        out,
-                        "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>",
-                        escape(&p.id),
-                        self.concept_name(p)
-                    );
+                    out.push_str(&self.related_chip(p));
                 }
             }
             out.push_str("</section>");
@@ -3038,6 +3065,18 @@ impl View<'_> {
         out.push_str(&self.feedback_history(&c.goal_id, Some(id)));
         out.push_str("</article>");
         out
+    }
+    fn related_chip(&self, p: &Concept) -> String {
+        format!(
+            "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>{}",
+            escape(&p.id),
+            self.concept_name(p),
+            if self.active_concept(p) {
+                ""
+            } else {
+                "<span class=\"fineprint related-archived\">Archived</span>"
+            }
+        )
     }
     fn history(&self) -> String {
         if self.app.practice.protected() {
@@ -3485,41 +3524,150 @@ impl View<'_> {
             String::new()
         }
     }
-    /// A saved question as it is stored: its current wording, the choices,
-    /// answer and explanation. Read-only; the URL is the one the edit form had.
+    /// A saved question's whole record, read-only: its current wording,
+    /// every earlier version and any unapplied fix draft, then every answer
+    /// recorded to it with its Verdict, Authority, Corrections and checks, and
+    /// any schedule reset. The URL is the one the edit form had.
     fn question_page(&self, id: &str) -> String {
         let Some(q) = self.app.questions.get(id) else {
             return self.not_found();
         };
         let c = q.content();
-        let choices = if c.choices.is_empty() {
-            String::new()
-        } else {
-            let mut out = String::from("<ol class=\"reading earlier-choices\">");
-            for choice in &c.choices {
-                let _ = write!(out, "<li>{}</li>", escape(choice));
-            }
-            out.push_str("</ol>");
-            out
-        };
-        let variants = if c.variants.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "<div><dt>Also accepted</dt><dd>{}</dd></div>",
-                escape(&c.variants.join("\n"))
-            )
-        };
-        format!(
-            "<article class=\"study\" data-state=\"earlier-question\"><a class=\"back-link\" href=\"/concepts/{}\">← Back to the idea</a><p class=\"eyebrow\">A saved question</p><h1 class=\"question\">{}</h1>{choices}<dl class=\"answer-pair\"><div><dt>The answer</dt><dd>{}</dd></div>{variants}</dl><div class=\"reading explanation\"><p>{}</p></div><p class=\"fineprint\">Saved {}{}</p>{}</article>",
+        let mut out = format!(
+            "<article class=\"study\" data-state=\"earlier-question\"><a class=\"back-link\" href=\"/concepts/{}\">← Back to the idea</a><p class=\"eyebrow\">A saved question</p><h1 class=\"question\">{}</h1><section class=\"question-current\">{}</section><p class=\"fineprint\">Version {} · Saved {}{}</p>{}",
             escape(&q.concept_id),
             escape(&c.prompt),
-            escape(&c.answer),
-            escape(&c.explanation),
+            question_content(c, false),
+            c.version,
             date(c.created_ms),
             if q.archived { " · Archived" } else { "" },
             self.fix_status(q)
-        )
+        );
+        if let Some(draft) = &q.draft {
+            let _ = write!(
+                out,
+                "<details class=\"question-record\" id=\"draft\"><summary>Fix draft, saved and never applied</summary><p class=\"fineprint\">Drafted for version {} · Saved {}</p>{}</details>",
+                q.draft_for_version
+                    .map_or_else(|| "unknown".to_string(), |v| v.to_string()),
+                date(draft.created_ms),
+                question_content(draft, true)
+            );
+        }
+        for v in q.versions.iter().rev().skip(1) {
+            let _ = write!(
+                out,
+                "<details class=\"question-record\" id=\"version-{}\"><summary>Version {} · Saved {}</summary>{}</details>",
+                v.version,
+                v.version,
+                date(v.created_ms),
+                question_content(v, true)
+            );
+        }
+        out.push_str("<section class=\"question-answers\"><h2>Recorded answers</h2>");
+        let events: Vec<_> = self
+            .app
+            .events
+            .iter()
+            .filter(|e| e.question_id == q.id)
+            .collect();
+        let saved: Vec<_> = unrecorded(self.app)
+            .into_iter()
+            .filter(|u| u.question_id == q.id)
+            .collect();
+        if events.is_empty() && saved.is_empty() {
+            out.push_str("<p class=\"fineprint\">No answer was recorded.</p>");
+        }
+        for e in events.iter().rev() {
+            out.push_str(&self.recorded_answer(e));
+        }
+        for u in saved.iter().rev() {
+            let _ = write!(
+                out,
+                "<article class=\"record-entry\" id=\"saved-{}\"><p class=\"history-meta\"><span>Ungraded</span> · {} · Version {}</p><p class=\"record-answer\">{}</p>{}</article>",
+                escape(u.occurrence_id),
+                date(u.at),
+                u.version,
+                escape(u.answer),
+                checks(&u.checks, u.answer)
+            );
+        }
+        out.push_str("</section>");
+        let resets: Vec<_> = self
+            .app
+            .resets
+            .iter()
+            .filter(|r| r.question_id == q.id)
+            .collect();
+        if !resets.is_empty() {
+            out.push_str("<section class=\"question-answers\"><h2>Schedule resets</h2>");
+            for r in resets {
+                let cause = self
+                    .app
+                    .feedback
+                    .iter()
+                    .find(|f| f.id == r.feedback_id)
+                    .map(|f| {
+                        format!(
+                            "<p class=\"reading preserve\" id=\"feedback-{}\">{}</p>",
+                            escape(&f.id),
+                            escape(&f.text)
+                        )
+                    })
+                    .unwrap_or_default();
+                let _ = write!(
+                    out,
+                    "<article class=\"record-entry\" id=\"reset-{}\"><p class=\"history-meta\"><span>Schedule reset</span> · {} · Version {}</p>{cause}</article>",
+                    escape(&r.id),
+                    date(r.created_ms),
+                    r.content_version
+                );
+            }
+            out.push_str("</section>");
+        }
+        out.push_str("</article>");
+        out
+    }
+    /// One Event on its question's page: the Verdict and Authority as saved,
+    /// the version it was given to, then any Correction and check.
+    fn recorded_answer(&self, e: &Event) -> String {
+        let outcome = if e.is_ungraded() {
+            "Ungraded"
+        } else if e.assisted {
+            "With help"
+        } else {
+            outcome_label(&e.result.outcome)
+        };
+        let mut out = format!(
+            "<article class=\"record-entry\" id=\"attempt-{}\"><p class=\"history-meta\"><span>{outcome}</span> · {} · {} · Version {}</p><p class=\"record-answer\">{}</p>",
+            escape(&e.id),
+            date(e.result.reviewed_ms),
+            authority_label(&e.result.authority),
+            e.presentation.version,
+            escape(if e.answer.is_empty() {
+                "You looked at the answer"
+            } else {
+                &e.answer
+            })
+        );
+        for o in self.app.overrides.iter().filter(|o| o.event_id == e.id) {
+            let _ = write!(
+                out,
+                "<p class=\"record-correction\" id=\"correction-{}\">Your Correction: counted as {} · {}</p>",
+                escape(&o.id),
+                if o.correct { "recalled" } else { "missed" },
+                date(o.created_ms)
+            );
+        }
+        let mut saved: Vec<_> = self
+            .app
+            .assessments
+            .values()
+            .filter(|a| a.occurrence_id == e.occurrence_id)
+            .collect();
+        saved.sort_by_key(|a| a.created_ms);
+        out.push_str(&checks(&saved, &e.answer));
+        out.push_str("</article>");
+        out
     }
     fn not_found(&self) -> String {
         format!(
@@ -3883,17 +4031,36 @@ fn emblem(class: &str) -> String {
         escape(class)
     )
 }
+/// A Concept's latest note, as the Goal page summarizes it.
 fn notes(app: &App, c: &Concept) -> String {
-    let Some(note) = c.notes.last() else {
-        return "<p class=\"fineprint\">No note is available yet.</p>".into();
-    };
+    c.notes.last().map_or_else(
+        || "<p class=\"fineprint\">No note is available yet.</p>".into(),
+        |note| note_section(app, c, note, false),
+    )
+}
+/// Every note of a Concept, in the order saved, each with its provenance.
+fn all_notes(app: &App, c: &Concept) -> String {
+    if c.notes.len() < 2 {
+        return notes(app, c);
+    }
+    c.notes
+        .iter()
+        .map(|note| note_section(app, c, note, true))
+        .collect()
+}
+fn note_section(app: &App, c: &Concept, note: &Note, dated: bool) -> String {
     let paragraphs = note_text(app, c, &note.text)
         .split("\n\n")
         .filter(|p| !p.trim().is_empty())
         .map(|p| format!("<p>{}</p>", escape(p)))
         .collect::<String>();
+    let saved = if dated {
+        format!("<p class=\"fineprint\">Saved {}</p>", date(note.created_ms))
+    } else {
+        String::new()
+    };
     format!(
-        "<section class=\"concept-note\" aria-label=\"Saved explanation\"><div class=\"reading preserve\">{paragraphs}</div>{}</section>",
+        "<section class=\"concept-note\" aria-label=\"Saved explanation\">{saved}<div class=\"reading preserve\">{paragraphs}</div>{}</section>",
         provenance(&note.basis, &note.quotes)
     )
 }
@@ -4037,7 +4204,7 @@ fn tally(state: &ConceptState) -> String {
     for item in &state.tally {
         let (class, label) = match item.as_str() {
             "u" => ("unaided", "Recalled without help"),
-            "h" => ("helped", "Practiced with help"),
+            "h" => ("helped", "Answered with help"),
             _ => ("missed", "Missed"),
         };
         let _ = write!(
@@ -4047,6 +4214,129 @@ fn tally(state: &ConceptState) -> String {
     }
     out.push_str("</ol>");
     out
+}
+/// A saved question version as it was presented: choices, the answer and
+/// what else was accepted, the explanation and its provenance. `wording`
+/// repeats the question when it is not the page's heading.
+fn question_content(c: &Content, wording: bool) -> String {
+    let mut out = String::new();
+    if wording {
+        let _ = write!(
+            out,
+            "<p class=\"reading\"><strong>{}</strong></p>",
+            escape(&c.prompt)
+        );
+    }
+    if !c.choices.is_empty() {
+        out.push_str("<ol class=\"reading earlier-choices\">");
+        for choice in &c.choices {
+            let _ = write!(out, "<li>{}</li>", escape(choice));
+        }
+        out.push_str("</ol>");
+    }
+    let _ = write!(
+        out,
+        "<dl class=\"answer-pair\"><div><dt>The answer</dt><dd>{}</dd></div>{}</dl><div class=\"reading explanation\"><p>{}</p></div>{}",
+        escape(&c.answer),
+        if c.variants.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<div><dt>Also accepted</dt><dd>{}</dd></div>",
+                escape(&c.variants.join("\n"))
+            )
+        },
+        escape(&c.explanation),
+        provenance(&c.basis, &c.quotes)
+    );
+    out
+}
+/// Saved checks of one answer, oldest first, each by its fixed status label
+/// and the policy it ran under. An answer that differs from the one shown
+/// above it is shown with its check.
+fn checks(saved: &[&Assessment], answer: &str) -> String {
+    let mut out = String::new();
+    for a in saved {
+        let (name, label) = check_label(&a.status);
+        let _ = write!(
+            out,
+            "<p class=\"fineprint\" id=\"check-{}\" data-check=\"{name}\">{label} Policy {} · {}</p>",
+            escape(&a.id),
+            escape(&a.policy),
+            date(a.created_ms)
+        );
+        if a.answer != answer {
+            let _ = write!(
+                out,
+                "<p class=\"reading preserve\">{}</p>",
+                escape(&a.answer)
+            );
+        }
+    }
+    out
+}
+/// An answer saved in the earlier notebook with no Event: the held
+/// question's answer, or the answer a check was recorded for. Ungraded.
+struct Unrecorded<'a> {
+    occurrence_id: &'a str,
+    question_id: &'a str,
+    version: u64,
+    answer: &'a str,
+    at: i64,
+    checks: Vec<&'a Assessment>,
+}
+fn unrecorded(app: &App) -> Vec<Unrecorded<'_>> {
+    let graded = |id: &str| app.events.iter().any(|e| e.occurrence_id == id);
+    let mut out: Vec<Unrecorded<'_>> = Vec::new();
+    if let Some(o) = app.occurrence.as_ref().filter(|o| !graded(&o.id))
+        && let Some(answer) = o.answer.as_deref()
+    {
+        out.push(Unrecorded {
+            occurrence_id: &o.id,
+            question_id: &o.question_id,
+            version: o.presentation.version,
+            answer,
+            at: o.created_ms,
+            checks: Vec::new(),
+        });
+    }
+    let mut saved: Vec<_> = app
+        .assessments
+        .values()
+        .filter(|a| !graded(&a.occurrence_id))
+        .collect();
+    saved.sort_by_key(|a| a.created_ms);
+    for a in saved {
+        if let Some(u) = out.iter_mut().find(|u| u.occurrence_id == a.occurrence_id) {
+            u.at = u.at.max(a.created_ms);
+            u.checks.push(a);
+            continue;
+        }
+        out.push(Unrecorded {
+            occurrence_id: &a.occurrence_id,
+            question_id: &a.question_id,
+            version: a.content_version,
+            answer: &a.answer,
+            at: a.created_ms,
+            checks: vec![a],
+        });
+    }
+    out
+}
+/// A saved check is named by its stored status alone, never by the message
+/// stored with it.
+fn check_label(status: &str) -> (&'static str, &'static str) {
+    match status {
+        "queued" => ("queued", "Check recorded: queued, never sent."),
+        "sent" => ("sent", "Check recorded: sent, never confirmed."),
+        "failed" => ("failed", "Check recorded: failed."),
+        "unknown" => ("unknown", "Check recorded: outcome unknown."),
+        "paused" => ("paused", "Check recorded: paused, never sent."),
+        "unsure" => ("unsure", "Check recorded: inconclusive."),
+        "superseded" => ("superseded", "Check recorded: superseded."),
+        "complete" => ("complete", "Check recorded: complete."),
+        _ => ("recorded", "A check was recorded."),
+    }
 }
 fn status_label(value: &str) -> &'static str {
     match value {

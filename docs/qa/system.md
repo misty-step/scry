@@ -150,9 +150,15 @@ state. They keep the meaning they had there.
 
 Journey US-001 proves that everything saved is reachable and exported
 unchanged: walk 1 names the native custody tests of the Archived notebook's
-retained bytes, and walk 2 follows Menu → Earlier practice → Map → Goal →
+retained bytes, walk 2 follows Menu → Earlier practice → Map → Goal →
 Concept → History in the Rust Worker browser and compares the export with the
-stored notebook. Since 2026-11-15 it no longer runs the retained Go schema 4→5
+stored notebook, and walk 3 crawls every link from the Menu at 390 px and
+asserts that every stored Goal, Concept, note, question version, choice,
+unapplied draft, recorded answer, Correction, reset, feedback entry, saved
+check and photo link is on a page it reached, with no horizontal scrolling
+and no row written. `tests/earlier_reachable.rs` runs the same crawl natively
+over all 29 stored states, and `qa/earlier-notebook.test.mjs` on the built
+Worker with rows, SQLite change count and alarm compared. Since 2026-11-15 it no longer runs the retained Go schema 4→5
 migration test, and no gate needs a Go toolchain; receipts that cite
 `retained-go-compatibility` keep their original meaning. The pinned retained
 source (`go.mod`, `go.sum`, `internal/store`, `internal/learning` at
