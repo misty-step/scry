@@ -111,9 +111,9 @@ from `doctor.mjs prod` (its checks are listed in
   owner's subject equality cannot be read back. `owner.subject-age` catches
   only an `OWNER_SUBJECT` put, per the audit log, made before every owner-policy
   Access user existed. A PASS does not show the subject is the right user.
-- Every page GET may freeze the next question in the space it renders; `/`
-  also freezes the next exact Prompt. The QA journey's GETs therefore write
-  only to `scry-qa`.
+- A page GET selects nothing and writes nothing, except the first-ever read
+  of an unused space, which saves its empty notebook. The QA journey's GETs
+  therefore touch only `scry-qa`.
 - Production serves the code in the runbook's serving observation and can lag master.
 - A redirect to Access, a 200 for the QA service token or an Access "allowed"
   log is not QA sign-in. A QA login without `role.not-owner` PASS is not role proof.

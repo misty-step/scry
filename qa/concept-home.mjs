@@ -135,6 +135,13 @@ export async function conceptHomeWalk(browser,capture){
    await page.goto(url+'/notebook');await page.locator('[data-state="earlier-result"]').waitFor();
    // Reading references records nothing: every row is exactly as loaded.
    await stable(held);assert.deepEqual(await rows(),loaded,'Reading the earlier notebook writes nothing');
+   // Archiving a Goal is still an accepted write, through the real Worker
+   // command: the held result and every recorded answer stay as they were.
+   await page.goto(url+`/goals/${prerequisite.goal_id}`);await page.locator('[data-state="goal"]').waitFor();
+   await activate(page.getByRole('button',{name:'Archive this goal',exact:true}));await page.locator('[data-state="map"]').waitFor();
+   const archived=await state();assert.deepEqual(archived.occurrence,held.occurrence);assert.deepEqual(archived.practice,held.practice);
+   assert.deepEqual(archived.records.filter(r=>r.key.startsWith('events/')),held.records.filter(r=>r.key.startsWith('events/')));
+   assert.equal(await page.locator(`a[href="/goals/${prerequisite.goal_id}"]`).count(),0);
   });
   // A held result whose Goal was archived afterwards keeps its references.
   await stage('archived','result-then-archived',async({page,url,rows,state,stable,activate,home,headerHome,shot,readOnly})=>{

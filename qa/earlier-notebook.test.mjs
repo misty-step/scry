@@ -176,7 +176,7 @@ test('on the wall clock, with every timer free to fire, nothing is sent',{timeou
 });
 
 test('a read writes nothing, in every stored state',{timeout:900000},async()=>{
- for(const state of states){
+ for(const state of states()){
   const fixture=stored(state),at=fixture.now_ms+100*SECOND;
   const s=await space(state,{at,persist:true});
   try{
@@ -224,6 +224,26 @@ test('a read writes nothing, in every stored state',{timeout:900000},async()=>{
    assert.deepEqual({...metaAfter,revision:0},{...metaBefore,revision:0});
    assert.deepEqual({...JSON.parse(stamped[tokenRow]),last_used_ms:null},{...JSON.parse(withToken[tokenRow]),last_used_ms:null});
    assert.equal(s.jev.sent.length,0);assert.deepEqual(s.jev.elsewhere,[]);
+  }finally{await s.close();}
+ }
+});
+
+// With nothing held and questions long due, a read still selects nothing: the
+// selection a page read once made is the write most likely to return.
+test('a read selects no question, however long one has been due',{timeout:300000},async()=>{
+ const idle=states().filter(state=>!storedMeta(state).occurrence);
+ assert.ok(idle.includes('empty-history'),'The fixture holds a notebook with a question due and nothing held.');
+ for(const state of idle)for(const later of [2*24*60*60*SECOND,10*YEAR]){
+  const fixture=stored(state),at=fixture.now_ms+later,label=`${state} +${later/SECOND}s`;
+  const s=await space(state,{at});
+  try{
+   const changes=await s.changes();
+   for(const method of ['GET','HEAD'])for(const path of reads(state).pages){
+    const response=await s.req(path,{method});assert.equal(response.status,200,`${label}: ${method} ${path}`);await response.arrayBuffer();
+   }
+   assert.deepEqual(await s.rows(),fixture.rows,`${label}: a read wrote`);assert.equal(await s.changes(),changes,`${label}: SQLite recorded a write`);
+   assert.equal(await s.alarmAt(),null,`${label}: a read set an alarm`);
+   has(await s.get('/notebook'),new RegExp(`data-state="${shown(state).view}"`),`${label}: nothing is held`);
   }finally{await s.close();}
  }
 });

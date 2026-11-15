@@ -6,10 +6,13 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-const fixture=JSON.parse(readFileSync(new URL('../tests/fixtures/earlier-notebook.json',import.meta.url),'utf8'));
-export const states=Object.keys(fixture);
+// Read on first use, so a harness that only imports this module (the walk's
+// argument and binding checks) needs no fixture beside it.
+let fixture;
+const committed=()=>fixture??=JSON.parse(readFileSync(new URL('../tests/fixtures/earlier-notebook.json',import.meta.url),'utf8'));
+export const states=()=>Object.keys(committed());
 // {archive, sha256, bytes, format, rows, now_ms} exactly as committed.
-export const stored=name=>{assert.ok(fixture[name],`No earlier-notebook state named ${name}.`);return fixture[name];};
+export const stored=name=>{assert.ok(committed()[name],`No earlier-notebook state named ${name}.`);return committed()[name];};
 export const storedMeta=name=>JSON.parse(stored(name).rows.meta);
 export const storedApp=name=>JSON.parse(stored(name).archive).app;
 
