@@ -580,6 +580,30 @@ test('each Check is sent once: replay, a second tab, a stale response and a rest
   }finally{await n.close();}
 });
 
+// No read recovers a Check, so the alarm stored before the send has to: by the
+// platform's own timer, across a restart, with no request of any kind after it.
+test('a sent Check is recovered by its stored alarm after a restart, with no request at all',{timeout:240000},async()=>{
+  const n=await notebook();
+  try{
+    await n.turnOn();
+    await n.study(await n.addMapping('Synthetic harbour practice',HARBOUR));
+    const gate=held(n.jev,()=>accept());
+    const lost=await n.answer('test the bilge pump');
+    await gate.sending;
+    const [sent]=n.checksOf(await n.state(),lost.attempt);
+    assert.equal(sent.status,'sent');
+    await n.rebind(n.base);
+    // Nothing is requested and nothing answers. Wait out the ninety seconds.
+    await sleep(Math.max(0,sent.started_ms+90_000-Date.now())+8000);
+    const state=await n.state(),[check]=n.checksOf(state,lost.attempt);
+    assert.equal(check.status,'unknown','The stored alarm fired by itself and recovered the Check.');
+    assert.deepEqual(state.spend.map(s=>[s.work_id,s.status,s.reserved_micros]),[[check.id,'unknown',RESERVED]],'The reservation is kept as unknown spend.');
+    unchangedCard(state,lost.attempt);
+    gate.release();await sleep(500);
+    assert.equal(n.jev.sent.length,1,'An interrupted send is never sent again.');
+  }finally{await n.close();}
+});
+
 test('Check again is a new Check of the same Attempt, gives the Verdict once, and stops at three',{timeout:120000},async()=>{
   const n=await notebook();
   try{

@@ -1041,6 +1041,15 @@ fn apply_entity(
             }
             match action {
                 "edit" => {
+                    // A question held unanswered, or with its answer saved and
+                    // not graded, is kept as stored: an edit would clear it and
+                    // rewrite its saved check.
+                    if app.protected_concept(&q.concept_id) {
+                        return Err(AppError::new(
+                            409,
+                            "This question is held as history. It is kept as stored.",
+                        ));
+                    }
                     if version(fields)? != q.content().version {
                         return Err(AppError::conflict());
                     }
