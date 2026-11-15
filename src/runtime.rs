@@ -11,10 +11,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use js_sys::{Array, Function, Promise, Reflect, Uint8Array};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-};
+use std::{cell::RefCell, collections::BTreeMap};
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 use worker::*;
@@ -163,56 +160,6 @@ fn view_query(
         query.insert("__synthetic".into(), "true".into());
     }
     Ok(query)
-}
-fn observe_read(app: &mut App, path: &str, timestamp: i64) -> bool {
-    let mut concepts = BTreeSet::new();
-    if path == "/export" && app.protected_goal().is_none() {
-        concepts.extend(app.concepts.keys().cloned());
-    } else if path == "/history" {
-        concepts.extend(
-            app.events
-                .iter()
-                .filter(|event| !app.protected_concept(&event.concept_id))
-                .map(|event| event.concept_id.clone()),
-        );
-    } else if let Some(id) = path.strip_prefix("/concepts/") {
-        if !app.protected_concept(id) {
-            concepts.insert(id.into());
-        }
-    } else if let Some(id) = path
-        .strip_prefix("/goals/")
-        .or_else(|| path.strip_prefix("/photos/"))
-    {
-        if app.protected_goal() != Some(id)
-            && let Some(goal) = app.goals.get(id)
-        {
-            concepts.extend(goal.concept_ids.iter().filter_map(|id| {
-                app.concepts
-                    .get(id)
-                    .filter(|concept| !concept.archived && !app.protected_concept(id))
-                    .map(|concept| concept.id.clone())
-            }));
-        }
-    } else if let Some(id) = path
-        .strip_prefix("/questions/")
-        .and_then(|id| id.strip_suffix("/edit"))
-        && let Some(question) = app.questions.get(id)
-        && !app.protected_concept(&question.concept_id)
-    {
-        concepts.insert(question.concept_id.clone());
-    }
-    let mut changed = false;
-    for id in concepts {
-        if let Some(concept) = app.concepts.get_mut(&id)
-            && concept.exposure_ms != Some(timestamp)
-        {
-            // This affects future presentations only. The occurrence's saved
-            // assistance and submitted answer remain unchanged while checking.
-            concept.exposure_ms = Some(timestamp);
-            changed = true;
-        }
-    }
-    changed
 }
 fn render_error(
     env: &Env,
@@ -1028,7 +975,7 @@ impl DurableObject for LearningSpace {
                 let verified = self.backup_proof(&expected).await.unwrap_or(false);
                 return backup_proof_response(verified, if verified { 200 } else { 503 });
             }
-            let rows = self.stored_rows()?;
+            let rows = self.read_rows()?;
             let fresh = !rows.is_empty()
                 && persistence::app_from_rows(&rows)
                     .map_err(to_worker_error)?
@@ -1055,7 +1002,7 @@ impl DurableObject for LearningSpace {
         let url = req.url()?;
         if matches!(req.method(), Method::Get | Method::Head) {
             if path == "/readyz" {
-                self.load()?;
+                self.read_snapshot()?;
                 return private(Response::ok("ready")?);
             }
             if let Some((mime, bytes)) = web::asset(&path) {
@@ -1063,42 +1010,16 @@ impl DurableObject for LearningSpace {
                 response.headers_mut().set("Content-Type", mime)?;
                 return private(response);
             }
-            let mut app = self.load()?;
-            let previous = app.clone();
-            engine::recover_grading(&mut app, now());
-            if path != "/"
-                && path != "/recall"
-                && path != "/lessons"
-                && !path.starts_with("/library")
-                && let Err(e) = engine::ensure_occurrence(&mut app, now(), &random_id()?)
-            {
-                return app_error(e);
-            }
-            if app != previous {
-                self.save(&mut app, Some(previous.revision))?;
-            }
+            // A read loads and renders. It selects no question, recovers no
+            // work, records no exposure and moves no alarm. Only a space that
+            // was never used is written, once, with the empty notebook whose
+            // forms need its cross-site value.
+            let app = self.load()?;
             if app.practice.protected() && path == "/export" {
                 return api_error(AppError::new(
                     409,
                     "Record exact practice assistance before export.",
                 ));
-            }
-            if app.protected_goal().is_some()
-                && (path == "/export"
-                    || path
-                        .strip_prefix("/photos/")
-                        .is_some_and(|id| app.protected_goal() == Some(id)))
-            {
-                let mut gate_query = BTreeMap::new();
-                gate_query.insert("return_to".into(), path.clone());
-                let gate_query = view_query(&self.env, &gate_query, self.preparation_ready())?;
-                return private(Response::from_html(web::render(
-                    &app,
-                    "/gate",
-                    &gate_query,
-                    now(),
-                    None,
-                ))?);
             }
             if path == "/export" {
                 // Includes referenced assets, never just the database metadata.
@@ -1110,29 +1031,11 @@ impl DurableObject for LearningSpace {
                 drop(archive);
                 // Assets await outside SQLite. Recheck the latest attempt
                 // before returning answers from the earlier committed snapshot.
-                let mut latest = self.load()?;
-                if latest.practice.protected() {
+                if self.load()?.practice.protected() {
                     return api_error(AppError::new(
                         409,
                         "Record exact practice assistance before export.",
                     ));
-                }
-                if latest.protected_goal().is_some() {
-                    let mut query = BTreeMap::new();
-                    query.insert("return_to".into(), path.clone());
-                    return private(Response::from_html(web::render(
-                        &latest,
-                        "/gate",
-                        &view_query(&self.env, &query, self.preparation_ready())?,
-                        now(),
-                        None,
-                    ))?);
-                }
-                if req.method() == Method::Get {
-                    let before = latest.revision;
-                    if observe_read(&mut latest, &path, now()) {
-                        self.save(&mut latest, Some(before))?;
-                    }
                 }
                 let hash = persistence::sha256(&bytes);
                 let mut response = Response::from_bytes(bytes)?;
@@ -1167,24 +1070,6 @@ impl DurableObject for LearningSpace {
                                 503,
                             )?);
                         }
-                        let mut latest = self.load()?;
-                        if latest.protected_goal() == Some(id) {
-                            let mut query = BTreeMap::new();
-                            query.insert("return_to".into(), path.clone());
-                            return private(Response::from_html(web::render(
-                                &latest,
-                                "/gate",
-                                &view_query(&self.env, &query, self.preparation_ready())?,
-                                now(),
-                                None,
-                            ))?);
-                        }
-                        if req.method() == Method::Get {
-                            let before = latest.revision;
-                            if observe_read(&mut latest, &path, now()) {
-                                self.save(&mut latest, Some(before))?;
-                            }
-                        }
                         let mut response = Response::from_bytes(bytes)?;
                         response.headers_mut().set("Content-Type", &photo.mime)?;
                         return private(response);
@@ -1199,16 +1084,6 @@ impl DurableObject for LearningSpace {
             let mut query = view_query(&self.env, &external_query, self.preparation_ready())?;
             // Settings offers the paid judgment switch only where Jev is reachable.
             query.insert("__judgment".into(), self.judgment_capable().to_string());
-            self.arm().await?;
-            // Alarm installation can yield to another owner request. Render
-            // and mark only the latest allowed reference content after it.
-            let mut app = self.load()?;
-            if req.method() == Method::Get {
-                let before = app.revision;
-                if observe_read(&mut app, &path, now()) {
-                    self.save(&mut app, Some(before))?;
-                }
-            }
             return private(Response::from_html(web::render(
                 &app,
                 &path,
@@ -1587,47 +1462,12 @@ impl DurableObject for LearningSpace {
         }
     }
     async fn alarm(&self) -> Result<Response> {
-        // The recovery alarm is installed before any paid send. An evicted or
-        // timed-out send becomes uncertain once, never another invisible send.
-        let mut app = self.load()?;
-        let before = app.revision;
-        engine::recover_grading(&mut app, now());
-        if app.revision != before {
-            self.save(&mut app, Some(before))?;
-        }
-        if app
-            .backup
-            .completed_ms
-            .is_none_or(|last| last <= now() - DAY_MS)
-        {
-            let _ = self.backup(false).await;
-        }
-        let mut app = self.load()?;
-        let before = app.revision;
-        if !app.restored_paused {
-            let config = self.work_config();
-            let lease = random_id()?;
-            // The earlier concept notebook's assessment is claimed first, as
-            // before. Only when it claims nothing is a queued Check claimed.
-            let claimed = match engine::claim_grading_work(&mut app, now(), &lease, &config) {
-                Ok(None) => engine::claim_check_work(&mut app, now(), &lease, &config),
-                claimed => claimed,
-            };
-            match claimed {
-                Err(e) => return app_error(e),
-                Ok(work) => {
-                    if app.revision != before {
-                        self.save(&mut app, Some(before))?;
-                    }
-                    if let Some(work) = work {
-                        set_alarm(&self.state.storage(), now() + RECOVERY_MS).await?;
-                        self.run_work(work).await?;
-                    }
-                }
-            }
-        }
+        // No read arms the alarm, so every way out of this handler arms the
+        // next one. A failure here must not end daily backups until the next
+        // deliberate action.
+        let outcome = self.run_alarm().await;
         self.arm().await?;
-        private(Response::ok("ok")?)
+        outcome
     }
 }
 
@@ -1646,6 +1486,44 @@ struct PersistedBackupProof {
     backup: BackupStatus,
 }
 impl LearningSpace {
+    async fn run_alarm(&self) -> Result<Response> {
+        // The recovery alarm is installed before any paid send. An evicted or
+        // timed-out send becomes uncertain once, never another invisible send.
+        // Only Checks of Study answers are recovered, claimed and sent here.
+        // A check saved in the earlier concept notebook is never read.
+        let mut app = self.load()?;
+        let before = app.revision;
+        engine::recover_checks(&mut app, now());
+        if app.revision != before {
+            self.save(&mut app, Some(before))?;
+        }
+        if app
+            .backup
+            .completed_ms
+            .is_none_or(|last| last <= now() - DAY_MS)
+        {
+            let _ = self.backup(false).await;
+        }
+        let mut app = self.load()?;
+        let before = app.revision;
+        if !app.restored_paused {
+            let config = self.work_config();
+            let lease = random_id()?;
+            match engine::claim_check_work(&mut app, now(), &lease, &config) {
+                Err(e) => return app_error(e),
+                Ok(work) => {
+                    if app.revision != before {
+                        self.save(&mut app, Some(before))?;
+                    }
+                    if let Some(work) = work {
+                        set_alarm(&self.state.storage(), now() + RECOVERY_MS).await?;
+                        self.run_work(work).await?;
+                    }
+                }
+            }
+        }
+        private(Response::ok("ok")?)
+    }
     fn bearer_token(&self, authorization: &str) -> Option<OwnerToken> {
         let secret = authorization.strip_prefix("Bearer ")?;
         let id = owner_token::token_id(secret)?;
@@ -1718,7 +1596,7 @@ impl LearningSpace {
                     Err(error) => api_error(error),
                 },
                 _ => {
-                    if app.protected_goal().is_some() || app.practice.protected() {
+                    if app.practice.protected() {
                         return api_error(AppError::new(409, "Record assistance before export."));
                     }
                     let mut snapshot = app;
@@ -1732,7 +1610,7 @@ impl LearningSpace {
                         return api_refusal();
                     }
                     let latest = self.read_snapshot()?;
-                    if latest.protected_goal().is_some() || latest.practice.protected() {
+                    if latest.practice.protected() {
                         return api_error(AppError::new(409, "Record assistance before export."));
                     }
                     api_json(&archive, 200)
@@ -1902,6 +1780,14 @@ impl LearningSpace {
     // No application initialization, token metadata save, recovery or alarm.
     // The platform may allocate SQLite files when it activates the object.
     fn read_snapshot(&self) -> Result<App> {
+        let rows = self.read_rows()?;
+        if rows.is_empty() {
+            return Ok(App::new(String::new()));
+        }
+        persistence::app_from_rows(&rows).map_err(to_worker_error)
+    }
+    // Only SELECTs: the stored rows, or none where nothing was ever stored.
+    fn read_rows(&self) -> Result<BTreeMap<String, String>> {
         let sql = self.state.storage().sql();
         let tables: Vec<Value> = sql
             .exec(
@@ -1910,13 +1796,12 @@ impl LearningSpace {
             )?
             .to_array()?;
         if tables.is_empty() {
-            return Ok(App::new(String::new()));
+            return Ok(BTreeMap::new());
         }
         let records: Vec<StoredRow> = sql
             .exec("SELECT key, value FROM records ORDER BY key", None)?
             .to_array()?;
-        let rows = records.into_iter().map(|r| (r.key, r.value)).collect();
-        persistence::app_from_rows(&rows).map_err(to_worker_error)
+        Ok(records.into_iter().map(|r| (r.key, r.value)).collect())
     }
     // Only SELECTs: do not create records, initialize an App, recover work,
     // save status or arm an alarm while observing the backup proof.
@@ -2093,16 +1978,10 @@ impl LearningSpace {
             due.max(timestamp + 1000)
         };
         if !app.restored_paused {
-            for assessment in app.assessments.values() {
-                if assessment.status == "queued" {
-                    alarm = alarm.min(timestamp + 1000);
-                }
-                if assessment.status == "sent" {
-                    alarm = alarm.min(assessment.started_ms.unwrap_or(timestamp) + RECOVERY_MS);
-                }
-            }
             // A queued Check is claimed by the next alarm; a sent one is
-            // recovered once its outcome can no longer arrive.
+            // recovered once its outcome can no longer arrive. A check saved
+            // in the earlier concept notebook asks for no alarm: nothing would
+            // claim or recover it.
             for check in app.practice.checks.values() {
                 match check.status {
                     crate::study::CheckStatus::Queued => alarm = alarm.min(timestamp + 1000),
@@ -2116,6 +1995,11 @@ impl LearningSpace {
         set_alarm(&self.state.storage(), alarm.max(timestamp + 1000)).await
     }
     async fn run_work(&self, work: engine::Work) -> Result<()> {
+        // Only a Check is claimed. Work of any other kind is neither sent nor
+        // finished nor failed: its saved record stays as it is.
+        if work.kind != engine::CHECK_WORK {
+            return Ok(());
+        }
         let result = self.transmit(&work).await;
         let mut app = self.load()?;
         let before = app.revision;
@@ -2153,8 +2037,10 @@ impl LearningSpace {
         &self,
         work: &engine::Work,
     ) -> std::result::Result<(String, String, Option<u64>, Option<String>), (String, bool)> {
-        if work.kind != "assessment" && work.kind != engine::CHECK_WORK {
-            return Err(("Native content generation is retired.".into(), false));
+        // Only a Check of a Study answer leaves Scry. Generation is retired
+        // and the earlier concept notebook is history.
+        if work.kind != engine::CHECK_WORK {
+            return Err(("Only a Check of a Study answer is sent.".into(), false));
         }
         if !self.external_work_allowed() {
             return Err((
@@ -2496,7 +2382,7 @@ impl LearningSpace {
             Err(e) => return app_error(e),
         };
         // Reject revision exhaustion before any photo or SQLite write.
-        if let Err(error) = engine::pause_for_restore(&mut archive.app, now()) {
+        if let Err(error) = engine::pause_restored(&mut archive.app, now()) {
             return app_error(error);
         }
         let mut renamed = BTreeMap::new();

@@ -611,11 +611,25 @@ fn restored_state_keeps_paid_work_paused_and_held_feedback() {
     engine::claim_work(&mut a, NOW, "restore-lease-001", &config())
         .unwrap()
         .unwrap();
-    let spend = a.spend.clone();
-    engine::pause_for_restore(&mut a, NOW + 1).unwrap();
+    let sent = a.clone();
+    assert_eq!(sent.occurrence.as_ref().unwrap().phase, "checking");
+    engine::pause_restored(&mut a, NOW + 1).unwrap();
     assert!(a.restored_paused);
-    assert_eq!(a.spend, spend);
-    assert_eq!(a.occurrence.as_ref().unwrap().phase, "self-check");
+    assert_eq!(a.spend, sent.spend);
+    // The earlier notebook is restored as it was saved: the sent check, the
+    // held answer and the Concepts are not rewritten.
+    assert_eq!(a.assessments, sent.assessments);
+    assert_eq!(a.occurrence, sent.occurrence);
+    assert_eq!(a.concepts, sent.concepts);
+    // Neither the alarm's claim nor the historical one sends from it.
+    for later in [NOW + 500_000, NOW + 10 * 365 * DAY_MS] {
+        assert!(!engine::recover_checks(&mut a, later));
+        assert!(
+            engine::claim_check_work(&mut a, later, "cannot-send-check", &config())
+                .unwrap()
+                .is_none()
+        );
+    }
     assert!(
         engine::claim_work(&mut a, NOW + 500_000, "cannot-send-lease", &config())
             .unwrap()
@@ -639,6 +653,19 @@ fn restored_state_keeps_paid_work_paused_and_held_feedback() {
             .unwrap_err()
             .status,
         409
+    );
+    assert_eq!(a, resumed);
+    // Resumed, the alarm still recovers and claims nothing of the saved check.
+    assert!(!engine::recover_checks(&mut a, NOW + 10 * 365 * DAY_MS));
+    assert!(
+        engine::claim_check_work(
+            &mut a,
+            NOW + 10 * 365 * DAY_MS,
+            "never-resend-check",
+            &config()
+        )
+        .unwrap()
+        .is_none()
     );
     assert_eq!(a, resumed);
     assert!(

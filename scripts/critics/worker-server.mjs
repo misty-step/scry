@@ -62,16 +62,17 @@ async function stop() {
 }
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
 try {
-  // Seed through the ordinary CSRF/operation contract, never by assigning state.
-  const first=await worker.fetch(origin+'/notebook');
+  // Seed through the ordinary CSRF/operation contract, never by assigning state:
+  // start the Starter shelf's Saint Michael lesson, which needs no fixture.
+  const first=await worker.fetch(origin+'/lessons');
   if(first.status!==200)throw Error('Fresh Worker GET failed: '+first.status);
   const html=await first.text();
-  const form=html.match(/<form[^>]+action="\/__fixture"[^>]*>([\s\S]*?)<\/form>/);
-  if(!form)throw Error('Fresh synthetic fixture action missing');
+  const form=[...html.matchAll(/<form[^>]+action="\/practice\/lesson\/start"[^>]*>([\s\S]*?)<\/form>/g)].find(match=>match[1].includes('name="starter" value="st-michael-en"'));
+  if(!form)throw Error('Fresh starter lesson action missing');
   const fields=new URLSearchParams();
   for(const [,name,value]of form[1].matchAll(/<input[^>]+name="([^"]+)"[^>]+value="([^"]*)"[^>]*>/g))fields.set(name,value);
-  const seeded=await worker.fetch(origin+'/__fixture',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:fields.toString(),redirect:'manual'});
-  if(seeded.status!==303&&seeded.status!==200)throw Error('Synthetic fixture POST failed: '+seeded.status+' '+await seeded.text());
+  const seeded=await worker.fetch(origin+'/practice/lesson/start',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:fields.toString(),redirect:'manual'});
+  if(seeded.status!==303&&seeded.status!==200)throw Error('Starter lesson POST failed: '+seeded.status+' '+await seeded.text());
   await new Promise((done,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',done);});
   await writeFile(join(directory,'ready.json'),JSON.stringify({pid:process.pid,token:manifest.attestation,artifact_sha256:identity.sha256})+'\n');
   console.log('Synthetic Worker ready at '+origin);

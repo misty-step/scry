@@ -478,10 +478,7 @@
       return;
     }
     if (target instanceof HTMLElement && target.closest('a,button,summary')) return;
-    if (/^[1-9]$/.test(event.key)) {
-      const choice = document.querySelector(`[data-choice="${event.key}"]`);
-      if (choice) { event.preventDefault(); choice.form?.requestSubmit(choice); }
-    } else if (event.key === 'Enter' || event.key === ' ') {
+    if (event.key === 'Enter' || event.key === ' ') {
       const next = document.querySelector('form[data-next]');
       if (next) { event.preventDefault(); next.requestSubmit(); }
     }

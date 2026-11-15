@@ -19,8 +19,12 @@ export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=
   // restores the simulated external Host before Rust enforces its real checks.
   // worker-rs exports a non-RPC class. Only inspection fixtures wrap it in the
   // native base required by Miniflare's SQL inspection; fetch/alarm stay Rust.
+  // qaAlarm runs the Rust alarm handler now, under the same test clock as a
+  // request, so a proof need not wait for a timer. qaAlarmTime reads the time
+  // the platform holds. Neither exists outside an inspection fixture.
+  const clock=testClock?'const at=Number(this.env.SCRY_TEST_NOW_MS);if(at)Date.now=()=>at;':'';
   const space=inspect
-    ? `import {DurableObject} from 'cloudflare:workers';export class LearningSpace extends DurableObject{constructor(ctx,env){super(ctx,env);this.inner=new RustLearningSpace(ctx,env);}async fetch(request){${traceObjectFetch?"await this.env.SCRY_ASSETS.put('__qa_scope_do_contact','contact');":''}${testClock?'const at=Number(this.env.SCRY_TEST_NOW_MS);if(at)Date.now=()=>at;':''}return this.inner.fetch(request);}alarm(){return this.inner.alarm();}}`
+    ? `import {DurableObject} from 'cloudflare:workers';export class LearningSpace extends DurableObject{constructor(ctx,env){super(ctx,env);this.inner=new RustLearningSpace(ctx,env);}async fetch(request){${traceObjectFetch?"await this.env.SCRY_ASSETS.put('__qa_scope_do_contact','contact');":''}${clock}return this.inner.fetch(request);}alarm(){return this.inner.alarm();}async qaAlarm(){${clock}return (await this.inner.alarm()).status;}qaAlarmTime(){return this.ctx.storage.getAlarm();}}`
     : `export {RustLearningSpace as LearningSpace};`;
   // Like Wrangler's drain-body middleware, discard unread transport bytes only
   // after Rust responds. Otherwise workerd can reset the upload and erase its
@@ -47,9 +51,10 @@ export async function createRuntime({bindings,name='scry-synthetic-qa',artifact=
   try {await mf.ready;return {mf,worker:await mf.getWorker(),url:bindings.CANONICAL_ORIGIN,rebind:async nextBindings=>{const next={...v4,bindings:nextBindings};const options=runtime.convertV4MiniflareOptions?runtime.convertV4MiniflareOptions(next):next;if(inspect)options.unsafeInspectDurableObjects=true;await mf.setOptions(options);return {worker:await mf.getWorker(),url:nextBindings.CANONICAL_ORIGIN};}};}
   catch(error){await mf.dispose();throw error;}
 }
-export async function createSyntheticRuntime({port=0,name='scry-browser-synthetic',artifact}={}) {
-  const bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:`http://127.0.0.1:${port}`,SPACE_NAME:'synthetic-browser-only',INTERNAL_KEY:internalKey};
-  const local=await createRuntime({port,name,artifact,bindings});
+export const syntheticSpace='synthetic-browser-only';
+export async function createSyntheticRuntime({port=0,name='scry-browser-synthetic',artifact,inspect=false}={}) {
+  const bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:`http://127.0.0.1:${port}`,SPACE_NAME:syntheticSpace,INTERNAL_KEY:internalKey};
+  const local=await createRuntime({port,name,artifact,bindings,inspect});
   // Let workerd own port 0, then configure its actual canonical origin.
   // Miniflare retains that listener when updating bindings with port:0.
   try {return {...local,...await local.rebind({...bindings,CANONICAL_ORIGIN:(await local.mf.ready).origin})};}

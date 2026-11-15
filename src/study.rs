@@ -3190,7 +3190,7 @@ pub fn due(app: &App, now: i64) -> Value {
     due
 }
 pub fn history(app: &App) -> AppResult<Value> {
-    if app.practice.protected() || app.protected_goal().is_some() {
+    if app.practice.protected() {
         return Err(AppError::new(
             409,
             "Record assistance or answer before history or export.",

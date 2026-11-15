@@ -282,7 +282,7 @@ test.after(async () => {
   await writeFile(join(out, 'study-integrity.json'), JSON.stringify(observations, null, 2) + '\n');
 });
 
-test('Mixed notebook legacy errors, held feedback and replay preserve exact practice', async () => {
+test('Study beside the earlier notebook: read-only history, retired actions refused, exact practice kept', async () => {
   const {mixedHttpProof} = await import('./mixed-notebook.mjs');
   await mixedHttpProof();
 });

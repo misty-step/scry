@@ -2,7 +2,8 @@ import {historicalMutation} from './historical-fixture.mjs';
 // Authored synthetic text and native HTTP/CLI clients of the built Worker.
 import assert from 'node:assert/strict';
 import {feedbackArrival,assertFeedbackArrival,feedbackVariants,fullAnswer} from './feedback-arrival.mjs';
-import {phoneHistory,phoneHistoryRecovery,seedHistoryNotebook} from './phone-history.mjs';
+import {phoneHistory,phoneHistoryRecovery} from './phone-history.mjs';
+import {seedEarlier} from './earlier-fixture.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdir,mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -23,7 +24,9 @@ export async function phoneFixture({port=0,legacy=false}={}) {
  const storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
  const rows=async()=>Object.fromEntries((await storage.exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,JSON.parse(r.value)]));
  const record=async key=>JSON.parse((await storage.exec('SELECT value FROM records WHERE key=?',key))[0].value);
- if(legacy)await seedHistoryNotebook({worker:runtime.worker,origin,record});
+ // The earlier concept notebook as an existing Owner holds it: a question
+ // left unanswered, with two answers before it.
+ if(legacy)await seedEarlier(storage,'question-cold',await runtime.mf.getR2Bucket('SCRY_ASSETS'));
  const page=await(await runtime.worker.fetch(origin+'/settings')).text();
  const form=/<form[^>]*action="\/tokens\/create"[^>]*>([\s\S]*?)<\/form>/.exec(page)[1];
  const fields=Object.fromEntries([...form.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
