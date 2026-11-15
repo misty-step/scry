@@ -1,14 +1,14 @@
 # The earlier concept notebook, in every stored state
 
 `earlier-notebook.json` holds the earlier concept notebook in each state an
-existing notebook can be in. It was written by the builders in
+existing notebook can be in. It was written by the builders then in
 `tests/earlier_notebook.rs`, run on unmodified source
-`27067b31cc132e3161d895d4e3a9ef4c7eb92c7a`: source that still serves, schedules
-and grades that notebook, so its engine can still produce every state.
+`27067b31cc132e3161d895d4e3a9ef4c7eb92c7a`: source that still served, scheduled
+and graded that notebook, so its engine could still produce every state.
 
 It contains no production data, credentials or external-provider output. Every
-Goal, answer, response and identifier in it is synthetic and comes from that
-test file or from `engine::seed_fixture`.
+Goal, answer, response and identifier in it is synthetic and came from that
+test file or from the authored demo `engine::seed_fixture` of that source.
 
 ## What each state holds
 
@@ -86,14 +86,14 @@ Everything else a notebook can keep:
 
 ## How the states were built
 
-Every state except one is reached through public engine entry points, with a
-fixed clock and deterministic identifiers: `engine::seed_fixture`,
+Every state except one was reached through public engine entry points of that
+source, with a fixed clock and deterministic identifiers: `engine::seed_fixture`,
 `engine::mutate`, `engine::mutate_as`, `engine::ensure_occurrence` (what
 reading a page does), `engine::claim_work`, `engine::claim_grading_work`,
 `engine::finish_work`, `engine::fail_work`, `engine::fail_received_work`,
 `engine::recover_grading` and `engine::pause_for_restore`.
 
-Two things are set on the stored structures directly:
+Two things were set on the stored structures directly:
 
 - `go-retained-self-check`. No engine path writes a retained Go attempt, so its
   question identity, schedule epoch, ungraded observation, held self-check and
@@ -118,8 +118,6 @@ and the photo are SHA-256 of synthetic content.
 
 ## What the tests prove
 
-- `rebuilding_every_state_gives_the_committed_fixture` runs the builders on the
-  current source and requires every value to equal the fixture.
 - `every_state_round_trips_byte_for_byte` reads only the fixture. Each archive
   decodes against its hash and encodes again to the same bytes, hash, length
   and format name; each set of rows becomes the same notebook and the same
@@ -128,18 +126,19 @@ and the photo are SHA-256 of synthetic content.
 - `every_state_holds_what_its_name_says` reads only the fixture.
 - `the_fixture_holds_nothing_shaped_like_a_credential` reads only the fixture.
 
-## Regenerating, and the end of the builders
+## Regenerating
 
-To rewrite the fixture, check out the source named above and run
+The current source cannot produce these states: it no longer serves, schedules
+or grades the earlier concept notebook, and the engine's concept-practice code
+and the builders were deleted together. This fixture is the only source of
+these states, and the four tests above need only the fixture.
+
+The last commit that can regenerate it is `4e00be0`, where the builders and
+`rebuilding_every_state_gives_the_committed_fixture` still pass against it. To
+rewrite the fixture, check out that commit and run
 
     SCRY_WRITE_EARLIER_NOTEBOOK_FIXTURE=1 cargo test --locked --test earlier_notebook
 
 with a `CARGO_TARGET_DIR` of its own. Two checkouts that share a target
 directory share compiled artifacts, so the test could link a later library and
 the fixture would prove nothing.
-
-Later source stops serving, scheduling and grading the earlier concept notebook
-and then deletes the engine's concept-practice code. No route can create these
-states after that. The builders and the rebuilding test are removed with that
-code, and this fixture becomes the only source of these states. The other four
-tests stay: they need only the fixture.

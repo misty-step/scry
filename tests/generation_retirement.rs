@@ -1,4 +1,6 @@
 //! Current runtime policy is deliberately separate from historical generation tests.
+mod common;
+
 use scry::{
     engine::{self, WorkConfig},
     model::*,
@@ -108,8 +110,8 @@ fn current_worker_never_claims_or_recovers_historical_generation_jobs() {
         .unwrap()
         .unwrap();
     unchanged(&app); // sent, including an unresolved reservation
-    let mut fixture = App::new("retirement-authored-batch-csrf-24".into());
-    engine::seed_fixture(&mut fixture, NOW).unwrap();
+    // The authored candidates the retired demo published.
+    let (fixture, _) = common::earlier("question-cold-choice");
     let batch = fixture
         .jobs
         .values()
@@ -154,9 +156,8 @@ fn current_worker_never_claims_or_recovers_historical_generation_jobs() {
 }
 #[test]
 fn review_home_never_consumes_or_exposes_interrupted_legacy_practice() {
-    let mut app = App::new("retirement-synthetic-csrf-at-least-24".into());
-    engine::seed_fixture(&mut app, NOW).unwrap();
-    engine::ensure_occurrence(&mut app, NOW, "interrupted").unwrap();
+    let (app, now) = common::earlier("question-cold-choice");
+    assert_eq!(now, NOW);
     let before = app.clone();
     let html = web::render(&app, "/", &BTreeMap::new(), NOW, None);
     assert!(html.contains("data-state=\"mixed-home\""));
@@ -179,43 +180,19 @@ fn review_home_never_consumes_or_exposes_interrupted_legacy_practice() {
 
 #[test]
 fn legacy_ungraded_answer_is_readable_without_self_rating_or_fake_result() {
-    let mut app = App::new("retirement-synthetic-csrf-at-least-24".into());
-    engine::seed_fixture(&mut app, NOW).unwrap();
-    for question in app
-        .questions
-        .values_mut()
-        .filter(|q| q.content().kind == "choice")
-    {
-        question.card.due_ms = NOW + DAY_MS;
-    }
-    app.occurrence = None;
-    engine::ensure_occurrence(&mut app, NOW, "saved-unsupported-answer").unwrap();
-    let occurrence = app.occurrence.as_ref().unwrap().id.clone();
-    let answer = fields(
-        &app,
-        &[
-            ("occurrence_id", &occurrence),
-            ("answer", "Saved earlier answer"),
-        ],
-    );
-    engine::mutate(&mut app, "/review/answer", &answer, NOW, "saved-answer").unwrap();
-    let mut unavailable = config();
-    unavailable.jev = false;
-    assert!(
-        engine::claim_grading_work(&mut app, NOW, "unavailable-grader", &unavailable)
-            .unwrap()
-            .is_none()
-    );
+    // A saved answer whose check closed unsent: Jev was not configured.
+    let (app, now) = common::earlier("self-check-failed-unsent");
+    let saved = app.occurrence.as_ref().unwrap().answer.clone().unwrap();
     assert_eq!(app.occurrence.as_ref().unwrap().phase, "self-check");
     engine::validate_app(&app).unwrap();
     let before = app.clone();
-    let html = web::render(&app, "/notebook", &BTreeMap::new(), NOW, None);
+    let html = web::render(&app, "/notebook", &BTreeMap::new(), now, None);
     assert!(html.contains("Your answer is saved, not graded."));
-    assert!(html.contains("Saved earlier answer"));
+    assert!(html.contains(&web::escape(&saved)));
     for route in ["/review/self", "/review/override", "/practice/correct"] {
         assert!(!html.contains(&format!("action=\"{route}\"")));
     }
-    let home = web::render(&app, "/", &BTreeMap::new(), NOW, None);
+    let home = web::render(&app, "/", &BTreeMap::new(), now, None);
     assert!(home.contains("href=\"/notebook\">Earlier practice</a>"));
     assert!(!home.contains("Read saved earlier answer"));
     assert_eq!(app, before);

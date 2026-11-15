@@ -562,18 +562,8 @@ for (const mode of ['selfcheck', 'selfcheck-helped', 'selfcheck-history', 'selfc
         assert.deepEqual(ungraded.events, original.events);
         assert.deepEqual(ungraded.questions, original.questions);
         assert.deepEqual(ungraded.occurrence, original.occurrence);
-        // Retain the historical transition/replay/custody proof without treating
-        // a new user-supplied judgment as supported current HTTP behavior.
-        const historical = {path: '/review/self', fields, now_ms: Date.now(), seed: 'historical-import-judgment'};
-        await historicalMutation(storage, historical);
-        const afterHistorical = await storage.exec('SELECT key,value FROM records ORDER BY key');
-        assert.equal((await historicalMutation(storage, historical)).replayed, true);
-        assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), afterHistorical);
-        const judged = await read();
-        assert.equal(judged.events.length, original.events.length + 1);
-        assert.deepEqual(judged.events.slice(0, original.events.length), original.events);
-        assert.equal(judged.events.at(-1).result.authority, 'learner');
-        assert.equal(judged.questions['legacy-import-quiz-quiz0'].schedule_version, 2);
+        // The engine no longer holds a self-judgment transition: the answer
+        // stays ungraded, and custody is proven through the backup below.
       }
       assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
       const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');

@@ -1,5 +1,5 @@
 //! The private, server-rendered notebook. All authored and generated text is escaped.
-use crate::learning::{Attempt, ConceptState, QuestionEvidence, compute_concept_state};
+use crate::learning::{Attempt, ConceptState, compute_concept_state};
 use crate::model::*;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -2952,7 +2952,7 @@ impl View<'_> {
         let Some(c) = self.app.concepts.get(id) else {
             return self.not_found();
         };
-        let state = concept_evidence(self.app, c, self.now);
+        let state = concept_evidence(self.app, c);
         let unaided = state.unaided;
         let helped = state.helped;
         let missed = state.missed;
@@ -3983,14 +3983,13 @@ fn constellation(concepts: &[&Concept]) -> String {
     out.push_str("<circle class=\"chart-distant\" cx=\"596\" cy=\"31\" r=\"1\"/><circle class=\"chart-distant\" cx=\"203\" cy=\"153\" r=\"1\"/><circle class=\"chart-distant\" cx=\"510\" cy=\"142\" r=\"1\"/></svg>");
     out
 }
-fn concept_evidence(app: &App, c: &Concept, now: i64) -> ConceptState {
-    let questions: Vec<_> = app
+fn concept_evidence(app: &App, c: &Concept) -> ConceptState {
+    let attempts: Vec<_> = app
         .questions
         .values()
         .filter(|q| q.concept_id == c.id && !q.archived)
-        .map(|q| {
-            let attempts = app
-                .events
+        .flat_map(|q| {
+            app.events
                 .iter()
                 .filter(|e| e.question_id == q.id && !e.is_ungraded())
                 .map(|e| {
@@ -4016,20 +4015,9 @@ fn concept_evidence(app: &App, c: &Concept, now: i64) -> ConceptState {
                         },
                     }
                 })
-                .collect();
-            QuestionEvidence {
-                card: q.card.clone(),
-                level: match q.content().kind.as_str() {
-                    "choice" => "recognize",
-                    "explain" => "explain",
-                    _ => "recall",
-                }
-                .into(),
-                attempts,
-            }
         })
         .collect();
-    compute_concept_state(&questions, now)
+    compute_concept_state(&attempts)
 }
 /// How many answers to this Concept were recorded, graded or not: an observed
 /// count, never an estimate.
