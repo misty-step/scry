@@ -2980,7 +2980,7 @@ impl View<'_> {
                         if self.review_due(|s| nato_versions.contains(s.version_id.as_str())) {
                             "<h1>Ready to review.</h1>"
                         } else {
-                            "<h1>NATO alphabet</h1>"
+                            "<h1>From Alfa to Zulu.</h1>"
                         },
                     );
                     out.push_str(&self.form(
@@ -3003,7 +3003,7 @@ impl View<'_> {
                 }
             } else {
                 let (title, desc, action) = if has_study {
-                    ("NATO alphabet", "", "Continue practice")
+                    ("From Alfa to Zulu.", "", "Continue practice")
                 } else {
                     (
                         "From Alfa to Zulu.",

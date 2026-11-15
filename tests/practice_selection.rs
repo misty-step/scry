@@ -393,7 +393,7 @@ fn practice_and_error_pages_carry_no_reassurance() {
             assert!(!page.contains(phrase), "{phrase}: {page}");
         }
     }
-    assert!(pages[0].contains("<h1>NATO alphabet</h1>"));
+    assert!(pages[0].contains("<h1>From Alfa to Zulu.</h1>"));
     assert!(pages[1].contains("This conflicts with what is saved."));
     assert!(pages[2].contains("Scry could not complete this request."));
 }

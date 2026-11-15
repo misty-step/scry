@@ -2,8 +2,9 @@
 
 ## Plain words where reassurance stood — 2026-11-15
 
-Pages state what is true and nothing soothing. The NATO welcome is headed by
-the Work, "NATO alphabet" (it read "A little, often."), and a NATO start while
+Pages state what is true and nothing soothing. The NATO welcome keeps one
+heading, "From Alfa to Zulu.", before and after practice has begun (once begun
+it read "A little, often."), and a NATO start while
 another Prompt is open is headed "Another Prompt is open." (it read "Your
 practice is waiting."). The error page reads "This conflicts with what is
 saved." for a conflict and "Scry could not complete this request." otherwise,
