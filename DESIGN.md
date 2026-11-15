@@ -1,5 +1,21 @@
 # Scry: a recall instrument
 
+## Nothing on the earlier notebook is a control — 2026-11-15
+
+No page of the earlier concept notebook holds a form. The Map shows a Goal's
+stored “In focus” and “Paused” in its quiet meta line and each Concept's number
+of recorded answers where its state label was; every star of the constellation
+is drawn alike, since nothing there is predicted. A Concept's page heads its
+note “Notes” and its counts “Recorded answers”: recalled, with help and missed,
+with one fine line saying they are what was recorded; no recall estimate. A saved
+question opens as a read-only page in the Earlier practice voice: the question
+as the one heading, its choices as plain numbered text, the answer pair and the
+explanation. Settings no longer offers “New items per day”, and the empty
+Earlier practice page no longer offers the authored demo. This supersedes the
+Map's Focus and Pause, concept states, the scheduling estimate and brightness,
+the concept refinement and archive controls, the edit and dispute screens, and
+Settings' 3/6/12 new-idea rhythm and fixture offer described below.
+
 ## Earlier practice is history — 2026-11-15
 
 The earlier concept notebook is shown, never practised. Earlier practice keeps

@@ -1176,30 +1176,14 @@ impl DurableObject for LearningSpace {
             api::normalize_draft_form(&mut fields);
         }
         let mut app = self.load()?;
-        let before = app.revision;
         if fields.get("csrf").map(String::as_str) != Some(app.csrf.as_str()) {
             return private(Response::error("Reload before submitting.", 403)?);
         }
         // Refuse before photo bytes, R2 puts, operation receipts or new jobs.
+        // The earlier notebook's writes, its pace and the authored demo
+        // (`/__fixture`) are refused here too.
         if let Err(error) = engine::admit_current_mutation(&path) {
             return render_error(&self.env, &app, &path, &fields, error, false);
-        }
-        if path == "/__fixture" {
-            if (!development(&self.env) && variable(&self.env, "SCRY_ENV") != "synthetic-preview")
-                || !app.goals.is_empty()
-                || !app.events.is_empty()
-            {
-                return private(Response::error(
-                    "Authored fixtures require an unused isolated development space.",
-                    409,
-                )?);
-            }
-            if let Err(e) = engine::seed_fixture(&mut app, now()) {
-                return app_error(e);
-            }
-            self.save(&mut app, Some(before))?;
-            self.arm().await?;
-            return redirect("/notebook");
         }
         if path == "/library/version/add"
             && let Err(e) = api::library_form_fields(&mut fields)

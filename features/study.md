@@ -27,8 +27,8 @@ US-008, US-011. Intent: [SPEC § Earlier concept notebook](../SPEC.md#earlier-co
 
 - Menu → Earlier practice. Map and History are one tap from there; a Concept's
   page shows its saved answers with no gate.
-- In an empty isolated notebook, the authored-demo action seeds three questions
-  and holds the first one, unanswered.
+- No page seeds or changes it: the authored demo is retired, and every write
+  to the earlier notebook answers 410.
 
 ## Driving it with verify-scry helpers
 
@@ -43,9 +43,10 @@ Preconditions:
   states any more.
 - **Journey.** Run `.agents/skills/verify-scry/scripts/local-journeys.mjs`
   (`--width 1280` for desktop). `notebook.empty` sees "Earlier practice" with
-  nothing saved. `notebook.concept` chooses Explore an authored demo, sees the
-  held question as "Not answered." with no control, reloads and still sees it,
-  then opens Map → goal → concept. `notebook.legacy-link` reopens `/notebook`
+  nothing saved and no action. `notebook.concept` loads the stored
+  `question-cold-choice` state into its own space, sees the held question as
+  "Not answered." with no control, reloads and still sees it, then opens
+  Map → goal → concept with no form on any of them. `notebook.legacy-link` reopens `/notebook`
   while an exact Study remains at `/recall`. `state.backend-down` stops the
   run-owned Worker and answers a Study Prompt. No result may appear, and a
   failure must be visible.
@@ -61,7 +62,7 @@ Preconditions:
 
 ## Gotchas
 
-- The authored demo refuses a notebook with existing learning state. Start a
+- `qa/earlier-fixture.mjs` loads a state only into an unused object. Start a
   fresh runtime; do not delete state to reuse one.
 - A GET or HEAD selects nothing, records no exposure, recovers no work and
   moves no alarm. Only the first-ever read of an unused space writes (the empty

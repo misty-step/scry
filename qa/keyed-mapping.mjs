@@ -107,7 +107,7 @@ export async function keyedMappingFixture({capturePredecessor=false,captureMappi
     const login=join(temp,'restored-login.json');await ok(['login','--url',url,'--token-stdin'],secret+'\n',login);
     const after=(await ok(['export'],'',login)).app;
     assert.deepEqual(after.library,before.library);assert.deepEqual(after.practice,before.practice);
-    const write=await clone.worker.fetch(url+'/api/v1/settings',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify({operation_id:'mapping-restore-unrelated-write',pace:'light'})});assert.equal(write.status,200);
+    const write=await clone.worker.fetch(url+'/api/v1/tokens',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify({operation_id:'mapping-restore-unrelated-write',name:'Synthetic unrelated write after restore'})});assert.equal(write.status,200);await write.arrayBuffer();
     const retained=(await ok(['export'],'',login)).app;assert.deepEqual(retained.library,before.library);assert.deepEqual(retained.practice,before.practice);
     transcript.push({observation:'Complete local R2 archive, fresh restore, occupied-target refusal, compiled CLI and first unrelated write retain immutable mapping history',archive_sha256:sha(bytes),archive_bytes:bytes.length});
    }finally{await clone.mf.dispose();}
@@ -271,7 +271,7 @@ export async function predecessorRestore(artifact,bytes,accept,at){
   const read=await stub.fetch('https://internal.invalid/api/v1/export',{headers});assert.equal(read.status,200);const restored=(await read.json()).app;
   assert.deepEqual(restored.library,expected.library);assert.deepEqual(restored.practice,expected.practice);
   assert.ok(Object.keys(restored.practice.attempts).length,'Baseline contains an actual text Attempt, not an empty decoder smoke.');
-  const written=await stub.fetch('https://internal.invalid/api/v1/settings',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({csrf:restored.csrf,operation_id:'mapping-predecessor-baseline-write',pace:'light'})});assert.equal(written.status,200);
+  const written=await stub.fetch('https://internal.invalid/api/v1/tokens',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({csrf:restored.csrf,operation_id:'mapping-predecessor-baseline-write',name:'Synthetic baseline write after restore'})});assert.equal(written.status,200);await written.arrayBuffer();
   const backed=await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers});assert.equal(backed.status,200);
   const bucket=await runtime.mf.getR2Bucket('SCRY_BACKUPS'),items=await bucket.list({prefix:`snapshots/${name}/`});assert.ok(items.objects.length);
   const saved=JSON.parse(Buffer.from(await(await bucket.get(items.objects.at(-1).key)).arrayBuffer()));assert.deepEqual(saved.app.library,expected.library);assert.deepEqual(saved.app.practice,expected.practice);

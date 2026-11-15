@@ -19,8 +19,10 @@ generation/self-grading journeys. Current HTTP writes to those retired actions
 must return 410 without jobs, assets, receipts, reservations or provider calls.
 Study answers are graded natively; unavailable grading keeps the answer saved
 and ungraded. The earlier concept notebook is history: Scry no longer serves,
-schedules or grades its questions, its `/review/*` and concept-practice writes
-return 410, and no read writes to it. Historical Attempts, Corrections, material,
+schedules, grades or changes it: every write to it returns 410 (`/review/*`,
+any `/goals|concepts|questions/{id}/{action}`, its pace at exactly `/settings`
+and `POST /api/v1/settings`, and the authored demo at `/__fixture`), a replay of
+a committed one included, and no read writes to it. Historical Attempts, Corrections, material,
 usage and interrupted state remain unchanged. Test retained transition/recovery
 semantics only with validated synthetic historical fixtures, never a runtime
 backdoor. `tests/generation_retirement.rs` and
@@ -80,7 +82,7 @@ There is no remote restore or custody fingerprint prerequisite. See the
 | Meaning checks / historical overrides | `tests/learning_policy.rs`, `tests/application.rs` | Exact/variant local resolution; independent short-v1 and rubric judgments; unsure/failed answers stay ungraded; immutable historical authority and corrections; bounded real holdout quality separately |
 | Historical generation / refinement compatibility | `tests/generation_policy.rs`, `tests/application.rs` | Actual word/phrase/ramble → useful reference + practice, exact evidence, optional photo transcription, genuine attempt/feedback refinement, slow/partial/failed/unknown outcomes |
 | Historical prepublication critic US-004 | `tests/learning_policy.rs`, `tests/generation_policy.rs`, `tests/application.rs` | Saved candidates before external checks, independent hard judgments, one send lease, shared allowance, unknown usage, critic-only new attempt, judgment reuse, and fenced publication |
-| Earlier concept notebook as history | `tests/earlier_history.rs`, `tests/earlier_notebook.rs`, `tests/web_render.rs`, `node --test qa/earlier-notebook.test.mjs`, `qa/walk --stories "US-002 US-011"` | Every stored state from `tests/fixtures/earlier-notebook.json` loaded into real workerd SQLite: zero requests reach a counting synthetic Jev across the alarm, every page, resume and a restart; a GET or HEAD changes no row, change count, persisted file or alarm; the export is the stored notebook; retired routes answer 410; Study beside it leaves every earlier row as stored |
+| Earlier concept notebook as history | `tests/earlier_history.rs`, `tests/earlier_notebook.rs`, `tests/web_render.rs`, `node --test qa/earlier-notebook.test.mjs`, `qa/walk --stories "US-002 US-010 US-011"` | Every stored state from `tests/fixtures/earlier-notebook.json` loaded into real workerd SQLite: zero requests reach a counting synthetic Jev across the alarm, every page, resume and a restart; a GET or HEAD changes no row, change count, persisted file or alarm; the export is the stored notebook; no earlier page has a form or a recall estimate; every retired write, and a replay of a committed one, answers 410 and leaves every row as stored; Study beside it leaves every earlier row as stored |
 | HTML / Study protection | `tests/web_render.rs`, `tests/study.rs` | Real pointer/keyboard, native forms without JS, a protected Study Prompt hides answer-bearing pages, held result, content draft/version fences, access loss |
 | Persistence / archives | `src/persistence.rs` unit tests, `tests/application.rs` | Real SQLite/R2 archive with every referenced photo, full-byte remote readback, independent fresh-space restore, paused uncertain work |
 | Private Library | `tests/library.rs`, `node --test qa/library.test.mjs`, `qa/walk --stories "US-015"` | Compiled CLI through built isolated Worker, SQLite rows and complete local R2 readback; real Study/Attempt deletion refusal also runs in `qa/study.test.mjs` |
@@ -110,16 +112,12 @@ It does not source `.env`, `.dev.vars`, or historical operator configuration.
 The printed run directory identifies ownership; use an unused port via
 `SCRY_DEV_PORT` without stopping an unrelated service.
 
-Begin with the empty notebook. The isolated preview alone offers “Explore an
-authored demo,” a deliberate fixture action that refuses existing learning
-state. The fixture has HTTP cache freshness/validation explanations and three
-questions, and holds the first one unanswered. It is an earlier concept
-notebook: shown read-only under Earlier practice, never answered. It is authored
-data, not a provider call, real cold recall, or an AI quality result. New
-generation requests are refused regardless of model configuration. No
-production store is imported.
+Begin with the empty notebook. The authored demo (“Explore an authored demo”,
+`/__fixture`) is retired: no page offers it and its POST answers 410, in every
+environment. New generation requests are refused regardless of model
+configuration. No production store is imported.
 
-Every other state of the earlier concept notebook comes from
+Every state of the earlier concept notebook comes from
 `tests/fixtures/earlier-notebook.json`. `qa/earlier-fixture.mjs` writes one
 state's exact rows, and the photo its archive carries, into an unused Durable
 Object; the walks, `qa/earlier-notebook.test.mjs` and the browser recovery
@@ -149,13 +147,17 @@ are defined in [SPEC at `979e432`](https://github.com/misty-step/scry/blob/979e4
 the last revision before the specification became one present-tense target
 state. They keep the meaning they had there.
 
-Journey US-001 walk 1 remains the retained Go schema 4→5 preservation check. The gate
-archives only `go.mod`, `go.sum`, `internal/store`, and `internal/learning` at
-`c6ba395a63814c1f973d8cda5057d54fbb587e9b`, verifies its pinned checksum, and
-runs `TestSchemaV4ToV5MigrationUS001` with Go 1.27.1 against disposable fixtures.
-Its separate `retained-go-compatibility` receipt and exported archive do not
-certify a Rust import or migration. US-001 walk 2 uses the current Rust Worker browser.
-No retained application or historical database is started by this check.
+Journey US-001 proves that everything saved is reachable and exported
+unchanged: walk 1 names the native custody tests of the Archived notebook's
+retained bytes, and walk 2 follows Menu → Earlier practice → Map → Goal →
+Concept → History in the Rust Worker browser and compares the export with the
+stored notebook. Since 2026-11-15 it no longer runs the retained Go schema 4→5
+migration test, and no gate needs a Go toolchain; receipts that cite
+`retained-go-compatibility` keep their original meaning. The pinned retained
+source (`go.mod`, `go.sum`, `internal/store`, `internal/learning` at
+`c6ba395a63814c1f973d8cda5057d54fbb587e9b`, checksum in
+`scripts/retained-go-source.py`) is still archived for the revival inspector's
+schema; nothing builds or runs it.
 
 Stop the run-owned process before cleanup. Preserve evidence and remove only
 its verified temporary directory. To reset, start a new run/namespace; never
@@ -174,13 +176,15 @@ recovery expectations below retain their original meanings.
 
 ### Historical journey compatibility
 
-Items 1 to 5 below describe retired write paths, not current supported
+Items 1 to 6 below describe retired write paths, not current supported
 features. Preserve their historical fixtures and custody assertions. The earlier
 concept notebook they drove is now history: for items 3 to 5 assert the
 read-only views, the 410 refusals and unchanged rows, and that no assistance
 gate, exposure write or selection happens on a read. Item 6 keeps its
 references and observed counts and loses nothing by navigation; its focus,
-pause and pace controls still write. Items 7 and 8 remain current resilience
+pause and pace controls, recall estimate and archive, edit and dispute are
+retired: assert they are absent, their POSTs answer 410 and every row is
+unchanged. Items 7 and 8 remain current resilience
 and usability requirements, exercised on Study answers.
 
 1. Create: a word, a phrase, and a long dictated-text request are valid without

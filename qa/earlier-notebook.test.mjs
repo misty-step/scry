@@ -117,8 +117,22 @@ function shown(state){
 const has=(html,pattern,what)=>assert.ok(pattern.test(html),`Missing: ${what}`);
 const lacks=(html,pattern,what)=>assert.ok(!pattern.test(html),`Present: ${what}`);
 const escapeHtml=text=>text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+// The pages of the earlier notebook itself: Earlier practice, the Map, and
+// every Goal, Concept and saved question.
+const earlierPage=path=>path==='/notebook'||path==='/map'||/^\/(goals|concepts)\/[^/]+$|^\/questions\/[^/]+\/edit$/.test(path);
+// Nothing on them is a form, and nothing claims the notebook is scheduled or
+// predicted; Settings no longer sets its pace.
+function assertNoWrite(html,path){
+ if(earlierPage(path)){
+  const main=html.slice(html.indexOf('<main'),html.indexOf('</main>'));
+  lacks(main,/<form|<button|<textarea|<input/,`${path} offers a form`);
+  lacks(html,/Estimated recall|recall estimate|scheduling estimate|>Solid<|>Fading<|next practice|brightness-|<h2>Practice<\/h2>|Focus here|Remove focus|Archive this|Save feedback|Edit future wording|Explore an authored demo/,`${path} claims practice or offers a retired control`);
+ }
+ if(path==='/settings')lacks(html,/name="pace"|action="\/settings"|New items per day/,`${path} offers the earlier pace`);
+}
 // No page practises the earlier notebook: no route into it and nothing polled.
 function assertNoPractice(html,path){
+ assertNoWrite(html,path);
  lacks(html,/action="\/review\//,`${path} posts to a review route`);
  lacks(html,/action="\/concepts\/[^"]+\/practice"/,`${path} offers concept practice`);
  lacks(html,/data-choice|Look it up|href="\/gate|Practice this idea|Next question|Check my answer|Show me the answer|Retry native check/,`${path} offers an answer, Next, Retry, reveal or the reference gate`);
@@ -272,7 +286,7 @@ test('a held unanswered question blocks no export, history or reference',{timeou
     const concept=await s.get(`/concepts/${held.concept_id}`);
     has(concept,/data-state="concept"/,`${state}: the Concept page`);assert.ok(concept.includes(escapeHtml(held.presentation.answer)),`${state}: the saved answer is readable on its Concept`);
     has(await s.get(`/goals/${app.concepts[held.concept_id].goal_id}`),/data-state="goal"/,`${state}: the Goal page`);
-    has(await s.get(`/questions/${held.question_id}/edit`),/data-state="edit"/,`${state}: the question page`);
+    has(await s.get(`/questions/${held.question_id}/edit`),/data-state="earlier-question"/,`${state}: the question page`);
    }
    for(const goal of Object.values(app.goals).filter(goal=>goal.photo)){
     const photo=await s.req(`/photos/${goal.id}`);assert.equal(photo.status,200);
@@ -296,7 +310,15 @@ test('every retired route answers 410 and leaves the notebook as stored',{timeou
    const app=storedApp(state),held=app.occurrence,changes=await s.changes();
    const occurrence=held?{occurrence_id:held.id}:{};
    const concepts=Object.keys(app.concepts);
-   const refused=[
+   // Every write the notebook ever took: archive, edit, flag, focus, pause,
+   // feedback, its pace and the demo that seeded one.
+   const writes=[
+    ...Object.keys(app.goals).flatMap(id=>[[`/goals/${id}/pause`,{}],[`/goals/${id}/focus`,{}],[`/goals/${id}/archive`,{}]]),
+    ...concepts.flatMap(id=>[[`/concepts/${id}/archive`,{}],[`/concepts/${id}/feedback`,{text:'A synthetic note on what is unclear.'}]]),
+    ...Object.values(app.questions).flatMap(q=>[[`/questions/${q.id}/edit`,{content_version:String(q.versions.at(-1).version),prompt:'A synthetic rewording',answer:'synthetic',explanation:'synthetic'}],[`/questions/${q.id}/archive`,{}],[`/questions/${q.id}/dispute`,{reason:'synthetic',reset:'true'}]]),
+    ['/settings',{pace:'light'}],['/settings',{pace:'intense'}],['/__fixture',{}],
+   ];
+   const refused=[...writes,
     ['/review/intro',{...occurrence,known:'false'}],['/review/intro',{...occurrence,known:'true'}],
     ['/review/answer',{...occurrence,answer:held?.presentation.answer??'304'}],['/review/answer',{...occurrence,answer:'a nonexact synthetic answer'}],
     ['/review/reveal',occurrence],['/review/help',{...occurrence,return_to:'/export'}],['/review/retry',occurrence],['/review/next',occurrence],
@@ -308,10 +330,23 @@ test('every retired route answers 410 and leaves the notebook as stored',{timeou
     assert.equal(response.status,410,`${state}: POST ${path} answered ${response.status}`);
     has(text,RETIRED,`${state}: POST ${path} says why`);assertNoPractice(text,path);
    }
+   // A committed operation on a retired route is refused, not replayed.
+   const replays=Object.entries(app.operations).filter(([,receipt])=>receipt.path&&writes.some(([path])=>path===receipt.path)||/^\/review\/(intro|answer|reveal|next)$/.test(receipt.path??''));
+   if(state==='history-rich')assert.ok(replays.length>=10,'history-rich holds committed receipts on the retired routes');
+   for(const [operation_id,receipt] of replays){
+    const response=await s.post(receipt.path,{csrf:JSON.parse((await s.rows()).meta).csrf,operation_id,pace:'light'}),text=await response.text();
+    assert.equal(response.status,410,`${state}: a replay of ${receipt.path} answered ${response.status}`);has(text,RETIRED,`${state}: replay of ${receipt.path}`);
+   }
    // Self-grading keeps its own, older refusal.
    for(const path of ['/review/self','/review/override']){
     const response=await s.post(path,{...await s.envelope(),...occurrence,correct:'true'});
     assert.equal(response.status,410);has(await response.text(),/Self-grading is retired\./,`${state}: ${path} keeps its refusal`);
+   }
+   // The pace's API route answers 410, as /api/v1/create does, a replay included.
+   const settingsReceipt=Object.entries(app.operations).find(([,receipt])=>receipt.path==='/settings')?.[0];
+   for(const operation_id of [randomUUID(),...(settingsReceipt?[settingsReceipt]:[])]){
+    const response=await s.req('/api/v1/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Scry-Test-Origin':s.origin},body:JSON.stringify({csrf:JSON.parse((await s.rows()).meta).csrf,operation_id,pace:'light'})});
+    assert.equal(response.status,410,`${state}: POST /api/v1/settings`);has((await response.json()).error,RETIRED,`${state}: /api/v1/settings says why`);
    }
    // No API action ever existed for these; none is added to refuse them.
    for(const path of ['/api/v1/review/answer','/api/v1/review/next',`/api/v1/concepts/${concepts[0]}/practice`]){
