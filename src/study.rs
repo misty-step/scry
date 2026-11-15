@@ -42,13 +42,16 @@ impl Pace {
         }
     }
 }
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+/// The direction of a Card: forward asks for a pair's value from its key,
+/// reverse for its key from its value.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
     Forward,
+    Reverse,
 }
 /// The form a Prompt takes. New Prompts use `Read` for Source study and
-/// `SectionHeading`, `WholeTitle` or `MappingKey` for a Quiz. The first-letter
+/// `SectionHeading`, `WholeTitle`, `MappingKey` or `MappingValue` for a Quiz. The first-letter
 /// and previous-line forms, and a Card's own level, exist only in older records:
 /// they are replayed and shown, never used to choose what to present.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
@@ -63,6 +66,8 @@ pub enum Cue {
     WholeTitle,
     /// A supplied key, never an answer-bearing text cue.
     MappingKey,
+    /// A supplied value, asking for its key: a reverse Card's Quiz.
+    MappingValue,
 }
 impl Cue {
     fn assisted(self) -> bool {
@@ -77,6 +82,7 @@ impl Cue {
             Self::PreviousLine => Self::SectionHeading,
             Self::SectionHeading | Self::WholeTitle => Self::WholeTitle,
             Self::MappingKey => Self::MappingKey,
+            Self::MappingValue => Self::MappingValue,
         }
     }
     fn lapse(self) -> Self {
@@ -87,6 +93,7 @@ impl Cue {
             Self::SectionHeading => Self::PreviousLine,
             Self::WholeTitle => Self::SectionHeading,
             Self::MappingKey => Self::MappingKey,
+            Self::MappingValue => Self::MappingValue,
         }
     }
 }
@@ -160,6 +167,10 @@ pub struct Prompt {
     pub context: Option<String>,
     pub cue: String,
     pub assisted: bool,
+    /// The pair's author flagged it safety-bearing: the answer must state the
+    /// safe practice itself. Omitted otherwise.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub safety_bearing: bool,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -464,13 +475,13 @@ fn field<'a>(fields: &'a BTreeMap<String, String>, key: &str) -> &'a str {
 fn id(seed: &str, kind: &str) -> String {
     crate::persistence::sha256(format!("{seed}:study:{kind}").as_bytes())[..32].into()
 }
-fn initial(now: i64, kind: Kind) -> CardState {
+fn initial(now: i64, kind: Kind, direction: Direction) -> CardState {
     CardState {
         schedule: learning::new_card(now),
-        cue: if kind == Kind::KeyedMapping {
-            Cue::MappingKey
-        } else {
-            Cue::Read
+        cue: match (kind, direction) {
+            (Kind::KeyedMapping, Direction::Reverse) => Cue::MappingValue,
+            (Kind::KeyedMapping, Direction::Forward) => Cue::MappingKey,
+            _ => Cue::Read,
         },
         successes: 0,
     }
@@ -478,13 +489,47 @@ fn initial(now: i64, kind: Kind) -> CardState {
 /// Mapping Units retain their supplied key and delimiter in Library/history.
 /// Only their value is an expected answer; clients never supply this projection.
 pub(crate) fn expected_unit<'a>(version: &Version, unit: &'a crate::library::Unit) -> &'a str {
+    expected_answer(version, unit, Direction::Forward)
+}
+/// What a Card in this direction asks for: a pair's value forward, its key
+/// in reverse, and a text or list Unit itself.
+pub(crate) fn expected_answer<'a>(
+    version: &Version,
+    unit: &'a crate::library::Unit,
+    direction: Direction,
+) -> &'a str {
     if version.kind == Kind::KeyedMapping {
-        crate::library::mapping_pair(&unit.text)
-            .expect("validated mapping Unit")
-            .1
+        let (key, value) =
+            crate::library::mapping_pair(&unit.text).expect("validated mapping Unit");
+        if direction == Direction::Reverse {
+            key
+        } else {
+            value
+        }
     } else {
         &unit.text
     }
+}
+/// The direction a Prompt asks in. Only a reverse Card's Quiz shows a value.
+pub fn prompt_direction(app: &App, prompt: &Prompt, targets: &[Target]) -> Direction {
+    if prompt.cue_level == Cue::MappingValue {
+        return Direction::Reverse;
+    }
+    targets
+        .first()
+        .and_then(|t| app.practice.cards.get(&t.card_id))
+        .map_or(Direction::Forward, |c| c.direction)
+}
+/// The direction an Attempt answered in, from what it froze.
+pub fn attempt_direction(app: &App, attempt: &Attempt) -> Direction {
+    if attempt.prompt.cue_level == Cue::MappingValue {
+        return Direction::Reverse;
+    }
+    attempt
+        .card_ids()
+        .next()
+        .and_then(|id| app.practice.cards.get(id))
+        .map_or(Direction::Forward, |c| c.direction)
 }
 pub(crate) fn studyable(version: &Version) -> AppResult<()> {
     match version.kind {
@@ -526,13 +571,14 @@ fn response(entity: Option<String>, data: Value) -> MutationResult {
     }
 }
 const MAPPING_PROMPT_TITLE: &str = "Recall the matching value";
+const MAPPING_REVERSE_TITLE: &str = "Recall the matching key";
 /// Supplied metadata may contain the answer. Preserve it in Library/history,
 /// but never use it as an extra mapping cue, including restored held Prompts.
 pub(crate) fn visible_prompt_title(prompt: &Prompt) -> &str {
-    if prompt.cue_level == Cue::MappingKey {
-        MAPPING_PROMPT_TITLE
-    } else {
-        &prompt.title
+    match prompt.cue_level {
+        Cue::MappingKey => MAPPING_PROMPT_TITLE,
+        Cue::MappingValue => MAPPING_REVERSE_TITLE,
+        _ => &prompt.title,
     }
 }
 fn held(app: &App) -> AppResult<Value> {
@@ -554,8 +600,36 @@ pub struct MappingFeedback {
     pub kind: &'static str,
     pub key: String,
     pub expected: String,
+    /// Forward: the key whose value the answer is.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub answered_key: Option<String>,
+    /// Reverse: the value whose key the answer is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answered_value: Option<String>,
+    /// Present only for a reverse Card.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction: Option<Direction>,
+}
+/// The other pair a mapping answer belongs to, as (key, value): in the
+/// forward direction the pair whose value it is, in reverse the pair whose key.
+pub(crate) fn other_pair<'a>(
+    version: &'a Version,
+    unit_id: &str,
+    direction: Direction,
+    answer: &str,
+) -> Option<(&'a str, &'a str)> {
+    let answer = grading::mapping_words(answer);
+    units(version)
+        .into_iter()
+        .filter(|u| u.id != unit_id)
+        .filter_map(|u| crate::library::mapping_pair(&u.text))
+        .find(|(key, value)| {
+            grading::mapping_words(if direction == Direction::Reverse {
+                key
+            } else {
+                value
+            }) == answer
+        })
 }
 pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback> {
     let version = &app.library.versions[&attempt.version_id];
@@ -563,25 +637,25 @@ pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback>
         return None;
     }
     let unit = units(version)[attempt.first_unit_index()];
-    let (key, expected) = crate::library::mapping_pair(&unit.text)?;
-    let answer = grading::mapping_words(&attempt.raw_answer);
+    let direction = attempt_direction(app, attempt);
+    let (key, _) = crate::library::mapping_pair(&unit.text)?;
+    let expected = expected_answer(version, unit, direction);
     let verdict = attempt.verdict();
-    let answered_key = (verdict == Some(Verdict::Again))
-        .then(|| {
-            units(version)
-                .into_iter()
-                .filter(|u| u.id != unit.id)
-                .filter_map(|u| crate::library::mapping_pair(&u.text))
-                .find(|(_, value)| grading::mapping_words(value) == answer)
-                .map(|(key, _)| key.to_string())
-        })
+    let other = (verdict == Some(Verdict::Again))
+        .then(|| other_pair(version, &unit.id, direction, &attempt.raw_answer))
         .flatten();
+    let (answered_key, answered_value) = match (other, direction) {
+        (Some((key, _)), Direction::Forward) => (Some(key.to_string()), None),
+        (Some((_, value)), Direction::Reverse) => (None, Some(value.to_string())),
+        (None, _) => (None, None),
+    };
+    let wrong_pair = other.is_some();
     let kind = if verdict == Some(Verdict::Good) {
         "correct"
     } else if verdict.is_none() {
         // Jev has not decided: the local comparison alone names no outcome.
         "ungraded"
-    } else if answered_key.is_some() {
+    } else if wrong_pair {
         "wrong_key"
     } else if attempt
         .grade
@@ -598,6 +672,8 @@ pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback>
         key: key.into(),
         expected: expected.into(),
         answered_key,
+        answered_value,
+        direction: (direction == Direction::Reverse).then_some(direction),
     })
 }
 /// Resolve immutable response references only after the runtime has committed.
@@ -656,7 +732,9 @@ pub(crate) fn check_replay(app: &App, result: &MutationResult) -> AppResult<()> 
             serde_json::from_value(value.clone()).map_err(|_| AppError::conflict())?;
         // Do not rewrite a historical receipt merely to make it replayable.
         // A pre-fix supplied mapping title is unsafe while any recall is protected.
-        if prompt.cue_level == Cue::MappingKey && prompt.title != MAPPING_PROMPT_TITLE {
+        if matches!(prompt.cue_level, Cue::MappingKey | Cue::MappingValue)
+            && prompt.title != visible_prompt_title(&prompt)
+        {
             return Err(AppError::conflict());
         }
         let current = &app.practice.current.as_ref().unwrap().prompt;
@@ -905,6 +983,10 @@ fn make_prompt(
             .expect("validated mapping Unit")
             .0
             .into(),
+        Cue::MappingValue => crate::library::mapping_pair(text)
+            .expect("validated mapping Unit")
+            .1
+            .into(),
     };
     Presentation {
         phase: None,
@@ -913,10 +995,10 @@ fn make_prompt(
             study_id: study.id.clone(),
             version_id: v.id.clone(),
             version_hash: v.normalized_hash.clone(),
-            title: if v.kind == Kind::KeyedMapping {
-                MAPPING_PROMPT_TITLE.into()
-            } else {
-                app.library.works[&v.work_id].title.clone()
+            title: match (v.kind, cards[0].direction) {
+                (Kind::KeyedMapping, Direction::Reverse) => MAPPING_REVERSE_TITLE.into(),
+                (Kind::KeyedMapping, Direction::Forward) => MAPPING_PROMPT_TITLE.into(),
+                _ => app.library.works[&v.work_id].title.clone(),
             },
             scope,
             unit_ids: cards.iter().map(|c| c.unit_id.clone()).collect(),
@@ -924,6 +1006,7 @@ fn make_prompt(
             context,
             cue: rendered,
             assisted: cue.assisted(),
+            safety_bearing: v.kind == Kind::KeyedMapping && v.safety_bearing.contains(&first),
         },
         targets: cards.iter().map(|c| target(c, cue)).collect(),
         created_ms: now,
@@ -960,7 +1043,7 @@ fn present(
     let cue = if source {
         Cue::Read
     } else {
-        quiz_cue(&scope, kind)
+        quiz_cue(&scope, kind, cards[0].direction)
     };
     let mut p = make_prompt(app, study, cards, scope, cue, now, seed);
     p.phase = Some(if source {
@@ -1043,8 +1126,10 @@ fn study_start(
     result.entity_id = Some(sid);
     Ok(result)
 }
-fn quiz_cue(scope: &Scope, kind: Kind) -> Cue {
-    if kind == Kind::KeyedMapping {
+fn quiz_cue(scope: &Scope, kind: Kind, direction: Direction) -> Cue {
+    if kind == Kind::KeyedMapping && direction == Direction::Reverse {
+        Cue::MappingValue
+    } else if kind == Kind::KeyedMapping {
         Cue::MappingKey
     } else if matches!(scope, Scope::Section { .. }) {
         Cue::SectionHeading
@@ -1076,17 +1161,18 @@ fn quiz(
     }
     let study = &app.practice.studies[&old.prompt.study_id];
     let kind = app.library.versions[&study.version_id].kind;
-    let cards = old
+    let cards: Vec<&Card> = old
         .targets
         .iter()
         .map(|t| &app.practice.cards[&t.card_id])
         .collect();
+    let direction = cards[0].direction;
     let mut p = make_prompt(
         app,
         study,
         cards,
         old.prompt.scope.clone(),
-        quiz_cue(&old.prompt.scope, kind),
+        quiz_cue(&old.prompt.scope, kind, direction),
         now,
         seed,
     );
@@ -1098,34 +1184,45 @@ fn quiz(
     Ok(response(None, held(app)?))
 }
 
+/// Introduce one Unit: its forward Card and, where its Version declares both
+/// directions, its reverse Card with it. The Unit counts once against Pace.
 fn introduce_card(app: &mut App, study: &Study, index: usize, now: i64, seed: &str) -> String {
     let version = &app.library.versions[&study.version_id];
     let unit = units(version)[index];
-    let cid = id(seed, "card");
-    app.practice.cards.insert(
-        cid.clone(),
-        Card {
-            id: cid.clone(),
-            study_id: study.id.clone(),
-            unit_id: unit.id.clone(),
-            unit_index: index,
-            direction: Direction::Forward,
-            introduced_ms: now,
-            revision: 0,
-            state: initial(now, version.kind),
-        },
-    );
-    cid
+    let mut directions = vec![(Direction::Forward, id(seed, "card"))];
+    if version.kind == Kind::KeyedMapping
+        && version.direction == crate::library::MappingDirection::Both
+    {
+        directions.push((Direction::Reverse, id(seed, "reverse-card")));
+    }
+    let (kind, unit_id) = (version.kind, unit.id.clone());
+    for (direction, cid) in &directions {
+        app.practice.cards.insert(
+            cid.clone(),
+            Card {
+                id: cid.clone(),
+                study_id: study.id.clone(),
+                unit_id: unit_id.clone(),
+                unit_index: index,
+                direction: *direction,
+                introduced_ms: now,
+                revision: 0,
+                state: initial(now, kind, *direction),
+            },
+        );
+    }
+    directions.swap_remove(0).1
 }
 
 fn whole_list(app: &App, study: &Study) -> bool {
     app.library.versions[&study.version_id].kind == Kind::OrderedList
 }
+/// How many Units this Study has introduced: one forward Card each.
 fn introduced(app: &App, study: &Study) -> usize {
     app.practice
         .cards
         .values()
-        .filter(|c| c.study_id == study.id)
+        .filter(|c| c.study_id == study.id && c.direction == Direction::Forward)
         .count()
 }
 /// A list begun item by item under an older record is recalled whole from now
@@ -1257,7 +1354,11 @@ fn continuous_limit(app: &App, s: &Study, now: i64) -> bool {
             .practice
             .cards
             .values()
-            .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
+            .filter(|c| {
+                c.study_id == s.id
+                    && c.direction == Direction::Forward
+                    && c.introduced_ms > now.saturating_sub(DAY_MS)
+            })
             .count()
             < s.pace.limit()
 }
@@ -1319,31 +1420,41 @@ fn continuous_target_eligible(app: &App, study: &Study, index: usize) -> bool {
     continuous_scope_eligible(app, v, start, end, whole)
 }
 
-fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
+/// `avoid` holds the other direction of the pair just answered: its answer
+/// was on screen, so it is served only when nothing else is eligible.
+fn continuous_choice(app: &App, now: i64, avoid: &BTreeSet<String>) -> Option<ContinuousChoice> {
     let mut last = BTreeMap::<&str, u64>::new();
     for a in app.practice.attempts.values().filter(|a| !a.disclosure) {
         let served = last.entry(&a.prompt.study_id).or_default();
         *served = (*served).max(a.sequence);
     }
     let waiting = awaiting_verdict(app);
-    if let Some(c) = mixed_cards(app, now)
+    let (due, avoided): (Vec<&Card>, Vec<&Card>) = mixed_cards(app, now)
         .into_iter()
         .filter(|c| {
             !waiting.contains(&c.id)
                 && continuous_target_eligible(app, &app.practice.studies[&c.study_id], c.unit_index)
         })
-        .min_by_key(|c| {
-            (
-                last.get(c.study_id.as_str()).copied().unwrap_or(0),
-                c.state.schedule.due_ms,
-                app.practice.studies[&c.study_id].created_ms,
-                &c.study_id,
-                c.unit_index,
-            )
-        })
-    {
-        return Some(ContinuousChoice::Card(c.id.clone()));
+        .partition(|c| !avoid.contains(&c.id));
+    let first_due = |cards: Vec<&Card>| {
+        cards
+            .into_iter()
+            .min_by_key(|c| {
+                (
+                    last.get(c.study_id.as_str()).copied().unwrap_or(0),
+                    c.state.schedule.due_ms,
+                    app.practice.studies[&c.study_id].created_ms,
+                    &c.study_id,
+                    c.unit_index,
+                    c.direction,
+                )
+            })
+            .map(|c| ContinuousChoice::Card(c.id.clone()))
+    };
+    if let Some(choice) = first_due(due) {
+        return Some(choice);
     }
+    let fallback = first_due(avoided);
     let catalog = crate::lessons::catalog();
     let mut choices: Vec<(u64, String, ContinuousChoice)> = Vec::new();
     for study in app
@@ -1362,9 +1473,10 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
                 c.study_id == study.id
                     && c.state.schedule.last_review_ms.is_none()
                     && !waiting.contains(&c.id)
+                    && !avoid.contains(&c.id)
                     && continuous_target_eligible(app, study, c.unit_index)
             })
-            .min_by_key(|c| c.unit_index);
+            .min_by_key(|c| (c.unit_index, c.direction));
         let choice = if let Some(c) = unfinished {
             Some(ContinuousChoice::Card(c.id.clone()))
         } else if continuous_limit(app, study, now)
@@ -1486,6 +1598,39 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         .into_iter()
         .min_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)))
         .map(|(_, _, c)| c)
+        .or(fallback)
+        .or_else(|| {
+            // An unfinished Card of the pair just answered, when nothing else is.
+            app.practice
+                .cards
+                .values()
+                .filter(|c| {
+                    avoid.contains(&c.id)
+                        && c.state.schedule.last_review_ms.is_none()
+                        && !waiting.contains(&c.id)
+                        && app.practice.studies[&c.study_id].status == Status::Active
+                        && study_reviewable(app, &app.practice.studies[&c.study_id])
+                })
+                .min_by_key(|c| (c.unit_index, c.direction))
+                .map(|c| ContinuousChoice::Card(c.id.clone()))
+        })
+}
+/// The other directions of the mapping pair a held result answered.
+fn answered_siblings(app: &App, held: Option<&Presentation>) -> BTreeSet<String> {
+    let Some(p) = held.filter(|p| p.attempt_id.is_some() && p.targets.len() == 1) else {
+        return BTreeSet::new();
+    };
+    let answered = &p.targets[0].card_id;
+    app.practice
+        .cards
+        .values()
+        .filter(|c| {
+            &c.id != answered
+                && c.study_id == p.prompt.study_id
+                && p.prompt.unit_ids.first() == Some(&c.unit_id)
+        })
+        .map(|c| c.id.clone())
+        .collect()
 }
 
 /// The Version a starter, lesson or NATO entry resolves to; see
@@ -1519,7 +1664,7 @@ fn starter_studied(app: &App, input: &crate::library::VersionInput) -> bool {
 }
 /// Home-only subject preview. Never render editable metadata as a recall cue.
 pub fn continuous_preview(app: &App, now: i64) -> Option<String> {
-    let vid = match continuous_choice(app, now)? {
+    let vid = match continuous_choice(app, now, &BTreeSet::new())? {
         ContinuousChoice::Card(cid) => app.practice.studies[&app.practice.cards[&cid].study_id]
             .version_id
             .clone(),
@@ -1578,9 +1723,36 @@ fn continuous_present(
         }
     };
     let card = &app.practice.cards[&cid];
+    if card.direction == Direction::Reverse {
+        present_card(app, &cid, now, seed)?;
+        return Ok(());
+    }
     let (sid, index) = (card.study_id.clone(), card.unit_index);
     lesson_present(app, &sid, index, false, now, seed)?;
     Ok(())
+}
+/// Present one Card on its own: a mapping pair in that Card's direction.
+fn present_card(app: &mut App, cid: &str, now: i64, seed: &str) -> AppResult<MutationResult> {
+    let card = app
+        .practice
+        .cards
+        .get(cid)
+        .ok_or_else(AppError::conflict)?
+        .clone();
+    let study = app.practice.studies[&card.study_id].clone();
+    let p = present(
+        app,
+        &study,
+        vec![&card],
+        Scope::Unit {
+            unit_id: card.unit_id.clone(),
+            position: card.unit_index + 1,
+        },
+        now,
+        seed,
+    );
+    hold(app, p)?;
+    Ok(response(None, held(app)?))
 }
 
 fn mixed_next(
@@ -1623,9 +1795,10 @@ fn mixed_next(
     } else if !after.is_empty() || !leave.is_empty() {
         return Err(AppError::conflict());
     }
+    let avoid = answered_siblings(app, app.practice.current.as_ref());
     let leaving = app.practice.current.take();
     app.practice.mixed_review = true;
-    if let Some(choice) = continuous_choice(app, now) {
+    if let Some(choice) = continuous_choice(app, now, &avoid) {
         continuous_present(app, choice, now, seed)?;
     }
     if app.practice.current.is_none() {
@@ -1648,7 +1821,11 @@ fn can_introduce(app: &App, s: &Study, now: i64) -> bool {
                 .practice
                 .cards
                 .values()
-                .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
+                .filter(|c| {
+                    c.study_id == s.id
+                        && c.direction == Direction::Forward
+                        && c.introduced_ms > now.saturating_sub(DAY_MS)
+                })
                 .count()
                 < if s.nato_all_letters {
                     26
@@ -1731,6 +1908,11 @@ fn next(
             && field(fields, "recite").is_empty())
         .then(|| p.targets[0].card_id.clone())
     });
+    let siblings = if field(fields, "card_id").is_empty() && field(fields, "recite").is_empty() {
+        answered_siblings(app, app.practice.current.as_ref())
+    } else {
+        BTreeSet::new()
+    };
     let leaving = app.practice.current.take();
     let waiting = awaiting_verdict(app);
     let sid = field(fields, "study_id");
@@ -1752,7 +1934,7 @@ fn next(
         if v.kind == Kind::KeyedMapping {
             return Err(AppError::new(
                 422,
-                "Mapping practice currently supports one key at a time, forward only.",
+                "A mapping is practised one pair at a time, never recited as a whole set.",
             ));
         }
         let (scope, scoped) = match recite {
@@ -1814,6 +1996,7 @@ fn next(
                         && !list_waits(app, &app.practice.studies[&c.study_id])
                         && c.state.schedule.due_ms <= now
                         && nato_previous.as_ref() != Some(&c.id)
+                        && !siblings.contains(&c.id)
                         && !waiting.contains(&c.id)
                 })
                 .min_by_key(|c| {
@@ -1822,6 +2005,7 @@ fn next(
                         app.practice.studies[&c.study_id].created_ms,
                         &c.study_id,
                         c.unit_index,
+                        c.direction,
                     )
                 })
                 .map(|c| c.id.clone())
@@ -1847,20 +2031,32 @@ fn next(
                 }
             })
         };
-        // If no other due/new work exists, a due missed letter may be retried.
+        // If no other due/new work exists, a due missed letter may be retried,
+        // and the other direction of the pair just answered may be asked.
         let chosen = chosen.or_else(|| {
-            nato_previous.filter(|id| {
-                let c = &app.practice.cards[id];
-                (sid.is_empty() || c.study_id == sid)
-                    && app.practice.studies[&c.study_id].status != Status::Dropped
-                    && c.state.schedule.due_ms <= now
-                    && !waiting.contains(id)
-            })
+            nato_previous
+                .into_iter()
+                .chain(siblings)
+                .filter(|id| {
+                    let c = &app.practice.cards[id];
+                    (sid.is_empty() || c.study_id == sid)
+                        && app.practice.studies[&c.study_id].status != Status::Dropped
+                        && c.state.schedule.due_ms <= now
+                        && !waiting.contains(id)
+                })
+                .min_by_key(|id| {
+                    let c = &app.practice.cards[id];
+                    (c.state.schedule.due_ms, c.direction)
+                })
         });
         if let Some(cid) = chosen {
             let c = &app.practice.cards[&cid];
-            let (study, index) = (c.study_id.clone(), c.unit_index);
-            lesson_present(app, &study, index, false, now, seed)?;
+            if c.direction == Direction::Reverse {
+                present_card(app, &cid, now, seed)?;
+            } else {
+                let (study, index) = (c.study_id.clone(), c.unit_index);
+                lesson_present(app, &study, index, false, now, seed)?;
+            }
         }
     }
     if app.practice.current.is_none() {
@@ -1895,9 +2091,10 @@ fn grade_words(version: &Version, text: &str) -> Vec<String> {
 fn prompt_words(app: &App, p: &Presentation) -> usize {
     let v = &app.library.versions[&p.prompt.version_id];
     let all = units(v);
+    let direction = prompt_direction(app, &p.prompt, &p.targets);
     p.targets
         .iter()
-        .map(|t| grade_words(v, expected_unit(v, all[t.unit_index])).len())
+        .map(|t| grade_words(v, expected_answer(v, all[t.unit_index], direction)).len())
         .sum()
 }
 fn matching_siblings<'a>(
@@ -1955,6 +2152,17 @@ fn fits_grading_capacity(
             .all(|(_, text)| fits(grading::normalized_words(text).len()))
 }
 fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> AppResult<Grade> {
+    grade_under(app, p, answer, include_siblings, true)
+}
+/// The local grade, with the mapping year rule where `year` allows it. New
+/// answers allow it; replay follows the policy the Attempt recorded.
+fn grade_under(
+    app: &App,
+    p: &Presentation,
+    answer: &str,
+    include_siblings: bool,
+    year: bool,
+) -> AppResult<Grade> {
     let v = &app.library.versions[&p.prompt.version_id];
     let all = units(v);
     if v.kind == Kind::OrderedList {
@@ -1962,7 +2170,11 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
         let end = p.targets.last().unwrap().unit_index + 1;
         return crate::ordered::grade(v, start..end, answer);
     }
-    let texts = all.iter().map(|u| expected_unit(v, u)).collect::<Vec<_>>();
+    let direction = prompt_direction(app, &p.prompt, &p.targets);
+    let texts = all
+        .iter()
+        .map(|u| expected_answer(v, u, direction))
+        .collect::<Vec<_>>();
     let start = p.targets[0].unit_index;
     let end = p.targets.last().unwrap().unit_index + 1;
     let siblings = matching_siblings(app, p, include_siblings);
@@ -1991,14 +2203,21 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
         spelling_strict: v.spelling_strict,
     };
     let mut result = if v.kind == Kind::KeyedMapping {
-        grading::grade_mapping(version, start..end, answer)
+        // A safety-bearing answer states the practice itself, never a number
+        // with an era added; its question is never a year question.
+        if year && !v.safety_bearing.contains(&start) {
+            grading::grade_mapping_year(version, start..end, answer)
+        } else {
+            grading::grade_mapping(version, start..end, answer)
+        }
     } else {
         grading::grade(version, start..end, answer, &refs)
     }
     .map_err(|e| AppError::new(422, e.to_string()))?;
     // exact-v2 spans are relative to its input. Restore expected spans to the
     // immutable complete Unit; typed spans remain relative to the raw answer.
-    if v.kind == Kind::KeyedMapping {
+    // A reverse Card's expected key already starts the Unit.
+    if v.kind == Kind::KeyedMapping && direction == Direction::Forward {
         for diff in &mut result.diff {
             use grading::Change;
             let offset = crate::library::mapping_pair(&all[diff.unit_index].text)
@@ -2199,7 +2418,9 @@ fn lesson_present(
             .practice
             .cards
             .values()
-            .find(|c| c.study_id == sid && c.unit_index == index)
+            .find(|c| {
+                c.study_id == sid && c.unit_index == index && c.direction == Direction::Forward
+            })
             .ok_or_else(AppError::conflict)?;
         present(
             app,
@@ -2417,7 +2638,8 @@ fn lesson_next(
 fn draft_text_valid(prompt: &Prompt, answer: &str) -> bool {
     answer.len() <= 32768
         && !answer.contains(['\r', '\0'])
-        && (prompt.cue_level != Cue::MappingKey || !answer.contains('\n'))
+        && (!matches!(prompt.cue_level, Cue::MappingKey | Cue::MappingValue)
+            || !answer.contains('\n'))
 }
 
 pub fn mutate(
@@ -2501,12 +2723,25 @@ pub(crate) fn recall_input(app: &App, prompt: &Prompt, answer: &str) -> AppResul
         Kind::KeyedMapping => {
             let (key, value) =
                 crate::library::mapping_pair(&unit.text).ok_or_else(AppError::conflict)?;
-            (
-                RecallKind::Mapping,
-                key.to_string(),
-                value.to_string(),
-                vec![],
-            )
+            if prompt.cue_level == Cue::MappingValue {
+                (
+                    RecallKind::MappingReverse,
+                    value.to_string(),
+                    key.to_string(),
+                    vec![],
+                )
+            } else {
+                (
+                    if v.safety_bearing.contains(&first) {
+                        RecallKind::MappingSafety
+                    } else {
+                        RecallKind::Mapping
+                    },
+                    key.to_string(),
+                    value.to_string(),
+                    vec![],
+                )
+            }
         }
         Kind::OrderedList => (
             RecallKind::OrderedList,
@@ -2558,10 +2793,29 @@ pub(crate) fn recall_input(app: &App, prompt: &Prompt, answer: &str) -> AppResul
 /// Spelling-strict content any other answer is Again; an empty answer is a
 /// miss; and an answer too large to send is graded by the comparison alone.
 fn judgeable(app: &App, prompt: &Prompt, answer: &str, grade: &Grade) -> bool {
+    let version = &app.library.versions[&prompt.version_id];
     grade.verdict == Verdict::Again
-        && !app.library.versions[&prompt.version_id].spelling_strict
+        && !version.spelling_strict
         && !answer.trim().is_empty()
-        && recall_input(app, prompt, answer).is_ok_and(|input| input.bytes() <= RECALL_LIMIT)
+        // Exactly another pair's value, or in reverse its key, is the wrong
+        // key: Scry's own Again, never sent to be judged.
+        && !(version.kind == Kind::KeyedMapping
+            && prompt.unit_ids.first().is_some_and(|unit| {
+                let direction = if prompt.cue_level == Cue::MappingValue {
+                    Direction::Reverse
+                } else {
+                    Direction::Forward
+                };
+                other_pair(version, unit, direction, answer).is_some()
+            }))
+        && recall_input(app, prompt, answer).is_ok_and(|input| {
+            input.bytes() <= RECALL_LIMIT
+                // A year is graded by Scry as an exact number, and one before
+                // the common era as written: a year answer is never judged.
+                && !(matches!(input.kind, RecallKind::Mapping | RecallKind::MappingReverse)
+                    && grading::mapping_year_shaped(&input.expected_answer)
+                    && grading::mapping_year_shaped(answer))
+        })
 }
 /// Give an Attempt the Verdict Jev decided, once. Each Card is scheduled only
 /// if no later Attempt has touched it: the pending Attempt took one revision
@@ -3369,17 +3623,34 @@ pub fn validate(app: &App) -> AppResult<()> {
         {
             return Err(fail());
         }
-        let mut cards = p
+        let (mut cards, reverse): (Vec<&Card>, Vec<&Card>) = p
             .cards
             .values()
             .filter(|c| &c.study_id == sid)
-            .collect::<Vec<_>>();
+            .partition(|c| c.direction == Direction::Forward);
         cards.sort_by_key(|c| c.unit_index);
         let all = units(v);
         for (i, c) in cards.iter().enumerate() {
             if c.unit_index != i
                 || all.get(i).is_none_or(|u| u.id != c.unit_id)
                 || c.introduced_ms < s.created_ms
+            {
+                return Err(fail());
+            }
+        }
+        // A Version practised both ways introduces each Unit's reverse Card
+        // with its forward Card; any other Version has none.
+        let both =
+            v.kind == Kind::KeyedMapping && v.direction == crate::library::MappingDirection::Both;
+        let mut paired = BTreeSet::new();
+        if (both && reverse.len() != cards.len()) || (!both && !reverse.is_empty()) {
+            return Err(fail());
+        }
+        for c in reverse {
+            if cards
+                .get(c.unit_index)
+                .is_none_or(|f| f.unit_id != c.unit_id || f.introduced_ms != c.introduced_ms)
+                || !paired.insert(c.unit_index)
             {
                 return Err(fail());
             }
@@ -3396,6 +3667,7 @@ pub fn validate(app: &App) -> AppResult<()> {
                 initial(
                     c.introduced_ms,
                     app.library.versions[&p.studies[&c.study_id].version_id].kind,
+                    c.direction,
                 ),
                 0u64,
             ),
@@ -3468,7 +3740,13 @@ pub fn validate(app: &App) -> AppResult<()> {
             revealed: a.revealed,
             attempt_id: Some(aid.clone()),
         };
-        let actual = grade(app, &pres, &a.raw_answer, false)?;
+        let actual = grade_under(
+            app,
+            &pres,
+            &a.raw_answer,
+            false,
+            a.grade.authority.grader_version == grading::MAPPING_YEAR_GRADER_VERSION,
+        )?;
         let mut expected = a.grade.clone();
         expected.wrong_version_hint = actual.wrong_version_hint.clone();
         if expected != actual
@@ -3802,10 +4080,13 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
         || p.version_hash != v.normalized_hash
         || targets.is_empty()
         || p.assisted != p.cue_level.assisted()
-        // A pair is quizzed from its key and studied from its supplied Unit.
+        // A pair is quizzed from its key, or a reverse Card from its value,
+        // and studied from its supplied Unit.
         || match v.kind {
-            Kind::KeyedMapping => !matches!(p.cue_level, Cue::MappingKey | Cue::Read),
-            _ => p.cue_level == Cue::MappingKey,
+            Kind::KeyedMapping => {
+                !matches!(p.cue_level, Cue::MappingKey | Cue::MappingValue | Cue::Read)
+            }
+            _ => matches!(p.cue_level, Cue::MappingKey | Cue::MappingValue),
         }
         || p.unit_ids
             != targets
@@ -3821,6 +4102,11 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
             || c.unit_id != t.unit_id
             || c.unit_index != t.unit_index
             || t.cue != p.cue_level
+            || match p.cue_level {
+                Cue::MappingKey => c.direction != Direction::Forward,
+                Cue::MappingValue => c.direction != Direction::Reverse,
+                _ => false,
+            }
             || all.get(t.unit_index).is_none_or(|u| u.id != t.unit_id)
             || (i > 0 && t.unit_index != targets[i - 1].unit_index + 1)
         {
@@ -3839,6 +4125,7 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
     };
     if &p.cue != expected_cue
         || p.context != rendered.prompt.context
+        || p.safety_bearing != rendered.prompt.safety_bearing
         || p.title.trim().is_empty()
         || p.title.len() > 240
     {

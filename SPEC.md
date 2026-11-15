@@ -432,11 +432,20 @@ horizontal clipping, including with long questions and explanations.
 ### Keyed mappings
 
 - A mapping is practised one pair at a time, in each direction its Version
-  declares. A forward Prompt shows the key alone.
-- A value that belongs to another pair is identified as the wrong key, never
-  accepted as a near match.
-- A year is accepted with or without AD or CE and graded as an exact number,
-  unless the Version declares a range.
+  declares. A forward Prompt shows the key alone; a reverse Prompt shows the
+  value alone. A mapping practised in both directions has a different value
+  for every pair.
+- A pair is one Unit against its Study's Pace, whatever its directions. Both
+  directions are introduced together and each keeps its own Card. The other
+  direction of the pair just answered waits while anything else is eligible.
+- An answer that is exactly another pair's value, or another pair's key in
+  reverse, is Again and is identified as the wrong key. It is never accepted
+  as a near match and never sent to be judged.
+- A value that is a year of one to four digits is accepted with or without
+  AD or CE and graded by Scry as an exact number. A year before the common
+  era is graded as written.
+- A mapping with a safety-bearing pair is practised forward only, so the
+  safety condition stays in the question.
 - A mapping is never recited as a whole set.
 
 ### NATO alphabet

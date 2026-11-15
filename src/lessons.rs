@@ -21,6 +21,8 @@ impl Lesson {
             && input.text == version.text
             && input.spelling_strict == version.spelling_strict
             && input.ordered_aliases == version.ordered_aliases
+            && input.direction == version.direction
+            && input.safety_bearing == version.safety_bearing
             && input.sections.as_ref().is_some_and(|sections| {
                 sections.len() == version.sections.len()
                     && sections.iter().zip(&version.sections).all(|(a, b)| {

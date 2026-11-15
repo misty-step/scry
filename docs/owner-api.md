@@ -136,7 +136,10 @@ its title or alias. A missing, repeated or self-naming Work refuses the whole
 add (422), as does a part-of that would make a Work part of itself. A Relation
 appears on both Works it links; one that already exists is not repeated.
 `--kind` accepts `text`, `ordered_list`, and `keyed_mapping`. Authored ordered-list
-lessons and supplied forward mappings are described below. Text files must be UTF-8, at most 256 KiB.
+lessons and supplied keyed mappings are described below. For `keyed_mapping`,
+`--direction forward|both` and `--safety-bearing PAIR_POSITION` (zero-based,
+repeatable) declare what the mapping manifest's `direction` and pair
+`safety_bearing` declare. Text files must be UTF-8, at most 256 KiB.
 Each Version also allows at most 4,096 Sections and 8,192 Units in total,
 including caller-supplied Sections. Default Sections follow lines, with clauses
 as Units, so text below the byte limit can still exceed either count limit.
@@ -251,9 +254,15 @@ contains all 26 official words and source links. Manifest optional fields are
 `name`, `aliases`, `context`, `sources`, `rights`, `provenance`, `relations`
 and `spelling_strict` (defaults to true), with the same meaning as for a
 Version draft. Rights default to private-only. Sources are retained, not fetched.
-The only accepted direction is the explicitly declared `forward`. Unknown
-fields (including generation, grades and media) are refused rather than silently
-ignored. The CLI reads at most 1 MiB of manifest JSON; the stored Version retains
+`direction` is required: `forward` asks each pair from its key, and `both`
+also asks it in reverse, showing the value and asking for its key. With `both`,
+values must be unique too (each value is then a question), and no pair may be
+safety-bearing. A pair may carry `"safety_bearing": true`, its author's flag
+that the value is a safe practice the answer must state itself; keep the
+critical safety condition in the key. Unknown fields (including generation,
+grades and media) are refused rather than silently ignored. A raw
+`keyed_mapping` Version draft declares the same with `direction` and
+`safety_bearing` (zero-based pair positions); other Kinds refuse both. The CLI reads at most 1 MiB of manifest JSON; the stored Version retains
 the existing 256 KiB text and 8,192 Unit bounds.
 
 **Bundled starter, explicit action only.** Library offers **Add NATO alphabet**,
@@ -293,6 +302,45 @@ Version. Existing historical metadata-only mappings remain readable/exportable;
 malformed pair content cannot start a Study.
 
 Forward practice presents the key and grades only the value on the server.
+Each pair has one Card per declared direction, introduced together: the Pace
+counts the pair once, as one Unit. A reverse Card has its own Source study,
+then a Quiz whose Prompt has `cue_level: "mapping_value"`, the value as `cue`
+and the title `Recall the matching key`; its answer is graded against the key.
+The other direction of the pair just answered is served only when nothing else
+is eligible. A Prompt for a safety-bearing pair carries `safety_bearing: true`.
+After an answer, `mapping_feedback` names `kind` (`correct`, `wrong_key`,
+`spelling`, `mismatch` or `ungraded`), `key` and `expected`. An answer that
+is another pair's value is `wrong_key` with `answered_key`; in reverse, another
+pair's key is `wrong_key` with `answered_value` and `direction: "reverse"`.
+Such an answer is the wrong key, decided by Scry at once whether paid judgment
+is on or off: Verdict Again under `exact-v2`, the Card scheduled from it like any
+other local miss, and no Check, reservation or request.
+
+A value that is a year (one to four digits, alone or with AD or CE before or
+after, with or without stops) accepts the same digits with or without AD or CE.
+A year as typed is one to four digits, alone or with one AD, CE, BC or BCE
+marker before or after them, and nothing else but whitespace and stops inside
+or directly after the marker (`1066`, `AD 1066`, `1066 c.e.`, `44 B.C.`). That
+one definition decides both whether the year rule may grade a text and whether
+an answer is graded by Scry alone. A year is graded by Scry as an exact number,
+and a year before the common era (`44 BC`) is graded as written: `44` or
+`44 BCE` is a miss for it. An answer that is a year as typed, to a value that
+is one, is never sent to Jev, whether paid judgment is on or off. Anything else
+(`1066.`, `1066,`, `(1066)`, `-1066`, `in 1066`, `1066 to 1087`) is an
+ordinary answer, and a value such as `1066.` is an ordinary value: the
+ordinary comparison decides, and with paid judgment on a mismatch to content
+that is not Spelling-strict is judged. The year rule is recorded only where it turns a miss
+into Good: that Attempt records grader version
+`1;unicode=17.0.0;mapping=1;year=1` with a Diff comparing the numbers. Every
+other mapping Attempt, a year miss included, is stored exactly as `;mapping=1`
+stores it, and replay regrades each under the version it recorded. Neither the
+year rule nor its never-sent guarantee applies to a safety-bearing pair: there
+`1990 AD` for `1990` is an ordinary mismatch, and with paid judgment on it is
+judged. With a Version declared `both`, values that are the same year (`1066`
+and `AD 1066`) count as the same value and are refused. With paid judgment on, Jev judges
+a safety-bearing pair against an objective that asks for the same safe
+practice and rejects a dangerous alternative, a negation, a reversal, an
+incomplete practice or added unsafe words.
 Supplied titles can contain answers, so active mapping Prompts use a neutral
 label in JSON and HTML; the original metadata remains in Library/history.
 Held restored Prompts are displayed safely without rewriting their saved title,
@@ -304,8 +352,9 @@ agree, but `Xray` and `a.l.f.a` are not accepted as `X-ray` or `Alfa`.
 Clients submit an answer, never a grade. Native reveal records assistance before
 showing the value; a subsequently copied answer cannot advance the schedule as
 unaided recall. Mapping verdict corrections/self-rating are refused. Historical
-text Corrections remain preserved under their original contract. Reverse/year/
-whole-set exercises, media and MCP are not provided by this mapping import.
+text Corrections remain preserved under their original contract. A mapping is
+never recited as a whole set: `next --recite` and the join, whole and middle
+lesson modes refuse a mapping. Media are not provided.
 Hosted Owner-token admission is still separately unverified (#335).
 
 ## Authored sequence and phrase lessons
@@ -580,12 +629,14 @@ signed-in Owner, or an Owner token created with `--paid`). Otherwise it is
 graded by the local comparison exactly as before and nothing is sent or
 reserved. An exact or alias match, an empty answer, any answer to
 Spelling-strict content and an answer too large to send (32 KiB with its
-expected content) are always graded locally.
+expected content) are always graded locally. So are an answer to a keyed
+mapping that is exactly another pair's value (or, in reverse, its key) and,
+except for a safety-bearing pair, a year answer to a year value.
 
 One check is one request to Jev. Besides the model name it carries, for that
 answer only: the answer as typed; the expected content of the Prompt's scope;
-what names the question (the Work's title and the place in it, or a mapping's
-key, or a Section's heading); the Learning objective; and, for an ordered
+what names the question (the Work's title and the place in it, a mapping's
+key or, for a reverse Card, its value, or a Section's heading); the Learning objective; and, for an ordered
 list, the authored aliases of its items. It carries no identifier, no other
 content of the Library, no token and nothing that identifies the Owner.
 Settings says the same before the Owner turns the switch on.
@@ -643,7 +694,12 @@ physical-phone behavior, private Missal wording or independent hosted recovery.
 
 ### Mapping history and rollback
 
-Mappings use the existing Library/Study archive families. Their manifest
+Mappings use the existing Library/Study archive families. A notebook that
+holds a Version declared `both` or with safety-bearing pairs, a reverse Card,
+or an Attempt the year rule decided is written with the row
+`mapping_compatibility/v1` and archived as
+`scry-rust-durable-sqlite-mapping-v6`, which earlier Workers refuse; a notebook
+using none of these keeps its exact rows and archive. Their manifest
 operation receipt and `mapping_key` Cue are not understood by v0.8.1. A retained
 older build must refuse these records rather than drop keys, regrade values as
 whole text, discard history or write a truncated snapshot. After a mapping is

@@ -90,6 +90,13 @@ pub struct Version {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub ordered_aliases: BTreeMap<usize, Vec<String>>,
     pub sections: Vec<Section>,
+    /// The directions a mapping is practised in. Omitted for forward only, so
+    /// every earlier Version keeps its bytes.
+    #[serde(default, skip_serializing_if = "MappingDirection::is_forward")]
+    pub direction: MappingDirection,
+    /// Zero-based positions of the pairs their author flagged safety-bearing.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub safety_bearing: BTreeSet<usize>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -149,6 +156,12 @@ pub struct VersionInput {
     pub provenance: Provenance,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relations: Vec<RelationInput>,
+    /// Keyed mappings only: forward (the default) or both directions.
+    #[serde(default, skip_serializing_if = "MappingDirection::is_forward")]
+    pub direction: MappingDirection,
+    /// Keyed mappings only: zero-based positions of safety-bearing pairs.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub safety_bearing: BTreeSet<usize>,
 }
 /// External authoring manifest. The adapter stores only existing immutable
 /// Version/Section/Unit records; it never generates content or creates a Study.
@@ -157,11 +170,23 @@ pub struct VersionInput {
 pub struct MappingPairInput {
     pub key: String,
     pub value: String,
+    /// Its author's flag: the answer is a safe practice, stated as itself.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub safety_bearing: bool,
 }
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+/// The directions a mapping's Version declares. A forward Prompt shows the key
+/// and asks for its value; a reverse one shows the value and asks for its key.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MappingDirection {
+    #[default]
     Forward,
+    Both,
+}
+impl MappingDirection {
+    pub fn is_forward(&self) -> bool {
+        *self == Self::Forward
+    }
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -206,6 +231,7 @@ pub fn is_nato(version: &Version) -> bool {
     };
     version.kind == Kind::KeyedMapping
         && version.spelling_strict
+        && !uses_mapping_capabilities(version)
         && version.text == units().collect::<String>()
         && check_mapping_units(units()).is_ok()
         // Dedupe retains the original bytes. Recognize the same ordered pairs,
@@ -228,6 +254,8 @@ pub fn is_nato_input(input: &VersionInput) -> bool {
         canonical.text == input.text
             && canonical.kind == input.kind
             && canonical.spelling_strict == input.spelling_strict
+            && canonical.direction == input.direction
+            && canonical.safety_bearing == input.safety_bearing
     })
 }
 fn strict_mapping() -> bool {
@@ -238,6 +266,13 @@ impl MappingInput {
         if self.pairs.is_empty() || self.pairs.len() > MAX_UNITS {
             return Err(mapping_invalid());
         }
+        let safety_bearing = self
+            .pairs
+            .iter()
+            .enumerate()
+            .filter(|(_, pair)| pair.safety_bearing)
+            .map(|(i, _)| i)
+            .collect::<BTreeSet<_>>();
         let units = self
             .pairs
             .into_iter()
@@ -248,7 +283,11 @@ impl MappingInput {
                 Ok(format!("{}\t{}\n", pair.key, pair.value))
             })
             .collect::<AppResult<Vec<_>>>()?;
-        check_mapping_units(units.iter().map(String::as_str))?;
+        check_mapping(
+            units.iter().map(String::as_str),
+            self.direction,
+            &safety_bearing,
+        )?;
         let text = units.concat();
         let input = VersionInput {
             title: self.title,
@@ -267,6 +306,8 @@ impl MappingInput {
             }]),
             provenance: self.provenance,
             relations: self.relations,
+            direction: self.direction,
+            safety_bearing,
         };
         checked_sections(&input)?;
         Ok(input)
@@ -275,7 +316,7 @@ impl MappingInput {
 fn mapping_invalid() -> AppError {
     AppError::new(
         422,
-        "Supply unique nonempty mapping keys and values, without tabs, line breaks or surrounding whitespace; use direction forward.",
+        "Supply unique nonempty mapping keys and values, without tabs, line breaks or surrounding whitespace; use direction forward or both.",
     )
 }
 fn mapping_component(text: &str, max: usize) -> bool {
@@ -292,19 +333,46 @@ pub fn mapping_pair(text: &str) -> Option<(&str, &str)> {
     (mapping_component(key, 240) && mapping_component(value, 4096)).then_some((key, value))
 }
 fn check_mapping_units<'a>(units: impl Iterator<Item = &'a str>) -> AppResult<()> {
+    check_mapping(units, MappingDirection::Forward, &BTreeSet::new())
+}
+pub const BOTH_NEEDS_UNIQUE_VALUES: &str = "A mapping practised in both directions needs a different value for every pair: each value is also a question.";
+pub const SAFETY_FORWARD_ONLY: &str = "A safety-bearing pair keeps its safety condition in its question, so a mapping with one is practised forward only.";
+pub const MAPPING_DECLARATIONS_ONLY: &str =
+    "Directions and safety-bearing pairs belong to keyed mappings.";
+/// A mapping's pairs with what its Version declares about them. Keys are
+/// unique; in both directions every value is a question too, so values are
+/// unique as well. A safety-bearing pair keeps its safety condition in its
+/// question, its key, so a Version that has one is practised forward only.
+fn check_mapping<'a>(
+    units: impl Iterator<Item = &'a str>,
+    direction: MappingDirection,
+    safety_bearing: &BTreeSet<usize>,
+) -> AppResult<()> {
     let mut keys = BTreeSet::new();
+    let mut values = BTreeSet::new();
+    let mut years = BTreeSet::new();
     let mut units = units.peekable();
     while let Some(text) = units.next() {
         if units.peek().is_some() && !text.ends_with('\n') {
             return Err(mapping_invalid());
         }
-        let (key, _) = mapping_pair(text).ok_or_else(mapping_invalid)?;
+        let (key, value) = mapping_pair(text).ok_or_else(mapping_invalid)?;
         if !keys.insert(grading::mapping_words(key)) {
             return Err(mapping_invalid());
         }
+        // Values the year rule calls the same year are the same value.
+        if direction == MappingDirection::Both
+            && (!values.insert(grading::mapping_words(value))
+                || grading::mapping_year(value).is_some_and(|year| !years.insert(year)))
+        {
+            return Err(AppError::new(422, BOTH_NEEDS_UNIQUE_VALUES));
+        }
     }
-    if keys.is_empty() {
+    if keys.is_empty() || safety_bearing.iter().any(|&i| i >= keys.len()) {
         return Err(mapping_invalid());
+    }
+    if direction == MappingDirection::Both && !safety_bearing.is_empty() {
+        return Err(AppError::new(422, SAFETY_FORWARD_ONLY));
     }
     Ok(())
 }
@@ -314,13 +382,19 @@ pub fn validate_mapping(version: &Version) -> AppResult<()> {
     if version.kind != Kind::KeyedMapping {
         return Err(mapping_invalid());
     }
-    check_mapping_units(
+    check_mapping(
         version
             .sections
             .iter()
             .flat_map(|s| &s.units)
             .map(|u| u.text.as_str()),
+        version.direction,
+        &version.safety_bearing,
     )
+}
+/// Whether a Version declares what only a mapping-capable Worker honors.
+pub fn uses_mapping_capabilities(version: &Version) -> bool {
+    !version.direction.is_forward() || !version.safety_bearing.is_empty()
 }
 fn mapping_identity<'a>(
     units: impl Iterator<Item = &'a str>,
@@ -595,6 +669,8 @@ fn same_content(v: &Version, input: &VersionInput, sections: &[SectionInput]) ->
         && v.sources == input.sources
         && v.spelling_strict == input.spelling_strict
         && v.ordered_aliases == input.ordered_aliases
+        && v.direction == input.direction
+        && v.safety_bearing == input.safety_bearing
         && v.sections.len() == sections.len()
         && v.sections.iter().zip(sections).all(|(a, b)| {
             a.heading == b.heading
@@ -791,7 +867,13 @@ impl Library {
             return Err(AppError::new(422, "Item aliases require an ordered list."));
         }
         if input.kind == Kind::KeyedMapping {
-            check_mapping_units(sections.iter().flat_map(|s| &s.units).map(String::as_str))?;
+            check_mapping(
+                sections.iter().flat_map(|s| &s.units).map(String::as_str),
+                input.direction,
+                &input.safety_bearing,
+            )?;
+        } else if !input.direction.is_forward() || !input.safety_bearing.is_empty() {
+            return Err(AppError::new(422, MAPPING_DECLARATIONS_ONLY));
         }
         check_relation_inputs(&input.relations)?;
         let mut proposed = Work {
@@ -904,6 +986,8 @@ impl Library {
             sources: input.sources,
             spelling_strict: input.spelling_strict,
             ordered_aliases: input.ordered_aliases,
+            direction: input.direction,
+            safety_bearing: input.safety_bearing,
             sections: sections
                 .into_iter()
                 .enumerate()
@@ -1102,6 +1186,12 @@ impl Library {
             if v.spelling_strict != input.spelling_strict {
                 differ.push("Spelling-strict setting");
             }
+            if v.direction != input.direction {
+                differ.push("direction");
+            }
+            if v.safety_bearing != input.safety_bearing {
+                differ.push("safety-bearing pairs");
+            }
             differ
         };
         let (same, other): (Vec<&Version>, Vec<&Version>) = candidates
@@ -1272,8 +1362,14 @@ impl Library {
                 ),
                 provenance: v.provenance,
                 relations: vec![],
+                direction: v.direction,
+                safety_bearing: v.safety_bearing.clone(),
             };
             let sections = checked_sections(&input)?;
+            // Old metadata-only mappings stay readable; declarations do not.
+            if uses_mapping_capabilities(v) && validate_mapping(v).is_err() {
+                return Err(invalid());
+            }
             if v.normalized_hash != content_hash(&v.text, &sections, &v.ordered_aliases) {
                 return Err(invalid());
             }

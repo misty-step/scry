@@ -1,6 +1,7 @@
 # External-agent authoring and review
 
-External agents supply text, ordered lists and forward keyed mappings through
+External agents supply text, ordered lists and keyed mappings (forward or both
+ways, with optional safety-bearing pairs) through
 the implemented Owner API, CLI and MCP surfaces. Scry validates content and
 owns grading; it does not generate content or accept client success grades.
 See [Owner API](../docs/owner-api.md) and [MCP](../docs/mcp.md) for the exact
