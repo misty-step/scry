@@ -2217,6 +2217,51 @@ fn the_switch_cannot_be_turned_on_where_scry_cannot_reach_jev() {
 }
 
 #[test]
+fn asking_for_the_setting_it_already_has_is_refused_and_writes_nothing() {
+    // Off, where Jev can and cannot be reached: the notebook never used the
+    // switch, and a request that changes nothing does not name it judged.
+    for jev in [false, true] {
+        let mut o = Owner::off();
+        o.jev = jev;
+        let before = o.app.clone();
+        let refused = o
+            .try_call("/settings/judgment", &[("paid_judgment", "off")])
+            .unwrap_err();
+        assert_eq!(refused.status, 409);
+        assert!(refused.message.contains("already off"));
+        assert_eq!(o.app, before, "nothing is written");
+        assert!(!persistence::judged(&o.app));
+        assert_ne!(o.archive().format, JUDGED);
+    }
+    let mut o = Owner::new();
+    let before = o.app.clone();
+    let refused = o
+        .try_call("/settings/judgment", &[("paid_judgment", "on")])
+        .unwrap_err();
+    assert_eq!(refused.status, 409);
+    assert!(refused.message.contains("already on"));
+    assert_eq!(o.app, before, "nothing is written");
+}
+
+#[test]
+fn check_again_on_an_answer_scry_graded_says_so_whatever_the_switch() {
+    for on in [true, false] {
+        let mut o = Owner::new().mapping();
+        let aid = o.answer("check the bilge pump");
+        o.app.preferences.paid_judgment = on;
+        let saved = o.app.clone();
+        let refused = o.check_again(&aid).unwrap_err();
+        assert_eq!(refused.status, 409);
+        assert!(
+            refused.message.contains("Scry graded this answer"),
+            "{}",
+            refused.message
+        );
+        assert_eq!(o.app, saved);
+    }
+}
+
+#[test]
 fn settings_says_what_leaves_scry_and_offers_the_switch_only_where_jev_is_reachable() {
     let mut o = Owner::off();
     // Rendered without the runtime's answer, the page is the one before paid judgment.
@@ -2236,6 +2281,10 @@ fn settings_says_what_leaves_scry_and_offers_the_switch_only_where_jev_is_reacha
     let off = settings(&o, Some(true));
     assert!(off.contains("data-paid-judgment=\"off\""));
     assert!(off.contains("Your answer and the expected text leave Scry"));
+    // What names the question leaves too, and the page says so.
+    assert!(off.contains(
+        "the Work's title and the place in it, a mapping's key, and the accepted aliases of a list's items"
+    ));
     assert!(off.contains("Each check reserves $0.50 of the $3.50 daily allowance"));
     assert!(off.contains("<form method=\"post\" action=\"/settings/judgment\""));
     assert!(off.contains("name=\"paid_judgment\" value=\"on\""));
