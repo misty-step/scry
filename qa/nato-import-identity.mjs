@@ -78,7 +78,8 @@ export async function normalizedNatoJourney(){
     // Exercise all 26 retained pairs through native grading, including spellings
     // that must still be wrong even though case/punctuation normalize.
     for(let i=1;i<26;i++){
-     const advanced=await api('/api/v1/next',{after:values(await rows(),'meta')[0].practice.current.prompt.id});
+     // Practice kept to the alphabet names its Study; a Next with nothing named selects across Studies at Pace.
+     const advanced=await api('/api/v1/next',{after:values(await rows(),'meta')[0].practice.current.prompt.id,study_id:sid});
      const prompt=await source(advanced);assert.equal(prompt.version_id,vid);assert.equal(prompt.cue,supplied.pairs[i].key);
      const wrong=i===9?'Juliet':i===23?'Xray':null;
      const op=randomUUID();const payload={prompt_id:prompt.id,answer:wrong??canonical.pairs[i].value};

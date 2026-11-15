@@ -241,9 +241,9 @@ horizontal clipping, including with long questions and explanations.
   interleaved across Studies: the least recently served Study wins, then due
   time, then a stable identity, so one overdue Work cannot monopolize a
   session. After that they rotate unfinished Studies by least recent
-  service. Study also takes Works not yet started into that rotation, and so
-  does Next within the session Study opened; a Next outside one never starts
-  a Work.
+  service. Only Study takes Works not yet started into that rotation:
+  continuing the session it opened asks Study again, and any other Next
+  never starts a Work.
 - The other direction of a pair just answered waits until nothing else is
   eligible, because its answer was just on screen.
 - Available material is the Library's Works and the Starter shelf. When it

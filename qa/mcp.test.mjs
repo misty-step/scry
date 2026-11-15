@@ -309,6 +309,9 @@ test('A refusal keeps its own bounded plain-text reason, never the request or cr
   // A reason that is the fixed phrase is not repeated.
   status=401; body={error:'Owner authorization required.'};
   assert.equal(error(await f.call('scry_due')).message,'Owner authorization required.');
+  // A stale browser page's wording says nothing to an agent: the fixed phrase stands alone.
+  status=409; body={error:'This changed in another tab. Reload to continue from your saved progress.'};
+  assert.equal(error(await f.call('scry_due')).message,'Operation conflict.');
   // Plain text: control characters become spaces, and a long reason is cut.
   status=422; body={error:'Line one.\n\u001b[31mLine two.'};
   assert.equal(error(await f.call('scry_due')).message,'API request failed. Line one. [31mLine two.');
