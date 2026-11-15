@@ -208,7 +208,7 @@ test('the switch is the signed-in Owner\'s, replay-safe, and a token without pai
     const unpaid=await n.token('Synthetic agent; no paid permission',false),paid=await n.token('Synthetic agent; paid permission',true);
     // No token reaches the switch, whatever permission it carries.
     for(const secret of [unpaid,paid])for(const path of ['/api/v1/settings/judgment','/api/v1/judgment'])assert.equal((await n.api(path,secret,{operation_id:'judgment-'+randomUUID(),paid_judgment:'on'})).status,404);
-    assert.equal((await n.api('/api/v1/settings',paid,{operation_id:'judgment-'+randomUUID(),pace:'steady',paid_judgment:'on'})).status,200,'The pace route ignores what it does not own.');
+    assert.equal((await n.api('/api/v1/settings',paid,{operation_id:'judgment-'+randomUUID(),pace:'steady',paid_judgment:'on'})).status,410,'The retired pace route refuses, and turns nothing on.');
     assert.equal((await n.state()).meta.preferences.paid_judgment,undefined);
     // The browser's fences: a forged session token and another site are refused.
     const offered=n.form(await n.page('/settings'),'/settings/judgment');assert.equal(offered.paid_judgment,'on');

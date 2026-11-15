@@ -80,10 +80,13 @@ pub fn admit_current_mutation(path: &str) -> AppResult<()> {
         ));
     }
     // The earlier concept notebook is history: nothing presents, answers,
-    // checks or dismisses one of its questions. Refused here, before any
-    // receipt, save or alarm, so a notebook in any stored state is left as it is.
+    // checks, dismisses, archives, edits, flags, focuses, pauses or paces it,
+    // and no demo seeds one. Refused here, before any receipt, save or alarm,
+    // so a notebook in any stored state is left as it is. `/settings` is matched
+    // exactly: backup, resume and paid judgment live beneath it.
     if path.starts_with("/review/")
-        || (parts.len() == 3 && parts[0] == "concepts" && parts[2] == "practice")
+        || (parts.len() == 3 && matches!(parts[0], "goals" | "concepts" | "questions"))
+        || matches!(path, "/settings" | "/__fixture")
     {
         return Err(AppError::new(410, EARLIER_NOTEBOOK_RETIRED));
     }

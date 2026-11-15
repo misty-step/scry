@@ -38,7 +38,7 @@ export const seeds={
  'US-007':'result-jev-wrong',
  'US-008':'self-check-unsure',
  'US-009':'result-held',
- 'US-010':'question-cold-choice',
+ 'US-010':'history-rich',
  'US-011':'empty-history',
 };
 const policy=(...names)=>async c=>c.policy(...names);
@@ -78,7 +78,11 @@ const observed=(app,concept)=>{
  return count;
 };
 export const specs={
- 'US-001':[c=>c.retainedGoMigration(),async c=>{
+ 'US-001':[
+  // The Archived notebook's retained bytes survive rows and complete archives
+  // unchanged and never become learning; older archives stay readable.
+  policy('retained_go_bytes_survive_rows_and_complete_archives_without_becoming_learning','ordinary_old_archives_and_rows_remain_compatible_without_custody','malformed_or_changed_retained_bytes_fail_before_restore'),
+  async c=>{
    // Everything saved is reachable through secondary navigation and exported unchanged.
    const app=c.app,before=await c.rows();
    await c.page.locator('.account-menu>summary').tap();await c.page.getByRole('link',{name:'Earlier practice',exact:true}).tap();
@@ -174,12 +178,73 @@ export const specs={
    }
    assert.ok(app.events.length>0);await unchanged(c,before);
   },
-  policy('observations_distinguish_exposure_help_and_cold_recall_without_mutations','solid_and_fading_are_recall_estimates_and_latest_help_prevents_solid')
+  // Observed, never predicted: no estimate, label or brightness anywhere on it.
+  async c=>{
+   const app=c.app;await map(c);
+   assert.equal(await c.page.locator('svg.constellation [class*="brightness-"]').count(),0,'No star is brightened by a prediction');
+   for(const path of ['/map',...Object.keys(app.concepts).map(id=>`/concepts/${id}`)]){await c.page.goto(c.at(path));assert.doesNotMatch(await c.page.locator('main').innerText(),/Estimated recall|recall estimate|Solid|Fading|next practice/,path);}
+   c.policy('observations_distinguish_exposure_help_and_cold_recall_without_mutations','no_earlier_page_offers_a_write_or_a_prediction');
+  }
  ],
  'US-010':[
-  async c=>{await map(c);await c.page.getByRole('button',{name:'Focus here',exact:true}).click();await c.page.getByRole('button',{name:'Remove focus',exact:true}).waitFor();},
-  async c=>{await c.page.getByRole('button',{name:'Pause',exact:true}).click();await c.page.getByRole('button',{name:'Resume',exact:true}).click();await c.page.getByRole('button',{name:'Pause',exact:true}).waitFor();},
-  async c=>{await c.page.goto(c.url('/settings'));await c.page.locator('input[name="pace"][value="light"]').check();await c.page.getByRole('button',{name:'Save pace'}).click();assert.equal(await c.page.locator('input[name="pace"][value="light"]').isChecked(),true);}
+  // Nothing is rewritten or deleted. No page offers a write: the Map, every
+  // Goal, Concept and saved question, Earlier practice and Settings.
+  async c=>{
+   const app=c.app,before=await c.rows();
+   const pages=['/notebook','/map',...Object.keys(app.goals).map(id=>`/goals/${id}`),...Object.keys(app.concepts).map(id=>`/concepts/${id}`),...Object.keys(app.questions).map(id=>`/questions/${id}/edit`)];
+   for(const path of pages){await c.page.goto(c.at(path));assert.equal(await c.page.locator('main form,main button,main textarea,main input').count(),0,`${path} offers a write`);}
+   const question=Object.values(app.questions).find(q=>!q.archived&&q.versions.at(-1).choices.length);
+   await c.page.goto(c.at(`/questions/${question.id}/edit`));await shows(c,'earlier-question');
+   await c.page.getByRole('heading',{level:1,name:question.versions.at(-1).prompt,exact:true}).waitFor();
+   assert.deepEqual(await c.page.locator('main ol li').allTextContents(),question.versions.at(-1).choices);
+   assert.equal((await c.page.locator('.answer-pair dd').first().innerText()).trim(),question.versions.at(-1).answer);
+   await c.page.goto(c.at('/settings'));await shows(c,'settings');
+   assert.equal(await c.page.locator('input[name="pace"],form[action="/settings"]').count(),0,'Settings sets no earlier pace');
+   assert.equal(await c.page.getByText('New items per day').count(),0);
+   await c.page.locator('form[action="/settings/backup"]').waitFor({state:'attached'});
+   await unchanged(c,before);
+  },
+  // Every retired write answers 410 with the same message, before anything is
+  // written, a replay of a committed one included; the rows are identical.
+  async c=>{
+   const app=c.app,origin=new URL(c.at('/')).origin,csrf=JSON.parse((await c.rows()).meta).csrf;
+   // An agent's Owner token, for the API route; minting it is the one write here.
+   const minted=await c.page.request.post(c.at('/tokens/create'),{form:{csrf,operation_id:'walk-us010-agent-token',name:'Synthetic US-010 agent'},headers:{Origin:origin},maxRedirects:0});
+   assert.equal(minted.status(),200);const secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await minted.text())[1].trim();
+   const before=await c.rows();
+   const writes=[
+    ...Object.keys(app.goals).flatMap(id=>['pause','focus','archive'].map(action=>`/goals/${id}/${action}`)),
+    ...Object.keys(app.concepts).flatMap(id=>['archive','feedback'].map(action=>`/concepts/${id}/${action}`)),
+    ...Object.keys(app.questions).flatMap(id=>['edit','archive','dispute'].map(action=>`/questions/${id}/${action}`)),
+    '/settings','/__fixture',
+   ];
+   const committed=Object.entries(app.operations).filter(([,receipt])=>writes.includes(receipt.path));
+   assert.ok(committed.length>=8,'The fixture holds committed operations on the retired routes');
+   for(const [path,operation_id] of [...writes.map(path=>[path,'walk-retired-'+path.replace(/[^a-z0-9]/gi,'-').slice(-90)]),...committed.map(([id,receipt])=>[receipt.path,id])]){
+    const response=await c.page.request.post(c.at(path),{form:{csrf,operation_id,pace:'light',text:'synthetic'},headers:{Origin:origin},maxRedirects:0});
+    assert.equal(response.status(),410,`POST ${path}`);assert.match(await response.text(),/The earlier concept notebook is kept as history\./,path);
+   }
+   const api=await c.page.request.post(c.at('/api/v1/settings'),{data:{operation_id:'walk-retired-api-settings',pace:'light'},headers:{Authorization:'Bearer '+secret},maxRedirects:0});
+   assert.equal(api.status(),410,'POST /api/v1/settings');assert.match((await api.json()).error,/kept as history/);
+   await unchanged(c,before);
+   c.policy('every_earlier_write_is_refused_and_shown_where_it_was_asked','current_generation_admission_refuses_every_old_entry_not_grading_or_external_authoring');
+  },
+  // Stored flags are shown as stored and exported unchanged: focus, pause and
+  // the pace preference, which nothing sets any more.
+  async c=>{
+   const app=c.app,before=await c.rows();
+   const shown=Object.values(app.goals).filter(goal=>!goal.archived);
+   assert.ok(shown.some(goal=>goal.focused)&&shown.some(goal=>goal.paused),'The fixture holds a focused and a paused Goal');
+   await map(c);
+   for(const goal of shown){
+    const meta=(await c.page.locator('.goal-map').filter({has:c.page.locator(`h2 a[href="/goals/${goal.id}"]`)}).locator('.goal-meta').innerText());
+    assert.equal(meta.includes('In focus'),goal.focused,goal.id);assert.equal(meta.includes('Paused'),goal.paused,goal.id);
+   }
+   const exported=await(await c.page.request.get(c.at('/export'))).json();
+   assert.deepEqual(exported.app.preferences,app.preferences);assert.equal(exported.app.preferences.pace,'light');
+   for(const goal of Object.values(app.goals))assert.deepEqual([exported.app.goals[goal.id].focused,exported.app.goals[goal.id].paused],[goal.focused,goal.paused]);
+   await unchanged(c,before);
+  }
  ],
  'US-011':[
   // Not served or scheduled: with a question due and nothing held, reading every

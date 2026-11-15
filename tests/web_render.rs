@@ -686,8 +686,10 @@ fn every_form_has_a_unique_nonce_bound_operation_and_native_fallback() {
     assert_eq!(held.matches("<h1").count(), 1);
 }
 
+/// The authored demo seeded an earlier concept notebook; it is retired, so not
+/// even an isolated synthetic preview offers it. The preview keeps its badge.
 #[test]
-fn synthetic_fixture_is_never_advertised_in_the_private_application() {
+fn the_authored_demo_is_offered_nowhere_not_even_in_a_synthetic_preview() {
     let app = App::new("01234567890123456789012345678901".into());
     let private = web::render(&app, "/notebook", &query("private"), NOW, None);
     assert!(!private.contains("/__fixture"));
@@ -695,15 +697,19 @@ fn synthetic_fixture_is_never_advertised_in_the_private_application() {
     let mut synthetic_query = query("synthetic");
     synthetic_query.insert("__synthetic".into(), "true".into());
     let synthetic = web::render(&app, "/notebook", &synthetic_query, NOW, None);
-    assert!(synthetic.contains("/__fixture"));
+    assert!(!synthetic.contains("/__fixture"));
+    assert!(!synthetic.contains("Explore an authored demo"));
+    assert!(!synthetic.contains("<form "));
     assert!(synthetic.contains("Synthetic notebook"));
 }
 
+/// A saved question's page is the question as stored. Its edit form is retired:
+/// wording a refused edit sent back is not echoed, and no edit field remains.
 #[test]
-fn edits_carry_content_identity_and_preserve_rejected_drafts() {
-    let mut app = fixture();
-    app.occurrence.as_mut().unwrap().assisted = true;
+fn a_saved_question_page_shows_it_as_stored_and_offers_no_edit() {
+    let app = fixture();
     let question_id = app.occurrence.as_ref().unwrap().question_id.clone();
+    let stored = app.questions[&question_id].content().clone();
     let mut fields = query("edit");
     fields.insert("prompt".into(), "A corrected question <draft>".into());
     let html = web::render(
@@ -713,13 +719,25 @@ fn edits_carry_content_identity_and_preserve_rejected_drafts() {
         NOW,
         None,
     );
-    assert!(html.contains("A corrected question &lt;draft&gt;"));
-    for field in ["content_version", "kind", "basis", "quotes", "use_draft"] {
-        assert!(
-            html.contains(&format!("name=\"{field}\"")),
-            "Missing edit contract field {field}"
-        );
+    assert!(html.contains("data-state=\"earlier-question\""));
+    assert!(!html.contains("A corrected question"));
+    assert!(html.contains(&web::escape(&stored.prompt)));
+    assert!(html.contains(&web::escape(&stored.answer)));
+    assert!(html.contains(&web::escape(&stored.explanation)));
+    for choice in &stored.choices {
+        assert!(html.contains(&web::escape(choice)));
     }
+    for field in [
+        "content_version",
+        "kind",
+        "basis",
+        "quotes",
+        "use_draft",
+        "csrf",
+    ] {
+        assert!(!html.contains(&format!("name=\"{field}\"")), "{field}");
+    }
+    assert!(!html.contains("<form "));
 }
 
 #[test]

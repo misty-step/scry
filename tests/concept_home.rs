@@ -84,7 +84,7 @@ fn related_concepts_reuse_both_directions_of_the_existing_prerequisite_graph() {
         .unwrap();
     let first = render(&app, &format!("/concepts/{}", prerequisite.id));
     let second = render(&app, &format!("/concepts/{}", dependent.id));
-    for heading in ["Study", "Practice", "Resources", "Related"] {
+    for heading in ["Notes", "Recorded answers", "Resources", "Related"] {
         assert!(first.contains(&format!("<h2>{heading}</h2>")), "{heading}");
     }
     assert!(first.contains("Used by"));

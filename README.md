@@ -65,9 +65,7 @@ operator/model/deployment capabilities out. It listens only on loopback; set
 repository `.env` or `.dev.vars` files. The printed directory owns that run's
 state; stop the process before removing only that directory.
 
-The empty notebook offers an explicitly authored demo only in isolated
-development. The demo uses no provider and is never advertised in production.
-New native content-generation requests are refused before creating work, even
+The authored demo is retired: no environment offers or accepts it. New native content-generation requests are refused before creating work, even
 when provider bindings exist. Local fixture mechanics do not prove live model usefulness,
 private HTTPS, remote R2 recovery, or phone acceptance.
 

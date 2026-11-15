@@ -1492,17 +1492,6 @@ impl View<'_> {
     /// saved generation request still says where it stopped, as before.
     fn earlier_empty(&self) -> String {
         let saved = !self.app.goals.is_empty() || !self.app.events.is_empty();
-        let demo = if !saved && self.query.get("__synthetic").is_some_and(|v| v == "true") {
-            self.form(
-                "/__fixture",
-                "fixture",
-                "demo-form",
-                "",
-                "<button class=\"text-button\">Explore an authored demo</button>",
-            )
-        } else {
-            String::new()
-        };
         let (state_name, title, desc, destination, action) = match self.empty_state() {
             EmptyState::Nothing => {
                 let lede = if saved {
@@ -1511,7 +1500,7 @@ impl View<'_> {
                     "Nothing is saved in the earlier concept notebook."
                 };
                 return format!(
-                    "{demo}{}<section class=\"empty-stage\" data-state=\"earlier-empty\">{}<h1>Earlier practice</h1><p class=\"lede\">{lede}</p></section>",
+                    "{}<section class=\"empty-stage\" data-state=\"earlier-empty\">{}<h1>Earlier practice</h1><p class=\"lede\">{lede}</p></section>",
                     self.pending(),
                     emblem("large")
                 );
@@ -1526,7 +1515,7 @@ impl View<'_> {
             EmptyState::Paused => (
                 "preparation-paused",
                 "Preparation is paused.",
-                "Your requests are saved. Native content generation is retired. Meaning checks can resume separately in Settings. Your existing notes and practice are still available.",
+                "Your requests are saved. Native content generation is retired. Meaning checks can resume separately in Settings. Your existing notes and history are still available.",
                 "/settings#preparation".to_string(),
                 "Resume meaning checks",
             ),
@@ -1539,7 +1528,7 @@ impl View<'_> {
             ),
         };
         format!(
-            "{demo}{}<section class=\"empty-stage\" data-state=\"{state_name}\">{}<p class=\"eyebrow\">A private space for understanding</p><h1>{title}</h1><p class=\"lede\">{desc}</p><div class=\"actions\"><a class=\"button primary\" href=\"{destination}\">{action} <span aria-hidden=\"true\">→</span></a><a class=\"text-link\" href=\"/map\">Explore your map ↗</a></div><div class=\"notebook-margin\"><span>01 / Curiosity</span><span>Understanding starts with a question.</span></div></section>",
+            "{}<section class=\"empty-stage\" data-state=\"{state_name}\">{}<p class=\"eyebrow\">A private space for understanding</p><h1>{title}</h1><p class=\"lede\">{desc}</p><div class=\"actions\"><a class=\"button primary\" href=\"{destination}\">{action} <span aria-hidden=\"true\">→</span></a><a class=\"text-link\" href=\"/map\">Explore your map ↗</a></div><div class=\"notebook-margin\"><span>01 / Curiosity</span><span>Understanding starts with a question.</span></div></section>",
             self.pending(),
             emblem("large")
         )
@@ -2811,7 +2800,7 @@ impl View<'_> {
         let mut goals: Vec<_> = self.app.goals.values().filter(|g| !g.archived).collect();
         goals.sort_by_key(|g| (g.paused, !g.focused, g.created_ms));
         let mut out = String::from(
-            "<section class=\"map-page\" data-state=\"map\"><div class=\"page-heading\"><p class=\"eyebrow\">Your growing understanding</p><h1>A map of ideas.</h1><p class=\"lede\">Follow the connections. Revisit a note. Give the ideas that matter a little more attention.</p></div>",
+            "<section class=\"map-page\" data-state=\"map\"><div class=\"page-heading\"><p class=\"eyebrow\">Your growing understanding</p><h1>A map of ideas.</h1><p class=\"lede\">Follow the connections. Revisit a note.</p></div>",
         );
         if goals.is_empty() {
             out.push_str("<div class=\"quiet-empty\"><p>Your map begins with one curiosity.</p><a class=\"button primary\" href=\"/library\">Open Library →</a></div>");
@@ -2835,7 +2824,7 @@ impl View<'_> {
                 if goal.paused { " · Paused" } else { "" },
                 status_label(self.goal_phase(goal))
             );
-            out.push_str(&constellation(self.app, &concepts, self.now));
+            out.push_str(&constellation(&concepts));
             out.push_str("<ol class=\"concept-list\">");
             for c in concepts {
                 let _ = write!(
@@ -2843,34 +2832,10 @@ impl View<'_> {
                     "<li><a href=\"/concepts/{}\"><span class=\"idea-dot\" aria-hidden=\"true\"></span><span>{}</span><span class=\"idea-status\">{}</span><span aria-hidden=\"true\">↗</span></a></li>",
                     escape(&c.id),
                     self.concept_name(c),
-                    concept_state(self.app, c, self.now)
+                    answers_recorded(self.app, c)
                 );
             }
             out.push_str("</ol><div class=\"goal-actions\">");
-            out.push_str(&self.form(
-                &format!("/goals/{}/focus", goal.id),
-                "focus",
-                "",
-                "",
-                &format!(
-                    "<button class=\"small-button\">{}</button>",
-                    if goal.focused {
-                        "Remove focus"
-                    } else {
-                        "Focus here"
-                    }
-                ),
-            ));
-            out.push_str(&self.form(
-                &format!("/goals/{}/pause", goal.id),
-                "pause",
-                "",
-                "",
-                &format!(
-                    "<button class=\"small-button\">{}</button>",
-                    if goal.paused { "Resume" } else { "Pause" }
-                ),
-            ));
             let _ = write!(
                 out,
                 "<a class=\"text-link\" href=\"/goals/{}\">Reference &amp; input ↗</a></div></article>",
@@ -2924,15 +2889,6 @@ impl View<'_> {
                 ))
                 .unwrap_or_default()
         );
-        if !g.archived {
-            out.push_str(&self.form(
-                &format!("/goals/{id}/archive"),
-                "archive",
-                "archive-form",
-                "",
-                "<button class=\"text-button danger\">Archive this goal</button>",
-            ));
-        }
         out.push_str(&self.feedback_history(id, None));
         out.push_str("</article>");
         out
@@ -3001,11 +2957,10 @@ impl View<'_> {
         let helped = state.helped;
         let missed = state.missed;
         let mut out = format!(
-            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\"><h2>Study</h2>{}</section><section class=\"practice-evidence\" aria-label=\"Your practice record\"><h2>Practice</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
+            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\"><h2>Notes</h2>{}</section><section class=\"practice-evidence\"><h2>Recorded answers</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">Graded answers to its saved questions, as recorded. History lists every answer.</p>{}</section>{}",
             self.concept_name(c),
             self.lede("lede", c),
             self.notes(c),
-            recall_label(self.app, c, self.now),
             if self.active_concept(c) {
                 ""
             } else {
@@ -3030,7 +2985,7 @@ impl View<'_> {
             );
             let _ = write!(
                 out,
-                "<a class=\"text-link\" href=\"/questions/{}/edit\">Edit future wording ↗</a></details>",
+                "<a class=\"text-link\" href=\"/questions/{}/edit\">The saved question ↗</a></details>",
                 escape(&q.id)
             );
         }
@@ -3079,17 +3034,6 @@ impl View<'_> {
                 }
             }
             out.push_str("</section>");
-        }
-        let body = "<label for=\"feedback\">What is still unclear?</label><textarea id=\"feedback\" name=\"text\" rows=\"3\" maxlength=\"4000\" required placeholder=\"Tell Scry what you need from this idea…\"></textarea><button class=\"button secondary\">Save feedback</button>";
-        out.push_str(&format!("<section class=\"refinement\"><h2>Keep the conversation with your learning.</h2>{}</section>",self.form(&format!("/concepts/{id}/feedback"),"feedback","","",body)));
-        if !c.archived {
-            out.push_str(&self.form(
-                &format!("/concepts/{id}/archive"),
-                "archive",
-                "archive-form",
-                "",
-                "<button class=\"text-button danger\">Archive this idea</button>",
-            ));
         }
         out.push_str(&self.feedback_history(&c.goal_id, Some(id)));
         out.push_str("</article>");
@@ -3481,24 +3425,6 @@ impl View<'_> {
         )
     }
     fn settings(&self) -> String {
-        let mut pace =
-            String::from("<fieldset class=\"pace-options\"><legend>New items per day</legend>");
-        for (value, title, desc) in [
-            ("light", "3", "Light"),
-            ("steady", "6", "Steady"),
-            ("intense", "12", "Intense"),
-        ] {
-            let _ = write!(
-                pace,
-                "<label><input type=\"radio\" name=\"pace\" value=\"{value}\" {}><span><strong>{title}</strong><span>{desc}</span></span></label>",
-                if self.app.preferences.pace == value {
-                    "checked"
-                } else {
-                    ""
-                }
-            );
-        }
-        pace.push_str("</fieldset><button class=\"button secondary\">Save pace</button>");
         let spent = self.app.spent(self.now) as f64 / 1_000_000.0;
         let unknown = self
             .app
@@ -3529,8 +3455,7 @@ impl View<'_> {
             "<button class=\"button secondary\">Create a verified backup</button>",
         );
         let mut out = format!(
-            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><h1>Settings</h1></div>{resume}{}<details class=\"settings-section\"><summary>Usage allowance</summary><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></details><section class=\"settings-section\"><h2>Backup</h2><p>{backup}</p><details><summary>Recovery targets</summary><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p></details>{}{backup_action}</section><section class=\"settings-section\"><h2>Export</h2><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><details class=\"settings-section font-colophon\"><summary>About</summary><p>Literata and Atkinson Hyperlegible Next.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses</a></details></section>",
-            self.form("/settings", "pace", "pace-form", "", &pace),
+            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><h1>Settings</h1></div>{resume}<details class=\"settings-section\"><summary>Usage allowance</summary><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></details><section class=\"settings-section\"><h2>Backup</h2><p>{backup}</p><details><summary>Recovery targets</summary><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p></details>{}{backup_action}</section><section class=\"settings-section\"><h2>Export</h2><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><details class=\"settings-section font-colophon\"><summary>About</summary><p>Literata and Atkinson Hyperlegible Next.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses</a></details></section>",
             self.app
                 .backup
                 .error
@@ -3560,91 +3485,40 @@ impl View<'_> {
             String::new()
         }
     }
-    fn edit(&self, id: &str) -> String {
+    /// A saved question as it is stored: its current wording, the choices,
+    /// answer and explanation. Read-only; the URL is the one the edit form had.
+    fn question_page(&self, id: &str) -> String {
         let Some(q) = self.app.questions.get(id) else {
             return self.not_found();
         };
-        let use_draft = q.draft_for_version == Some(q.content().version)
-            && q.draft.is_some()
-            && !self.query.get("current").is_some_and(|v| v == "true");
-        let c = if use_draft {
-            q.draft.as_ref().unwrap()
+        let c = q.content();
+        let choices = if c.choices.is_empty() {
+            String::new()
         } else {
-            q.content()
+            let mut out = String::from("<ol class=\"reading earlier-choices\">");
+            for choice in &c.choices {
+                let _ = write!(out, "<li>{}</li>", escape(choice));
+            }
+            out.push_str("</ol>");
+            out
         };
-        let body = format!(
-            "{}<label for=\"prompt\">Question</label><textarea id=\"prompt\" name=\"prompt\" rows=\"3\" required maxlength=\"8192\">{}</textarea><label for=\"answer\">Expected answer</label><textarea id=\"answer\" name=\"answer\" rows=\"2\" required maxlength=\"8192\">{}</textarea><label for=\"variants\">Accepted variants <span>One per line, optional</span></label><textarea id=\"variants\" name=\"variants\" rows=\"2\">{}</textarea>{}<label for=\"explanation\">Explanation</label><textarea id=\"explanation\" name=\"explanation\" rows=\"5\" required maxlength=\"16384\">{}</textarea><div class=\"thumb-actions\"><button class=\"button primary\">Save future wording →</button></div>",
-            format_args!(
-                "{}{}{}{}{}",
-                hidden("content_version", &q.content().version.to_string()),
-                hidden("use_draft", if use_draft { "true" } else { "false" }),
-                hidden("kind", &c.kind),
-                hidden("basis", &c.basis),
-                hidden("quotes", &c.quotes.join("\n"))
-            ),
-            escape(
-                self.query
-                    .get("prompt")
-                    .map(String::as_str)
-                    .unwrap_or(&c.prompt)
-            ),
-            escape(
-                self.query
-                    .get("answer")
-                    .map(String::as_str)
-                    .unwrap_or(&c.answer)
-            ),
-            escape(
-                self.query
-                    .get("variants")
-                    .map(String::as_str)
-                    .unwrap_or(&c.variants.join("\n"))
-            ),
-            if c.choices.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "<label for=\"choices\">Answer choices <span>One per line</span></label><textarea id=\"choices\" name=\"choices\" rows=\"4\">{}</textarea>",
-                    escape(
-                        self.query
-                            .get("choices")
-                            .map(String::as_str)
-                            .unwrap_or(&c.choices.join("\n"))
-                    )
-                )
-            },
-            escape(
-                self.query
-                    .get("explanation")
-                    .map(String::as_str)
-                    .unwrap_or(&c.explanation)
+        let variants = if c.variants.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<div><dt>Also accepted</dt><dd>{}</dd></div>",
+                escape(&c.variants.join("\n"))
             )
-        );
+        };
         format!(
-            "<section class=\"edit-page\" data-state=\"edit\"><a class=\"back-link\" href=\"/concepts/{}\">← Back to the idea</a><div class=\"page-heading\"><p class=\"eyebrow\">Keep the material honest</p><h1>A better question.</h1><p class=\"lede\">Edits apply to future practice. The question you already saw and your past attempts remain unchanged.</p></div>{}</section>",
+            "<article class=\"study\" data-state=\"earlier-question\"><a class=\"back-link\" href=\"/concepts/{}\">← Back to the idea</a><p class=\"eyebrow\">A saved question</p><h1 class=\"question\">{}</h1>{choices}<dl class=\"answer-pair\"><div><dt>The answer</dt><dd>{}</dd></div>{variants}</dl><div class=\"reading explanation\"><p>{}</p></div><p class=\"fineprint\">Saved {}{}</p>{}</article>",
             escape(&q.concept_id),
-            format_args!(
-                "{}{}{}",
-                self.fix_status(q),
-                if use_draft {
-                    format!(
-                        "<aside class=\"notice\"><strong>A better version is ready for your review.</strong><p>It is saved as a draft. Save below to use it in future practice.</p><a href=\"/questions/{id}/edit?current=true\">Use current wording instead</a></aside>"
-                    )
-                } else if q.draft.is_some() {
-                    format!(
-                        "<aside class=\"notice\"><a href=\"/questions/{id}/edit\">Review the prepared draft →</a></aside>"
-                    )
-                } else {
-                    String::new()
-                },
-                self.form(
-                    &format!("/questions/{id}/edit"),
-                    "edit",
-                    "edit-form",
-                    "",
-                    &body
-                )
-            )
+            escape(&c.prompt),
+            escape(&c.answer),
+            escape(&c.explanation),
+            date(c.created_ms),
+            if q.archived { " · Archived" } else { "" },
+            self.fix_status(q)
         )
     }
     fn not_found(&self) -> String {
@@ -3793,10 +3667,27 @@ pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
         "/library"
     } else if path == "/library/version/add" {
         "/library/add"
-    } else if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
+    } else if matches!(path, "/create" | "/add" | "/settings") || path.ends_with("/edit") {
         path
+    } else if let Some(page) = earlier_page(path) {
+        page
     } else {
         mutation_redirect(app, path, "/")
+    }
+}
+
+/// A refused write to an earlier Goal or Concept is shown on that Goal's or
+/// Concept's own page; any other refused earlier-notebook write, on Earlier
+/// practice. Retired generation actions keep their own landing.
+fn earlier_page(path: &str) -> Option<&str> {
+    let parts: Vec<_> = path.trim_matches('/').split('/').collect();
+    match parts.as_slice() {
+        [_, _, "retry" | "refine" | "fix"] => None,
+        ["concepts", _, "practice"] => Some("/notebook"),
+        ["goals" | "concepts", _, _] => path.rfind('/').map(|end| &path[..end]),
+        ["questions", _, _] => Some("/notebook"),
+        _ if path == "/__fixture" => Some("/notebook"),
+        _ => None,
     }
 }
 
@@ -3893,7 +3784,7 @@ pub fn render(
                 ["library", "versions", id] => view.library_version(id),
                 ["goals", id] => view.goal(id),
                 ["concepts", id] => view.concept(id),
-                ["questions", id, "edit"] => view.edit(id),
+                ["questions", id, "edit"] => view.question_page(id),
                 _ => view.not_found(),
             }
         }
@@ -4023,7 +3914,9 @@ fn provenance(basis: &str, quotes: &[String]) -> String {
     out.push_str("</div>");
     out
 }
-fn constellation(app: &App, concepts: &[&Concept], now: i64) -> String {
+/// Decorative: prerequisites place the stars; every star is drawn alike, since
+/// nothing about the earlier notebook is predicted.
+fn constellation(concepts: &[&Concept]) -> String {
     fn depth(index: usize, concepts: &[&Concept], visited: &mut Vec<usize>) -> usize {
         if visited.contains(&index) {
             return 0;
@@ -4078,14 +3971,10 @@ fn constellation(app: &App, concepts: &[&Concept], now: i64) -> String {
             }
         }
     }
-    for (i, c) in concepts.iter().enumerate() {
-        let (x, y) = positions[i];
-        let brightness = concept_evidence(app, c, now).brightness;
+    for (i, &(x, y)) in positions.iter().enumerate() {
         let _ = write!(
             out,
-            "<circle class=\"chart-halo\" cx=\"{x}\" cy=\"{y}\" r=\"{}\"/><circle class=\"chart-star brightness-{brightness}\" cx=\"{x}\" cy=\"{y}\" r=\"{}\"/><text class=\"chart-number\" x=\"{}\" y=\"{}\">{:02}</text>",
-            7 + usize::from(brightness) * 2,
-            2.0 + f64::from(brightness) * 0.45,
+            "<circle class=\"chart-halo\" cx=\"{x}\" cy=\"{y}\" r=\"11\"/><circle class=\"chart-star\" cx=\"{x}\" cy=\"{y}\" r=\"3.35\"/><text class=\"chart-number\" x=\"{}\" y=\"{}\">{:02}</text>",
             x + 13,
             y - 10,
             i + 1
@@ -4142,30 +4031,14 @@ fn concept_evidence(app: &App, c: &Concept, now: i64) -> ConceptState {
         .collect();
     compute_concept_state(&questions, now)
 }
-fn concept_state(app: &App, c: &Concept, now: i64) -> &'static str {
-    if c.archived {
-        return "Archived";
+/// How many answers to this Concept were recorded, graded or not: an observed
+/// count, never an estimate.
+fn answers_recorded(app: &App, c: &Concept) -> String {
+    match app.events.iter().filter(|e| e.concept_id == c.id).count() {
+        0 => "No answers".into(),
+        1 => "1 answer".into(),
+        n => format!("{n} answers"),
     }
-    let state = concept_evidence(app, c, now);
-    if state.tally.is_empty() && c.introduced_ms.is_some() {
-        return "Introduced";
-    }
-    match state.status.as_str() {
-        "solid" => "Solid",
-        "fading" => "Fading",
-        "learning" => "Learning",
-        _ => "New",
-    }
-}
-fn recall_label(app: &App, c: &Concept, now: i64) -> String {
-    let state = concept_evidence(app, c, now);
-    if state.recall < 0.0 {
-        return "Not enough unaided practice for a recall estimate yet. Reading and helped practice are recorded separately.".into();
-    }
-    format!(
-        "Estimated recall now: {:.0}%. This is a scheduling estimate, not a certainty or a measure of understanding.",
-        state.recall * 100.0
-    )
 }
 fn tally(state: &ConceptState) -> String {
     if state.tally.is_empty() {

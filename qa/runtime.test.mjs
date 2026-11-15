@@ -8,6 +8,7 @@ import test from 'node:test';
 import {createRuntime,createSyntheticRuntime,Response,internalKey} from './runtime-helper.mjs';
 import {createServer} from 'node:net';
 import {historicalMutation} from './historical-fixture.mjs';
+import {seedEarlier} from './earlier-fixture.mjs';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
@@ -509,11 +510,12 @@ try {
       for(const path of ['/','/create','/export'])assert.equal((await req(path)).status,200);
       for(const token of ['',jwt(),jwt({sub:'',common_name:'other.access'}),jwt({sub:owner,common_name:client}),jwt({sub:'',common_name:client,aud:['wrong']}),jwt({sub:'',common_name:client,iss:'https://wrong.invalid'}),jwt({sub:'',common_name:client,exp:epoch-1}),jwt({sub:'',common_name:client},{},generateKeyPairSync('rsa',{modulusLength:2048}).privateKey)])assert.equal((await req('/',token)).status,401);
       assert.equal((await req('/','',{headers:{'Cf-Access-Client-Id':client,'x-scry-owner':'private-owner','Cf-Access-Authenticated-User-Email':'owner@example.invalid'}})).status,401);
+      // The authored demo is retired: not offered, and refused, even here.
       const empty=await(await req('/notebook')).text();
-      assert.match(empty,/Explore an authored demo/);
-      const fixtureCsrf=/name="csrf" value="([^"]+)"/.exec(empty)[1];
-      assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,303);
+      assert.doesNotMatch(empty,/Explore an authored demo|action="\/__fixture"/);
       const fields=await savedRequestFields(await req('/settings'));
+      const demo=()=>req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fields.csrf,operation_id:'retired-demo-'+randomUUID()})});
+      assert.equal((await demo()).status,410);
       const submit=(originHeader,csrf=fields.csrf)=>req('/create',service,{method:'POST',headers:{'X-Scry-Test-Origin':originHeader,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,csrf,intent:'Synthetic service-token capture'})});
       assert.equal((await submit('https://attacker.invalid')).status,403);
       assert.equal((await submit(origin,'forged')).status,403);
@@ -523,8 +525,8 @@ try {
       const snapshots=await fixture.mf.getR2Bucket('SCRY_BACKUPS');
       const listed=await snapshots.list();
       const snapshot=await snapshots.get(listed.objects.at(-1).key);
-      assert.equal(Object.keys((await snapshot.json()).app.goals).length,1,'Retired capture leaves the authored demo unchanged and scheduled complete backup remains available.');
-      assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,409,'The authored demo never overwrites acknowledged synthetic work.');
+      assert.equal(Object.keys((await snapshot.json()).app.goals).length,0,'Neither retired capture nor the retired demo creates a Goal, and scheduled complete backup remains available.');
+      assert.equal((await demo()).status,410,'The retired demo seeds nothing, however often it is asked.');
       for(const changes of [{SCRY_ENV:'production'},{SCRY_ENV:'preview'}]){
         active=await fixture.rebind({...bindings,...changes});
         assert.equal((await req()).status,401,'Service identity must not authorize ordinary preview or production.');
@@ -866,7 +868,7 @@ try {
     await check(`${mode}: QA keeps native local Study without earlier practice, self-grading or paid Jev`, async () => {
       const localOrigin = 'http://127.0.0.1:8792';
       const client = 'no-paid-checking-qa.access';
-      const fixture = await createRuntime({artifact,name:`scry-qa-checking-${mode}`,egress,
+      const fixture = await createRuntime({artifact,name:`scry-qa-checking-${mode}`,egress,inspect:true,
         bindings:{SCRY_ENV:'development',CANONICAL_ORIGIN:localOrigin,SPACE_NAME:'scry-qa',INTERNAL_KEY:internalKey}});
       let active = fixture,currentOrigin = localOrigin;
       const req = (path,init={}) => active.worker.fetch(`${currentOrigin}${path}`,{...init,redirect:'manual',
@@ -888,9 +890,10 @@ try {
         return (await (await bucket.get(objects.sort((a,b)=>b.uploaded-a.uploaded)[0].key)).json()).app;
       };
       try {
-        // Authored local setup only; ordinary QA cannot call the fixture route.
-        let html = await (await req('/notebook')).text();
-        assert.equal((await post('/__fixture',fields(html,'/__fixture'))).status,303);
+        // The earlier notebook as the retired authored demo left it, one question
+        // held unanswered, loaded from its fixture: no route can create it.
+        await seedEarlier(await fixture.mf.unsafeGetDurableObjectStorage(`scry-qa-checking-${mode}`,'LearningSpace',{name:'scry-qa'}),'question-cold-choice',await fixture.mf.getR2Bucket('SCRY_ASSETS'));
+        let html;
         let app = await snapshot('private-owner');
         const held = structuredClone(app.occurrence);
         assert.equal(held.phase,'question');
@@ -973,15 +976,19 @@ try {
       assert.deepEqual(before.app.operations, source.app.operations);
       assert.equal((await active.worker.fetch(`${origin}/export`, {headers:{'x-scry-backup-key':backupKey}})).status, 401);
       const fields = await savedRequestFields(await req('/settings'));
-      const submit = () => req('/settings', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
-        body:new URLSearchParams({...fields, pace:'light'})});
-      const saved = await submit();
-      assert.equal(saved.status, 303);
-      assert.equal((await submit()).headers.get('Location'), saved.headers.get('Location'));
+      // The earlier notebook's pace is retired; creating an Owner token is the accepted write.
+      const pace = await req('/settings', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({...fields, operation_id:'retired-pace-'+randomUUID(), pace:'light'})});
+      assert.equal(pace.status, 410);
+      const submit = () => req('/tokens/create', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({...fields, name:'Synthetic accepted write beside custody'})});
+      assert.equal((await submit()).status, 200);
+      assert.equal((await submit()).status, 303, 'An exact retry replays the saved receipt.');
       active = await fixture.rebind(activeBindings);
       const after = await (await req('/export')).json();
       assert.deepEqual(after.app.revival_go, custody);
-      assert.deepEqual(after.app.goals,before.app.goals);assert.equal(after.app.preferences.pace,'light');
+      assert.deepEqual(after.app.goals,before.app.goals);assert.equal(after.app.preferences.pace,before.app.preferences.pace);
+      assert.deepEqual(Object.values(after.app.owner_tokens).map(token=>token.name),[...Object.values(before.app.owner_tokens??{}).map(token=>token.name),'Synthetic accepted write beside custody']);
       const response = await active.worker.fetch(`${origin}/internal/backup`, {method:'POST', headers:{'x-scry-backup-key':backupKey}});
       assert.equal(response.status, 200);
       const state = await (await req('/export')).json();
@@ -1041,14 +1048,17 @@ await test('listener allocation survives deterministic contention and concurrent
     const html=await response.text();assert.match(html,/Native content generation is retired/);
     const fields=await savedRequestFields(await fetch(listener+'/settings'));
     assert.ok(fields.csrf);
-    const submit=origin=>fetch(listener+'/settings',{method:'POST',redirect:'manual',headers:{Origin:origin},body:new URLSearchParams({...fields,pace:'light'})});
+    // A verified backup is the write; the earlier notebook's pace is retired.
+    const submit=origin=>fetch(listener+'/settings/backup',{method:'POST',redirect:'manual',headers:{Origin:origin},body:new URLSearchParams(fields)});
     assert.equal((await submit('https://foreign.invalid')).status,403);
     assert.equal((await submit(runtimes.find(other=>other!==local).url)).status,403);
     assert.equal((await fetch(listener+'/',{headers:{'X-Scry-Test-Host':'foreign.invalid'}})).status,421);
     assert.equal(Object.keys((await(await fetch(listener+'/export')).json()).app.goals).length,0);
     assert.equal((await submit(listener)).status,303,'A rejected write must not consume the operation.');
     assert.equal((await submit(listener)).status,303,'An exact retry must remain idempotent.');
-    const saved=(await(await fetch(listener+'/export')).json()).app;assert.equal(saved.preferences.pace,'light');assert.equal(Object.keys(saved.operations).length,1);assert.deepEqual(saved.goals,{});
+    const pace=await fetch(listener+'/settings',{method:'POST',redirect:'manual',headers:{Origin:listener},body:new URLSearchParams({...fields,operation_id:'retired-pace-'+randomUUID(),pace:'light'})});
+    assert.equal(pace.status,410,'The earlier pace is retired.');
+    const saved=(await(await fetch(listener+'/export')).json()).app;assert.equal(saved.preferences.pace,'steady');assert.ok(saved.backup.completed_ms);assert.equal(Object.keys(saved.operations).length,1);assert.deepEqual(saved.goals,{});
   }
   console.log(JSON.stringify({listener_allocation:'PASS',reclaimed_probe_port:port,concurrent_origins:runtimes.map(local=>local.url),isolated_receipts_per_runtime:1,foreign_origin_status:403,foreign_host_status:421,canonical_write_and_replay_status:303}));
 });

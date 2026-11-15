@@ -101,14 +101,21 @@ export async function ownerJourney() {
       assert.equal((await bearer('/api/v1/whoami',value.secret)).status,401);
     },
     async()=>{
-      const request={operation_id:randomUUID(),pace:'light'};
-      const first=await(await bearer('/api/v1/settings',root.secret,request)).json();
-      const replay=await(await bearer('/api/v1/settings',root.secret,request)).json();
+      const spare=await create('shared receipt probe');
+      const request={operation_id:randomUUID(),token_id:spare.token.id};
+      const first=await(await bearer('/api/v1/tokens/revoke',root.secret,request)).json();
+      const replay=await(await bearer('/api/v1/tokens/revoke',root.secret,request)).json();
       assert.deepEqual(replay.result,first.result);assert.equal(replay.replayed,true);
-      assert.equal((await bearer('/api/v1/settings',root.secret,{...request,pace:'intense'})).status,409);
+      assert.equal((await bearer('/api/v1/tokens/revoke',root.secret,{...request,token_id:root.token.id})).status,409);
       // Browser/API share the same operation receipts and canonical payload.
-      assert.equal((await postForm('/settings',{...request,csrf})).status,303);
-      assert.equal((await postForm('/settings',{...request,pace:'intense',csrf})).status,409);
+      assert.equal((await postForm('/tokens/revoke',{...request,csrf})).status,303);
+      assert.equal((await postForm('/tokens/revoke',{...request,token_id:root.token.id,csrf})).status,409);
+      assert.equal((await bearer('/api/v1/whoami',root.secret)).status,200,'A conflicting payload revoked nothing.');
+      // The earlier notebook's pace is retired: the API answers 410, as for /api/v1/create, and writes nothing.
+      const unchanged=await rows();
+      const pace=await bearer('/api/v1/settings',root.secret,{operation_id:randomUUID(),pace:'light'});
+      assert.equal(pace.status,410);assert.match((await pace.json()).error,/The earlier concept notebook is kept as history\./);
+      assert.deepEqual(await rows(),unchanged);
       const createPayload={operation_id:randomUUID(),name:'lost response'};
       const issued=await(await bearer('/api/v1/tokens',root.secret,createPayload)).json();
       const again=await(await bearer('/api/v1/tokens',root.secret,createPayload)).json();
@@ -155,7 +162,8 @@ export async function ownerJourney() {
       for(const path of ['/api/v1/tokens','/api/v1/tokens/revoke','/api/v1/settings','/api/v1/create']) {
         const denied=await access(path,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/json'},body:JSON.stringify({operation_id:randomUUID(),name:'denied',pace:'light'})});assert.equal(denied.status,403);
       }
-      const validCookie=await access('/api/v1/settings',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/json'},body:JSON.stringify({operation_id:randomUUID(),pace:'steady',csrf})});assert.equal(validCookie.status,200);
+      const cookieTarget=await create('cookie revocation probe');
+      const validCookie=await access('/api/v1/tokens/revoke',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/json'},body:JSON.stringify({operation_id:randomUUID(),token_id:cookieTarget.token.id,csrf})});assert.equal(validCookie.status,200);
       const cross=await access('/api/v1/tokens',{method:'POST',headers:{'X-Scry-Test-Origin':'https://attacker.invalid','Content-Type':'application/json'},body:'{}'});assert.equal(cross.status,403);
       // Same actual SQLite object, rebound to an isolated loopback environment
       // so the native client drives the real TCP Worker without a proxy/stub.

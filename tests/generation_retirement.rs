@@ -44,7 +44,8 @@ fn current_generation_admission_refuses_every_old_entry_not_grading_or_external_
         assert!(error.message.contains("Self-grading is retired"));
     }
     // The earlier concept notebook is history: nothing presents, answers,
-    // checks or dismisses one of its questions.
+    // checks, dismisses, archives, edits, flags, focuses, pauses or paces it,
+    // and no demo seeds one.
     for path in [
         "/review/intro",
         "/review/answer",
@@ -54,6 +55,16 @@ fn current_generation_admission_refuses_every_old_entry_not_grading_or_external_
         "/review/next",
         "/review/anything-else",
         "/concepts/old/practice",
+        "/goals/old/pause",
+        "/goals/old/focus",
+        "/goals/old/archive",
+        "/concepts/old/archive",
+        "/concepts/old/feedback",
+        "/questions/old/edit",
+        "/questions/old/archive",
+        "/questions/old/dispute",
+        "/settings",
+        "/__fixture",
     ] {
         let error = engine::admit_current_mutation(path).unwrap_err();
         assert_eq!(error.status, 410, "{path}");
@@ -68,7 +79,6 @@ fn current_generation_admission_refuses_every_old_entry_not_grading_or_external_
         "/settings/resume",
         "/settings/judgment",
         "/settings/backup",
-        "/questions/old/edit",
     ] {
         engine::admit_current_mutation(path).unwrap();
     }
