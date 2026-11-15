@@ -190,8 +190,9 @@ Specification, code, commits and conversation use these words.
 11. **Acknowledged work survives.** An answer Scry has acknowledged survives
     restart, release and loss of the serving machine, within the stated
     backup limits.
-12. **Paid work is bounded.** Spend never exceeds its caps, and a sent request
-    with an unknown cost keeps its reservation until deliberately resolved.
+12. **Paid work is bounded.** Scry reserves a fixed amount before each paid
+    request and sends nothing once its allowance cannot cover one. A sent
+    request with an unknown cost counts in full and is never retried for free.
 
 ## Experience
 
@@ -320,7 +321,8 @@ horizontal clipping, including with long questions and explanations.
   is untouched, so it comes round again.
 - The Owner can ask for an ungraded Attempt to be checked again. That is a
   new, deliberate check of the same saved answer, not a second Attempt. An
-  answer is checked at most three times. Scry never retries by itself. A check
+  answer has at most three checks, counting one refused before it was sent.
+  Scry never retries by itself. A check
   that resolves gives the Attempt its Verdict once; it changes the schedule
   only if the Card has no newer Attempt.
 - A Verdict cannot be overturned. Where the content was at fault, an agent
@@ -693,9 +695,11 @@ horizontal clipping, including with long questions and explanations.
   enforced by Scry, and at most 25 US dollars a week, enforced on the provider
   account. When a cap is reached nothing is sent: an answer that needed Jev
   stays saved and ungraded, and Scry says why.
-- Each paid request reserves against the allowance before it is sent. A
-  request that was sent with an unknown outcome keeps its reservation until
-  the Owner settles it as spent or released; it is never retried for free.
+- Each paid request reserves 0.50 US dollars against the allowance before it
+  is sent, and is counted at its reported cost once that is known. One sent
+  with an unknown outcome or cost counts as its full reservation for the
+  rolling 24 hours and stays in the ledger as unknown; it is never retried
+  for free.
 - The Spend ledger records the purpose and model of every entry and reports
   spend by day, purpose and model.
 
