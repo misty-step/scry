@@ -30,12 +30,16 @@ pub fn mutation_path(path: &str) -> Option<&str> {
         "/api/v1/studies/pause" => Some("/practice/pause"),
         "/api/v1/studies/resume" => Some("/practice/resume"),
         "/api/v1/studies/drop" => Some("/practice/drop"),
+        "/api/v1/studies/pace" => Some("/practice/pace"),
+        // Study's mix, exactly as the app's Study and Next serve it.
+        "/api/v1/mix" => Some("/practice/review/start"),
         "/api/v1/next" => Some("/practice/next"),
         "/api/v1/answer" => Some("/practice/answer"),
         "/api/v1/draft" => Some("/practice/draft"),
         "/api/v1/draft/discard" => Some("/practice/draft/discard"),
         "/api/v1/reveal" => Some("/practice/reveal"),
         "/api/v1/quiz" => Some("/practice/quiz"),
+        // Retired: kept so an old client is refused with 410 before any write.
         "/api/v1/correct" => Some("/practice/correct"),
         "/api/v1/check" => Some("/practice/check"),
         "/api/v1/library/mappings" => Some("/library/mapping/add"),
@@ -47,6 +51,7 @@ pub fn mutation_path(path: &str) -> Option<&str> {
         "/api/v1/tokens" => Some("/tokens/create"),
         "/api/v1/tokens/revoke" => Some("/tokens/revoke"),
         "/api/v1/settings" => Some("/settings"),
+        // Retired: generation is refused with 410 before any write.
         "/api/v1/create" => Some("/create"),
         _ => None,
     }

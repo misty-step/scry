@@ -53,7 +53,8 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 | `scry_import` | Existing Version or mapping import; no automatic Study |
 | `scry_learn` / `scry_due` | Start/resume the retained Study, or read due Cards |
 | `scry_next` | Current Prompt/held result; deliberate `after` releases an answered Prompt |
-| `scry_lesson_start` | Start/resume one supplied or bundled authored lesson; explicit `after` or `leave` controls a switch |
+| `scry_mix` | Study's mix, as the app's Study and Next serve it; `after` releases an answered Prompt, `leave` closes an unanswered one ungraded |
+| `scry_lesson_start` | Start/resume a lesson for any supplied Version (text, list or mapping) or a bundled starter; explicit `after` or `leave` controls a switch |
 | `scry_lesson_next` | Advance phrases, join their authored Section, try the whole text, or practise from the middle |
 | `scry_answer` | Raw learner answer, graded by Scry; no verdict/rating/correct field |
 | `scry_check` | Check again: one more paid check of a saved answer that has no Verdict |
@@ -61,7 +62,10 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 | `scry_quiz` | Deliberately hide the held source and start a memory quiz; no grade or schedule credit |
 
 `scry_validate` and `scry_import` accept `format: "version" | "mapping"` and a
-`data` object matching `scry_schema`. Import additionally requires
+`data` object matching `scry_schema`. Their input schemas carry no top-level
+`oneOf`, `anyOf` or `allOf`, which common tool-calling clients refuse; `data`
+is described as an object and Scry's native validator checks it whole against
+the schema `format` names. Import additionally requires
 `operation_id`. Version drafts use the existing Library shape. Mapping drafts
 use `title`, `direction: "forward"`, and `pairs: [{"key":"A","value":"Alfa"}]`,
 plus the supported optional metadata. Both reuse native Library validation.
@@ -76,7 +80,14 @@ manifest, Relations included; the same text with different Units, aliases,
 pairs or Spelling-strict setting is refused with what differs.
 Validation does not query the remote Library or prove deduplication, related
 Works, available storage, authorization, Study admission, learning efficacy or
-deployment. Corrections and deletions are API and CLI actions, not tools.
+deployment. Library corrections and deletions, and pausing, resuming,
+dropping or pacing a Study, are API and CLI actions, not tools.
+
+`scry_mix` is Study's mix, the action SPEC calls Study and Next: due reviews
+across every Study first, then unfinished Studies and Works not yet started. It
+takes `operation_id` and optionally `after` (the answered Prompt) or `leave`
+(the unanswered Prompt to close ungraded), never both, and no Study, Card,
+Pace or grade. Without either it returns the held Prompt or result.
 
 Where the Owner has turned paid judgment on and the login's Owner token carries
 paid permission, `scry_answer` may return `practice.judgment.state: "checking"`:

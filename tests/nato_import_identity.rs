@@ -243,18 +243,22 @@ fn nato_identity_requires_all_ordered_correct_pairs_strict_policy_and_consistent
                     .all(|s| s.version_id != vid)
             );
         }
-        assert_eq!(
-            api_mutate(
-                &mut a,
-                "/api/v1/lessons/start",
-                "nato-negative-lesson",
-                json!({"version_id":vid})
-            )
-            .unwrap_err()
-            .status,
-            422
-        );
-        assert_eq!(a, before);
+        // SPEC § Agent access: a lesson starts for any supplied Version. A
+        // near-NATO mapping is an ordinary mapping lesson at its Pace, never
+        // focused NATO practice of all 26 letters.
+        let started = api_mutate(
+            &mut a,
+            "/api/v1/lessons/start",
+            "nato-negative-lesson",
+            json!({"version_id":vid}),
+        )
+        .unwrap();
+        assert_ne!(started.redirect, "/?practice=nato");
+        let held = a.practice.current.as_ref().unwrap();
+        assert_eq!(held.prompt.version_id, vid);
+        let study = &a.practice.studies[&held.prompt.study_id];
+        assert!(!study.nato_all_letters && !study.lesson);
+        assert_eq!(a.library, before.library);
     }
     let mut a = app();
     let vid = a

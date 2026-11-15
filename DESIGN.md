@@ -205,7 +205,10 @@ Versions. Titles, edition names, sources and Unit counts help the learner
 choose the wording. An honest miss offers Add a text, never generation by
 surprise. Adding needs only Title and Text; edition/source live in a disclosure.
 The Version shows the exact saved wording and one Learn action, with optional
-3/6/12 Pace. Repeating either action reuses saved content and Study.
+3/6/12 Pace. Repeating either action reuses saved content and Study. Once
+studied, the Version offers Return to practice and a closed Manage Study
+disclosure: Pause or Resume, Drop, and the same 3/6/12 Pace radios with the
+Study's own Pace checked and one quiet Set Pace button.
 A Work's title links to its page: aliases, context, Relations and its Versions.
 Relations are plain fineprint lines with linked names ("Part of", "Includes",
 "Related to"), on both Works they link; a correction and the Version it

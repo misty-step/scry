@@ -985,6 +985,12 @@ fn hold(app: &mut App, p: Presentation) -> AppResult<()> {
     Ok(())
 }
 const NOT_INTRODUCED: &str = "Introduce every Unit in this scope before Recitation.";
+const PHRASE_NOT_INTRODUCED: &str = "That phrase has not been introduced yet. Start this lesson to practise any of its phrases, or choose Next.";
+/// Whether every Unit of this Study's Version has a Card: a text lesson that
+/// has been entered, a list presented whole, or Units all introduced at Pace.
+pub fn fully_introduced(app: &App, study: &Study) -> bool {
+    introduced(app, study) >= units(&app.library.versions[&study.version_id]).len()
+}
 /// The Cards of a Recitation, in the order of its scope. A Recitation covers
 /// every Unit of its Section or Version, so each must already be introduced.
 /// Nothing is introduced here: a refusal leaves the notebook as it was.
@@ -2056,21 +2062,6 @@ fn lesson_start(
         .get(&vid)
         .ok_or_else(|| AppError::new(404, "Version not found."))?;
     reviewable(version)?;
-    if version.kind == Kind::KeyedMapping
-        && !crate::library::is_nato(version)
-        && crate::lessons::mapping_route(version).is_none()
-    {
-        return Err(AppError::new(
-            422,
-            "Use normal Study practice for this mapping; lessons support text, ordered lists and the NATO starter.",
-        ));
-    }
-    if units(version).len() > 128 {
-        return Err(AppError::new(
-            422,
-            "Lessons support up to 128 meaningful phrases or items. Split longer material into separate Versions.",
-        ));
-    }
     let resume = app
         .practice
         .current
@@ -2111,14 +2102,13 @@ fn lesson_start(
         result.redirect = "/?practice=nato".into();
         return Ok(result);
     }
-    if let Some(route) = crate::lessons::mapping_route(&app.library.versions[&vid]) {
+    // A mapping lesson, starter or supplied, is introduced at its Pace.
+    if app.library.versions[&vid].kind == Kind::KeyedMapping {
         if resume.is_some() {
             return Ok(response(None, held(app)?));
         }
         app.practice.current = None;
-        let mut result = next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)?;
-        result.redirect = route.into();
-        return Ok(result);
+        return next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed);
     }
     let s = s.clone();
     let count = units(&app.library.versions[&vid]).len();
@@ -2254,11 +2244,14 @@ fn lesson_next(
     let sid = p.prompt.study_id.clone();
     let study = &app.practice.studies[&sid];
     let mode = field(fields, "mode");
-    // A guided retry of a missed phrase is offered wherever it was missed.
-    if (!study.lesson && mode != "retry") || study.status == Status::Dropped {
+    let v = &app.library.versions[&study.version_id];
+    // A guided retry of a missed phrase is offered wherever it was missed. A
+    // mapping lesson continues one pair at a time, however it was started.
+    if (!study.lesson && mode != "retry" && v.kind != Kind::KeyedMapping)
+        || study.status == Status::Dropped
+    {
         return Err(AppError::conflict());
     }
-    let v = &app.library.versions[&study.version_id];
     reviewable(v)?;
     if !matches!(mode, "" | "phrases" | "retry" | "join" | "whole" | "middle") {
         return Err(AppError::new(
@@ -2288,6 +2281,23 @@ fn lesson_next(
         )?;
         result.redirect = "/?practice=nato".into();
         return Ok(result);
+    }
+    if v.kind == Kind::KeyedMapping {
+        if !matches!(mode, "" | "phrases") {
+            return Err(AppError::new(
+                422,
+                "Mapping practice is one pair at a time.",
+            ));
+        }
+        return next(
+            app,
+            &BTreeMap::from([
+                ("study_id".into(), sid),
+                ("after".into(), p.prompt.id.clone()),
+            ]),
+            now,
+            seed,
+        );
     }
     // A phrase, passage or list whose answer is still with Jev is not asked
     // again: the held result stays, still being checked.
@@ -2387,6 +2397,17 @@ fn lesson_next(
                 .is_none_or(|c| !waiting.contains(&c.id))
         })
     };
+    // Under Study a text's phrases arrive at its Pace. Entering the lesson
+    // makes every phrase available; until then a phrase without a Card waits.
+    if let Some(index) = index.filter(|_| !whole)
+        && !app
+            .practice
+            .cards
+            .values()
+            .any(|c| c.study_id == sid && c.unit_index == index)
+    {
+        return Err(AppError::new(409, PHRASE_NOT_INTRODUCED));
+    }
     match index {
         Some(index) => lesson_present(app, &sid, index, whole, now, seed),
         None => Ok(response(None, held(app)?)),
@@ -2858,6 +2879,32 @@ pub fn mutate_judged(
             }
             Ok(response(Some(sid.into()), json!({"study":study})))
         }
+        "/practice/pace" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "study_id" | "pace"
+                )
+            }) {
+                return Err(AppError::new(422, "Choose a Study and its Pace only."));
+            }
+            if field(fields, "pace").is_empty() {
+                return Err(AppError::new(422, "Use light, steady or intense Pace."));
+            }
+            let pace = Pace::parse(field(fields, "pace"))?;
+            let sid = field(fields, "study_id");
+            let s = app
+                .practice
+                .studies
+                .get_mut(sid)
+                .ok_or_else(|| AppError::new(404, "Study not found."))?;
+            // Pace limits new Units only: Cards and schedules are untouched.
+            s.pace = pace;
+            let study = s.clone();
+            let mut result = response(Some(sid.into()), json!({"study":study}));
+            result.redirect = format!("/library/versions/{}", study.version_id);
+            Ok(result)
+        }
         "/practice/next" => next(app, fields, now, seed),
         "/practice/reveal" => {
             let p = active(app, fields, false)?;
@@ -3210,9 +3257,16 @@ pub fn due(app: &App, now: i64) -> Value {
         .collect::<Vec<_>>();
     cards.sort_by_key(|c| (c.state.schedule.due_ms, &c.study_id, c.unit_index));
     // Due is what Study will serve. A list that waits to be resumed serves nothing.
+    let waits = app
+        .practice
+        .studies
+        .values()
+        .filter(|s| list_waits(app, s))
+        .map(|s| s.id.as_str())
+        .collect::<BTreeSet<_>>();
     let served = cards
         .iter()
-        .filter(|c| !list_waits(app, &app.practice.studies[&c.study_id]))
+        .filter(|c| !waits.contains(c.study_id.as_str()))
         .collect::<Vec<_>>();
     // A Card whose answer is still with Jev is not served until it has a
     // Verdict or is left not graded. It is named apart, only where one exists.

@@ -44,7 +44,7 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
 
 ## Features
 
-- [Continuous study](../SPEC.md#open-into-study): default Study → Next interleaves due subjects, then paced unfinished/unseen Library and canonical starter content; Browse stays secondary. `tests/mixed_review.rs` covers fair selection, immutable legacy policy/corrections, native due scheduling, whole sequences, replay and scope. The browser/runtime journey is `qa/mixed-review.mjs`. Existing agent `/api/v1/next` remains explicit scoped/general Study selection, not an implicit mixed-mode switch.
+- [Continuous study](../SPEC.md#open-into-study): default Study → Next interleaves due subjects, then paced unfinished/unseen Library and canonical starter content; Browse stays secondary. `tests/mixed_review.rs` covers fair selection, immutable legacy policy/corrections, native due scheduling, whole sequences, replay and scope. The browser/runtime journey is `qa/mixed-review.mjs`. Agents take the same mix through `POST /api/v1/mix`, `scry mix` and `scry_mix`; `/api/v1/next` remains explicit scoped/general Study selection and leaves the mix.
 
 - [NATO review](nato-review.md): native start, server grading, assistance and honest progress.
 - [Choose and practise lessons](practice-lessons.md): visual topic shelf, prayer editions, Rosary sets, draft-preserving return and same-phrase retry.

@@ -188,15 +188,15 @@ has a Study of any status (NATO keeps only one it can practise as the
 alphabet), which a lesson start resumes and Study never bypasses; otherwise
 the starter's own Version, added beside any copy, which stays unchanged. A new text attaches to
 the Work its title or alias names; names that point to different Works conflict.
-Search matches titles, aliases, and the first 240 characters of each Version.
-An empty query lists the Library. No matches returns
+Search matches titles, aliases, and the first 240 characters of each Version,
+and lists matching Works by title. An empty query lists the Library. No matches returns
 `{"matches":[],"empty":true,"message":"Nothing matches."}`.
 
 | Method | Route | Payload / result |
 | --- | --- | --- |
-| GET | `/api/v1/library/search?q=QUERY` | Matching Works with Versions and Relations, explicit empty result |
+| GET | `/api/v1/library/search?q=QUERY` | Matching Works by title, with Versions and Relations, explicit empty result |
 | GET | `/api/v1/library/works/ID` | Work metadata, Versions with Sections and Units, Relations |
-| GET | `/api/v1/library/versions/ID` | Version, owning Work, incoming and outgoing Relations |
+| GET | `/api/v1/library/versions/ID` | Version, owning Work, its version-of and supersedes Relations and its Work's part-of and related-to Relations |
 | GET | `/api/v1/library/export` | Only `works`, `versions`, and `relations` |
 | POST | `/api/v1/library/versions` | `operation_id`, `data` Version draft |
 | POST | `/api/v1/library/versions/supersede` | `operation_id`, `version_id`, Work `revision`, `data` Version draft |
@@ -311,8 +311,9 @@ Hosted Owner-token admission is still separately unverified (#335).
 ## Authored sequence and phrase lessons
 
 Lessons reuse immutable supplied Versions and native grading. No content is
-created by an AI service. Import a Version through `version add` or
-`POST /api/v1/library/versions`, then deliberately start it:
+created by an AI service. Any supplied Version can be a lesson: a text, an
+ordered list or a mapping, of any length the Library admits. Import a Version
+through `version add`, `mapping add` or their routes, then deliberately start it:
 
 ```sh
 ./target/debug/scry lesson start --version VERSION_ID \
@@ -338,6 +339,12 @@ its saved attempts are replaced or transferred to the new edition.
 | `POST /api/v1/lessons/start` | Exactly one `starter` or `version_id`; optional `after` **or** `leave` |
 | `POST /api/v1/lessons/next` | Required `after`; optional `mode`: `phrases`, `retry`, `join`, `whole`, `middle` |
 
+`lesson next --mode phrases` serves the next phrase in order. A text that Study's
+mix reached first, and whose lesson has not been entered, introduces its
+phrases at its Pace: a next phrase without a Card is refused (409, `That phrase
+has not been introduced yet.`) with nothing written; use `next` or `mix`, or
+start the lesson, which makes every phrase available.
+
 `after` must identify the currently held **answered** Prompt. Switching away
 from an unanswered Prompt requires explicit `leave` with that exact Prompt ID
 (CLI `--leave PROMPT_ID`). This abandons the unsent draft, not the learner's
@@ -356,9 +363,12 @@ speech recognition or pronunciation assessment. Keep language, edition/version,
 source citations and rights explicit in the existing `name`, `context`,
 `sources` and `rights` metadata. Do not silently blend translations.
 
-A lesson deliberately introduces up to 128 Units without changing retained
-Pace or rewriting past schedules. Existing local grading/storage bounds still
-apply. Assistance never counts as unaided recall or changes the due schedule.
+A text or list lesson deliberately introduces every Unit at once without
+changing retained Pace or rewriting past schedules; a mapping lesson, starter or
+supplied, introduces its pairs at the Study's Pace and `lesson next` continues
+it one pair at a time (`mode` `phrases` or none). Existing local grading and
+storage bounds still apply: a lesson too large for the archive is refused
+before it commits. Assistance never counts as unaided recall or changes the due schedule.
 Phrase, joined-Section
 and whole-text Attempts retain their different scopes. Isolated phrase success
 does not establish complete-text recall.
@@ -439,12 +449,43 @@ remain available. These reads never record help or consume a Prompt.
 ./target/debug/scry study pause STUDY --json
 ./target/debug/scry study resume STUDY --json
 ./target/debug/scry study drop STUDY --json
+./target/debug/scry study pace STUDY --pace light --json
 ```
+
+`study pace` chooses an existing Study's Pace: `light` (3 new Units per
+rolling day), `steady` (6, where every Study starts) or `intense` (12). It
+changes only how many new Units arrive; Cards, schedules and status are
+unchanged, and a dropped or paused Study keeps the chosen Pace for when it is
+resumed. `pace` is required; an unknown value or any other field is refused
+(422).
+
+### Study's mix
+
+The app's **Study** and **Next** serve Study's mix: genuinely due, previously
+practised material first, interleaved across Studies by least recent service,
+then unfinished Studies and Works not yet started. Agents take the same action:
+
+```sh
+./target/debug/scry mix --operation-id RETAINED_OPERATION_ID --json
+./target/debug/scry mix --after ANSWERED_PROMPT --json
+./target/debug/scry mix --leave UNANSWERED_PROMPT --json
+```
+
+Without `--after` or `--leave` it returns the held Prompt or result, without
+choosing another. `next` and `lesson next`, except a phrase retry, leave the
+mix, as choosing a Study or a Lesson does in the app. `--after`
+releases the answered Prompt; `--leave` closes the identified unanswered Prompt
+without a grade. When it is the turn of a Work not yet started, the mix starts
+that one Study and nothing else. With nothing eligible it returns
+`{"prompt":null,"due":...}`. `due`, `study list` and Library reads never
+start it. Responses carry the same `practice` as `next`, under the same
+assistance fence.
 
 Recitations require every Unit in the selected scope to have been introduced.
 Section prompts contain the heading alone. Whole prompts contain the title
 alone. Each target Unit gets its own Verdict and schedule effect.
-New `scry correct` and `/api/v1/correct` submissions are retired and return 410.
+A Verdict cannot be overturned: `/api/v1/correct` is retired and returns 410
+before any receipt or write, and the CLI has no `correct` command.
 Historical Corrections retain their original meaning: an Owner override for the
 held Attempt, recomputed from the original Card state and answer time, without
 changing the original Attempt. Read them through history/export; no new
@@ -455,6 +496,8 @@ learner-supplied Verdict is accepted.
 | POST | `/api/v1/learn` | `operation_id`, `version_id`, optional `pace` |
 | GET | `/api/v1/studies` | All Studies, including paused and dropped |
 | POST | `/api/v1/studies/pause`, `/api/v1/studies/resume`, `/api/v1/studies/drop` | `operation_id`, `study_id` |
+| POST | `/api/v1/studies/pace` | `operation_id`, `study_id`, `pace`: `light`, `steady` or `intense` |
+| POST | `/api/v1/mix` | `operation_id`, optional `after` **or** `leave`; Study's mix |
 | POST | `/api/v1/next` | `operation_id`, optional `after`, `study_id`, `card_id`, `recite`, `section_id` |
 | POST | `/api/v1/answer` | `operation_id`, `prompt_id`, raw `answer` |
 | POST | `/api/v1/reveal` | `operation_id`, `prompt_id` |

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,sign,randomUUID} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
-import {mkdtemp,readFile,rm,stat} from 'node:fs/promises';
+import {mkdtemp,readFile,rm,stat,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createRuntime,internalKey,Response} from './runtime-helper.mjs';
@@ -189,6 +189,50 @@ export async function ownerJourney() {
       const replay=await cli(['token','create','cli agent','--operation-id',op]);assert.equal(replay.code,0);assert.ok(!('secret' in replay.value));
       assert.notEqual((await cli(['token','create','changed payload','--operation-id',op])).code,0);
       assert.equal((await cli(['token','list'])).code,0);
+      // SPEC § Agent access: Study's mix, a Study's Pace and a lesson for any
+      // supplied Version are CLI actions, under the same refusals as the app.
+      const textFile=join(temp,'mix.txt');await writeFile(textFile,'First synthetic CLI line,\nsecond synthetic CLI line.\n');
+      assert.equal((await cli(['version','add','--title','Synthetic CLI Mix','--kind','text','--text-file',textFile])).code,0);
+      const quiet=await rows();assert.equal((await cli(['due'])).code,0);assert.deepEqual(await rows(),quiet,'Asking what is due starts nothing.');
+      const mixOp='cli-mix-operation-'+randomUUID();
+      const mixed=await cli(['mix','--operation-id',mixOp]);assert.equal(mixed.code,0);
+      assert.equal(mixed.value.practice.phase,'study');assert.equal(mixed.value.practice.prompt.cue,'First synthetic CLI line,\n');
+      const mixReplay=await cli(['mix','--operation-id',mixOp]);assert.equal(mixReplay.code,0);assert.equal(mixReplay.value.replayed,true);
+      assert.deepEqual(mixReplay.value.practice,mixed.value.practice);
+      const settled=await rows();
+      assert.notEqual((await cli(['mix','--leave',mixed.value.practice.prompt.id,'--operation-id',mixOp])).code,0,'Reuse with another payload conflicts.');
+      assert.notEqual((await cli(['mix','--after','a'.repeat(32),'--leave','a'.repeat(32)])).code,0);
+      assert.deepEqual(await rows(),settled);
+      const quizzed=await cli(['quiz',mixed.value.practice.prompt.id]);assert.equal(quizzed.code,0);
+      const heldMix=await cli(['mix']);assert.equal(heldMix.code,0);assert.equal(heldMix.value.practice.prompt.id,quizzed.value.practice.prompt.id);
+      assert.ok(!JSON.stringify(heldMix.value).includes('synthetic CLI line'),'The mix bears no answer while recall is protected.');
+      assert.equal((await cli(['answer',quizzed.value.practice.prompt.id,'--text-stdin'],'First synthetic CLI line,')).value.practice.attempt.grade.verdict,'Good');
+      const following=await cli(['mix','--after',quizzed.value.practice.prompt.id]);assert.equal(following.code,0);
+      assert.notEqual(following.value.practice.prompt.id,quizzed.value.practice.prompt.id);
+      const sid=mixed.value.practice.prompt.study_id;
+      const paceOp='cli-pace-operation-'+randomUUID();
+      const paced=await cli(['study','pace',sid,'--pace','intense','--operation-id',paceOp]);assert.equal(paced.code,0);assert.equal(paced.value.practice.study.pace,'intense');
+      assert.equal((await cli(['study','pace',sid,'--pace','intense','--operation-id',paceOp])).value.replayed,true);
+      const paceRows=await rows();
+      for(const args of [['study','pace',sid,'--pace','fast'],['study','pace',sid],['study','pace',sid,'--pace','light','--operation-id',paceOp]]) assert.notEqual((await cli(args)).code,0,args.join(' '));
+      assert.deepEqual(await rows(),paceRows,'Refused Pace changes write nothing.');
+      assert.equal((await cli(['study','list'])).value.studies[sid].pace,'intense');
+      // A Verdict cannot be overturned: the CLI has no correct command.
+      const retired=await cli(['correct',quizzed.value.practice.prompt.id,'a'.repeat(32),'--verdict','Good']);
+      assert.notEqual(retired.code,0);assert.match(retired.value.error,/^Usage: /);assert.deepEqual(await rows(),paceRows);
+      const manifest=join(temp,'capitals.json');await writeFile(manifest,JSON.stringify({title:'Synthetic CLI Capitals',direction:'forward',pairs:[{key:'Synthland',value:'Testville'},{key:'Mockovia',value:'Fixture City'}]}));
+      const mappingVid=(await cli(['mapping','add','--file',manifest])).value.result.entity_id;
+      const lesson=await cli(['lesson','start','--version',mappingVid,'--leave',following.value.practice.prompt.id]);
+      assert.equal(lesson.code,0);assert.equal(lesson.value.practice.prompt.version_id,mappingVid);assert.equal(lesson.value.practice.phase,'study');
+      // The app's Manage Study offers the same Pace as a native form.
+      const paceVersion=mixed.value.practice.prompt.version_id;
+      const versionPage=await(await runtime.worker.fetch(local+'/library/versions/'+paceVersion)).text();
+      const paceForm=/<form[^>]*action="\/practice\/pace"[^>]*>([\s\S]*?)<\/form>/.exec(versionPage);assert.ok(paceForm,'Manage Study has a Pace form.');
+      assert.match(paceForm[1],/value="intense" checked/);
+      const paceFields=Object.fromEntries([...paceForm[1].matchAll(/name="(csrf|operation_id|revision|study_id)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+      const posted=await runtime.worker.fetch(local+'/practice/pace',{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':local,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...paceFields,pace:'light'})});
+      assert.equal(posted.status,303);assert.equal(posted.headers.get('Location'),'/library/versions/'+paceVersion);
+      assert.equal((await cli(['study','list'])).value.studies[sid].pace,'light');
       assert.equal((await cli(['token','revoke',issued.value.token.id])).code,0);
       assert.notEqual((await cli(['login','--url',local,'--token-stdin'],issued.value.secret+'\n')).code,0);
       assert.equal((await cli(['token','revoke',root.token.id])).code,0);

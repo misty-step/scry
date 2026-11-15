@@ -685,7 +685,15 @@ impl Library {
                     version_id,
                     previous_id,
                 } => version_id == id || previous_id == id,
-                _ => false,
+                // A Version shows its Work's Relations, on either side.
+                Relation::PartOf {
+                    work_id,
+                    parent_work_id,
+                } => work_id == &work.id || parent_work_id == &work.id,
+                Relation::RelatedTo {
+                    work_id,
+                    related_work_id,
+                } => work_id == &work.id || related_work_id == &work.id,
             })
             .collect();
         Ok(VersionView {
@@ -713,6 +721,9 @@ impl Library {
             })
             .filter_map(|w| self.show_work(&w.id).ok())
             .collect();
+        let mut matches = matches;
+        // By title, as the Owner reads them; the identity only breaks ties.
+        matches.sort_by_cached_key(|m| (m.work.title.to_lowercase(), m.work.id.clone()));
         let empty = matches.is_empty();
         Search {
             matches,
