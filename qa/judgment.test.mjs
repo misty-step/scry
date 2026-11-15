@@ -768,7 +768,7 @@ test('the API, the CLI and the tool server report the judgment state and can ask
     const run=spawn(scry,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});let out='',err='';
     run.stdout.on('data',v=>out+=v);run.stderr.on('data',v=>err+=v);run.on('error',failed);
     run.on('close',code=>{try{assert.ok(!out.includes(paid)&&!err.includes(paid),'The CLI never prints the Owner token.');done({code,value:JSON.parse(out)});}catch(error){failed(error);}});
-    run.stdin.end(input);
+    run.stdin.on('error',error=>{if(error.code!=='EPIPE')failed(error);});run.stdin.end(input);
   });
   assert.equal((await cli(['login','--url',url,'--token-stdin'],paid+'\n')).code,0);
   shown=(await cli(['next','--after',quiz.prompt.id,'--study',study])).value.practice;

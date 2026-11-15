@@ -26,7 +26,7 @@ test('checkpoint CLI requires a retained ID and retries the exact lost-response 
   const run=(args,input)=>new Promise((resolveRun,reject)=>{
     const child=spawn(resolve('target/debug/scry'),[...args,'--json','--config',config],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
     child.stdout.on('data',chunk=>stdout+=chunk);child.stderr.on('data',chunk=>stderr+=chunk);child.on('error',reject);
-    child.on('close',code=>{try{assert.ok(!stdout.includes(token)&&!stderr.includes(token));resolveRun({code,value:JSON.parse(stdout)});}catch(error){reject(error);}});child.stdin.end(input);
+    child.on('close',code=>{try{assert.ok(!stdout.includes(token)&&!stderr.includes(token));resolveRun({code,value:JSON.parse(stdout)});}catch(error){reject(error);}});child.stdin.on('error',error=>{if(error.code!=='EPIPE')reject(error);});child.stdin.end(input);
   });
   const prompt='a'.repeat(32),text='synthetic answer',without=['save-draft',prompt,'--generation','0','--text-stdin'];
   const refusal=await run(without,text);assert.equal(refusal.code,1);assert.match(refusal.value.error,/operation-id/);assert.equal(requests.length,0);
