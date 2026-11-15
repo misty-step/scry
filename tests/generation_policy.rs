@@ -219,27 +219,19 @@ fn refinement_keeps_existing_prerequisites_and_rejects_combined_cycles() {
 
 #[test]
 fn provider_requests_use_string_instructions_and_supported_decision_heads() {
-    let mut app = scry::model::App::new("request-shape-owner-csrf-32-characters".into());
-    scry::engine::seed_fixture(&mut app, 1_791_410_400_000).unwrap();
-    let mut occurrence = app.occurrence.unwrap();
-    occurrence.presentation.kind = "recall".into();
-    let short = generation::assessment_request(&occurrence, "the saved tag", "synthetic-jev");
-    occurrence.presentation.kind = "explain".into();
-    occurrence.presentation.required_ideas =
-        vec!["Validators preserve \"opaque\" identity.\nNever infer meaning.".into()];
-    occurrence.presentation.contradictions =
-        vec!["A tag always specifies a modification date.".into()];
-    let explain =
-        generation::assessment_request(&occurrence, "the server compares it", "synthetic-jev");
-    assert!(
-        explain["questions"]["idea_0"]["instructions"]
-            .as_str()
-            .unwrap()
-            .contains(&serde_json::to_string(&occurrence.presentation.required_ideas[0]).unwrap())
+    let recall = generation::recall_request(
+        &generation::RecallInput {
+            kind: generation::RecallKind::Text,
+            prompt: "Opening line".into(),
+            scope: generation::RecallScope::Unit { position: 1 },
+            expected_answer: "the saved tag".into(),
+            aliases: vec![],
+            answer: "the saved tag?".into(),
+        },
+        "synthetic-jev",
     );
     for request in [
-        short,
-        explain,
+        recall,
         generation::critic_request(&batch(), "synthetic-jev"),
     ] {
         for question in request["questions"].as_object().unwrap().values() {

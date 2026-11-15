@@ -301,13 +301,10 @@ fn web_and_api_share_receipts_and_cookie_csrf() {
     let token = OwnerToken::issue("agent", None, false, NOW, SEED).unwrap();
     app.owner_tokens
         .insert(token.info.id.clone(), token.clone());
-    let mut request = fields(&[
-        ("operation_id", "same-web-api-operation-id"),
-        ("pace", "light"),
-    ]);
+    let mut request = fields(&[("operation_id", "same-web-api-operation-id")]);
     let result = engine::mutate_as(
         &mut app,
-        "/settings",
+        "/settings/backup",
         &request,
         NOW,
         SEED,
@@ -317,13 +314,13 @@ fn web_and_api_share_receipts_and_cookie_csrf() {
     let committed = app.clone();
     request.insert("csrf".into(), app.csrf.clone());
     assert_eq!(
-        engine::mutate(&mut app, "/settings", &request, NOW + 1, SEED).unwrap(),
+        engine::mutate(&mut app, "/settings/backup", &request, NOW + 1, SEED).unwrap(),
         result
     );
     assert_eq!(app, committed);
     request.insert("csrf".into(), "wrong".into());
     assert_eq!(
-        engine::mutate(&mut app, "/settings", &request, NOW, SEED)
+        engine::mutate(&mut app, "/settings/backup", &request, NOW, SEED)
             .unwrap_err()
             .status,
         403

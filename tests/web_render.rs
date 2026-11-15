@@ -1,3 +1,5 @@
+mod common;
+
 use scry::{
     engine,
     learning::new_card,
@@ -10,9 +12,11 @@ const NOW: i64 = 1_800_000_000_000;
 fn query(nonce: &str) -> BTreeMap<String, String> {
     BTreeMap::from([("__nonce".into(), nonce.into())])
 }
+/// The retired authored demo as it left the notebook, under this file's CSRF.
 fn fixture() -> App {
-    let mut app = App::new("01234567890123456789012345678901".into());
-    engine::seed_fixture(&mut app, NOW).unwrap();
+    let (mut app, now) = common::earlier("question-cold-choice");
+    assert_eq!(now, NOW);
+    app.csrf = "01234567890123456789012345678901".into();
     app
 }
 /// Text a reader can see: markup, attributes and hidden fields removed.
@@ -562,15 +566,8 @@ fn a_held_unanswered_question_hides_nothing_of_the_notebook() {
 /// is hidden behind it, and no page offers to record help or to wait for it.
 #[test]
 fn an_ungraded_saved_answer_hides_nothing_and_offers_no_help_mutation() {
-    let mut app = fixture();
-    let initial = app.occurrence.as_ref().unwrap().clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "history-before-pending-check".into()),
-        ("occurrence_id".into(), initial.id),
-        ("answer".into(), initial.presentation.answer),
-    ]);
-    engine::mutate(&mut app, "/review/answer", &fields, NOW, "history").unwrap();
+    // A graded answer in history, and the held question set back to checking.
+    let (mut app, now) = common::earlier("result-held");
     let historical = app.events.last_mut().unwrap();
     historical.presentation.prompt = "PENDING_HISTORY_PROMPT".into();
     historical.presentation.answer = "PENDING_ANSWER".into();
@@ -611,7 +608,7 @@ fn an_ungraded_saved_answer_hides_nothing_and_offers_no_help_mutation() {
         (format!("/questions/{question_id}/edit"), vec![]),
     ];
     for (path, saved) in &shown {
-        let html = web::render(&app, path, &query("checking"), NOW, None);
+        let html = web::render(&app, path, &query("checking"), now, None);
         for text in saved {
             assert!(html.contains(text), "{text} is not shown on {path}");
         }
@@ -626,7 +623,7 @@ fn an_ungraded_saved_answer_hides_nothing_and_offers_no_help_mutation() {
             assert!(!html.contains(offer), "{offer} on {path}");
         }
     }
-    let held = web::render(&app, "/notebook", &query("held"), NOW, None);
+    let held = web::render(&app, "/notebook", &query("held"), now, None);
     assert!(held.contains("data-state=\"earlier-ungraded\""));
     assert!(held.contains("Your answer is saved, not graded."));
     assert!(held.contains("data-check=\"none\""));
@@ -742,16 +739,8 @@ fn a_saved_question_page_shows_it_as_stored_and_offers_no_edit() {
 
 #[test]
 fn held_result_names_its_authority_and_offers_no_next() {
-    let mut app = fixture();
-    let o = app.occurrence.as_ref().unwrap().clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "web-result-answer-operation".into()),
-        ("occurrence_id".into(), o.id),
-        ("answer".into(), o.presentation.answer),
-    ]);
-    engine::mutate(&mut app, "/review/answer", &fields, NOW, "result").unwrap();
-    let html = web::render(&app, "/notebook", &query("result"), NOW, None);
+    let (app, now) = common::earlier("result-held");
+    let html = web::render(&app, "/notebook", &query("result"), now, None);
     assert!(html.contains("data-state=\"earlier-result\""));
     assert!(!html.contains("data-next") && !html.contains("/review/next"));
     assert!(!html.contains("Next question") && !html.contains("<form"));
@@ -764,20 +753,9 @@ fn held_result_names_its_authority_and_offers_no_next() {
 
 #[test]
 fn assisted_results_do_not_offer_automatic_grade_overrides() {
-    let mut app = fixture();
-    app.occurrence.as_mut().unwrap().assisted = true;
-    let o = app.occurrence.as_ref().unwrap().clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        (
-            "operation_id".into(),
-            "web-assisted-answer-operation".into(),
-        ),
-        ("occurrence_id".into(), o.id),
-        ("answer".into(), o.presentation.answer),
-    ]);
-    engine::mutate(&mut app, "/review/answer", &fields, NOW, "assisted").unwrap();
-    let html = web::render(&app, "/notebook", &query("assisted"), NOW, None);
+    // An exact answer given after the reference was opened.
+    let (app, now) = common::earlier("result-helped");
+    let html = web::render(&app, "/notebook", &query("assisted"), now, None);
     assert!(html.contains("<h2>With help.</h2><p>Exact match</p>"));
     assert!(!html.contains("/review/override"));
     assert!(!html.contains("Count as a miss"));
@@ -863,33 +841,26 @@ fn restored_pause_is_truthful_across_preparation_views_without_retries() {
 
 #[test]
 fn a_restored_notebook_shows_a_queued_check_as_saved_and_keeps_fix_drafts_as_history() {
-    let mut app = fixture();
-    app.restored_paused = true;
-    let o = app.occurrence.as_mut().unwrap();
-    o.presentation.kind = "recall".into();
-    o.assisted = false;
+    // A non-exact answer saved in a restored notebook, its check queued.
+    let (mut app, now) = common::earlier("queued-while-paused");
+    assert!(app.restored_paused);
+    let o = app.occurrence.as_ref().unwrap();
+    assert_eq!(o.phase, "checking");
+    let saved = o.answer.clone().unwrap();
     let question = o.question_id.clone();
     let goal = app.questions[&question].goal_id.clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "paused-meaning-check".into()),
-        ("occurrence_id".into(), o.id.clone()),
-        ("answer".into(), "A non-exact saved answer".into()),
-    ]);
-    engine::mutate(&mut app, "/review/answer", &fields, NOW, "paused-check").unwrap();
-    assert_eq!(app.occurrence.as_ref().unwrap().phase, "checking");
     // The check stays queued and is named by that status. Resuming paused
     // judgment would not start it, so nothing points to Settings for it.
-    let held = web::render(&app, "/notebook", &query("paused-check"), NOW, None);
+    let held = web::render(&app, "/notebook", &query("paused-check"), now, None);
     assert!(held.contains("data-state=\"earlier-ungraded\""));
     assert!(held.contains("Your answer is saved, not graded."));
     assert!(held.contains("data-check=\"queued\">Check recorded: queued, never sent.</p>"));
-    assert!(held.contains("A non-exact saved answer"));
+    assert!(held.contains(&web::escape(&saved)));
     let reference = web::render(
         &app,
         &format!("/goals/{goal}"),
         &query("paused-goal"),
-        NOW,
+        now,
         None,
     );
     assert!(reference.contains("data-state=\"goal\""));
@@ -913,7 +884,7 @@ fn a_restored_notebook_shows_a_queued_check_as_saved_and_keeps_fix_drafts_as_his
         &mut app,
         &format!("/questions/{question}/fix"),
         &fields,
-        NOW,
+        now,
         "paused-fix",
     )
     .unwrap();
@@ -921,7 +892,7 @@ fn a_restored_notebook_shows_a_queued_check_as_saved_and_keeps_fix_drafts_as_his
         &app,
         &format!("/questions/{question}/edit"),
         &query("paused-fix"),
-        NOW,
+        now,
         None,
     );
     assert!(html.contains("Saved draft history"));

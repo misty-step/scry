@@ -455,8 +455,10 @@ try {
     const fixture=await createRuntime({bindings:{...baseBindings,SPACE_NAME:space,JEV_API_KEY:'synthetic-reference-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'},name:'scry-reference-smoke',artifact,egress:provider,inspect:true});
     const req=(path,init={})=>fixture.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});const post=(path,fields)=>req(path,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});
     try {
-      await req('/settings');const sql=await fixture.mf.unsafeGetDurableObjectStorage('scry-reference-smoke','LearningSpace',{name:space});
-      await historicalMutation(sql,{actions:[{kind:'seed_demo',now_ms:Date.now()}]});
+      // The earlier notebook as the retired authored demo left it, one question
+      // held unanswered, loaded from its fixture: no route or helper creates it.
+      const sql=await fixture.mf.unsafeGetDurableObjectStorage('scry-reference-smoke','LearningSpace',{name:space});
+      await seedEarlier(sql,'question-cold-choice',await fixture.mf.getR2Bucket('SCRY_ASSETS'));
       const rows=()=>sql.exec('SELECT key,value FROM records ORDER BY key'),changes=()=>sql.exec('SELECT total_changes() AS n');
       const before=await rows(),written=await changes(),meta=JSON.parse(before.find(row=>row.key==='meta').value),held=meta.occurrence;
       assert.equal(held.phase,'question');assert.equal(held.assisted,false);

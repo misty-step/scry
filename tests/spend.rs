@@ -1,3 +1,5 @@
+mod common;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use scry::{
     engine,
@@ -7,9 +9,10 @@ use scry::{
 };
 use serde_json::json;
 
+/// The retired authored demo as it left the notebook, with one historical
+/// spend record that names no purpose.
 fn notebook() -> App {
-    let mut app = App::new("synthetic-csrf-at-least-24-characters".into());
-    engine::seed_fixture(&mut app, 1_791_410_400_000).unwrap();
+    let (mut app, _) = common::earlier("question-cold-choice");
     app.spend.push(serde_json::from_value(json!({
         "id":"synthetic-spend", "work_id":"fixture-job", "created_ms":1_791_410_400_000_i64,
         "reserved_micros":RESERVATION, "cost_micros":123, "status":"known", "model":"retained-model"

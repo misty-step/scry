@@ -7,7 +7,7 @@ use crate::{
     owner_token::{self, MutationActor, OwnerToken},
     persistence, web,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::Engine as _;
 use js_sys::{Array, Function, Promise, Reflect, Uint8Array};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -2032,102 +2032,17 @@ impl LearningSpace {
                 false,
             ));
         }
-        let chat = work.kind == "generation" || work.kind == "transcribe";
-        let endpoint = if chat {
-            "https://openrouter.ai/api/v1/chat/completions".into()
-        } else {
-            variable(&self.env, "JEV_URL")
-        };
+        let endpoint = variable(&self.env, "JEV_URL");
         if !valid_provider_url(&endpoint) {
             return Err((
                 "The model endpoint is not securely configured.".into(),
                 false,
             ));
         }
-        let key = secret(
-            &self.env,
-            if chat {
-                "OPENROUTER_API_KEY"
-            } else {
-                "JEV_API_KEY"
-            },
-        );
-        let model = variable(
-            &self.env,
-            if chat {
-                "OPENROUTER_MODEL"
-            } else {
-                "JEV_MODEL"
-            },
-        );
+        let key = secret(&self.env, "JEV_API_KEY");
+        let model = variable(&self.env, "JEV_MODEL");
         if key.is_empty() || model.is_empty() {
             return Err(("The model is not configured.".into(), false));
-        }
-        let mut request = work.request.clone();
-        if let Some(photo_key) = &work.photo_key {
-            let bucket = self
-                .env
-                .bucket("SCRY_ASSETS")
-                .map_err(|_| ("Photo storage is unavailable.".into(), false))?;
-            let photo = self
-                .load()
-                .map_err(|_| ("Saved state is unavailable.".into(), false))?
-                .goals
-                .values()
-                .filter_map(|g| g.photo.clone())
-                .find(|p| &p.key == photo_key)
-                .ok_or_else(|| ("The saved photo is missing.".into(), false))?;
-            let object = bucket
-                .get(photo_key)
-                .execute()
-                .await
-                .map_err(|_| ("The saved photo could not be read.".into(), false))?
-                .ok_or_else(|| ("The saved photo is missing.".into(), false))?;
-            if object.size() != photo.size as u64 || photo.size > PHOTO_LIMIT {
-                return Err((
-                    "The saved photo failed integrity verification.".into(),
-                    false,
-                ));
-            }
-            let bytes = object
-                .body()
-                .ok_or_else(|| ("The saved photo has no data.".into(), false))?
-                .bytes()
-                .await
-                .map_err(|_| ("The saved photo could not be read.".into(), false))?;
-            if bytes.len() > PHOTO_LIMIT
-                || bytes.len() != photo.size
-                || persistence::sha256(&bytes) != photo.sha256
-            {
-                return Err((
-                    "The saved photo failed integrity verification.".into(),
-                    false,
-                ));
-            }
-            let messages = request
-                .get_mut("messages")
-                .and_then(Value::as_array_mut)
-                .ok_or_else(|| ("The transcription request is invalid.".into(), false))?;
-            let user = messages
-                .iter_mut()
-                .rev()
-                .find(|v| v.get("role").and_then(Value::as_str) == Some("user"))
-                .ok_or_else(|| ("The transcription request is invalid.".into(), false))?;
-            let text = user
-                .get("content")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .or_else(|| {
-                    user.get("content").and_then(Value::as_array).map(|parts| {
-                        parts
-                            .iter()
-                            .filter_map(|p| p.get("text").and_then(Value::as_str))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
-                })
-                .unwrap_or_else(|| "Transcribe this photo accurately.".into());
-            user["content"] = json!([{"type":"text","text":text},{"type":"image_url","image_url":{"url":format!("data:{};base64,{}",photo.mime,STANDARD.encode(bytes))}}]);
         }
         let current = self
             .load()
@@ -2149,7 +2064,7 @@ impl LearningSpace {
         headers
             .set("X-OpenRouter-Title", "Scry")
             .map_err(|_| ("The provider request is invalid.".into(), false))?;
-        let body = serde_json::to_string(&request)
+        let body = serde_json::to_string(&work.request)
             .map_err(|_| ("The provider request is invalid.".into(), false))?;
         let mut init = RequestInit::new();
         init.with_method(Method::Post)

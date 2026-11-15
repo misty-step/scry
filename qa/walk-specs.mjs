@@ -101,7 +101,7 @@ export const specs={
    const archive=await exported.json();assert.deepEqual(archive.app,app,'The export holds the notebook exactly as stored');assert.equal(archive.photos.length,1);
    for(const saved of Object.values(app.goals).filter(goal=>goal.photo))assert.equal((await c.page.request.get(c.at(`/photos/${saved.id}`))).status(),200);
    await unchanged(c,before);
-   c.policy('every_state_round_trips_byte_for_byte','every_state_passes_full_validation','content_edits_leave_historical_presentations_immutable');
+   c.policy('every_state_round_trips_byte_for_byte','every_state_passes_full_validation','historical_schedule_policy_and_assistance_cannot_be_forged');
   }],
  'US-002':[
   // A question that was left unanswered is shown as unanswered, with what was presented.
@@ -119,7 +119,7 @@ export const specs={
   // A Study answer that matches is Good.
   async c=>{await studyAnswer(c,'Alfa');await c.page.locator('[data-state="exact-result"] [data-verdict="Good"]').waitFor();c.policy('local_grading_accepts_only_authored_forms_and_choice_identity','an_exact_or_alias_match_is_good_at_once');},
   policy('short_answer_thresholds_and_risks_fail_closed','an_empty_answer_is_again_at_once_and_never_sent','malformed_unsure_injected_and_oversized_responses_leave_the_answer_ungraded'),
-  policy('required_idea_policy_and_shadow_classes_keep_honest_authority'),
+  policy('unlisted_valid_wording_is_accepted_by_jev_and_keeps_the_local_comparison','a_different_identity_is_rejected_and_a_risky_accept_is_not_a_grade'),
   // With paid judgment off, any other answer is Again and the result shows the expected content.
   async c=>{await studyAnswer(c,'not a code word');await c.page.locator('[data-state="exact-result"] [data-verdict="Again"]').waitFor();assert.match((await c.page.locator('[data-state="exact-result"] .nato-word').first().innerText()).trim(),/^[A-Z][A-Za-z-]+$/,'The result shows the expected code word');assert.equal(await c.page.getByRole('button',{name:'I was right',exact:true}).count(),0);},
   // A stored Jev Verdict keeps its Authority and is shown without being judged again.
@@ -128,7 +128,7 @@ export const specs={
  'US-004':[
   policy('candidates_are_saved_before_critic_and_critic_retry_reuses_generation','normal_partial_output_is_honest_but_oversized_and_cyclic_output_fails'),
   policy('critic_requires_whole_applicable_battery_and_never_vetoes_teaching_score','critic_missing_extra_mixed_or_invalid_judgments_cannot_publish'),
-  policy('allowance_is_shared_and_unknown_cost_is_never_free','assessment_send_once_timeout_unknown_reservation_and_explicit_retry'),
+  policy('allowance_is_shared_and_unknown_cost_is_never_free'),
   policy('explicit_critic_retry_sends_only_unfinished_batteries_and_preserves_attempts','fully_judged_rejection_is_reused_without_new_spend_or_score_fishing'),
   policy('skipped_critic_publishes_saved_candidates_without_a_second_reservation'),
   policy('export_readback_roundtrip_preserves_complete_schedule_and_evidence','paid_completion_receipts_are_immutable_including_unknown_cost_and_oversize')
@@ -157,7 +157,7 @@ export const specs={
   // Neither does a Verdict saved in the earlier notebook.
   async c=>{await c.page.goto(c.url('/'));await shows(c,'earlier-result');assert.equal(await c.page.locator('form[action="/review/override"],form[action="/practice/correct"]').count(),0);await readOnly(c);c.policy('current_generation_admission_refuses_every_old_entry_not_grading_or_external_authoring','an_owner_correction_is_refused_on_an_answer_left_for_jev');},
   // A saved Correction stays readable and unchanged.
-  async c=>{const app=await c.open('result-corrected'),before=await c.rows();await shows(c,'earlier-result');await c.page.getByText('Your Correction',{exact:true}).waitFor();assert.equal(app.overrides.length,1);await c.page.goto(c.url('/history'));await c.page.getByText('Grade corrected later',{exact:false}).first().waitFor();await unchanged(c,before);c.policy('semantic_verdict_fenced_and_grade_override_keeps_original');}
+  async c=>{const app=await c.open('result-corrected'),before=await c.rows();await shows(c,'earlier-result');await c.page.getByText('Your Correction',{exact:true}).waitFor();assert.equal(app.overrides.length,1);await c.page.goto(c.url('/history'));await c.page.getByText('Grade corrected later',{exact:false}).first().waitFor();await unchanged(c,before);c.policy('corrections_are_unique_eligible_and_replay_the_original_attempt');}
  ],
  'US-008':[
   policy('local_grading_accepts_only_authored_forms_and_choice_identity'),

@@ -57,7 +57,8 @@ Preconditions:
   the API (`POST /api/v1/settings`): any three-part `/goals|concepts|questions/{id}/{action}`,
   the exact path `/settings`, and `/__fixture`. A replay of a committed
   operation is refused too. `/settings/backup`, `/settings/resume` and
-  `/settings/judgment` are not affected. The engine functions behind the old
-  routes still run when a test calls them directly.
+  `/settings/judgment` are not affected. No engine function is left behind the
+  old routes: the stored states come only from
+  `tests/fixtures/earlier-notebook.json`.
 - Do not use historical live stores as fixtures.
 - Source: `src/learning.rs`, `src/model.rs`, `src/engine.rs`, `src/web.rs`, `assets/*`.

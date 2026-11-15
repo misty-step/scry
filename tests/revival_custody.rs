@@ -1,3 +1,5 @@
+mod common;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use scry::{
     model::App,
@@ -18,6 +20,18 @@ fn retained_app(bytes: &[u8]) -> App {
         .collect::<serde_json::Map<_, _>>();
     app["revival_go"] = json!(chunks);
     serde_json::from_value(app).unwrap()
+}
+
+/// A recorded earlier notebook that also retains the Go bytes `bytes`.
+fn earlier_with_custody(name: &str, bytes: &[u8]) -> (App, i64) {
+    let (mut app, now) = common::earlier(name);
+    let hash = persistence::sha256(bytes);
+    app.revival_go = bytes
+        .chunks(48 * 1024)
+        .enumerate()
+        .map(|(index, chunk)| (format!("{hash}/{index:08}"), STANDARD.encode(chunk)))
+        .collect();
+    (app, now)
 }
 
 #[test]
@@ -130,15 +144,15 @@ fn retained_custody_counts_toward_existing_complete_archive_capacity() {
 
 #[test]
 fn original_go_schedule_epoch_is_explicit_preserved_and_fail_closed() {
-    let mut app = retained_app(b"synthetic-original-go-recovery");
-    scry::engine::seed_fixture(&mut app, 1_700_000_000_000).unwrap();
+    let (mut app, now) =
+        earlier_with_custody("question-cold-choice", b"synthetic-original-go-recovery");
     let old = app.questions.keys().next().unwrap().clone();
     let mut question = app.questions.remove(&old).unwrap();
     question.id = format!("legacy-import-quiz-{old}");
     question.schedule_version = 1;
     let id = question.id.clone();
     app.questions.insert(id.clone(), question);
-    let archive = |app| Archive::new(app, vec![], 1_700_000_000_001);
+    let archive = |app| Archive::new(app, vec![], now + 1);
     assert!(archive(app.clone()).encode().is_err());
     app.revival_schedule_origins.insert(id.clone(), 1);
     let valid = archive(app.clone());
@@ -177,22 +191,15 @@ fn original_go_schedule_epoch_is_explicit_preserved_and_fail_closed() {
 
 #[test]
 fn imported_helped_observations_do_not_invent_scheduler_writes() {
-    use scry::engine;
-    use std::collections::BTreeMap;
-
-    let now = 1_700_000_000_000;
-    let mut app = retained_app(b"synthetic-original-go-helped-history");
-    engine::seed_fixture(&mut app, now).unwrap();
-    let occurrence = app.occurrence.as_ref().unwrap().clone();
-    let mut fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("occurrence_id".into(), occurrence.id),
-        ("operation_id".into(), "synthetic-help-original".into()),
-    ]);
-    engine::mutate(&mut app, "/review/help", &fields, now, "help").unwrap();
-    fields.insert("operation_id".into(), "synthetic-warm-original".into());
-    fields.insert("answer".into(), occurrence.presentation.answer);
-    engine::mutate(&mut app, "/review/answer", &fields, now, "warm").unwrap();
+    // One answer recorded after help: rating 0, its first schedule epoch. The
+    // held explanation and its queued check are not part of this history.
+    let (mut app, now) = earlier_with_custody(
+        "checking-queued-explain",
+        b"synthetic-original-go-helped-history",
+    );
+    app.occurrence = None;
+    app.assessments.clear();
+    assert_eq!(app.events.len(), 1);
     let old = app.events[0].question_id.clone();
     assert_eq!(app.events[0].result.rating, 0);
     assert_eq!(app.questions[&old].schedule_version, 1);
@@ -259,43 +266,17 @@ fn imported_helped_observations_do_not_invent_scheduler_writes() {
 
 #[test]
 fn historical_ungraded_attempts_are_not_grades_and_keep_their_original_epoch() {
-    use scry::engine;
-    use std::collections::BTreeMap;
-
-    let now = 1_700_000_000_000;
-    let mut app = retained_app(b"synthetic-original-go-ungraded-history");
-    engine::seed_fixture(&mut app, now).unwrap();
-    let qid = app.occurrence.as_ref().unwrap().question_id.clone();
-    let question = app.questions.get_mut(&qid).unwrap();
-    question.versions[0].kind = "recall".into();
-    question.versions[0].choices.clear();
-    app.occurrence.as_mut().unwrap().presentation = question.versions[0].clone();
-    let occurrence = app.occurrence.as_ref().unwrap().clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("occurrence_id".into(), occurrence.id),
-        ("operation_id".into(), "synthetic-original-reveal".into()),
-    ]);
-    engine::mutate(&mut app, "/review/reveal", &fields, now, "reveal").unwrap();
-    let event = &mut app.events[0];
-    let old = event.question_id.clone();
-    let id = format!("legacy-import-quiz-{old}");
-    event.question_id = id.clone();
-    event.id = "legacy-import-event-ungraded".into();
-    event.occurrence_id = "legacy-import-presentation-ungraded".into();
-    event.answer = "Synthetic answer awaiting a judgment".into();
-    event.assisted = false;
-    event.after_card = event.before_card.clone();
-    event.result.event_id = event.id.clone();
-    event.result.outcome = "selfcheck".into();
-    event.result.authority = "ungraded".into();
-    event.result.rating = 0;
-    event.result.due_ms = event.before_card.due_ms;
-    let mut question = app.questions.remove(&old).unwrap();
-    question.id = id.clone();
-    question.card = event.before_card.clone();
-    app.questions.insert(id.clone(), question);
-    app.revival_schedule_origins.insert(id, 1);
+    // An attempt the Go application saved awaiting a judgment: an ungraded
+    // observation on its original schedule epoch, kept with its Go bytes.
+    let (mut app, now) = common::earlier("go-retained-self-check");
+    let event = &app.events[0];
+    assert_eq!(app.events.len(), 1);
+    assert_eq!(
+        (event.result.authority.as_str(), event.result.rating),
+        ("ungraded", 0)
+    );
+    assert_eq!(app.revival_schedule_origins[&event.question_id], 1);
+    assert!(!app.revival_go.is_empty());
     app.occurrence = None;
     let archive = |app| Archive::new(app, vec![], now + 1);
     archive(app.clone()).encode().unwrap();

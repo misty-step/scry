@@ -77,9 +77,8 @@ There is no remote restore or custody fingerprint prerequisite. See the
 | Changed boundary | Existing Rust checks | Additional observation |
 | --- | --- | --- |
 | Pure grading / scheduler | `tests/learning_policy.rs`, `tests/fsrs_golden.rs` | Full 260-trajectory comparison protects pinned Go FSRS state, not learning efficacy |
-| Concept evidence / pace / selection | `tests/concept_policy.rs`, `tests/application.rs` | Prerequisite intros, focused new concepts, paused new material, due work, 3/6/12 rolling-day caps, and separate exposure/help/unaided observations |
-| Durable review / retry | `tests/application.rs` | Real workerd SQLite, refresh/restart, concurrent tabs, response loss after commit, identical-operation replay, and one event/schedule transition |
-| Meaning checks / historical overrides | `tests/learning_policy.rs`, `tests/application.rs` | Exact/variant local resolution; independent short-v1 and rubric judgments; unsure/failed answers stay ungraded; immutable historical authority and corrections; bounded real holdout quality separately |
+| Concept evidence | `tests/concept_policy.rs` | Observed recalled, helped and missed counts and the capped tally of an earlier Concept, as stored; nothing selects, paces or estimates |
+| Meaning checks / historical overrides | `tests/learning_policy.rs`, `tests/judgment.rs`, `tests/archive_integrity.rs` | Exact/variant local resolution; independent short-v1 judgments; unsure/failed answers stay ungraded; stored authority and Corrections kept immutable by restore validation; bounded real holdout quality separately |
 | Historical generation / refinement compatibility | `tests/generation_policy.rs`, `tests/application.rs` | Actual word/phrase/ramble → useful reference + practice, exact evidence, optional photo transcription, genuine attempt/feedback refinement, slow/partial/failed/unknown outcomes |
 | Historical prepublication critic US-004 | `tests/learning_policy.rs`, `tests/generation_policy.rs`, `tests/application.rs` | Saved candidates before external checks, independent hard judgments, one send lease, shared allowance, unknown usage, critic-only new attempt, judgment reuse, and fenced publication |
 | Earlier concept notebook as history | `tests/earlier_history.rs`, `tests/earlier_notebook.rs`, `tests/web_render.rs`, `node --test qa/earlier-notebook.test.mjs`, `qa/walk --stories "US-002 US-010 US-011"` | Every stored state from `tests/fixtures/earlier-notebook.json` loaded into real workerd SQLite: zero requests reach a counting synthetic Jev across the alarm, every page, resume and a restart; a GET or HEAD changes no row, change count, persisted file or alarm; the export is the stored notebook; no earlier page has a form or a recall estimate; every retired write, and a replay of a committed one, answers 410 and leaves every row as stored; Study beside it leaves every earlier row as stored |
@@ -120,8 +119,10 @@ configuration. No production store is imported.
 Every state of the earlier concept notebook comes from
 `tests/fixtures/earlier-notebook.json`. `qa/earlier-fixture.mjs` writes one
 state's exact rows, and the photo its archive carries, into an unused Durable
-Object; the walks, `qa/earlier-notebook.test.mjs` and the browser recovery
-checks load their states that way. No HTTP route can create them any more.
+Object; the walks, `qa/earlier-notebook.test.mjs`, `qa/runtime.test.mjs` and
+the browser recovery checks load their states that way, and native tests decode
+them. Nothing in the source can create them any more: the practice that did,
+and the builders, were deleted after `4e00be0`.
 
 Browser QA runs from a shell first:
 [verify-scry](../../.agents/skills/verify-scry/SKILL.md)'s Playwright helpers

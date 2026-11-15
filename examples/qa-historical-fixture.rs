@@ -49,9 +49,6 @@ enum Action {
         cost_micros: Option<u64>,
         message: String,
     },
-    SeedDemo {
-        now_ms: i64,
-    },
 }
 fn run(input: Input) -> AppResult<Value> {
     let mut app = persistence::app_from_rows(&input.rows)?;
@@ -136,10 +133,6 @@ fn run(input: Input) -> AppResult<Value> {
                     &message,
                 )?;
                 json!({"historical_received_failure": true})
-            }
-            Action::SeedDemo { now_ms } => {
-                engine::seed_fixture(&mut app, now_ms)?;
-                json!({"authored_demo":true})
             }
         };
         engine::validate_app(&app)?;
