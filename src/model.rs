@@ -434,11 +434,12 @@ impl AppError {
             message: message.into(),
         }
     }
+    /// What a browser is told when its page is stale. It says nothing to an
+    /// agent, whose clients keep their own fixed phrase for it.
+    pub const STALE_PAGE: &'static str =
+        "This changed in another tab. Reload to continue from your saved progress.";
     pub fn conflict() -> Self {
-        Self::new(
-            409,
-            "This changed in another tab. Reload to continue from your saved progress.",
-        )
+        Self::new(409, Self::STALE_PAGE)
     }
 }
 pub type AppResult<T> = Result<T, AppError>;

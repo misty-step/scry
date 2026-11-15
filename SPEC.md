@@ -240,8 +240,12 @@ horizontal clipping, including with long questions and explanations.
 - Study and Next serve genuinely due, previously practised material first,
   interleaved across Studies: the least recently served Study wins, then due
   time, then a stable identity, so one overdue Work cannot monopolize a
-  session. After that they rotate unfinished Studies and Works not yet
-  started, by least recent service.
+  session. After that they rotate unfinished Studies by least recent
+  service. Only Study takes Works not yet started into that rotation:
+  continuing the session it opened asks Study again, and any other Next
+  never starts a Work.
+- The other direction of a pair just answered waits until nothing else is
+  eligible, because its answer was just on screen.
 - Available material is the Library's Works and the Starter shelf. When it
   is the turn of a Work not yet started, Study starts that one Study and
   nothing else. Home and opening practice with nothing held never start a
@@ -266,9 +270,11 @@ horizontal clipping, including with long questions and explanations.
 ### Study, then quiz from memory
 
 - Anything not yet practised is first shown as Source study, whatever its
-  Kind. Source study shows the supplied material with no answer field and no
-  grading controls. Scry refuses an answer submitted against a source being
-  studied, from any client.
+  Kind. A Section or whole-text Recitation the Owner asks for is the
+  exception: choosing it is the decision to try from memory, so it is a Quiz
+  from the start. Source study shows the supplied material with no answer
+  field and no grading controls. Scry refuses an answer submitted against a
+  source being studied, from any client.
 - **Try from memory** deliberately replaces the held source with a Quiz of
   the same scope, source hidden. Studying and making that transition create
   no Attempt, success, review count or schedule credit.

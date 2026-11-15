@@ -79,7 +79,7 @@ export async function libraryJourney() {
   async()=>{
    const bad=await file('bad-sections.json',JSON.stringify([{heading:'Article',units:['Missing exact bytes.']}]));
    const before=await rows();const refused=await cli([...addArgs(originalFile,'Must never be stored'),'--sections-file',bad]);
-   assert.equal(refused.code,1);assert.equal(refused.value.error,'API request failed.');
+   assert.equal(refused.code,1);assert.equal(refused.value.error,'API request failed. Version Units must join to the submitted text exactly.');
    assert.deepEqual(await rows(),before,'CLI refusal changes no SQLite row, operation receipt or last-use time.');
    const refusal=async(data,error)=>{
     const before=await rows();
@@ -122,7 +122,7 @@ export async function libraryJourney() {
    const cliOperation='library-oversized-cli-operation';
    const cliData={title:'Independent oversized CLI work',kind:'text',text:oversized.text,aliases:[],sources:[],rights:'private_only',sections:null,name:'',context:'',spelling_strict:false};
    const beforeCli=await rows();const cliRefusal=await cli(['version','add','--title',cliData.title,'--kind','text','--text-file',oversizedFile,'--operation-id',cliOperation]);
-   assert.equal(cliRefusal.code,1);assert.equal(cliRefusal.value.error,'API request failed.');
+   assert.equal(cliRefusal.code,1);assert.equal(cliRefusal.value.error,'API request failed. This record exceeds the storage limit.');
    assert.deepEqual(await rows(),beforeCli,'CLI refusal preserves every row.');
    const cliControl=await request('/api/v1/library/versions',{operation_id:cliOperation,data:cliData});
    assert.equal(cliControl.status,413);assert.deepEqual(await cliControl.json(),{error:'This record exceeds the storage limit.'});
@@ -150,7 +150,7 @@ export async function libraryJourney() {
     await refusal(draft(limit+1),error);
    }
    const manyLines='x\n'.repeat(5000),manyFile=await file('5000-lines.txt',manyLines),beforeCapacity=await rows();
-   const capacity=await cli(addArgs(manyFile,'5000 supplied lines'));assert.equal(capacity.code,1);assert.equal(capacity.value.error,'API request failed.');
+   const capacity=await cli(addArgs(manyFile,'5000 supplied lines'));assert.equal(capacity.code,1);assert.equal(capacity.value.error,'API request failed. A Version supports at most 4096 Sections.');
    assert.deepEqual(await rows(),beforeCapacity);
    await refusal({title:'5000 supplied lines',kind:'text',text:manyLines},'A Version supports at most 4096 Sections.');
    const valid=await file('sections.json',JSON.stringify([{heading:'Synthetic article one',units:['Supplied first clause,',' second clause.\n']} ]));

@@ -1443,8 +1443,14 @@ fn continuous_target_eligible(app: &App, study: &Study, index: usize) -> bool {
 }
 
 /// `avoid` holds the other direction of the pair just answered: its answer
-/// was on screen, so it is served only when nothing else is eligible.
-fn continuous_choice(app: &App, now: i64, avoid: &BTreeSet<String>) -> Option<ContinuousChoice> {
+/// was on screen, so it is served only when nothing else is eligible. Without
+/// `start`, no Work not yet started is chosen.
+fn continuous_choice(
+    app: &App,
+    now: i64,
+    avoid: &BTreeSet<String>,
+    start: bool,
+) -> Option<ContinuousChoice> {
     let mut last = BTreeMap::<&str, u64>::new();
     for a in app.practice.attempts.values().filter(|a| !a.disclosure) {
         let served = last.entry(&a.prompt.study_id).or_default();
@@ -1539,7 +1545,7 @@ fn continuous_choice(app: &App, now: i64, avoid: &BTreeSet<String>) -> Option<Co
         .library
         .works
         .values()
-        .filter(|w| !studied_works.contains(w.id.as_str()))
+        .filter(|w| start && !studied_works.contains(w.id.as_str()))
     {
         let version = app
             .library
@@ -1579,7 +1585,7 @@ fn continuous_choice(app: &App, now: i64, avoid: &BTreeSet<String>) -> Option<Co
         "baby-everyday",
         "baby-montessori",
     ];
-    for (rank, starter) in defaults.iter().enumerate() {
+    for (rank, starter) in defaults.iter().enumerate().filter(|_| start) {
         let input = crate::lessons::input(starter).expect("curated default exists");
         let is_michael = *starter == "st-michael-en";
         let represented = if is_michael {
@@ -1686,7 +1692,7 @@ fn starter_studied(app: &App, input: &crate::library::VersionInput) -> bool {
 }
 /// Home-only subject preview. Never render editable metadata as a recall cue.
 pub fn continuous_preview(app: &App, now: i64) -> Option<String> {
-    let vid = match continuous_choice(app, now, &BTreeSet::new())? {
+    let vid = match continuous_choice(app, now, &BTreeSet::new(), true)? {
         ContinuousChoice::Card(cid) => app.practice.studies[&app.practice.cards[&cid].study_id]
             .version_id
             .clone(),
@@ -1777,6 +1783,22 @@ fn present_card(app: &mut App, cid: &str, now: i64, seed: &str) -> AppResult<Mut
     Ok(response(None, held(app)?))
 }
 
+/// Study's selection, shared by Study and by Next with nothing named: hold
+/// the Prompt it chooses, or nothing when nothing is eligible. `start` lets
+/// it begin a Work not yet started.
+fn study_serve(
+    app: &mut App,
+    now: i64,
+    avoid: &BTreeSet<String>,
+    start: bool,
+    seed: &str,
+) -> AppResult<()> {
+    match continuous_choice(app, now, avoid, start) {
+        Some(choice) => continuous_present(app, choice, now, seed),
+        None => Ok(()),
+    }
+}
+
 fn mixed_next(
     app: &mut App,
     fields: &BTreeMap<String, String>,
@@ -1820,9 +1842,7 @@ fn mixed_next(
     let avoid = answered_siblings(app, app.practice.current.as_ref());
     let leaving = app.practice.current.take();
     app.practice.mixed_review = true;
-    if let Some(choice) = continuous_choice(app, now, &avoid) {
-        continuous_present(app, choice, now, seed)?;
-    }
+    study_serve(app, now, &avoid, true, seed)?;
     if app.practice.current.is_none() {
         app.practice.current = leaving.filter(|p| held_awaits(app, p));
     }
@@ -1990,6 +2010,13 @@ fn next(
             ));
         }
         hold(app, presentation)?;
+    } else if sid.is_empty() && field(fields, "card_id").is_empty() {
+        // Next with nothing named selects exactly as Study does. The letter
+        // or pair just answered is served only when nothing else is.
+        // Unlike Study, it never begins a Work not yet started. Practice
+        // kept to one Study names that Study.
+        let avoid = siblings.into_iter().chain(nato_previous).collect();
+        study_serve(app, now, &avoid, false, seed)?;
     } else {
         let explicit = field(fields, "card_id");
         let eligible = reviewable_studies(app);
@@ -2837,10 +2864,12 @@ pub(crate) fn recall_input(app: &App, prompt: &Prompt, answer: &str) -> AppResul
 }
 /// A mismatch Jev may judge. An exact or alias match is already Good; on
 /// Spelling-strict content any other answer is Again; an empty answer is a
-/// miss; and an answer too large to send is graded by the comparison alone.
+/// miss; another Version's wording is Scry's own Again; and an answer too
+/// large to send is graded by the comparison alone.
 fn judgeable(app: &App, prompt: &Prompt, answer: &str, grade: &Grade) -> bool {
     let version = &app.library.versions[&prompt.version_id];
     grade.verdict == Verdict::Again
+        && grade.wrong_version_hint.is_none()
         && !version.spelling_strict
         && !answer.trim().is_empty()
         // Exactly another pair's value, or in reverse its key, is the wrong
@@ -3568,9 +3597,17 @@ pub fn due(app: &App, now: i64) -> Value {
         .filter(|s| list_waits(app, s))
         .map(|s| s.id.as_str())
         .collect::<BTreeSet<_>>();
+    // An introduction never answered is new learning, not a due review. A
+    // Card answered but not yet reviewed (only with help, or left ungraded)
+    // is unfinished learning, which Study serves from an Active Study only.
     let served = cards
         .iter()
-        .filter(|c| !waits.contains(c.study_id.as_str()))
+        .filter(|c| {
+            !waits.contains(c.study_id.as_str())
+                && practised(app, c)
+                && (c.state.schedule.last_review_ms.is_some()
+                    || app.practice.studies[&c.study_id].status == Status::Active)
+        })
         .collect::<Vec<_>>();
     // A Card whose answer is still with Jev is not served until it has a
     // Verdict or is left not graded. It is named apart, only where one exists.
