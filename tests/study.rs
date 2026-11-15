@@ -1,3 +1,5 @@
+mod common;
+
 use scry::{
     api, engine,
     grading::{Change, Verdict},
@@ -1098,15 +1100,25 @@ fn study_archive_diagnosis_refuses_missing_version_and_malformed_targets() {
     }
 }
 
-fn mixed_notebook(exact: bool) -> Owner {
+/// The earlier concept notebook as stored in `state`, with this Owner's token,
+/// and, where `exact`, a Study of a separate authored Unit holding its Prompt.
+fn mixed_notebook_in(state: &str, exact: bool) -> Owner {
     let mut o = Owner::new();
-    engine::seed_fixture(&mut o.app, NOW).unwrap();
+    let tokens = std::mem::take(&mut o.app.owner_tokens);
+    o.app = common::earlier(state).0;
+    o.app.owner_tokens.extend(tokens);
     if exact {
         let v = o.add("A separate authored exact Unit.", false);
         o.learn(&v, "steady");
         o.next(None);
     }
     o
+}
+
+/// The retired authored demo as it left the notebook: its choice question held
+/// unanswered.
+fn mixed_notebook(exact: bool) -> Owner {
+    mixed_notebook_in("question-cold-choice", exact)
 }
 
 fn notebook_action(o: &mut Owner, path: &str, extra: &[(&str, &str)]) -> String {
@@ -1297,35 +1309,20 @@ fn earlier_pages_offer_no_recovery_of_practice_beside_any_study_state() {
     ];
     for exact in ["none", "prompt", "caught-up"] {
         for phase in ["question", "checking", "result"] {
-            let mut o = mixed_notebook(exact != "none");
+            // A question held unanswered; an answer saved and its check
+            // queued; a Verdict held.
+            let state = match phase {
+                "question" => "question-cold-choice",
+                "checking" => "checking-queued",
+                _ => "result-jev-wrong",
+            };
+            let mut o = mixed_notebook_in(state, exact != "none");
             if exact == "caught-up" {
                 let text = "A separate authored exact Unit.";
                 o.study_to_quiz();
                 o.answer(text);
                 o.next(None);
                 assert!(o.app.practice.current.is_none());
-            }
-            // The states are reached through the engine's retained arms, which
-            // no route reaches any more.
-            if phase == "checking" {
-                o.app.occurrence = None;
-                for q in o
-                    .app
-                    .questions
-                    .values_mut()
-                    .filter(|q| q.content().kind == "choice")
-                {
-                    q.card.due_ms = NOW + DAY_MS;
-                }
-                engine::ensure_occurrence(&mut o.app, NOW, "unassisted-recall").unwrap();
-                notebook_action(
-                    &mut o,
-                    "/review/answer",
-                    &[("answer", "My uncertain freshness answer")],
-                );
-            } else if phase == "result" {
-                let wrong = o.app.occurrence.as_ref().unwrap().presentation.choices[1].clone();
-                notebook_action(&mut o, "/review/answer", &[("answer", &wrong)]);
             }
             let occurrence = o.app.occurrence.clone().unwrap();
             assert_eq!(occurrence.phase, phase);
@@ -1545,50 +1542,31 @@ fn exact_history_keeps_mixed_recitation_effects_and_scope_honest() {
 /// A question the earlier notebook left unanswered hides neither.
 #[test]
 fn exact_history_escapes_saved_words_and_is_never_hidden_by_an_earlier_question() {
-    let mut o = mixed_notebook(true);
+    // Two earlier answers recorded, and a third question held unanswered.
+    let mut o = mixed_notebook_in("question-cold", true);
     o.quiz();
     let exact = o.answer("Exact answer <img src=x onerror=alert(1)> & saved");
     let aid = exact["attempt"]["id"].as_str().unwrap();
     let held = o.app.occurrence.clone().unwrap();
     assert_eq!((held.phase.as_str(), held.assisted), ("question", false));
     assert!(study::history(&o.app).is_ok());
-    let open = notebook_page(&o, "/history");
-    let entry = exact_history_entry(&open, aid);
-    assert!(entry.contains("Exact answer &lt;img src=x onerror=alert(1)&gt; &amp; saved"));
-    assert!(!entry.contains("<img"));
-    assert!(!open.contains("History is hidden") && !open.contains("is hidden while"));
-    // An earlier answer, recorded through the engine's retained arm, is listed
-    // after Study's own.
-    let answer = held.presentation.answer.clone();
-    notebook_action(&mut o, "/review/answer", &[("answer", &answer)]);
     let page = notebook_page(&o, "/history");
     let entry = exact_history_entry(&page, aid);
     assert!(entry.contains("Exact answer &lt;img src=x onerror=alert(1)&gt; &amp; saved"));
-    assert_eq!(page.matches("<article class=\"history-entry").count(), 2);
+    assert!(!entry.contains("<img"));
+    assert!(!page.contains("History is hidden") && !page.contains("is hidden while"));
+    // The earlier answers are listed after Study's own.
+    assert_eq!(o.app.events.len(), 2);
+    assert_eq!(
+        page.matches("<article class=\"history-entry").count(),
+        1 + o.app.events.len()
+    );
+    assert_eq!(
+        page.matches("<article class=\"history-entry\">").count(),
+        o.app.events.len()
+    );
     assert!(
         page.find("exact-history-entry").unwrap()
             < page.find("<article class=\"history-entry\">").unwrap()
     );
-    // With another earlier question held unanswered a day later, both stay shown.
-    for _ in 0..3 {
-        notebook_action(&mut o, "/review/next", &[]);
-        let Some(current) = &o.app.occurrence else {
-            break;
-        };
-        let answer = current.presentation.answer.clone();
-        notebook_action(&mut o, "/review/answer", &[("answer", &answer)]);
-    }
-    assert!(o.app.occurrence.is_none());
-    engine::ensure_occurrence(&mut o.app, NOW + DAY_MS + 1, "history-next-day").unwrap();
-    engine::validate_app(&o.app).unwrap();
-    let held = o.app.occurrence.clone().unwrap();
-    assert_eq!((held.phase.as_str(), held.assisted), ("question", false));
-    assert!(study::history(&o.app).is_ok());
-    let later = notebook_page(&o, "/history");
-    assert!(later.contains(aid));
-    assert_eq!(
-        later.matches("<article class=\"history-entry\">").count(),
-        o.app.events.len()
-    );
-    assert!(!later.contains("is hidden while"));
 }

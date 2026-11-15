@@ -5,7 +5,7 @@
 //! `tests/fixtures/judgment-off.json` was written by this file's own builders on
 //! unmodified source `701724c`; see `tests/fixtures/judgment-off.README.md`.
 use scry::{
-    engine::{self, WorkConfig},
+    engine,
     model::*,
     owner_token::{MutationActor, OwnerToken},
     persistence, study, web,
@@ -253,67 +253,25 @@ fn nato() -> Owner {
     o
 }
 
-fn accepted() -> String {
-    json!({"answers":{"verdict":{"choice":"accept","probabilities":{"accept":0.99,"reject":0.005,"unsure":0.005}},"identity":{"noul":0.0},"injection":{"noul":0.0}}}).to_string()
-}
-fn rejected() -> String {
-    json!({"answers":{"verdict":{"choice":"reject","probabilities":{"accept":0.02,"reject":0.97,"unsure":0.01}},"identity":{"noul":0.9},"injection":{"noul":0.0}}}).to_string()
-}
-fn unsure() -> String {
-    json!({"answers":{"verdict":{"choice":"unsure","probabilities":{"accept":0.3,"reject":0.3,"unsure":0.4}},"identity":{"noul":0.0},"injection":{"noul":0.0}}}).to_string()
-}
-
-/// The earlier concept notebook, whose answer check shares the Jev parser. Each
-/// response after the first answers a deliberate retry of the same saved answer.
-fn concept(name: &'static str, responses: Vec<String>) -> Owner {
-    let mut o = Owner::new(name);
-    engine::seed_fixture(&mut o.app, NOW).unwrap();
-    for q in o
-        .app
-        .questions
-        .values_mut()
-        .filter(|q| q.content().kind == "choice")
-    {
-        q.card.due_ms = NOW + DAY_MS;
+/// The earlier concept notebook, whose answer check shared the Jev parser. No
+/// source after `4e00be0` can build it: its practice is deleted. It is read
+/// from its recorded rows instead, so the comparison below requires those rows
+/// to decode and store again as the same rows, and to encode again to the
+/// recorded archive hash, length and format and the same pages. `checks` is how
+/// many responses the builder gave it, a minute apart: the archive's clock.
+fn concept(name: &'static str, checks: i64) -> Owner {
+    let fixture: Value = serde_json::from_str(&std::fs::read_to_string(FIXTURE).unwrap()).unwrap();
+    let rows: BTreeMap<String, String> =
+        serde_json::from_value(fixture[name]["rows"].clone()).unwrap();
+    let app = persistence::app_from_rows(&rows).unwrap();
+    engine::validate_app(&app).unwrap();
+    Owner {
+        app,
+        n: 0,
+        now: NOW + checks * MINUTE,
+        name,
+        token: None,
     }
-    o.app.occurrence = None;
-    engine::ensure_occurrence(&mut o.app, NOW, "judgment-off-recall").unwrap();
-    let config = WorkConfig {
-        generation: true,
-        jev: true,
-        critic: false,
-        model: "synthetic-generator".into(),
-        jev_model: "synthetic-jev".into(),
-    };
-    for (index, raw) in responses.into_iter().enumerate() {
-        let occurrence = o.app.occurrence.as_ref().unwrap().id.clone();
-        if index == 0 {
-            o.call(
-                "/review/answer",
-                &[
-                    ("occurrence_id", &occurrence),
-                    ("answer", "nonexact authored response"),
-                ],
-            );
-        } else {
-            o.call("/review/retry", &[("occurrence_id", &occurrence)]);
-        }
-        let lease = format!("judgment-off-lease-{index:02}");
-        let work = engine::claim_work(&mut o.app, o.now, &lease, &config)
-            .unwrap()
-            .unwrap();
-        o.now += MINUTE;
-        let _ = engine::finish_work(
-            &mut o.app,
-            &work,
-            raw,
-            "synthetic-jev".into(),
-            Some(19_500),
-            o.now,
-        );
-        engine::validate_app(&o.app).unwrap();
-    }
-    o
 }
 
 fn notebooks() -> Vec<Owner> {
@@ -324,12 +282,9 @@ fn notebooks() -> Vec<Owner> {
         mapping(),
         nato(),
         nato_result(),
-        concept("concept-accepted", vec!["not json".into(), accepted()]),
-        concept(
-            "concept-rejected",
-            vec!["{\"answers\":{}}".into(), rejected()],
-        ),
-        concept("concept-unsure", vec![unsure()]),
+        concept("concept-accepted", 2),
+        concept("concept-rejected", 2),
+        concept("concept-unsure", 1),
     ]
 }
 

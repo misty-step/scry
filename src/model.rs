@@ -93,11 +93,6 @@ impl App {
             .get(&o.question_id)
             .map(|q| q.goal_id.as_str())
     }
-    pub fn protected_concept(&self, id: &str) -> bool {
-        self.occurrence.as_ref().is_some_and(|o| {
-            matches!(o.phase.as_str(), "question" | "checking") && !o.assisted && o.concept_id == id
-        })
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -513,7 +513,10 @@ fn a_question_held_unanswered_or_ungraded_is_not_edited() {
         let (mut app, now) = one(name);
         let before = app.clone();
         let held = app.occurrence.clone().unwrap();
-        assert!(app.protected_concept(&held.concept_id), "{name}");
+        let path = format!("/questions/{}/edit", held.question_id);
+        let refusal = engine::admit_current_mutation(&path).unwrap_err();
+        assert_eq!(refusal.status, 410, "{name}");
+        assert_eq!(refusal.message, engine::EARLIER_NOTEBOOK_RETIRED, "{name}");
         let fields = BTreeMap::from([
             ("csrf".to_string(), app.csrf.clone()),
             (
@@ -523,16 +526,8 @@ fn a_question_held_unanswered_or_ungraded_is_not_edited() {
             ("occurrence_id".to_string(), held.id.clone()),
             ("content_version".to_string(), "1".to_string()),
         ]);
-        let refused = engine::mutate(
-            &mut app,
-            &format!("/questions/{}/edit", held.question_id),
-            &fields,
-            now + SECOND,
-            "earlier-edit-seed",
-        )
-        .unwrap_err();
-        assert_eq!(refused.status, 409, "{name}: {}", refused.message);
-        assert!(refused.message.contains("kept as stored"), "{name}");
+        // Not even the engine, called past the runtime's refusal, has an edit.
+        engine::mutate(&mut app, &path, &fields, now + SECOND, "earlier-edit-seed").unwrap_err();
         assert_eq!(app, before, "{name}: nothing is written");
     }
 }

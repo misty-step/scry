@@ -1,3 +1,5 @@
+mod common;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use scry::{
     engine::{self, Work, WorkConfig},
@@ -35,8 +37,8 @@ fn act(
     fields
 }
 fn prepared() -> (App, Batch, Work) {
-    let mut fixture = App::new("critic-authored-fixture-csrf-32-characters".into());
-    engine::seed_fixture(&mut fixture, NOW).unwrap();
+    // The authored candidates the retired demo published.
+    let (fixture, _) = common::earlier("question-cold-choice");
     let mut batch: Batch = serde_json::from_str(
         fixture
             .jobs
@@ -644,66 +646,5 @@ fn a_late_parent_response_cannot_change_a_retry_snapshot_or_break_archive_integr
             .answers["c0_q0_prompt_leaks_answer"],
         0.90
     );
-    archive(&app);
-}
-
-#[test]
-fn a_rejected_success_shaped_assessment_stays_ungraded_and_preserves_the_saved_answer() {
-    let mut app = App::new("rejected-assessment-csrf-32-characters".into());
-    engine::seed_fixture(&mut app, NOW).unwrap();
-    for q in app
-        .questions
-        .values_mut()
-        .filter(|q| q.content().kind == "choice")
-    {
-        q.card.due_ms = NOW + DAY_MS;
-    }
-    app.occurrence = None;
-    engine::ensure_occurrence(&mut app, NOW, "refused-assessment-cold").unwrap();
-    let occurrence = app.occurrence.as_ref().unwrap().id.clone();
-    act(
-        &mut app,
-        "/review/answer",
-        "refused-answer-op001",
-        &[
-            ("occurrence_id", &occurrence),
-            ("answer", "a nonexact synthetic answer"),
-        ],
-    );
-    let question = app.questions[&app.occurrence.as_ref().unwrap().question_id].clone();
-    let work = engine::claim_work(&mut app, NOW + 1, "refused-assessment-lease", &config())
-        .unwrap()
-        .unwrap();
-    assert_eq!(work.kind, "assessment");
-    let raw = json!({"answers":{"verdict":{"choice":"accept","probabilities":{"accept":0.99,"reject":0.005,"unsure":0.005}},"identity":{"noul":0.0},"injection":{"noul":0.0}}}).to_string();
-    engine::fail_received_work(
-        &mut app,
-        &work,
-        NOW + 2,
-        raw.clone(),
-        "actual-refused-jev".into(),
-        None,
-        "The provider refused this check (HTTP429).",
-    )
-    .unwrap();
-    assert!(app.events.is_empty());
-    assert_eq!(app.questions[&question.id], question);
-    let occurrence = app.occurrence.as_ref().unwrap();
-    assert_eq!(occurrence.phase, "self-check");
-    assert_eq!(
-        occurrence.answer.as_deref(),
-        Some("a nonexact synthetic answer")
-    );
-    assert!(!occurrence.assisted);
-    assert_eq!(app.assessments[&work.id].status, "failed");
-    assert_eq!(
-        app.assessments[&work.id].raw_response.as_deref(),
-        Some(raw.as_str())
-    );
-    assert_eq!(
-        app.spend.last().unwrap().response_outcome.as_deref(),
-        Some("rejected")
-    );
-    assert_eq!(app.spend.last().unwrap().cost_micros, None);
     archive(&app);
 }

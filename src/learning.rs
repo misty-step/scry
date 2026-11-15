@@ -39,7 +39,6 @@ pub const SHORT_POLICY: &str = "short-v1";
 pub const SEMANTIC_POLICY: &str = "semantic-v1";
 pub const LEARNER_POLICY: &str = "learner-v1";
 pub const CRITIC_POLICY: &str = "critic-v1";
-pub const CONCEPT_STATE_POLICY: &str = "concept-state-v1";
 const DAY_MS: i64 = 86_400_000;
 const MAX_INTERVAL: f64 = 36_500.0;
 const WEIGHTS: [f64; 21] = [
@@ -306,23 +305,6 @@ pub fn retrievability(card: &Card, now_ms: i64) -> f64 {
     }
 }
 
-pub fn new_concept_budget(pace: &str) -> usize {
-    match pace {
-        "light" => 3,
-        "intense" => 12,
-        _ => 6,
-    }
-}
-
-pub fn level_rank(level: &str) -> u8 {
-    match level {
-        "recognize" => 0,
-        "explain" => 2,
-        "apply" => 3,
-        _ => 1,
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Attempt {
     pub at_ms: i64,
@@ -331,65 +313,25 @@ pub struct Attempt {
     pub outcome: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct QuestionEvidence {
-    pub card: Card,
-    pub level: String,
-    pub attempts: Vec<Attempt>,
-}
-
-/// A display estimate based on observed attempts. It never updates a schedule.
+/// Observed answers to one Concept. It never updates a schedule.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ConceptState {
-    pub status: String,
-    /// -1 means there is no reviewed card supporting an estimate.
-    pub recall: f64,
-    pub brightness: u8,
     pub unaided: u64,
     pub helped: u64,
     pub missed: u64,
     pub last_at_ms: Option<i64>,
-    pub next_due_ms: Option<i64>,
     pub tally: Vec<String>,
 }
 
-pub fn compute_concept_state(questions: &[QuestionEvidence], now_ms: i64) -> ConceptState {
+pub fn compute_concept_state(attempts: &[Attempt]) -> ConceptState {
     let mut state = ConceptState {
-        status: "new".into(),
-        recall: -1.0,
-        brightness: 0,
         unaided: 0,
         helped: 0,
         missed: 0,
         last_at_ms: None,
-        next_due_ms: None,
         tally: vec![],
     };
-    let mut attempts: Vec<&Attempt> = vec![];
-    let mut weighted = 0.0;
-    let mut weights = 0.0;
-    let mut max_stability: f64 = 0.0;
-    let mut reviewed = false;
-    for question in questions {
-        attempts.extend(&question.attempts);
-        let recall = retrievability(&question.card, now_ms);
-        if recall >= 0.0 {
-            let weight = match question.level.as_str() {
-                "recognize" => 1.0,
-                "explain" | "apply" => 3.0,
-                _ => 2.0,
-            };
-            weighted += recall * weight;
-            weights += weight;
-            max_stability = max_stability.max(question.card.stability);
-            reviewed |= question.card.state == State::Review;
-            state.next_due_ms = Some(
-                state
-                    .next_due_ms
-                    .map_or(question.card.due_ms, |due| due.min(question.card.due_ms)),
-            );
-        }
-    }
+    let mut attempts: Vec<&Attempt> = attempts.iter().collect();
     attempts.sort_by_key(|attempt| attempt.at_ms);
     for attempt in attempts {
         let code = if attempt.rating == 3 && !attempt.assisted {
@@ -413,32 +355,6 @@ pub fn compute_concept_state(questions: &[QuestionEvidence], now_ms: i64) -> Con
     if state.tally.len() > 12 {
         state.tally.drain(..state.tally.len() - 12);
     }
-    if weights > 0.0 {
-        state.recall = weighted / weights;
-    }
-    if state.tally.is_empty() {
-        return state;
-    }
-    if state.recall >= 0.90
-        && max_stability >= 21.0
-        && state.tally.last().is_some_and(|code| code == "u")
-    {
-        state.status = "solid".into();
-    } else if reviewed && state.recall >= 0.0 && state.recall < 0.80 {
-        state.status = "fading".into();
-    } else {
-        state.status = "learning".into();
-    }
-    state.brightness = if state.recall >= 0.0 {
-        (state.recall * 5.0).round().clamp(1.0, 5.0) as u8
-    } else {
-        1
-    };
-    state.brightness = match state.status.as_str() {
-        "fading" => state.brightness.min(2),
-        "solid" => state.brightness.max(4),
-        _ => state.brightness.min(4),
-    };
     state
 }
 
@@ -455,41 +371,11 @@ pub fn exact_grade(kind: &str, expected: &str, variants: &[String], answer: &str
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct Rubric {
-    pub required: Vec<RubricIdea>,
-    #[serde(default)]
-    pub contradictions: Vec<RubricClaim>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct RubricIdea {
-    pub text: String,
-    #[serde(default)]
-    pub cue: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct RubricClaim {
-    pub text: String,
-    #[serde(default)]
-    pub feedback: String,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ShortJudgments {
     pub verdict: String,
     pub probabilities: BTreeMap<String, f64>,
     pub identity: f64,
-    pub injection: f64,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct SemanticJudgments {
-    pub ideas: Vec<f64>,
-    pub contradictions: Vec<f64>,
-    pub relation: String,
-    pub relation_probabilities: BTreeMap<String, f64>,
     pub injection: f64,
 }
 
@@ -499,8 +385,6 @@ pub struct Decision {
     pub applied: bool,
     pub outcome: String,
     pub rating: u8,
-    pub missing_idea: Option<usize>,
-    pub contradiction: Option<usize>,
 }
 
 impl Decision {
@@ -510,8 +394,6 @@ impl Decision {
             applied: false,
             outcome: "ungraded".into(),
             rating: 0,
-            missing_idea: None,
-            contradiction: None,
         }
     }
 
@@ -521,7 +403,6 @@ impl Decision {
             applied: true,
             outcome: "correct".into(),
             rating: 3,
-            ..Self::ungraded()
         }
     }
 
@@ -531,7 +412,6 @@ impl Decision {
             applied: true,
             outcome: "wrong".into(),
             rating: 1,
-            ..Self::ungraded()
         }
     }
 }
@@ -559,62 +439,6 @@ pub fn grade_short(judgments: &ShortJudgments) -> Decision {
         "reject" if *probability >= 0.90 => Decision::incorrect(),
         _ => Decision::ungraded(),
     }
-}
-
-pub fn grade_semantic(judgments: &SemanticJudgments) -> Decision {
-    if judgments.ideas.is_empty()
-        || !valid_probability(judgments.injection)
-        || judgments
-            .ideas
-            .iter()
-            .chain(judgments.contradictions.iter())
-            .chain(judgments.relation_probabilities.values())
-            .any(|p| !valid_probability(*p))
-    {
-        return Decision::ungraded();
-    }
-    let Some(probability) = judgments.relation_probabilities.get(&judgments.relation) else {
-        return Decision::ungraded();
-    };
-    let contradictions_low = judgments.contradictions.iter().all(|p| *p <= 0.20);
-    if judgments.ideas.iter().all(|p| *p >= 0.80)
-        && contradictions_low
-        && judgments.relation == "equivalent"
-        && *probability >= 0.85
-        && judgments.injection <= 0.20
-    {
-        return Decision::correct();
-    }
-    // These policy classes remain shadow observations; no misses or help are
-    // applied until a separately authorized policy grants that authority.
-    if judgments.relation == "different"
-        && *probability >= 0.85
-        && let Some(index) = judgments.contradictions.iter().position(|p| *p >= 0.90)
-    {
-        return Decision {
-            decision: "incorrect".into(),
-            contradiction: Some(index),
-            ..Decision::ungraded()
-        };
-    }
-    if contradictions_low && judgments.relation == "partial" && *probability >= 0.60 {
-        let mut missing = None;
-        for (index, probability) in judgments.ideas.iter().enumerate() {
-            if *probability <= 0.35 && missing.is_none() {
-                missing = Some(index);
-            } else if *probability < 0.80 {
-                return Decision::ungraded();
-            }
-        }
-        if missing.is_some() {
-            return Decision {
-                decision: "incomplete".into(),
-                missing_idea: missing,
-                ..Decision::ungraded()
-            };
-        }
-    }
-    Decision::ungraded()
 }
 
 #[derive(Clone, Copy, Debug, Default)]

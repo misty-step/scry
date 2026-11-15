@@ -38,10 +38,19 @@ archive, hash, length and response, is still what source `701724c` produced.
 The stored pace itself is unchanged in `rows`. A rewrite on that source would
 bring the form back; remove it the same way.
 
+The three `concept-*` notebooks are no longer rebuilt. The earlier concept
+notebook's practice was deleted after `4e00be0`, so no later source can answer,
+claim or finish its checks. `tests/judgment_off.rs` reads each of them from its
+recorded `rows` instead: the rows must decode, validate and store again as the
+same rows, encode again to the recorded archive `format`, `sha256` and `bytes`
+(at the clock the builder ended on, one minute per response), and render the
+same pages. A rewrite of the fixture copies these three from their own rows; to
+rebuild them, use source `701724c` as below.
+
 ## What the regression proves
 
 `off_is_byte_identical_to_the_source_before_paid_judgment` rebuilds every
-notebook with the current source through the same entry points, which pass no
+other notebook with the current source through the same entry points, which pass no
 Jev capability, and requires each of those values to be identical. With paid
 judgment off, the stored bytes, the archive, its format name, the responses and
 the result and history screens are what they were.

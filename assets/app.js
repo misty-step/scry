@@ -157,20 +157,10 @@
     if (!doc.querySelector('#main') || !doc.querySelector('.masthead')) throw new Error('The saved page could not be read.');
     return doc;
   };
-  const install = (doc, response, navigation = true, preserveDrafts = false) => {
+  const install = (doc, response, navigation = true) => {
     const main = doc.querySelector('#main');
     const previousMain = document.getElementById('main');
     if (!main || !previousMain) return;
-    const focused = document.activeElement;
-    const selection = focused?.selectionStart == null ? null : [focused.selectionStart, focused.selectionEnd];
-    if (preserveDrafts) {
-      // Keep the actual draft form, including its operation identity. Only a
-      // goal's read-only preparation/reference changes while the learner types.
-      [...previousMain.querySelectorAll('form')].filter(form => dirtyForms.has(form)).forEach(form => {
-        const replacement = [...main.querySelectorAll('form')].find(next => next.getAttribute('action') === form.getAttribute('action'));
-        replacement?.replaceWith(form);
-      });
-    }
     // Keep the read-only inspector steady while the server updates a review.
     // It never owns a grade, a schedule or a request of its own.
     const oldProgress = previousMain.querySelector('#nato-progress');
@@ -182,13 +172,9 @@
       if (nextSelected && oldProgress.open) nextSelected.checked = true;
     }
     previousMain.replaceWith(main);
-    if (!preserveDrafts) { cancelAuto(); autoEdited = false; answerUnsaved = false; autoBlocked = false; }
+    cancelAuto(); autoEdited = false; answerUnsaved = false; autoBlocked = false;
     enablePickerReturn();
     enableDraftSave();
-    if (preserveDrafts && focused?.isConnected) {
-      focused.focus({ preventScroll: true });
-      if (selection) focused.setSelectionRange(...selection);
-    }
     const header = doc.querySelector('.masthead');
     if (header) document.querySelector('.masthead')?.replaceWith(header);
     document.title = doc.title;
@@ -483,17 +469,7 @@
       if (next) { event.preventDefault(); next.requestSubmit(); }
     }
   });
-  const mayInstallPoll = (doc, preserveDrafts) => {
-    const dirty = [...document.forms].filter(form => dirtyForms.has(form));
-    const focused = document.activeElement;
-    const editing = focused?.matches('textarea,input,select');
-    if (!preserveDrafts) return !editing && dirty.length === 0;
-    if (editing && !dirtyForms.has(focused.form)) return false;
-    const next = doc.querySelector('#main');
-    if (!next) return false;
-    const forms = [...next.querySelectorAll('form')];
-    return dirty.every(form => dirty.filter(candidate => candidate.getAttribute('action') === form.getAttribute('action')).length === 1 && forms.filter(candidate => candidate.getAttribute('action') === form.getAttribute('action')).length === 1);
-  };
+  const mayInstallPoll = () => !document.activeElement?.matches('textarea,input,select') && ![...document.forms].some(form => dirtyForms.has(form));
   const schedulePoll = (delay = 4000) => {
     clearTimeout(pollTimer);
     if (!document.querySelector('#main[data-poll], [data-poll]')) return;
@@ -501,8 +477,7 @@
       // The element that asks to be polled names the state, where it has one: a
       // lesson's result sits inside the lesson's own outer state.
       const currentState = (document.querySelector('[data-poll][data-state]') || document.querySelector('[data-state]'))?.getAttribute('data-state');
-      const preserveDrafts = currentState === 'goal';
-      if (pending || suspended || !navigator.onLine || inactive() || document.querySelector('form[aria-busy]') || (!preserveDrafts && (document.activeElement?.matches('textarea,input,select') || [...document.forms].some(form => dirtyForms.has(form))))) { schedulePoll(); return; }
+      if (pending || suspended || !navigator.onLine || inactive() || document.querySelector('form[aria-busy]') || !mayInstallPoll()) { schedulePoll(); return; }
       const sequence = pageSequence;
       const generation = epoch;
       const controller = new AbortController();
@@ -512,10 +487,8 @@
       try {
         const response = await fetch(location.href, { credentials: 'same-origin', headers: { Accept: 'text/html', 'X-Scry-Request': 'poll', ...expectedHeaders }, cache: 'no-store', signal: controller.signal });
         const doc = await safePage(response, valid);
-        if (doc && response.ok && !pending && valid() && mayInstallPoll(doc, preserveDrafts)) {
-          // Never replace an editable page or an unanswered question just to poll.
-          if (['concept-home', 'checking', 'checking-reference', 'checking-paused', 'exact-checking', 'pending', 'preparing', 'preparation-paused', 'preparation-stopped', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false, preserveDrafts);
-        }
+        // Never replace an editable page or an unanswered question just to poll.
+        if (doc && response.ok && !pending && valid() && mayInstallPoll() && currentState === 'exact-checking') install(doc, response, false);
       } catch { /* Poll reads never retry paid work or imply success. */ }
       finally { clearTimeout(timeout); if (pollRequest === controller) pollRequest = null; }
       if (current(generation)) schedulePoll();
