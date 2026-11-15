@@ -610,6 +610,13 @@ impl View<'_> {
             escape(version_name(v)),
             version_metadata(v)
         );
+        if self.query.get("existing").is_some_and(|v| v == "1") {
+            out = out.replacen(
+                "data-state=\"library-version\">",
+                "data-state=\"library-version\"><p class=\"notice\" role=\"status\">That text was already in the Library. Nothing was added.</p>",
+                1,
+            );
+        }
         let corrections = self.version_relations(id);
         if !corrections.is_empty() {
             out = out.replacen(

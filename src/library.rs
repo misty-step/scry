@@ -737,6 +737,15 @@ impl Library {
         seed: &str,
         previous: Option<&str>,
     ) -> AppResult<String> {
+        Ok(self.admit(input, seed, previous)?.0)
+    }
+    /// Like `add`, and also says whether the Version was already there.
+    pub fn admit(
+        &mut self,
+        input: VersionInput,
+        seed: &str,
+        previous: Option<&str>,
+    ) -> AppResult<(String, bool)> {
         let sections = checked_sections(&input)?;
         if input.kind == Kind::Text {
             check_text_units(sections.iter().flat_map(|s| &s.units).map(String::as_str))?;
@@ -782,15 +791,12 @@ impl Library {
             })
             .collect::<AppResult<Vec<_>>>()?;
         let hash = content_hash(&input.text, &sections, &input.ordered_aliases);
-        let pairs = (input.kind == Kind::KeyedMapping)
-            .then(|| mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str)))
-            .flatten();
         // A correction always creates a new Version. Any other text already in
         // the Library returns that Version, whatever Work the names point to.
         if previous.is_none()
-            && let Some(id) = self.duplicate(&input, &sections, &hash, pairs.as_ref())?
+            && let Some(id) = self.same_text(&input, &sections)?.into_iter().next()
         {
-            return Ok(id);
+            return Ok((id, true));
         }
         let matching: Vec<_> = self
             .works
@@ -905,7 +911,7 @@ impl Library {
         for relation in relations {
             self.relations.insert(relation_key(&relation), relation);
         }
-        Ok(version_id)
+        Ok((version_id, false))
     }
     /// Whether `work` is, through any chain of part-of Relations, part of `whole`.
     fn part_of(&self, work: &str, whole: &str) -> bool {
@@ -930,98 +936,118 @@ impl Library {
     fn superseded(&self, id: &str) -> bool {
         self.relations.contains_key(&format!("supersedes-{id}"))
     }
-    /// The existing Version whose normalized text equals the input's, if any.
-    /// A Version that has been corrected is chosen only when no other matches.
-    /// Different list boundaries, mapping pairs or grading policy behind the
-    /// same normalized text are refused rather than silently reused.
-    fn duplicate(
-        &self,
-        input: &VersionInput,
-        sections: &[SectionInput],
-        hash: &str,
-        pairs: Option<&Vec<(Vec<String>, Vec<String>)>>,
-    ) -> AppResult<Option<String>> {
-        let ordered = |v: &Version| {
-            sections
+    /// Every stored Version this draft would be returned as, preferring one
+    /// that has not been corrected. A stored Version with the same text but a
+    /// different Kind, Units, aliases, pairs or Spelling-strict setting is
+    /// never reused: when only such Versions exist the draft is refused with
+    /// what differs. Text supplied without Units matches a stored text Version
+    /// whatever its Units, since Scry divides such text itself.
+    fn same_text(&self, input: &VersionInput, sections: &[SectionInput]) -> AppResult<Vec<String>> {
+        let offered: Vec<&str> = sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .map(String::as_str)
+            .collect();
+        let stored = |v: &Version| -> Vec<String> {
+            v.sections
                 .iter()
                 .flat_map(|s| &s.units)
-                .map(|s| crate::ordered::name_key(s))
-                .collect::<Vec<_>>()
-                == v.sections
-                    .iter()
-                    .flat_map(|s| &s.units)
-                    .map(|u| crate::ordered::name_key(&u.text))
-                    .collect::<Vec<_>>()
+                .map(|u| u.text.clone())
+                .collect()
         };
-        let stored_pairs = |v: &Version| {
-            mapping_identity(
-                v.sections
-                    .iter()
-                    .flat_map(|s| &s.units)
-                    .map(|u| u.text.as_str()),
-            )
+        let unit_keys = |kind: Kind, units: &[&str]| -> Vec<String> {
+            units
+                .iter()
+                .map(|u| {
+                    if kind == Kind::OrderedList {
+                        crate::ordered::name_key(u)
+                    } else {
+                        key(u)
+                    }
+                })
+                .collect()
         };
-        let mut by_hash: Vec<_> = self
-            .versions
-            .values()
-            .filter(|v| v.normalized_hash == hash)
-            .collect();
-        by_hash.sort_by_key(|v| self.superseded(&v.id));
-        let mut refusal = None;
-        for v in by_hash {
-            let compatible = if (input.kind == Kind::OrderedList || v.kind == Kind::OrderedList)
-                && (input.kind != v.kind
-                    || input.spelling_strict != v.spelling_strict
-                    || !ordered(v))
-            {
-                Err(AppError::new(
-                    409,
-                    "That normalized text has different ordered-list boundaries or grading policy.",
-                ))
-            // The historical content hash deliberately ignores spacing. For
-            // mappings that must not erase pair boundaries or grading policy.
-            } else if (input.kind == Kind::KeyedMapping || v.kind == Kind::KeyedMapping)
-                && (input.kind != v.kind
-                    || input.spelling_strict != v.spelling_strict
-                    || pairs != stored_pairs(v).as_ref())
-            {
-                Err(AppError::new(
-                    409,
-                    "That normalized text has different mapping boundaries or grading policy. Keep the existing Version unchanged.",
-                ))
-            } else {
-                Ok(())
-            };
-            match compatible {
-                Ok(()) => return Ok(Some(v.id.clone())),
-                Err(error) => {
-                    refusal.get_or_insert(error);
-                }
-            }
-        }
-        if let Some(error) = refusal {
-            return Err(error);
-        }
+        let alias_keys = |aliases: &BTreeMap<usize, Vec<String>>| {
+            aliases
+                .iter()
+                .map(|(i, names)| {
+                    let names = names
+                        .iter()
+                        .map(|n| crate::ordered::name_key(n))
+                        .collect::<BTreeSet<_>>();
+                    (*i, names)
+                })
+                .collect::<BTreeMap<_, _>>()
+        };
+        let text_key = key(&input.text);
+        let plain_hash = sha256(text_key.as_bytes());
         // Mapping identity follows its own pinned normalization, not the
         // historical text hash (which, for example, expands '&' to 'and').
-        // Legacy hash conflicts are checked first; old bytes and hashes stay.
-        let Some(pairs) = pairs else {
-            return Ok(None);
-        };
-        let mut same: Vec<_> = self
+        let pairs = (input.kind == Kind::KeyedMapping)
+            .then(|| mapping_identity(offered.iter().copied()))
+            .flatten();
+        let mut candidates: Vec<&Version> = self
             .versions
             .values()
-            .filter(|v| v.kind == Kind::KeyedMapping && stored_pairs(v).as_ref() == Some(pairs))
+            .filter(|v| {
+                v.normalized_hash == plain_hash
+                    || (!v.ordered_aliases.is_empty() && key(&v.text) == text_key)
+                    || (pairs.is_some()
+                        && v.kind == Kind::KeyedMapping
+                        && mapping_identity(stored(v).iter().map(String::as_str)) == pairs)
+            })
             .collect();
-        same.sort_by_key(|v| self.superseded(&v.id));
-        match same.first() {
-            Some(v) if input.spelling_strict != v.spelling_strict => Err(AppError::new(
+        candidates.sort_by_key(|v| self.superseded(&v.id));
+        let differences = |v: &Version| {
+            let mut differ = Vec::new();
+            if v.kind != input.kind {
+                differ.push("Kind");
+            } else if v.kind == Kind::KeyedMapping {
+                if mapping_identity(stored(v).iter().map(String::as_str)) != pairs {
+                    differ.push("pairs");
+                }
+            } else if !(input.kind == Kind::Text && input.sections.is_none()) {
+                let units = stored(v);
+                let units: Vec<&str> = units.iter().map(String::as_str).collect();
+                if unit_keys(v.kind, &units) != unit_keys(input.kind, &offered) {
+                    differ.push("Units");
+                }
+            }
+            if alias_keys(&v.ordered_aliases) != alias_keys(&input.ordered_aliases) {
+                differ.push("aliases");
+            }
+            if v.spelling_strict != input.spelling_strict {
+                differ.push("Spelling-strict setting");
+            }
+            differ
+        };
+        let same: Vec<String> = candidates
+            .iter()
+            .filter(|v| differences(v).is_empty())
+            .map(|v| v.id.clone())
+            .collect();
+        if same.is_empty()
+            && let Some(first) = candidates.first()
+        {
+            let differ = differences(first);
+            let named = match differ.split_last() {
+                Some((last, [])) => (*last).to_string(),
+                Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+                None => unreachable!("a candidate that differs names what differs"),
+            };
+            return Err(AppError::new(
                 409,
-                "Those mapping pairs already have a different grading policy. Keep the existing Version unchanged.",
-            )),
-            Some(v) => Ok(Some(v.id.clone())),
-            None => Ok(None),
+                format!(
+                    "That text is already in the Library in a Version with different {named}. Nothing was saved; to change that Version, correct it."
+                ),
+            ));
         }
+        Ok(same)
+    }
+    /// The stored Versions a validated draft would be returned as, best first.
+    pub fn existing(&self, input: &VersionInput) -> AppResult<Vec<String>> {
+        let sections = checked_sections(input)?;
+        self.same_text(input, &sections)
     }
     pub fn edit(&mut self, edit: WorkEdit) -> AppResult<String> {
         let mut next = self.works.get(&edit.work_id).ok_or_else(missing)?.clone();
@@ -1203,6 +1229,7 @@ impl Library {
                     work_id != parent_work_id
                         && self.works.contains_key(work_id)
                         && self.works.contains_key(parent_work_id)
+                        && !self.part_of(parent_work_id, work_id)
                 }
                 Relation::RelatedTo {
                     work_id,
@@ -1233,6 +1260,7 @@ pub fn mutate(
             .parse::<u64>()
             .map_err(|_| AppError::conflict())
     };
+    let mut existing = false;
     let id = match path {
         "/library/mapping/add" => {
             if fields.keys().any(|key| {
@@ -1259,13 +1287,19 @@ pub fn mutate(
                 }
             };
             let input: MappingInput = serde_json::from_str(data).map_err(|_| mapping_invalid())?;
-            app.library.add(input.into_version()?, seed, None)?
+            let (id, was) = app.library.admit(input.into_version()?, seed, None)?;
+            existing = was;
+            id
         }
-        "/library/version/add" => app.library.add(
-            serde_json::from_str(field("data")).map_err(|_| invalid())?,
-            seed,
-            None,
-        )?,
+        "/library/version/add" => {
+            let (id, was) = app.library.admit(
+                serde_json::from_str(field("data")).map_err(|_| invalid())?,
+                seed,
+                None,
+            )?;
+            existing = was;
+            id
+        }
         "/library/version/supersede" => {
             let old = app
                 .library
@@ -1303,7 +1337,9 @@ pub fn mutate(
         "versions"
     };
     Ok(MutationResult {
-        data: None,
+        // Present only when nothing was added, so every other receipt keeps
+        // its earlier shape.
+        data: existing.then(|| serde_json::json!({"existing": true})),
         redirect: format!("/api/v1/library/{resource}/{id}"),
         entity_id: Some(id),
         message: None,

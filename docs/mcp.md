@@ -71,7 +71,9 @@ Both formats take an optional `provenance` (`supplied`, the default,
 naming Works already in the Library. Validation checks the shape of each
 Relation and reports how many there are; import checks that each named Work
 exists, and refuses the whole manifest otherwise. A text already in the
-Library returns its Version and adds nothing, Relations included.
+Library returns its Version with `existing: true` and records nothing from the
+manifest, Relations included; the same text with different Units, aliases,
+pairs or Spelling-strict setting is refused with what differs.
 Validation does not query the remote Library or prove deduplication, related
 Works, available storage, authorization, Study admission, learning efficacy or
 deployment. Corrections and deletions are API and CLI actions, not tools.

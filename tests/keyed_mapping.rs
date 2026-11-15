@@ -227,23 +227,23 @@ fn restored_mapping_title_is_hidden_without_rewriting_historical_receipt() {
 }
 
 #[test]
-fn canonical_mapping_dedupe_does_not_mask_existing_cross_kind_hash_collision() {
+fn canonical_mapping_dedupe_returns_the_same_mapping_not_a_text_of_another_kind() {
     let mut o = Owner::new();
     let mapping = |value: &str| json!({"data":{"title":"Letter pairs","direction":"forward","pairs":[{"key":"Q","value":value}]}});
-    o.call("/api/v1/library/mappings", mapping("A&B")).unwrap();
+    let vid = o.call("/api/v1/library/mappings", mapping("A&B")).unwrap()["id"].clone();
     o.call(
         "/api/v1/library/versions",
         json!({"data":{"title":"Independent text","kind":"text","text":"Q A B"}}),
     )
     .unwrap();
-    let before = o.app.clone();
+    let before = o.app.library.clone();
+    // SPEC § Library: the same text returns the existing Version that is the
+    // same in Kind and pairs; the text Version of another Kind is not reused.
     assert_eq!(
-        o.call("/api/v1/library/mappings", mapping("A B"))
-            .unwrap_err()
-            .status,
-        409
+        o.call("/api/v1/library/mappings", mapping("A B")).unwrap()["id"],
+        vid
     );
-    assert_eq!(o.app, before);
+    assert_eq!(o.app.library, before);
 }
 impl Owner {
     fn new() -> Self {

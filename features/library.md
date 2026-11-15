@@ -10,7 +10,7 @@ owns storage and rollback.
 
 - `library-search` finds Works by title, alias or opening words, or says "Nothing matches."
 - `library-add` stores a Version with Kind, Sections, Units, Provenance and Rights; units must rejoin to the text exactly.
-- `library-keep` attaches a Version to an existing Work by title or alias and returns an identical Version, under any Work name, instead of duplicating it.
+- `library-keep` attaches a Version to an existing Work by title or alias and returns an identical Version, under any Work name, with `existing: true`, instead of duplicating it; the same text with different Units, aliases, pairs or Spelling-strict setting is refused with what differs.
 - `library-supersede` corrects wording as a new Version, even for a case, punctuation or spacing change, and keeps the old one and its Attempts.
 - `library-relations` records part-of and related-to Relations declared in a manifest and shows each on both Works.
 - `library-show` shows Works (`/library/works/ID`) and Versions with their Provenance, Rights status, corrections and Relations, without changing any Study.

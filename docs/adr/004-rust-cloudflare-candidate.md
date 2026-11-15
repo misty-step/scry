@@ -236,9 +236,16 @@ This amends the #316 rules on duplicates and supersession to match
 [SPEC § Library](../../SPEC.md#library). Add looks for a Version with the same
 normalized text before it resolves names, so a duplicate returns the existing
 Version, creates nothing and attaches nothing, whatever Work the supplied title
-or aliases name. Different ordered-list boundaries, mapping pairs or grading
-policy behind the same normalized text still conflict rather than reuse a
-Version that would grade differently. A correction skips that lookup: it always
+or aliases name. Normalized text is compared directly, so ordered-list aliases,
+which the stored hash includes, cannot hide a match. Among Versions with that
+text only one with the same Kind, Units, aliases, pairs and Spelling-strict
+setting is returned; otherwise the add is refused with what differs. Text
+supplied without Units matches any text Version's Units. A Version an earlier
+build stored beside one that now counts as its duplicate stays valid. The add
+receipt records `{"existing": true}` only when nothing was added, so creation
+receipts keep their shape. Starter, lesson and NATO entries resolve through the
+same comparison and keep a Version that already has a Study, whatever
+corrections exist. A correction skips that lookup: it always
 creates a new Version with a `supersedes` Relation, including when only case,
 punctuation or spacing changed. A correction identical in every stored field is
 refused, and a Version that already has a correction is corrected through the
@@ -258,4 +265,5 @@ ahead of every earlier name. A reader before this amendment refuses both: the
 row by its unknown key, the archive by its format name or unknown Provenance.
 Any other notebook keeps its rows, archive bytes, hash and format name.
 Part-of and related-to Relations need no new name: earlier readers already
-validate and keep them.
+validate and keep them. Validation refuses a part-of cycle, which admission
+never creates and no earlier build could store.

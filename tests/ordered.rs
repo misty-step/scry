@@ -111,7 +111,14 @@ fn aliases_are_immutable_policy_and_replay_survives_roundtrip() {
         .get_mut(&0)
         .unwrap()
         .push("Vermilion gate".into());
-    let second = library.add(changed, "second", None).unwrap();
+    // SPEC § Library: the same text with different aliases is refused, and
+    // nothing is written; a correction is how the aliases change.
+    let before = library.clone();
+    let refused = library.add(changed.clone(), "second", None).unwrap_err();
+    assert_eq!(refused.status, 409);
+    assert!(refused.message.contains("aliases"));
+    assert_eq!(library, before);
+    let second = library.add(changed, "second", Some(&first)).unwrap();
     assert_ne!(first, second);
     assert_ne!(
         library.versions[&first].normalized_hash,

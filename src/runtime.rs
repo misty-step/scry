@@ -1435,13 +1435,18 @@ impl DurableObject for LearningSpace {
                                 .as_ref()
                                 .and_then(|p| app.library.versions.get(&p.prompt.version_id))
                                 .is_some_and(crate::library::is_nato)));
-                redirect(destination.map(String::as_str).unwrap_or_else(|| {
+                let location = destination.map(String::as_str).unwrap_or_else(|| {
                     if focused {
                         "/?practice=nato"
                     } else {
                         web::mutation_redirect(&app, &path, &result.redirect)
                     }
-                }))
+                });
+                // The page says the text was already there; nothing was added.
+                if api::library_existing(&path, &result) == Some(true) {
+                    return redirect(&format!("{location}?existing=1"));
+                }
+                redirect(location)
             }
         }
     }
@@ -1737,7 +1742,12 @@ impl LearningSpace {
         self.arm().await?;
         api_json(
             &api::MutationResponse {
-                practice: crate::study::wire_response(&app, &result),
+                practice: if canonical_path.starts_with("/library/") {
+                    None
+                } else {
+                    crate::study::wire_response(&app, &result)
+                },
+                existing: api::library_existing(canonical_path, &result),
                 result,
                 replayed,
                 token,

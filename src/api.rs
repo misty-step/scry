@@ -14,6 +14,9 @@ pub struct MutationResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub practice: Option<serde_json::Value>,
     pub replayed: bool,
+    /// On a Library add: whether the text was already there and nothing was added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<TokenInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,6 +82,17 @@ pub fn normalize_draft_form(fields: &mut BTreeMap<String, String>) {
 }
 
 /// Only Library draft metadata is nested. Other API field rules stay unchanged.
+/// Whether a Library add's committed result says the text was already there.
+pub fn library_existing(path: &str, result: &MutationResult) -> Option<bool> {
+    matches!(path, "/library/version/add" | "/library/mapping/add").then(|| {
+        result
+            .data
+            .as_ref()
+            .and_then(|d| d.get("existing"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    })
+}
 pub fn library_fields(mut value: serde_json::Value) -> AppResult<BTreeMap<String, String>> {
     if let Some(data) = value.get_mut("data") {
         if !data.is_object() {

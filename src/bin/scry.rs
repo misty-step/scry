@@ -15,6 +15,12 @@ fn main() {
             if let Ok(output) = output
                 && writeln!(std::io::stdout().lock(), "{output}").is_ok()
             {
+                if !json && value.get("existing").and_then(|v| v.as_bool()) == Some(true) {
+                    let _ = writeln!(
+                        std::io::stderr().lock(),
+                        "That text was already in the Library. Nothing was added."
+                    );
+                }
                 return;
             }
             std::process::exit(1);

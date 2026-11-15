@@ -69,18 +69,26 @@ test('SPEC § Library: duplicates, corrections, Provenance and Relations through
   const before=await library();
   const variant=await file('variant.txt','SHARED spec words in order!!');
   const viaCli=await ok(['version','add','--title','Spec second Work','--kind','text','--text-file',variant,'--operation-id','spec-qa-dup-cli-op']);
-  assert.equal(viaCli.result.entity_id,first);
+  assert.equal(viaCli.result.entity_id,first);assert.equal(viaCli.existing,true);
+  const human=await cliProcess(cliBinary,['version','add','--title','Spec second Work','--kind','text','--text-file',variant,'--config',config],{env:{PATH:process.env.PATH,HOME:directory}});
+  assert.equal(human.code,0);assert.match(human.err,/^That text was already in the Library\. Nothing was added\.$/m);
   const replay=await ok(['version','add','--title','Spec second Work','--kind','text','--text-file',variant,'--operation-id','spec-qa-dup-cli-op']);
   assert.equal(replay.replayed,true);assert.equal(replay.result.entity_id,first);
   await unchanged(async()=>{const reuse=await cli(['version','add','--title','Spec second Work','--kind','text','--text-file',await file('other.txt','Different.\n'),'--operation-id','spec-qa-dup-cli-op']);assert.notEqual(reuse.code,0);},'Reusing an operation with another payload changes nothing.');
   const viaApi=await apiJson('/api/v1/library/versions',{operation_id:'spec-qa-dup-api-operation',data:{title:'Spec second Work',kind:'text',text:'shared   spec words, in order.',aliases:['Spec first Work']}});
-  assert.equal(viaApi.status,200);assert.equal(viaApi.body.result.entity_id,first);
+  assert.equal(viaApi.status,200);assert.equal(viaApi.body.result.entity_id,first);assert.equal(viaApi.body.existing,true);
   const add=(await page('/library/add')).html;
   const viaApp=await post('/library/version/add',{...formFields(add,'/library/version/add'),title:'Spec second Work',text:'Shared spec words; in order.\n'});
-  assert.equal(viaApp.status,303);assert.equal(viaApp.headers.get('Location'),'/library/versions/'+first);
+  assert.equal(viaApp.status,303);assert.equal(viaApp.headers.get('Location'),'/library/versions/'+first+'?existing=1');
+  assert.match((await page(viaApp.headers.get('Location'))).html,/<p class="notice" role="status">That text was already in the Library\. Nothing was added\.<\/p>/);
   const viaTool=await toolOk('scry_import',{operation_id:'spec-qa-dup-tool-operation',format:'version',data:{title:'Spec second Work',kind:'text',text:'Shared Spec Words In Order'}});
-  assert.equal(viaTool.result.entity_id,first);
+  assert.equal(viaTool.result.entity_id,first);assert.equal(viaTool.existing,true);
   assert.deepEqual(await library(),before,'No client created or attached anything.');
+  // The same text with other Units, aliases or Spelling-strict setting is refused, and says why.
+  await unchanged(async()=>{const r=await apiJson('/api/v1/library/versions',{operation_id:'spec-qa-units-operation',data:{title:'Spec first Work',kind:'text',text:'Shared spec words, in order.\n',sections:[{heading:'One',units:['Shared spec words, in order.\n']}]}});assert.equal(r.status,409);assert.match(r.body.error,/different Units\. Nothing was saved; to change that Version, correct it\./);},'Different Units write nothing.');
+  await unchanged(async()=>{const r=await cli(['version','add','--title','Spec first Work','--kind','text','--text-file',variant,'--spelling-strict']);assert.notEqual(r.code,0);},'A different Spelling-strict setting writes nothing.');
+  const listed=await apiJson('/api/v1/library/versions',{operation_id:'spec-qa-list-operation',data:{title:'Spec list',kind:'ordered_list',text:'Red gate\nBlue bridge\n'}});assert.equal(listed.status,200);assert.equal(listed.body.existing,false);
+  await unchanged(async()=>{const r=await toolOk('scry_validate',{format:'version',data:{title:'Spec other list',kind:'ordered_list',text:'Red gate\nBlue bridge\n',ordered_aliases:{'0':['Scarlet gate']}}});assert.equal(r.valid,true);const t2=await tool('scry_import',{operation_id:'spec-qa-list-alias-tool',format:'version',data:{title:'Spec other list',kind:'ordered_list',text:'Red gate\nBlue bridge\n',ordered_aliases:{'0':['Scarlet gate']}}});assert.equal(t2.isError,true);assert.equal(t2.structuredContent.error.status,409);},'Different aliases write nothing.');
  });
 
  await t.test('a correction always creates a new Version that supersedes the old one, which stays unchanged',async()=>{
@@ -168,4 +176,76 @@ test('SPEC § Library: duplicates, corrections, Provenance and Relations through
   for(const path of ['/api/v1/library/works/'+work,'/api/v1/library/versions/'+vid,'/api/v1/library/search?q=spec','/api/v1/library/export']) assert.equal((await api(path)).status,409,path);
   const shown=await tool('scry_show',{kind:'work',id:work});assert.equal(shown.isError,true);assert.equal(shown.structuredContent.error.code,'conflict');
  });
+});
+
+// A starter, lesson or Study entry that already has a Study keeps its Version
+// after a same-text correction: one Study, V1's Prompt, V1's schedule.
+for(const entry of ['nato','lesson','mix']) test(`SPEC § Open into study: the ${entry} entry keeps the studied Version after a same-text correction`,{timeout:120000},async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'scry-library-entry-'));
+ const config=join(directory,'login.json'),name=`library-entry-${entry}-`+randomUUID();
+ let now=Date.parse('2026-11-16T12:00:00Z');
+ const bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:name,INTERNAL_KEY:internalKey,SCRY_TEST_NOW_MS:String(now)};
+ let runtime=await createRuntime({port:0,name,inspect:true,testClock:true,bindings});
+ t.after(async()=>{await runtime.mf.dispose();await rm(directory,{recursive:true,force:true});});
+ const origin=(await runtime.mf.ready).origin;
+ runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin})};
+ let storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+ const rows=()=>storage.exec('SELECT key,value FROM records ORDER BY key');
+ const meta=async()=>JSON.parse((await rows()).find(r=>r.key==='meta').value);
+ const prefixed=async prefix=>Object.fromEntries((await rows()).filter(r=>r.key.startsWith(prefix)).map(r=>[r.key,r.value]));
+ const page=async path=>(await(await runtime.worker.fetch(origin+path)).text());
+ const hidden=(html,action)=>{const form=new RegExp(`<form[^>]*action="${action.replaceAll('/','\\/')}"[^>]*>([\\s\\S]*?)</form>`).exec(html);assert.ok(form,`form ${action}`);return Object.fromEntries([...form[1].matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"/g)].map(m=>[m[1],m[2]]));};
+ const post=(path,body)=>runtime.worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+ const issued=await post('/tokens/create',{...hidden(await page('/settings'),'/tokens/create'),name:'Synthetic entry agent; unpaid'});
+ const secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await issued.text())?.[1];assert.ok(secret);
+ const api=async(path,payload)=>{const r=await runtime.worker.fetch(origin+path,{...(payload?{method:'POST',body:JSON.stringify({operation_id:randomUUID(),...payload})}:{}),headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'}});return {status:r.status,body:await r.json()};};
+ const cli=async args=>{const {code,out}=await cliProcess(cliBinary,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:directory}});return {code,value:JSON.parse(out)};};
+ assert.equal((await cliProcess(cliBinary,['login','--url',origin,'--token-stdin','--json','--config',config],{env:{PATH:process.env.PATH,HOME:directory},input:secret+'\n'})).code,0);
+ // The NATO screen offers Start or Continue only with nothing held: practise to rest.
+ const rest=async()=>{
+  for(let i=0;i<200;i++){
+   const c=(await meta()).practice?.current;if(!c)return;
+   if(c.attempt_id) assert.equal((await api('/api/v1/next',{after:c.prompt.id})).status,200);
+   else if(c.phase==='study') assert.equal((await api('/api/v1/quiz',{prompt_id:c.prompt.id})).status,200);
+   else assert.equal((await api('/api/v1/answer',{prompt_id:c.prompt.id,answer:'synthetic miss'})).status,200);
+  }
+  assert.fail('Practice reached rest.');
+ };
+ const enter=async()=>{
+  const current=(await meta()).practice?.current;
+  if(entry==='nato') return post('/practice/nato/start',hidden(await page('/?practice=nato'),'/practice/nato/start'));
+  if(entry==='lesson') {const r=await api('/api/v1/lessons/start',{starter:'st-michael-en',...(current?.attempt_id?{after:current.prompt.id}:{})});assert.equal(r.status,200,JSON.stringify(r.body));return r;}
+  const home=await page('/');const action=current?.attempt_id?'/practice/review/next':'/practice/review/start';
+  return post(action,hidden(home,action));
+ };
+ const first=await enter();assert.ok([200,303].includes(first.status));
+ let held=(await meta()).practice.current;const v1=held.prompt.version_id;
+ if(held.phase==='study'){assert.equal((await api('/api/v1/quiz',{prompt_id:held.prompt.id})).status,200);held=(await meta()).practice.current;}
+ assert.equal((await api('/api/v1/answer',{prompt_id:held.prompt.id,answer:'synthetic miss'})).status,200);
+ const cards=await prefixed('practice_cards/'),studies=await prefixed('practice_studies/');
+ assert.equal(Object.keys(studies).length,1);
+ // The Owner's agent corrects V1 with its own text and Units, adding a source.
+ const shown=(await api('/api/v1/library/versions/'+v1)).body;const v=shown.version;
+ const file=async(f,c)=>{const p=join(directory,f);await writeFile(p,c);return p;};
+ const corrected=await cli(['version','supersede',v1,'--revision',String(shown.work.revision),'--title',shown.work.title,'--kind',v.kind,'--text-file',await file('v1.txt',v.text),'--sections-file',await file('v1.json',JSON.stringify(v.sections.map(s=>({heading:s.heading,units:s.units.map(u=>u.text)})))),'--name',v.name,...v.sources.flatMap(x=>['--source',x]),'--source','Synthetic added citation','--rights',v.rights,...(v.spelling_strict?['--spelling-strict']:[])]);
+ assert.equal(corrected.code,0,JSON.stringify(corrected.value));const v2=corrected.value.result.entity_id;assert.notEqual(v2,v1);
+ now+=2*86400000;runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin,SCRY_TEST_NOW_MS:String(now)})};
+ storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+ if(entry==='nato'){
+  // Practise V1 to rest before the correction's clock jump would matter.
+  now-=2*86400000;runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin,SCRY_TEST_NOW_MS:String(now)})};
+  storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+  await rest();
+  Object.assign(cards,await prefixed('practice_cards/'));
+  now+=2*86400000;runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin,SCRY_TEST_NOW_MS:String(now)})};
+  storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+  assert.match(await page('/?practice=nato'),/action="\/practice\/nato\/start"/);
+ }
+ const again=await enter();assert.ok([200,303].includes(again.status),String(again.status));
+ const after=(await meta()).practice.current;
+ assert.equal(after.prompt.version_id,v1,'The Prompt is on the Version the Owner chose.');
+ const nowStudies=Object.values(await prefixed('practice_studies/')).map(JSON.parse);
+ assert.equal(nowStudies.length,1,'No second Study.');assert.equal(nowStudies[0].version_id,v1);
+ const nowCards=await prefixed('practice_cards/');
+ for(const [key,value] of Object.entries(cards)) assert.equal(nowCards[key],value,'V1\'s schedule is unchanged.');
 });

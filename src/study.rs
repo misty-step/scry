@@ -603,6 +603,10 @@ pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback>
 /// Resolve immutable response references only after the runtime has committed.
 pub fn wire_response(app: &App, result: &MutationResult) -> Option<Value> {
     let mut data = result.data.clone()?;
+    // A Library add that found its text already there carries no practice.
+    if data.get("existing").is_some() {
+        return None;
+    }
     if let Some(id) = data.get("attempt_id").and_then(Value::as_str) {
         let attempt = app.practice.attempts.get(id);
         let feedback = attempt.and_then(|a| mapping_feedback(app, a));
@@ -1475,6 +1479,24 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         .map(|(_, _, c)| c)
 }
 
+/// The Version a starter, lesson or NATO entry resolves to. One the Owner
+/// already studies is kept, whatever corrections exist; otherwise the Library
+/// offers its unsuperseded Version, importing the supplied content once.
+fn starter_version(
+    app: &mut App,
+    input: crate::library::VersionInput,
+    seed: &str,
+) -> AppResult<String> {
+    let studied = app
+        .library
+        .existing(&input)?
+        .into_iter()
+        .find(|id| app.practice.studies.values().any(|s| &s.version_id == id));
+    match studied {
+        Some(id) => Ok(id),
+        None => app.library.add(input, seed, None),
+    }
+}
 /// Home-only subject preview. Never render editable metadata as a recall cue.
 pub fn continuous_preview(app: &App, now: i64) -> Option<String> {
     let vid = match continuous_choice(app, now)? {
@@ -1507,8 +1529,7 @@ fn continuous_present(
                     let vid = match choice {
                         ContinuousChoice::Version(vid) => vid,
                         ContinuousChoice::Starter(starter) => {
-                            app.library
-                                .add(crate::lessons::input(&starter)?, seed, None)?
+                            starter_version(app, crate::lessons::input(&starter)?, seed)?
                         }
                         _ => unreachable!(),
                     };
@@ -2013,8 +2034,7 @@ fn lesson_start(
     let vid = if starter.is_empty() {
         supplied.to_string()
     } else {
-        app.library
-            .add(crate::lessons::input(starter)?, seed, None)?
+        starter_version(app, crate::lessons::input(starter)?, seed)?
     };
     let version = app
         .library
@@ -2736,7 +2756,7 @@ pub fn mutate_judged(
             }
             // Engine applies this whole operation to a clone: a held different
             // Study or import conflict cannot leave a partial starter behind.
-            let vid = app.library.add(crate::library::nato_input()?, seed, None)?;
+            let vid = starter_version(app, crate::library::nato_input()?, seed)?;
             if !crate::library::is_nato(&app.library.versions[&vid]) {
                 return Err(AppError::new(
                     409,

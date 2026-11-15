@@ -170,10 +170,17 @@ they do not bypass capacity checks. The CLI reports these refusals as
 `API request failed.` with a nonzero exit. A text that equals an existing
 Version, ignoring case, punctuation and spacing, returns that Version and
 creates nothing, whatever Work the supplied title or aliases name; its
-original bytes, metadata and Relations are kept, and Relations in the repeated
-draft are not added. Different ordered-list items, mapping pairs or grading
-policy behind the same text conflict (409). A new text attaches to the Work its
-title or alias names; names that point to different Works conflict.
+original bytes, metadata and Relations are kept, and the draft's edition name,
+sources, Rights status, Provenance and Relations are not recorded. The response
+then carries `"existing": true` (`false` for a new Version), and the CLI's
+human output adds `That text was already in the Library. Nothing was added.`
+The same text with a different Kind, Units, ordered aliases, mapping pairs or
+Spelling-strict setting is refused (409) with nothing written, and the message
+names what differs, for example `That text is already in the Library in a
+Version with different Units. Nothing was saved; to change that Version,
+correct it.` Text supplied without Sections matches a stored text Version
+whatever its Units, since Scry divides such text itself. A new text attaches to
+the Work its title or alias names; names that point to different Works conflict.
 Search matches titles, aliases, and the first 240 characters of each Version.
 An empty query lists the Library. No matches returns
 `{"matches":[],"empty":true,"message":"Nothing matches."}`.
@@ -197,7 +204,7 @@ The Version draft is an object with `title`, `kind`, `text`, optional `name`,
 Each Section has `heading` and an ordered `units` array of exact strings.
 Only Library `data` supports nested JSON; other foundation API fields remain
 scalar. Mutations return the shared `result.entity_id`, `redirect`, and
-`replayed` fields. Show the returned identity to read the committed content.
+`replayed` fields; Version and mapping adds also return `existing`. Show the returned identity to read the committed content.
 Every Library mutation retains token attribution in private history and complete
 export. The Library-only export excludes that attribution and all study state.
 

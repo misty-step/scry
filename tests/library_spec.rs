@@ -722,3 +722,397 @@ fn text_without_boundaries_is_divided_at_line_breaks_and_clauses_and_rejoins_exa
         ]
     );
 }
+
+// --- Review findings: starters, same text with different structure, cycles ---
+
+fn engine_call(
+    app: &mut App,
+    path: &str,
+    op: &str,
+    now: i64,
+    pairs: Value,
+) -> AppResult<MutationResult> {
+    let mut fields = api::fields(pairs)?;
+    fields.insert("operation_id".into(), op.into());
+    let token = app.owner_tokens.values().next().unwrap().info.clone();
+    let result = engine::mutate_as(app, path, &fields, now, op, MutationActor::Token(&token))?;
+    engine::validate_app(app).unwrap();
+    Ok(result)
+}
+/// Answer whatever is held, trying it from memory first.
+fn answer_held(app: &mut App, op: &str, now: i64) -> String {
+    let held = app.practice.current.clone().unwrap();
+    if held.source_visible() {
+        engine_call(
+            app,
+            "/practice/quiz",
+            &format!("{op}-quiz"),
+            now,
+            json!({"prompt_id":held.prompt.id}),
+        )
+        .unwrap();
+    }
+    let pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    engine_call(
+        app,
+        "/practice/answer",
+        &format!("{op}-answer"),
+        now,
+        json!({"prompt_id":pid,"answer":"synthetic miss"}),
+    )
+    .unwrap();
+    pid
+}
+/// Correct a Version with exactly its own text and Units, adding one source.
+fn cite(app: &mut App, op: &str, old: &str) -> String {
+    let v = app.library.versions[old].clone();
+    let w = app.library.works[&v.work_id].clone();
+    let sections: Vec<Value> = v
+        .sections
+        .iter()
+        .map(|s| json!({"heading":s.heading,"units":s.units.iter().map(|u| u.text.clone()).collect::<Vec<_>>()}))
+        .collect();
+    let mut sources = v.sources.clone();
+    sources.push("Synthetic added citation".into());
+    let data = json!({"title":w.title,"kind":v.kind,"text":v.text,"name":v.name,"sources":sources,
+        "rights":v.rights,"spelling_strict":v.spelling_strict,"ordered_aliases":v.ordered_aliases,"sections":sections});
+    correct(app, op, old, data).unwrap()
+}
+
+#[test]
+fn a_starter_entry_keeps_the_studied_version_after_a_same_text_correction() {
+    for entry in ["nato", "lesson", "mix"] {
+        let mut app = app();
+        let mut now = NOW;
+        let start = |app: &mut App, op: &str, now: i64| match entry {
+            "nato" => engine_call(app, "/practice/nato/start", op, now, json!({})),
+            "lesson" => {
+                let after = app
+                    .practice
+                    .current
+                    .as_ref()
+                    .filter(|p| p.attempt_id.is_some())
+                    .map(|p| p.prompt.id.clone());
+                let mut fields = json!({"starter":"st-michael-en"});
+                if let Some(after) = after {
+                    fields["after"] = json!(after);
+                }
+                engine_call(app, "/practice/lesson/start", op, now, fields)
+            }
+            _ => match app
+                .practice
+                .current
+                .as_ref()
+                .filter(|p| p.attempt_id.is_some())
+            {
+                Some(p) => {
+                    let after = p.prompt.id.clone();
+                    engine_call(
+                        app,
+                        "/practice/review/next",
+                        op,
+                        now,
+                        json!({"after":after}),
+                    )
+                }
+                None => engine_call(app, "/practice/review/start", op, now, json!({})),
+            },
+        };
+        start(&mut app, &format!("spec-starter-{entry}-first-op"), now).unwrap();
+        let v1 = app
+            .practice
+            .current
+            .as_ref()
+            .unwrap()
+            .prompt
+            .version_id
+            .clone();
+        answer_held(&mut app, &format!("spec-starter-{entry}-one"), now);
+        let cards = app.practice.cards.clone();
+        let studies = app.practice.studies.clone();
+        assert_eq!(studies.len(), 1, "{entry}");
+        let v2 = cite(&mut app, &format!("spec-starter-{entry}-cite-op"), &v1);
+        assert_ne!(v1, v2);
+        now += 2 * DAY_MS;
+        start(&mut app, &format!("spec-starter-{entry}-again-op"), now)
+            .unwrap_or_else(|e| panic!("{entry}: {} {}", e.status, e.message));
+        let held = &app.practice.current.as_ref().unwrap().prompt;
+        assert_eq!(held.version_id, v1, "{entry}: the chosen Version is kept");
+        assert_eq!(app.practice.studies.len(), 1, "{entry}: no second Study");
+        assert!(
+            app.practice.studies.values().all(|s| s.version_id == v1),
+            "{entry}"
+        );
+        for (id, card) in &cards {
+            assert_eq!(
+                app.practice.cards[id], *card,
+                "{entry}: V1's schedule is unchanged"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_starter_with_no_study_resolves_to_one_unsuperseded_version() {
+    let mut app = app();
+    // The canonical NATO text is in the Library, corrected once, never studied.
+    let mapping: Value =
+        serde_json::from_str(include_str!("../examples/nato-alphabet.json")).unwrap();
+    let v1 = call(
+        &mut app,
+        "/api/v1/library/mappings",
+        "spec-unstudied-nato-op",
+        json!({"data":mapping}),
+    )
+    .unwrap()
+    .entity_id
+    .unwrap();
+    let v2 = cite(&mut app, "spec-unstudied-cite-op", &v1);
+    engine_call(
+        &mut app,
+        "/practice/nato/start",
+        "spec-unstudied-start-op",
+        NOW,
+        json!({}),
+    )
+    .unwrap();
+    assert_eq!(app.practice.current.as_ref().unwrap().prompt.version_id, v2);
+    assert_eq!(app.practice.studies.len(), 1);
+}
+
+#[test]
+fn the_same_text_with_different_units_or_spelling_strict_setting_is_refused_and_says_why() {
+    let mut app = app();
+    let words = "Synthetic hail, full of tests.\nBlessed art thou.\n";
+    let first = add(&mut app, "spec-same-first-op", text("Same Work", words)).unwrap();
+    let before = app.clone();
+    let mut lines = text("Same Work", words);
+    lines["sections"] = json!([{"heading":"Lines","units":["Synthetic hail, full of tests.\n","Blessed art thou.\n"]}]);
+    let mut strict = text("Same Work", words);
+    strict["spelling_strict"] = json!(true);
+    let mut both = lines.clone();
+    both["spelling_strict"] = json!(true);
+    both["title"] = json!("Another Work");
+    for (n, (draft, named)) in [
+        (lines, "Units"),
+        (strict, "Spelling-strict setting"),
+        (both, "Units and Spelling-strict setting"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let error = add(&mut app, &format!("spec-same-refused-{n}-op"), draft).unwrap_err();
+        assert_eq!(error.status, 409, "case {n}");
+        assert!(
+            error.message.contains(&format!("different {named}.")),
+            "case {n}: {}",
+            error.message
+        );
+        assert!(error.message.contains("correct it"), "case {n}");
+        assert_eq!(app, before, "case {n}: nothing is written");
+    }
+    // Text supplied without Units matches whatever Units Scry gave it.
+    assert_eq!(
+        add(
+            &mut app,
+            "spec-same-pasted-op",
+            text("Same Work", "SYNTHETIC HAIL FULL OF TESTS BLESSED ART THOU")
+        )
+        .unwrap(),
+        first
+    );
+    // A different edition name, source, Rights status or Provenance does not refuse.
+    let mut meta = text("Same Work", words);
+    meta["name"] = json!("Another edition");
+    meta["sources"] = json!(["Synthetic source"]);
+    meta["rights"] = json!("public_domain");
+    meta["provenance"] = json!("model_from_memory");
+    assert_eq!(add(&mut app, "spec-same-meta-op", meta).unwrap(), first);
+    assert_eq!(app.library, before.library);
+    // Mappings: the same pairs with another Spelling-strict setting.
+    let pairs = |strict: bool| json!({"data":{"title":"Same pairs","direction":"forward","spelling_strict":strict,"pairs":[{"key":"Red","value":"Stop"}]}});
+    call(
+        &mut app,
+        "/api/v1/library/mappings",
+        "spec-same-pairs-op",
+        pairs(true),
+    )
+    .unwrap();
+    let error = call(
+        &mut app,
+        "/api/v1/library/mappings",
+        "spec-same-pairs-lax-op",
+        pairs(false),
+    )
+    .unwrap_err();
+    assert_eq!(error.status, 409);
+    assert!(error.message.contains("Spelling-strict setting"));
+}
+
+#[test]
+fn the_same_ordered_list_with_different_aliases_is_refused_and_earlier_pairs_still_load() {
+    let mut app = app();
+    let list = |title: &str, aliases: Value| json!({"title":title,"kind":"ordered_list","text":"Red gate\nBlue bridge\n","ordered_aliases":aliases});
+    let first = add(
+        &mut app,
+        "spec-alias-first-op",
+        list("Alias List", json!({})),
+    )
+    .unwrap();
+    let before = app.clone();
+    for (n, draft) in [
+        list("Alias List", json!({"0":["Scarlet gate"]})),
+        list("Other List", json!({"1":["Azure bridge"]})),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let error = add(&mut app, &format!("spec-alias-refused-{n}-op"), draft).unwrap_err();
+        assert_eq!(error.status, 409, "case {n}");
+        assert!(
+            error.message.contains("different aliases."),
+            "case {n}: {}",
+            error.message
+        );
+        assert_eq!(app, before, "case {n}");
+    }
+    assert_eq!(
+        add(
+            &mut app,
+            "spec-alias-same-op",
+            list("Alias List", json!({}))
+        )
+        .unwrap(),
+        first
+    );
+    let aliased = add(
+        &mut app,
+        "spec-alias-aliased-op",
+        list("Aliased List", json!({"0":["Scarlet gate"]})),
+    );
+    assert_eq!(aliased.unwrap_err().status, 409);
+    // A notebook an earlier build admitted, holding both, still validates,
+    // stores and backs up unchanged.
+    let mut earlier = app.clone();
+    let mut scratch = scry::library::Library::default();
+    let input: scry::library::VersionInput =
+        serde_json::from_value(list("Earlier aliased List", json!({"0":["Scarlet gate"]})))
+            .unwrap();
+    let id = scratch.add(input, "spec-alias-earlier-seed", None).unwrap();
+    let version = scratch.versions[&id].clone();
+    earlier.library.works.insert(
+        version.work_id.clone(),
+        scratch.works[&version.work_id].clone(),
+    );
+    earlier.library.relations.extend(scratch.relations.clone());
+    earlier.library.versions.insert(id, version);
+    engine::validate_app(&earlier).unwrap();
+    assert_eq!(
+        persistence::app_from_rows(&persistence::rows(&earlier).unwrap()).unwrap(),
+        earlier
+    );
+    let named = archive(&earlier);
+    assert_eq!(named.format, PLAIN_FORMAT);
+    let bytes = named.encode().unwrap();
+    assert_eq!(
+        persistence::Archive::decode(&bytes, &persistence::sha256(&bytes))
+            .unwrap()
+            .app,
+        earlier
+    );
+}
+
+#[test]
+fn restored_data_with_a_part_of_cycle_is_refused() {
+    let mut app = app();
+    let a = add(
+        &mut app,
+        "spec-cycle-first-op",
+        text("Cycle A", "Synthetic cycle words A.\n"),
+    )
+    .unwrap();
+    let mut b = text("Cycle B", "Synthetic cycle words B.\n");
+    b["relations"] = json!([{"kind":"part_of","work":"Cycle A"}]);
+    let b = add(&mut app, "spec-cycle-second-op", b).unwrap();
+    engine::validate_app(&app).unwrap();
+    let (wa, wb) = (work_of(&app, &a), work_of(&app, &b));
+    let mut cycle = app.clone();
+    cycle.library.relations.insert(
+        format!("part-of-{wa}-{wb}"),
+        Relation::PartOf {
+            work_id: wa,
+            parent_work_id: wb,
+        },
+    );
+    assert!(engine::validate_app(&cycle).is_err());
+    let forged = archive(&cycle);
+    assert!(forged.encode().is_err());
+    let bytes = serde_json::to_vec(&forged).unwrap();
+    assert!(persistence::Archive::decode(&bytes, &persistence::sha256(&bytes)).is_err());
+}
+
+#[test]
+fn an_add_that_finds_its_text_already_there_says_so() {
+    let mut app = app();
+    let created = call(
+        &mut app,
+        "/api/v1/library/versions",
+        "spec-existing-first-op",
+        json!({"data":text("Existing Work", "Synthetic existing words.\n")}),
+    )
+    .unwrap();
+    assert_eq!(
+        created.data, None,
+        "A creation keeps its earlier receipt shape."
+    );
+    let again = call(
+        &mut app,
+        "/api/v1/library/versions",
+        "spec-existing-again-op",
+        json!({"data":text("Existing Work", "SYNTHETIC EXISTING WORDS")}),
+    )
+    .unwrap();
+    assert_eq!(again.entity_id, created.entity_id);
+    assert_eq!(again.data, Some(json!({"existing":true})));
+    assert_eq!(
+        api::library_existing("/library/version/add", &again),
+        Some(true)
+    );
+    assert_eq!(
+        api::library_existing("/library/version/add", &created),
+        Some(false)
+    );
+    let replay = call(
+        &mut app,
+        "/api/v1/library/versions",
+        "spec-existing-again-op",
+        json!({"data":text("Existing Work", "SYNTHETIC EXISTING WORDS")}),
+    )
+    .unwrap();
+    assert_eq!(replay, again);
+    let mapping = json!({"data":{"title":"Existing pairs","direction":"forward","pairs":[{"key":"Up","value":"North"}]}});
+    call(
+        &mut app,
+        "/api/v1/library/mappings",
+        "spec-existing-map-op",
+        mapping.clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        call(
+            &mut app,
+            "/api/v1/library/mappings",
+            "spec-existing-map-again",
+            mapping
+        )
+        .unwrap()
+        .data,
+        Some(json!({"existing":true}))
+    );
+    let id = created.entity_id.unwrap();
+    let mut query = BTreeMap::new();
+    query.insert("existing".to_string(), "1".to_string());
+    let shown = web::render(&app, &format!("/library/versions/{id}"), &query, NOW, None);
+    assert!(shown.contains("That text was already in the Library. Nothing was added."));
+    assert!(!page(&app, &format!("/library/versions/{id}")).contains("already in the Library"));
+}
