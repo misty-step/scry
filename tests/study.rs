@@ -1139,165 +1139,131 @@ fn notebook_page(o: &Owner, path: &str) -> String {
     scry::web::render(&o.app, path, &Default::default(), NOW, None)
 }
 
-#[test]
-fn mixed_notebook_holds_legacy_feedback_self_check_override_and_next() {
-    for exact in [true, false] {
-        let mut o = mixed_notebook(exact);
-        let destination = "/notebook";
-        let practice = o.app.practice.clone();
-        let wrong = o.app.occurrence.as_ref().unwrap().presentation.choices[1].clone();
-        assert_eq!(
-            notebook_action(&mut o, "/review/answer", &[("answer", &wrong)]),
-            destination
-        );
-        let page = notebook_page(&o, destination);
-        assert!(page.contains("data-state=\"result\""));
-        assert!(
-            !page.contains("I was right"),
-            "Self-rating UI is retired; historical engine receipts remain readable"
-        );
-        assert!(page.contains(&wrong));
-        assert_eq!(
-            notebook_action(&mut o, "/review/override", &[("correct", "true")]),
-            destination
-        );
-        assert!(notebook_page(&o, destination).contains("You corrected this grade"));
-        assert_eq!(o.app.events.len(), 1);
-        assert_eq!(o.app.overrides.len(), 1);
-        assert_eq!(o.app.events[0].result.outcome, "wrong");
-        assert_eq!(notebook_action(&mut o, "/review/next", &[]), destination);
-        assert_eq!(o.app.occurrence.as_ref().unwrap().phase, "question");
-        assert_eq!(
-            o.app.occurrence.as_ref().unwrap().presentation.kind,
-            "recall"
-        );
-        assert_eq!(
-            notebook_action(
-                &mut o,
-                "/review/answer",
-                &[("answer", "my own uncertain answer")]
-            ),
-            destination
-        );
-        let config = engine::WorkConfig {
-            generation: false,
-            jev: false,
-            critic: false,
-            model: "disabled".into(),
-            jev_model: "disabled".into(),
-        };
-        engine::claim_work(&mut o.app, NOW, "missing-model", &config).unwrap();
-        assert!(notebook_page(&o, destination).contains("data-state=\"self-check\""));
-        assert_eq!(notebook_action(&mut o, "/review/retry", &[]), destination);
-        engine::claim_work(&mut o.app, NOW, "still-missing-model", &config).unwrap();
-        assert_eq!(
-            notebook_action(&mut o, "/review/self", &[("correct", "true")]),
-            destination
-        );
-        assert!(notebook_page(&o, destination).contains("data-state=\"result\""));
-        assert_eq!(o.app.events.last().unwrap().result.authority, "learner");
-        assert_eq!(
-            o.app.practice, practice,
-            "Legacy practice never advances exact practice"
-        );
-        if exact {
-            assert!(notebook_page(&o, "/recall").contains("data-state=\"exact-prompt\""));
-        }
-    }
+/// Everything the earlier concept notebook holds, as one comparable value.
+fn earlier_notebook(app: &App) -> Value {
+    json!({
+        "goals": app.goals,
+        "concepts": app.concepts,
+        "questions": app.questions,
+        "events": app.events,
+        "overrides": app.overrides,
+        "resets": app.resets,
+        "feedback": app.feedback,
+        "assessments": app.assessments,
+        "jobs": app.jobs,
+        "occurrence": app.occurrence,
+        "spend": app.spend,
+        "pace": app.preferences.pace,
+    })
 }
 
+/// Study beside the earlier concept notebook: adding a Version, learning it,
+/// Try from memory, answers, Next and a reload leave every earlier record as
+/// it was, and Study serves its own Version alone.
 #[test]
-fn mixed_notebook_intro_reveal_concept_practice_and_resume_keep_context() {
+fn study_beside_the_earlier_notebook_leaves_it_as_stored() {
+    let mut o = mixed_notebook(false);
+    let held = o.app.occurrence.clone().unwrap();
+    assert_eq!((held.phase.as_str(), held.assisted), ("question", false));
+    let before = earlier_notebook(&o.app);
+    // The page's content; the menu around it changes once a Study exists.
+    let content = |o: &Owner| {
+        let page = notebook_page(o, "/notebook");
+        page[page.find("<main").unwrap()..].to_string()
+    };
+    let earlier_page = content(&o);
+    assert!(earlier_page.contains("data-state=\"earlier-unanswered\""));
+
+    let text = "A separate authored exact Unit.";
+    let version = o.add(text, false);
+    o.learn(&version, "steady");
+    let card = o.study_to_quiz();
+    let first = o.answer(text);
+    let first = first["attempt"]["id"].as_str().unwrap();
+    assert_eq!(o.app.practice.attempts[first].grade.verdict, Verdict::Good);
+    o.next(None);
+    let rows = persistence::rows(&o.app).unwrap();
+    o.app = persistence::app_from_rows(&rows).unwrap();
+    o.now += 2 * DAY_MS;
+    o.next(Some(&card));
+    o.answer("Not the authored Unit.");
+    engine::validate_app(&o.app).unwrap();
+
+    assert!(
+        earlier_notebook(&o.app) == before,
+        "Study changed the earlier concept notebook"
+    );
+    assert!(
+        content(&o) == earlier_page,
+        "Earlier practice shows it changed"
+    );
+    assert_eq!(o.app.practice.attempts.len(), 2);
+    assert!(
+        o.app
+            .practice
+            .attempts
+            .values()
+            .all(|a| a.version_id == version),
+        "Study never draws on the earlier notebook"
+    );
+    // The earlier question never stands in for, or hides, Study's own screens.
+    assert!(notebook_page(&o, "/recall").contains("data-state=\"exact-result\""));
+    assert!(study::history(&o.app).is_ok());
+}
+
+/// A retired earlier action is refused, shown on Earlier practice with what is
+/// held there, and leaves the held Study Prompt exactly as it was.
+#[test]
+fn a_refused_earlier_action_renders_earlier_practice_and_keeps_the_exact_prompt() {
     for exact in [true, false] {
         let mut o = mixed_notebook(exact);
-        let destination = "/notebook";
-        let practice = o.app.practice.clone();
-        for c in o.app.concepts.values_mut() {
-            c.introduced_ms = None;
+        let before = o.app.clone();
+        let recall = notebook_page(&o, "/recall");
+        if exact {
+            assert!(recall.contains("data-state=\"exact-prompt\""));
         }
-        o.app.occurrence = None;
-        engine::ensure_occurrence(&mut o.app, NOW, "new-concept").unwrap();
-        assert_eq!(o.app.occurrence.as_ref().unwrap().phase, "intro");
-        assert_eq!(
-            notebook_action(&mut o, "/review/intro", &[("known", "false")]),
-            destination
-        );
-        assert!(notebook_page(&o, destination).contains("data-state=\"question\""));
-        assert_eq!(notebook_action(&mut o, "/review/reveal", &[]), destination);
-        assert!(notebook_page(&o, destination).contains("data-state=\"result\""));
-        let concept = o.app.occurrence.as_ref().unwrap().concept_id.clone();
-        o.app.occurrence = None;
-        assert_eq!(
-            notebook_action(&mut o, &format!("/concepts/{concept}/practice"), &[]),
-            destination
-        );
-        assert!(notebook_page(&o, destination).contains("data-state=\"question\""));
+        let concept = o.app.concepts.keys().next().unwrap().clone();
+        for path in [
+            "/review/intro".to_string(),
+            "/review/answer".into(),
+            "/review/reveal".into(),
+            "/review/retry".into(),
+            "/review/next".into(),
+            "/review/help".into(),
+            format!("/concepts/{concept}/practice"),
+        ] {
+            let refusal = engine::admit_current_mutation(&path).unwrap_err();
+            assert_eq!(refusal.status, 410, "{path}");
+            assert_eq!(refusal.message, engine::EARLIER_NOTEBOOK_RETIRED);
+            let shown = scry::web::mutation_error_path(&o.app, &path);
+            assert_eq!(shown, "/notebook", "{path}");
+            let page = scry::web::render(
+                &o.app,
+                shown,
+                &Default::default(),
+                NOW,
+                Some(&refusal.message),
+            );
+            assert!(page.contains("data-state=\"earlier-unanswered\""), "{path}");
+            assert!(!page.contains("data-state=\"exact-"));
+            assert!(page.contains(&refusal.message));
+            assert!(!page.contains("action=\"/review/"), "{path}");
+        }
+        for path in ["/review/self", "/review/override"] {
+            assert_eq!(scry::web::mutation_error_path(&o.app, path), "/notebook");
+        }
+        assert_eq!(o.app, before, "A refusal and its page change no record");
+        assert_eq!(notebook_page(&o, "/recall"), recall);
+        // Resuming paused judgment is asked for in Settings and returns there.
         o.app.restored_paused = true;
         assert_eq!(
             notebook_action(&mut o, "/settings/resume", &[]),
-            destination
+            "/settings"
         );
         assert!(!o.app.restored_paused);
-        assert_eq!(o.app.practice, practice);
-    }
-}
-
-#[test]
-fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
-    for exact in [true, false] {
-        let mut o = mixed_notebook(exact);
-        let destination = "/notebook";
-        for (occurrence, answer, status) in [("stale", "", 409), ("current", "", 422)] {
-            let before = o.app.clone();
-            let fields = [
-                ("csrf".into(), o.app.csrf.clone()),
-                ("operation_id".into(), format!("rejected-notebook-{status}")),
-                (
-                    "occurrence_id".into(),
-                    if occurrence == "current" {
-                        o.app.occurrence.as_ref().unwrap().id.clone()
-                    } else {
-                        occurrence.into()
-                    },
-                ),
-                ("answer".into(), answer.into()),
-            ]
-            .into();
-            let error =
-                engine::mutate(&mut o.app, "/review/answer", &fields, NOW, "rejected").unwrap_err();
-            assert_eq!(error.status, status);
-            assert_eq!(o.app, before);
-            let path = scry::web::mutation_error_path(&o.app, "/review/answer");
-            assert_eq!(path, destination);
-            let page = scry::web::render(&o.app, path, &fields, NOW, Some(&error.message));
-            assert!(page.contains("data-state=\"question\""));
-            assert!(!page.contains("data-state=\"exact-"));
-            assert!(page.contains(&error.message));
-        }
+        assert_eq!(o.app.practice, before.practice);
+        assert_eq!(o.app.occurrence, before.occurrence);
         if exact {
-            let paths = [
-                "/review/intro",
-                "/review/answer",
-                "/review/reveal",
-                "/review/self",
-                "/review/retry",
-                "/review/override",
-                "/review/next",
-                "/review/help",
-                "/settings/resume",
-                "/concepts/synthetic/practice",
-            ];
-            for path in paths {
-                assert_eq!(
-                    scry::web::mutation_error_path(&o.app, path),
-                    "/notebook",
-                    "{path}"
-                );
-            }
-            assert_eq!(
-                scry::web::mutation_redirect(&o.app, "/review/help", "/concepts/synthetic"),
-                "/concepts/synthetic"
-            );
             assert_eq!(
                 scry::web::mutation_error_path(&o.app, "/practice/answer"),
                 "/recall"
@@ -1313,73 +1279,22 @@ fn mixed_notebook_409_and_422_render_legacy_and_preserve_exact_prompt() {
             );
             o.app.practice.current = None;
             assert!(notebook_page(&o, "/recall").contains("data-state=\"mixed-home\""));
-            assert_eq!(
-                scry::web::mutation_error_path(&o.app, "/review/answer"),
-                "/notebook"
-            );
         }
     }
 }
 
-fn rendered_links(html: &str) -> Vec<(String, String)> {
-    html.split("<a ")
-        .skip(1)
-        .map(|anchor| {
-            let (attributes, content) = anchor.split_once('>').unwrap();
-            let attribute = |name: &str| {
-                attributes
-                    .split_once(&format!("{name}=\""))
-                    .map(|(_, value)| value.split('"').next().unwrap().to_string())
-            };
-            let href = attribute("href").unwrap();
-            let label = attribute("aria-label").unwrap_or_else(|| {
-                let mut in_tag = false;
-                content
-                    .split("</a>")
-                    .next()
-                    .unwrap()
-                    .chars()
-                    .filter(|ch| match ch {
-                        '<' => {
-                            in_tag = true;
-                            false
-                        }
-                        '>' => {
-                            in_tag = false;
-                            false
-                        }
-                        _ => !in_tag,
-                    })
-                    .collect::<String>()
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            });
-            (href, label)
-        })
-        .collect()
-}
-
+/// No earlier page offers to recover or wait for practice, whatever is held
+/// there and whatever Study holds beside it, and rendering changes nothing.
 #[test]
-fn mixed_notebook_recovery_links_follow_legacy_home() {
-    use sha2::{Digest, Sha256};
+fn earlier_pages_offer_no_recovery_of_practice_beside_any_study_state() {
     let recovery = [
         "Check again",
         "Keep trying",
-        "Return to your saved answer →",
+        "Return to your saved answer",
+        "Go to practice",
+        "Return to native review",
+        "Resume meaning checks →",
     ];
-    // Home navigation is distinct from explicit recovery of concept practice.
-    let practice = [
-        "Scry, home",
-        "Practice",
-        "Review",
-        "← Your concepts",
-        "Back to review →",
-        "Go to practice →",
-        "Return to practice →",
-    ];
-    let mut wrong = Vec::new();
-    let mut observed = std::collections::BTreeSet::new();
     for exact in ["none", "prompt", "caught-up"] {
         for phase in ["question", "checking", "result"] {
             let mut o = mixed_notebook(exact != "none");
@@ -1390,6 +1305,8 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
                 o.next(None);
                 assert!(o.app.practice.current.is_none());
             }
+            // The states are reached through the engine's retained arms, which
+            // no route reaches any more.
             if phase == "checking" {
                 o.app.occurrence = None;
                 for q in o
@@ -1406,13 +1323,12 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
                     "/review/answer",
                     &[("answer", "My uncertain freshness answer")],
                 );
-                assert!(!o.app.occurrence.as_ref().unwrap().assisted);
             } else if phase == "result" {
                 let wrong = o.app.occurrence.as_ref().unwrap().presentation.choices[1].clone();
                 notebook_action(&mut o, "/review/answer", &[("answer", &wrong)]);
             }
-            assert_eq!(o.app.occurrence.as_ref().unwrap().phase, phase);
-            let occurrence = o.app.occurrence.as_ref().unwrap();
+            let occurrence = o.app.occurrence.clone().unwrap();
+            assert_eq!(occurrence.phase, phase);
             let routes = [
                 "/notebook".to_string(),
                 "/gate".into(),
@@ -1425,7 +1341,6 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
                 "/missing".into(),
             ];
             let root = notebook_page(&o, "/recall");
-            let expected = "/notebook";
             if exact != "none" {
                 assert!(root.contains(if exact == "prompt" {
                     "data-state=\"exact-prompt\""
@@ -1436,38 +1351,32 @@ fn mixed_notebook_recovery_links_follow_legacy_home() {
             let before = o.app.clone();
             for route in routes {
                 let page = notebook_page(&o, &route);
-                if exact == "none" {
-                    println!(
-                        "no-Study {phase} {route} {}",
-                        hex::encode(Sha256::digest(page.as_bytes()))
+                for label in recovery {
+                    assert!(
+                        !page.contains(label),
+                        "{exact} {phase} {route}: offers {label}"
                     );
                 }
-                for (href, label) in rendered_links(&page) {
-                    if recovery.contains(&label.as_str()) {
-                        observed.insert(label.clone());
-                        if href != expected {
-                            wrong.push(format!("{exact} {phase} {route}: {label} -> {href}"));
-                        }
-                    } else if href == "/" && !practice.contains(&label.as_str()) {
-                        wrong.push(format!(
-                            "Unexpected root link: {exact} {phase} {route}: {label}"
-                        ));
-                    }
-                }
+                assert!(!page.contains("data-poll"), "{exact} {phase} {route}");
+                assert!(
+                    !page.contains("action=\"/review/"),
+                    "{exact} {phase} {route}"
+                );
             }
-            assert_eq!(
-                o.app, before,
-                "Rendering recovery links does not mutate either practice"
-            );
+            let view = notebook_page(&o, "/notebook");
+            assert!(view.contains(match phase {
+                "question" => "data-state=\"earlier-unanswered\"",
+                "checking" => "data-state=\"earlier-ungraded\"",
+                _ => "data-state=\"earlier-result\"",
+            }));
+            assert_eq!(o.app, before, "Rendering changes neither notebook");
             assert_eq!(
                 notebook_page(&o, "/recall"),
                 root,
-                "Text practice retains its identical exact Prompt/caught-up view"
+                "Text practice keeps its identical view"
             );
         }
     }
-    assert_eq!(observed, recovery.into_iter().map(String::from).collect());
-    assert!(wrong.is_empty(), "Wrong recovery destinations: {wrong:#?}");
 }
 
 fn exact_history_entry<'a>(html: &'a str, id: &str) -> &'a str {
@@ -1632,37 +1541,35 @@ fn exact_history_keeps_mixed_recitation_effects_and_scope_honest() {
     assert!(!section_entry.contains(first));
 }
 
+/// History shows Study's Attempts and the earlier notebook's answers together.
+/// A question the earlier notebook left unanswered hides neither.
 #[test]
-fn exact_history_escapes_saved_words_and_coexists_with_legacy_privacy() {
+fn exact_history_escapes_saved_words_and_is_never_hidden_by_an_earlier_question() {
     let mut o = mixed_notebook(true);
     o.quiz();
     let exact = o.answer("Exact answer <img src=x onerror=alert(1)> & saved");
     let aid = exact["attempt"]["id"].as_str().unwrap();
-    assert!(o.app.protected_goal().is_some());
-    let gated = notebook_page(&o, "/history");
-    assert!(!gated.contains(aid) && !gated.contains("onerror"));
-    assert!(gated.contains("History is hidden while you answer from memory."));
-    let answer = o
-        .app
-        .occurrence
-        .as_ref()
-        .unwrap()
-        .presentation
-        .answer
-        .clone();
+    let held = o.app.occurrence.clone().unwrap();
+    assert_eq!((held.phase.as_str(), held.assisted), ("question", false));
+    assert!(study::history(&o.app).is_ok());
+    let open = notebook_page(&o, "/history");
+    let entry = exact_history_entry(&open, aid);
+    assert!(entry.contains("Exact answer &lt;img src=x onerror=alert(1)&gt; &amp; saved"));
+    assert!(!entry.contains("<img"));
+    assert!(!open.contains("History is hidden") && !open.contains("is hidden while"));
+    // An earlier answer, recorded through the engine's retained arm, is listed
+    // after Study's own.
+    let answer = held.presentation.answer.clone();
     notebook_action(&mut o, "/review/answer", &[("answer", &answer)]);
     let page = notebook_page(&o, "/history");
     let entry = exact_history_entry(&page, aid);
     assert!(entry.contains("Exact answer &lt;img src=x onerror=alert(1)&gt; &amp; saved"));
-    assert!(!entry.contains("<img"));
     assert_eq!(page.matches("<article class=\"history-entry").count(), 2);
     assert!(
         page.find("exact-history-entry").unwrap()
             < page.find("<article class=\"history-entry\">").unwrap()
     );
-    // Keep the existing per-concept gate for the understanding notebook's own history.
-    // Deliberate Next records exposure. Complete the warm session, then let
-    // its real exposure window expire before asking again from memory.
+    // With another earlier question held unanswered a day later, both stay shown.
     for _ in 0..3 {
         notebook_action(&mut o, "/review/next", &[]);
         let Some(current) = &o.app.occurrence else {
@@ -1674,11 +1581,14 @@ fn exact_history_escapes_saved_words_and_coexists_with_legacy_privacy() {
     assert!(o.app.occurrence.is_none());
     engine::ensure_occurrence(&mut o.app, NOW + DAY_MS + 1, "history-next-day").unwrap();
     engine::validate_app(&o.app).unwrap();
-    assert!(o.app.protected_goal().is_some());
-    let protected = notebook_page(&o, "/history");
-    assert!(!protected.contains(aid));
-    assert!(
-        protected
-            .contains("An earlier attempt is hidden while you work on its question from memory.")
+    let held = o.app.occurrence.clone().unwrap();
+    assert_eq!((held.phase.as_str(), held.assisted), ("question", false));
+    assert!(study::history(&o.app).is_ok());
+    let later = notebook_page(&o, "/history");
+    assert!(later.contains(aid));
+    assert_eq!(
+        later.matches("<article class=\"history-entry\">").count(),
+        o.app.events.len()
     );
+    assert!(!later.contains("is hidden while"));
 }

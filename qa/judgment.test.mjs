@@ -93,6 +93,8 @@ async function notebook({capable=true,testClock=false,extra={},worker:build=arti
   };
   n.fresh=async()=>({csrf:/name="csrf" value="([^"]+)"/.exec(await n.page('/settings'))[1],operation_id:'judgment-'+randomUUID()});
   n.sql=()=>runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
+  // Runs the alarm handler now, as the platform does at the armed time.
+  n.alarm=async()=>{const ns=await runtime.mf.getDurableObjectNamespace('LEARNING_SPACE'),stub=ns.get(ns.idFromName(space));try{return await stub.qaAlarm();}finally{stub[Symbol.dispose]?.();}};
   n.rows=async()=>(await n.sql()).exec('SELECT key,value FROM records ORDER BY key');
   n.state=async()=>{
     const rows=await n.rows();
@@ -411,6 +413,37 @@ test('a response that is not a Verdict leaves the answer saved and not graded, w
   }finally{await n.close();}
 });
 
+// Until the earlier concept notebook became history, this transport boundary
+// was exercised through its check. A Check crosses the same one.
+test('a rejection shaped like a Verdict decides nothing and keeps its measured cost',{timeout:90000},async()=>{
+  const n=await notebook();
+  try{
+    await n.turnOn();
+    await n.study(await n.addMapping('Synthetic harbour practice',HARBOUR));
+    const modes=[
+      ['429 shaped as a Verdict',()=>accept({status:429,cost:0.000456}),'failed',/The provider rejected the request \(429\)\./,{status:'known',cost_micros:456,response_outcome:'rejected'}],
+    ];
+    for(const [index,[mode,respond,status,reason,ledger]] of modes.entries()){
+      n.jev.respond=respond;
+      const {attempt}=await n.answer('test the bilge pump');
+      const state=await n.settle(n.closed(attempt),`${mode}: a closed Check`);
+      const check=n.checksOf(state,attempt)[0],saved=state.attempts[attempt];
+      assert.equal(check.status,status,mode);assert.match(check.reason,reason,mode);
+      assert.equal(saved.judgment.decided,undefined,mode);assert.deepEqual(saved.effects,[],mode);unchangedCard(state,attempt);
+      const row=state.spend.find(s=>s.work_id===check.id);
+      assert.equal(row.purpose,'grade.recall');assert.equal(row.reserved_micros,RESERVED);
+      assert.deepEqual({status:row.status,cost_micros:row.cost_micros,response_outcome:row.response_outcome??null},ledger,mode);
+      assert.equal(row.response_hash,sha(row.raw_response),`${mode}: the raw response is kept in the ledger`);
+      const html=await n.page('/recall');
+      assert.match(html,/data-state="exact-ungraded"/,mode);assert.match(html,/Saved, not graded\./,mode);assert.ok(n.form(html,'/practice/check'),mode);
+      assert.equal(n.jev.sent.length,index+1,`${mode}: one request, never retried`);
+    }
+    await sleep(1600);assert.equal(n.jev.sent.length,modes.length,'Scry never retries by itself.');
+    const report=await(await n.req('/api/v1/spend?by=purpose')).json();
+    assert.equal(report.entries.filter(entry=>entry.status==='known'&&entry.cost_micros===456&&entry.unknown_held_micros===0).length,1,JSON.stringify(report.entries));
+  }finally{await n.close();}
+});
+
 test('a reached allowance refuses without sending, says why, and a later Check again succeeds',{timeout:90000},async()=>{
   const n=await notebook();
   try{
@@ -523,7 +556,12 @@ test('each Check is sent once: replay, a second tab, a stale response and a rest
     assert.deepEqual(n.checksOf(state,lost.attempt).map(c=>c.status),['sent']);assert.equal(state.spend.length,1);
     // The Worker restarts with its clock ninety-one seconds on. Nothing answers the request.
     await n.rebind({...n.base,SCRY_TEST_NOW_MS:String(Date.now()+91_000)});
+    // A read recovers nothing: reading only loads and renders.
     let html=await n.page('/recall');
+    assert.deepEqual(n.checksOf(await n.state(),lost.attempt).map(c=>c.status),['sent']);
+    // The alarm armed before the send recovers it, once its outcome can no longer arrive.
+    assert.equal(await n.alarm(),200);
+    html=await n.page('/recall');
     state=await n.state();
     const check=n.checksOf(state,lost.attempt)[0];
     assert.equal(check.status,'unknown');assert.match(check.reason,/stopped before its outcome was confirmed\. Its reserved usage is retained\./);

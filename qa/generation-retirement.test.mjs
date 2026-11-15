@@ -21,6 +21,13 @@ test('retired generation POSTs refuse before jobs, photos, receipts or spend; na
    assert.equal(response.status,410);assert.match(await response.text(),/Self-grading is retired/);
    assert.deepEqual((await read()).app,before.app);
   }
+  // The earlier concept notebook is history: nothing presents, answers or dismisses a question.
+  for(const path of ['/review/intro','/review/answer','/review/reveal','/review/help','/review/retry','/review/next','/concepts/historical/practice']) {
+   const response=await request(path,{method:'POST',headers:{'X-Scry-Test-Origin':runtime.url,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,occurrence_id:'historical',answer:'Unsent synthetic answer',known:'false'})});
+   assert.equal(response.status,410,`${path} must be retired`);
+   assert.match(await response.text(),/The earlier concept notebook is kept as history/);
+   assert.deepEqual((await read()).app,before.app);
+  }
   const data=new FormData();for(const [k,v] of Object.entries(fields))data.set(k,v);data.set('photo',new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'}),'synthetic.png');
   const encoded=new globalThis.Request(runtime.url,{method:'POST',body:data});
   const upload=await request('/create',{method:'POST',headers:{'X-Scry-Test-Origin':runtime.url,'Content-Type':encoded.headers.get('Content-Type')},body:Buffer.from(await encoded.arrayBuffer())});assert.equal(upload.status,410);

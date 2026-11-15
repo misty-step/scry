@@ -6,11 +6,12 @@ import {existsSync,readFileSync} from 'node:fs';
 import {mkdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {resolve,join} from 'node:path';
-import {specs,capabilities} from './walk-specs.mjs';
+import {specs,capabilities,seeds} from './walk-specs.mjs';
 import {ownerJourney,buildCli} from './owner-api.mjs';
 import {libraryJourney} from './library.mjs';
 import {studyJourney} from './study.mjs';
-import {createSyntheticRuntime} from './runtime-helper.mjs';
+import {createSyntheticRuntime,syntheticSpace} from './runtime-helper.mjs';
+import {seedEarlier,storedApp} from './earlier-fixture.mjs';
 import {recoveryWalk} from './browser-recovery.mjs';
 import {createWalk} from './browser-create.mjs';
 import {conceptHomeWalk} from './concept-home.mjs';
@@ -102,14 +103,27 @@ try{
    continue;
   }
   const owner=id==='US-014'?await ownerJourney():null;
-  const runtime=await createSyntheticRuntime({name:`walk-${id.toLowerCase()}`});
+  // Each browser journey reads the earlier concept notebook from its fixture:
+  // `seeds` names the stored state a journey opens on, and a criterion opens
+  // another with `c.open`. Every state lives in its own isolated space.
+  const spaces=[];
+  const space=async state=>{
+   const worker=`walk-${id.toLowerCase()}-${spaces.length}`;
+   const runtime=await createSyntheticRuntime({name:worker,inspect:true});spaces.push(runtime);
+   const storage=await runtime.mf.unsafeGetDurableObjectStorage(worker,'LearningSpace',{name:syntheticSpace});
+   if(state)await seedEarlier(storage,state,await runtime.mf.getR2Bucket('SCRY_ASSETS'));
+   return {runtime,state,rows:async()=>Object.fromEntries((await storage.exec('SELECT key,value FROM records ORDER BY key')).map(row=>[row.key,row.value]))};
+  };
+  let current=await space(seeds[id]);
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();page.setDefaultTimeout(12000);
   const errors=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   const result={id,status:'pass',criteria:[]};receipt.stories.push(result);
   try{
-   await page.goto(runtime.url+'/notebook');
-   if(!['US-013','US-014'].includes(id)){await page.getByRole('button',{name:'Explore an authored demo'}).click();await page.locator('[data-state="question"]').waitFor();}
-   const c={page,url:path=>runtime.url+(path==='/'?'/notebook':path),policy,retainedGoMigration,owner};
+   await page.goto(current.runtime.url+'/notebook');
+   // `url('/')` is Earlier practice, as these journeys have always meant it; `at` is the path as given.
+   const c={page,url:path=>current.runtime.url+(path==='/'?'/notebook':path),at:path=>current.runtime.url+path,policy,retainedGoMigration,owner,
+    get state(){return current.state;},get app(){return storedApp(current.state);},rows:()=>current.rows(),
+    open:async state=>{current=await space(state);await page.goto(current.runtime.url+'/notebook');return storedApp(state);}};
    for(let i=0;i<specs[id].length;i++){
     const legacy=id==='US-001'&&i===0;
     const criterion={n:i+1,status:'pass',target:legacy?'retained-go-compatibility':'rust-worker',source_revision:legacy?retainedGo.source_revision:receipt.head,evidence:legacy?['logs/retained-go-migration.txt','logs/retained-go-migration.json']:['logs/rust-tests.txt']};result.criteria.push(criterion);
@@ -120,7 +134,7 @@ try{
    if(owner){const path='logs/US-014-cli.json';await writeFile(join(output,path),JSON.stringify(owner.transcript,null,2)+'\n');await register(path);for(const criterion of result.criteria)criterion.evidence.push(path);}
    assert.deepEqual(errors,[],'Browser console/page errors');
   }catch(error){result.status='fail';result.error=error.message;console.error(`${id}: ${error.message}`);}
-  finally{await context.close();await runtime.mf.dispose();await owner?.close();}
+  finally{await context.close();for(const opened of spaces)await opened.mf.dispose();await owner?.close();}
  }
  if(browser){
  receipt.concept_home=await conceptHomeWalk(browser,async(page,name)=>{const path=`screens/${name}`;await page.screenshot({path:join(output,path),fullPage:true});await register(path);return path;});

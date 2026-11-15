@@ -43,14 +43,31 @@ fn current_generation_admission_refuses_every_old_entry_not_grading_or_external_
         assert_eq!(error.status, 410);
         assert!(error.message.contains("Self-grading is retired"));
     }
+    // The earlier concept notebook is history: nothing presents, answers,
+    // checks or dismisses one of its questions.
+    for path in [
+        "/review/intro",
+        "/review/answer",
+        "/review/reveal",
+        "/review/help",
+        "/review/retry",
+        "/review/next",
+        "/review/anything-else",
+        "/concepts/old/practice",
+    ] {
+        let error = engine::admit_current_mutation(path).unwrap_err();
+        assert_eq!(error.status, 410, "{path}");
+        assert_eq!(error.message, engine::EARLIER_NOTEBOOK_RETIRED, "{path}");
+    }
     for path in [
         "/practice/answer",
         "/practice/reveal",
+        "/practice/check",
         "/library/mapping/add",
         "/library/version/add",
-        "/review/answer",
-        "/review/retry",
         "/settings/resume",
+        "/settings/judgment",
+        "/settings/backup",
         "/questions/old/edit",
     ] {
         engine::admit_current_mutation(path).unwrap();
@@ -63,13 +80,14 @@ fn current_worker_never_claims_or_recovers_historical_generation_jobs() {
     engine::mutate(&mut app, "/create", &f, NOW, "old-create").unwrap();
     let unchanged = |app: &App| {
         engine::validate_app(app).unwrap();
+        // What the alarm runs: recovery of Checks, then a Check claim.
         let mut current = app.clone();
+        assert!(!engine::recover_checks(&mut current, NOW + 100_000));
         assert!(
-            engine::claim_grading_work(&mut current, NOW + 100_000, "unused-lease", &config())
+            engine::claim_check_work(&mut current, NOW + 100_000, "unused-lease", &config())
                 .unwrap()
                 .is_none()
         );
-        assert!(!engine::recover_grading(&mut current, NOW + 100_000));
         assert_eq!(
             &current, app,
             "Historical job, receipt, content and spend bytes must be unchanged"
@@ -114,7 +132,7 @@ fn current_worker_never_claims_or_recovers_historical_generation_jobs() {
     )
     .unwrap();
     unchanged(&app); // unknown outcome and reservation retained
-    engine::pause_for_restore(&mut app, NOW + 4).unwrap();
+    engine::pause_restored(&mut app, NOW + 4).unwrap();
     unchanged(&app);
     let historical_jobs = app.jobs.clone();
     engine::resume_work(&mut app).unwrap();
@@ -122,41 +140,6 @@ fn current_worker_never_claims_or_recovers_historical_generation_jobs() {
     assert_eq!(
         app.jobs, historical_jobs,
         "Resuming assessments never reactivates historical generation"
-    );
-}
-#[test]
-fn native_and_existing_answer_assessment_are_not_generation() {
-    let mut app = App::new("retirement-synthetic-csrf-at-least-24".into());
-    engine::seed_fixture(&mut app, NOW).unwrap();
-    for q in app
-        .questions
-        .values_mut()
-        .filter(|q| q.content().kind == "choice")
-    {
-        q.card.due_ms = NOW + DAY_MS;
-    }
-    app.occurrence = None;
-    engine::ensure_occurrence(&mut app, NOW, "answer-check").unwrap();
-    let occurrence = app.occurrence.as_ref().unwrap().id.clone();
-    let f = fields(
-        &app,
-        &[
-            ("occurrence_id", &occurrence),
-            ("answer", "A nonexact synthetic answer"),
-        ],
-    );
-    engine::admit_current_mutation("/review/answer").unwrap();
-    engine::mutate(&mut app, "/review/answer", &f, NOW, "answer-check").unwrap();
-    let jobs = app.jobs.clone();
-    let work = engine::claim_grading_work(&mut app, NOW, "assessment-lease", &config())
-        .unwrap()
-        .unwrap();
-    assert_eq!(work.kind, "assessment");
-    assert_eq!(app.jobs, jobs);
-    assert!(
-        app.spend
-            .iter()
-            .all(|s| s.purpose.as_deref() == Some("grade.jev"))
     );
 }
 #[test]

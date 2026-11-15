@@ -254,12 +254,13 @@ export async function predecessorRestore(artifact,bytes,accept,at){
   const sql=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
   const schema=()=>sql.exec("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE '_cf_%' ORDER BY type,name");
   const initialSchema=await schema();
-  // The released runtime allocates its empty records table on first health or
-  // restore. Make this explicit and separate from the archive-refusal snapshot.
+  // Health comes first and is recorded apart from the archive-refusal snapshot.
   const ns=await runtime.mf.getDurableObjectNamespace('LEARNING_SPACE'),stub=ns.get(ns.idFromName(name));
   const headers={'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'};
   const health=await stub.fetch('https://internal.invalid/__internal/health',{headers});assert.equal(health.status,503);assert.equal(await health.text(),'backup_stale');
-  const initializedSchema=await schema(),rows=()=>sql.exec('SELECT key,value FROM records ORDER BY key');
+  // A health check only reads. The predecessor allocated its empty records
+  // table there; the current Worker allocates nothing until a write.
+  const initializedSchema=await schema(),rows=async()=>(await schema()).some(entry=>entry.name==='records')?sql.exec('SELECT key,value FROM records ORDER BY key'):[];
   const initialization={control:'read-only health before refusal snapshot',http_status:503,records_empty:true,schema_before:initialSchema,schema_after:initializedSchema};
   const objects=async()=>{const out={};for(const bucketName of ['SCRY_ASSETS','SCRY_BACKUPS']){const bucket=await runtime.mf.getR2Bucket(bucketName);out[bucketName]=[];for(const item of (await bucket.list()).objects)out[bucketName].push([item.key,sha(Buffer.from(await(await bucket.get(item.key)).arrayBuffer()))]);}return out;};
   const before=await rows(),r2=await objects();assert.deepEqual(before,[]);

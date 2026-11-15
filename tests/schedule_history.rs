@@ -440,15 +440,17 @@ fn leaving_held_feedback_refreshes_exposure_without_changing_the_saved_attempt()
         let card = app.questions[&question_id].card.clone();
         let held_id = app.occurrence.as_ref().unwrap().id.clone();
         let resumed_at = NOW + elapsed;
-        // Resume the persisted held result through the same selection and HTML
-        // paths used by GET /notebook. The answer is visible immediately before Next.
+        // The persisted held result survives a reload and is shown with its
+        // answer. The page is read-only now; the engine's own Next, which no
+        // route reaches any more, is what the rest of this test drives.
         let rows = persistence::rows(&app).unwrap();
         app = persistence::app_from_rows(&rows).unwrap();
         engine::ensure_occurrence(&mut app, resumed_at, "held-result-resume").unwrap();
         assert_eq!(app.occurrence.as_ref().unwrap().id, held_id);
         let html = scry::web::render(&app, "/notebook", &BTreeMap::new(), resumed_at, None);
-        assert!(html.contains("data-state=\"result\""));
+        assert!(html.contains("data-state=\"earlier-result\""));
         assert!(html.contains("<dt>The answer</dt><dd>max-age</dd>"));
+        assert!(!html.contains("/review/next") && !html.contains("<form"));
         let next_fields = fields(&app, "held-feedback-next01", &[]);
         let receipt = engine::mutate(
             &mut app,

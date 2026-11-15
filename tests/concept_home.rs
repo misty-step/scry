@@ -20,7 +20,7 @@ fn review_home_is_clear_and_does_not_masquerade_as_an_empty_text_library() {
 }
 
 #[test]
-fn home_resumes_without_exposing_or_replacing_the_concept_occurrence() {
+fn home_neither_shows_nor_replaces_the_held_earlier_question() {
     let mut app = App::new("synthetic-concept-home-csrf-value".into());
     engine::seed_fixture(&mut app, NOW).unwrap();
     engine::ensure_occurrence(&mut app, NOW, "home-practice").unwrap();
@@ -31,7 +31,11 @@ fn home_resumes_without_exposing_or_replacing_the_concept_occurrence() {
     assert!(!home.contains("data-state=\"question\""));
     assert!(!home.contains(&app.occurrence.as_ref().unwrap().presentation.answer));
     assert_eq!(app, before);
-    assert!(render(&app, "/notebook").contains("data-state=\"question\""));
+    // Earlier practice shows it as it was left: unanswered, with no way to answer.
+    let earlier = render(&app, "/notebook");
+    assert!(earlier.contains("data-state=\"earlier-unanswered\""));
+    assert!(!earlier.contains("data-state=\"question\"") && !earlier.contains("<form"));
+    assert_eq!(app, before);
     assert_eq!(
         web::mutation_redirect(&app, "/practice/learn", "/"),
         "/recall"

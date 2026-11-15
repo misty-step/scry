@@ -60,7 +60,7 @@ including malformed credentials. Tokens are never accepted in query strings.
 | POST | `/api/v1/tokens` | `operation_id`, `name`, optional `expires_ms`, `paid` |
 | POST | `/api/v1/tokens/revoke` | `operation_id`, `token_id` |
 | GET | `/api/v1/history` | Operation receipts with `acting_token`, path and time |
-| GET | `/api/v1/export` | Complete existing archive, including token verifiers; assistance gate retained |
+| GET | `/api/v1/export` | Complete existing archive, including token verifiers; refused (409) only while a Study Prompt awaits an unaided answer |
 | POST | `/api/v1/settings` | `operation_id`, `pace`; same engine as Settings |
 | POST | `/api/v1/create` | Retired: 410 before jobs, reservations, provider calls or receipts |
 

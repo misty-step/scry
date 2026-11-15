@@ -79,8 +79,19 @@ pub fn admit_current_mutation(path: &str) -> AppResult<()> {
             "Native content generation is retired. Add externally authored content in Library; your saved material and history are unchanged.",
         ));
     }
+    // The earlier concept notebook is history: nothing presents, answers,
+    // checks or dismisses one of its questions. Refused here, before any
+    // receipt, save or alarm, so a notebook in any stored state is left as it is.
+    if path.starts_with("/review/")
+        || (parts.len() == 3 && parts[0] == "concepts" && parts[2] == "practice")
+    {
+        return Err(AppError::new(410, EARLIER_NOTEBOOK_RETIRED));
+    }
     Ok(())
 }
+
+/// What a retired earlier-notebook action answers, in the browser and the API.
+pub const EARLIER_NOTEBOOK_RETIRED: &str = "The earlier concept notebook is kept as history. Scry no longer serves or grades its questions; everything saved is unchanged.";
 
 pub fn mutate(
     app: &mut App,
@@ -1030,12 +1041,6 @@ fn apply_entity(
             }
             match action {
                 "edit" => {
-                    if app.protected_concept(&q.concept_id) {
-                        return Err(AppError::new(
-                            409,
-                            "Choose Look it up before opening answer-bearing material.",
-                        ));
-                    }
                     if version(fields)? != q.content().version {
                         return Err(AppError::conflict());
                     }
@@ -1400,7 +1405,7 @@ fn reserve(
 }
 
 /// Historical generation policy entrypoint retained for compatibility proof.
-/// The current runtime uses `claim_grading_work`, not this function.
+/// The runtime claims with `claim_check_work` alone, never this function.
 pub fn claim_work(
     app: &mut App,
     now: i64,
@@ -1410,8 +1415,10 @@ pub fn claim_work(
     claim_work_inner(app, now, lease, config, true)
 }
 
-/// Claim answer assessment only. Never publish, retry or reserve a historical
-/// content-generation/transcription/critic job, even with provider bindings.
+/// Claim a check of the earlier concept notebook, as the alarm did while that
+/// notebook was still graded. Kept for the builders of
+/// `tests/earlier_notebook.rs`. The runtime claims with `claim_check_work`
+/// alone, so a check saved there as queued is never reserved, sent or closed.
 pub fn claim_grading_work(
     app: &mut App,
     now: i64,
@@ -1639,7 +1646,8 @@ fn claim_work_inner(
 
 /// Claim the oldest queued Check of a memorization answer, or close it unsent.
 /// A claimed Check has its reservation and lease saved before anything leaves
-/// Scry. Nothing calls this until a sender for `check` work exists.
+/// Scry. Sent Checks are recovered first; nothing of the earlier concept
+/// notebook is read or changed.
 pub fn claim_check_work(
     app: &mut App,
     now: i64,
@@ -1650,7 +1658,7 @@ pub fn claim_check_work(
     if app.restored_paused {
         return Ok(None);
     }
-    recover_inner(app, now, false);
+    recover_checks(app, now);
     let Some(check) = app
         .practice
         .checks
@@ -1793,8 +1801,47 @@ pub fn recover(app: &mut App, now: i64) -> bool {
     recover_inner(app, now, true)
 }
 
+/// Recovery as it ran while the earlier concept notebook was still graded: a
+/// sent check of that notebook, like a sent Check, becomes unknown after the
+/// recovery time. Kept for the builders of `tests/earlier_notebook.rs`. The
+/// runtime recovers with `recover_checks` and never changes an earlier check.
 pub fn recover_grading(app: &mut App, now: i64) -> bool {
     recover_inner(app, now, false)
+}
+
+/// A sent Check whose outcome can no longer arrive becomes unknown, with its
+/// reservation kept. This is all the recovery the runtime runs: from the alarm
+/// and before a Check is claimed. It reads nothing of the earlier concept
+/// notebook, so a check saved there as sent stays exactly as stored.
+pub fn recover_checks(app: &mut App, now: i64) -> bool {
+    let changed = recover_sent_checks(app, now);
+    if changed {
+        app.revision += 1
+    }
+    changed
+}
+
+fn recover_sent_checks(app: &mut App, now: i64) -> bool {
+    let checks: Vec<_> = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| {
+            c.status == crate::study::CheckStatus::Sent
+                && c.started_ms.is_some_and(|t| now - t >= 90_000)
+        })
+        .map(|c| c.id.clone())
+        .collect();
+    let changed = !checks.is_empty();
+    for c in checks {
+        close_check(
+            app,
+            &c,
+            crate::study::CheckStatus::Unknown,
+            "The check stopped before its outcome was confirmed. Its reserved usage is retained. Your answer remains saved and not graded.",
+        );
+    }
+    changed
 }
 
 fn recover_inner(app: &mut App, now: i64, legacy_generation: bool) -> bool {
@@ -1834,25 +1881,7 @@ fn recover_inner(app: &mut App, now: i64, legacy_generation: bool) -> bool {
         );
         changed = true;
     }
-    let checks: Vec<_> = app
-        .practice
-        .checks
-        .values()
-        .filter(|c| {
-            c.status == crate::study::CheckStatus::Sent
-                && c.started_ms.is_some_and(|t| now - t >= 90_000)
-        })
-        .map(|c| c.id.clone())
-        .collect();
-    for c in checks {
-        close_check(
-            app,
-            &c,
-            crate::study::CheckStatus::Unknown,
-            "The check stopped before its outcome was confirmed. Its reserved usage is retained. Your answer remains saved and not graded.",
-        );
-        changed = true;
-    }
+    changed |= recover_sent_checks(app, now);
     if changed {
         app.revision += 1
     }
@@ -3834,8 +3863,23 @@ fn archive_schedule_chains(app: &App, checks: &mut ArchiveChecks) -> AppResult<(
     Ok(())
 }
 
-/// Recovery never clones scheduler/job ownership or quietly sends paid work again.
+/// Restore as it ran while the earlier concept notebook was still graded: it
+/// also rewrote that notebook's queued and sent checks, the held question's
+/// phase and the Concept's exposure. Kept for the builders of
+/// `tests/earlier_notebook.rs`. The runtime restores with `pause_restored`.
 pub fn pause_for_restore(app: &mut App, now: i64) -> AppResult<()> {
+    pause_restore_inner(app, now, true)
+}
+
+/// Recovery never clones scheduler/job ownership or quietly sends paid work
+/// again. The earlier concept notebook is restored exactly as it was saved: its
+/// checks, held question and Concepts are not read. Nothing claims them, so a
+/// check saved as queued or sent is never sent from the restored notebook.
+pub fn pause_restored(app: &mut App, now: i64) -> AppResult<()> {
+    pause_restore_inner(app, now, false)
+}
+
+fn pause_restore_inner(app: &mut App, now: i64, earlier_checks: bool) -> AppResult<()> {
     let revision = app
         .revision
         .checked_add(1)
@@ -3852,22 +3896,24 @@ pub fn pause_for_restore(app: &mut App, now: i64) -> AppResult<()> {
             j.error = Some("Preparation is paused in this restored learning space.".into());
         }
     }
-    let ids: Vec<_> = app
-        .assessments
-        .values()
-        .filter(|a| matches!(a.status.as_str(), "sent" | "queued"))
-        .map(|a| (a.id.clone(), a.status == "sent"))
-        .collect();
-    for (aid, sent) in ids {
-        assessment_failed(
-            app,
-            &aid,
-            "The check is paused after restore. Its saved answer can be checked by you.",
-            sent,
-            now,
-        );
-        if !sent {
-            app.assessments.get_mut(&aid).unwrap().status = "paused".into();
+    if earlier_checks {
+        let ids: Vec<_> = app
+            .assessments
+            .values()
+            .filter(|a| matches!(a.status.as_str(), "sent" | "queued"))
+            .map(|a| (a.id.clone(), a.status == "sent"))
+            .collect();
+        for (aid, sent) in ids {
+            assessment_failed(
+                app,
+                &aid,
+                "The check is paused after restore. Its saved answer can be checked by you.",
+                sent,
+                now,
+            );
+            if !sent {
+                app.assessments.get_mut(&aid).unwrap().status = "paused".into();
+            }
         }
     }
     // A queued Check is never sent from a restored notebook; a sent one has an

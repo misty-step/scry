@@ -140,7 +140,7 @@ async function candidateUp(args) {
     gate_source_sha256:provenance.gate_source_sha256,
     source_sha256:source.sha256,source_inventory:join(sourceDirectory,'critic-source.json'),
     artifact,attestation,kind:'isolated-synthetic',
-    seed:{model:'authored-test-fixture',source:'src/engine.rs::seed_fixture'},
+    seed:{model:'starter-shelf',source:'Starter shelf: Saint Michael the Archangel, English'},
     storage:'disposable workerd SQLite/R2; no restart or hosted recovery claim',
     started_at:new Date().toISOString()
   };
@@ -441,9 +441,11 @@ async function humanWalk(args) {
   const findings = [];
   const coverage = { exercised: [], skipped: [] };
 
-  // Authored fixture answers (src/engine.rs seed_fixture), plus historical
-  // DNS/TLS prompts used by negative batteries. These are fixture-only oracles.
+  // The first phrase of the Starter shelf lesson the candidate is seeded with
+  // (a phrase Quiz names its Work), plus the historical prompts the negative
+  // batteries' static fixtures use. These are fixture-only oracles.
   const FIXTURE_ANSWERS = {
+    'saint michael the archangel': 'St. Michael the Archangel, defend us in battle.',
     'what type of address does a dns a record map a hostname to?': 'IPv4 address',
     'what protocol does https use to encrypt http?': 'TLS',
     'which response directive sets how long a cached response may be reused without validation?': 'max-age',
@@ -451,9 +453,8 @@ async function humanWalk(args) {
     'what http status tells a browser its cached representation can be reused after a conditional request?': '304',
   };
 
-  // Current Worker concept critics exercise the understanding notebook. Keep
-  // declared external/retained targets unchanged; never rewrite product routes.
-  if (binding.identity_format === 'scry-critic-worker-candidate-v2' && entryUrl.pathname === '/') entryUrl.pathname = '/notebook';
+  // The current Worker's critic walks Study, which opens at the root. The
+  // earlier concept notebook is history and offers nothing to answer.
   surface = entryUrl.pathname;
 
   function getNetworkType(inputUrl) {
@@ -630,14 +631,18 @@ async function humanWalk(args) {
     };
 
     let { obs: observation, discovery } = await readState();
-    if (await p.$('[data-state="intro"]')) {
-      checkBudget('acknowledge authored introduction');
-      const intro = await p.$('form[action="/review/intro"] button');
-      if (!intro) throw Error('Authored concept introduction has no locatable acknowledgment');
-      await intro.click();
+    // A Unit not yet practised is shown as Source study, with no answer field.
+    // Try from memory deliberately replaces it with the Quiz this walk answers.
+    const tryFromMemory = async (stage) => {
+      if (!(await p.$('[data-study-phase="study"]'))) return;
+      checkBudget(stage);
+      const quiz = await p.$('form[action="/practice/quiz"] button');
+      if (!quiz) throw Error('Source study has no locatable Try from memory');
+      await quiz.click();
       await p.waitForTimeout(1200);
       ({obs:observation,discovery}=await readState());
-    }
+    };
+    await tryFromMemory('try from memory');
     let normalizeSteps = 0;
     while (discovery.state === 'graded' && normalizeSteps < 5) {
       checkBudget('normalize ' + (normalizeSteps + 1));
@@ -648,6 +653,7 @@ async function humanWalk(args) {
       ({ obs: observation, discovery } = await readState());
       normalizeSteps++;
     }
+    if (normalizeSteps > 0) await tryFromMemory('try from memory after Next');
 
     const takeShot = async (name) => {
       const c = budget.checkScreenshot();
@@ -767,21 +773,6 @@ async function humanWalk(args) {
     }
 
     await p.waitForTimeout(1200);
-
-    // Recall fallback: an unclear match leaves the surface ungraded ("Not
-    // graded"); use the reveal path to reach a graded (helped) state.
-    if (affordanceType === 'recall') {
-      const probe = await readState();
-      if (probe.discovery.state !== 'graded') {
-        const isOpen = await p.evaluate(() => document.querySelector('details.overflow')?.open ?? false);
-        if (!isOpen) await p.click('details.overflow summary').catch(() => {});
-        const revealBtn = await p.$('form[action="/review/reveal"] button');
-        if (revealBtn) {
-          await revealBtn.click();
-          await p.waitForTimeout(1200);
-        }
-      }
-    }
 
     checkBudget('feedback scan');
     await takeShot('feedback');

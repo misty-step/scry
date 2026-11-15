@@ -17,8 +17,10 @@ Go/retired-Worker receipts are historical observations, not transferred passes.
 Content generation and self-grading are [SPEC non-goals](../../SPEC.md#purpose-and-non-goals), which take precedence over historical
 generation/self-grading journeys. Current HTTP writes to those retired actions
 must return 410 without jobs, assets, receipts, reservations or provider calls.
-Native exact, choice and meaning grading remain supported; unavailable grading
-keeps the answer saved and ungraded. Historical Attempts, Corrections, material,
+Study answers are graded natively; unavailable grading keeps the answer saved
+and ungraded. The earlier concept notebook is history: Scry no longer serves,
+schedules or grades its questions, its `/review/*` and concept-practice writes
+return 410, and no read writes to it. Historical Attempts, Corrections, material,
 usage and interrupted state remain unchanged. Test retained transition/recovery
 semantics only with validated synthetic historical fixtures, never a runtime
 backdoor. `tests/generation_retirement.rs` and
@@ -78,12 +80,13 @@ There is no remote restore or custody fingerprint prerequisite. See the
 | Meaning checks / historical overrides | `tests/learning_policy.rs`, `tests/application.rs` | Exact/variant local resolution; independent short-v1 and rubric judgments; unsure/failed answers stay ungraded; immutable historical authority and corrections; bounded real holdout quality separately |
 | Historical generation / refinement compatibility | `tests/generation_policy.rs`, `tests/application.rs` | Actual word/phrase/ramble → useful reference + practice, exact evidence, optional photo transcription, genuine attempt/feedback refinement, slow/partial/failed/unknown outcomes |
 | Historical prepublication critic US-004 | `tests/learning_policy.rs`, `tests/generation_policy.rs`, `tests/application.rs` | Saved candidates before external checks, independent hard judgments, one send lease, shared allowance, unknown usage, critic-only new attempt, judgment reuse, and fenced publication |
-| HTML / assistance fence | `tests/web_render.rs` | Real pointer/keyboard, native forms without JS, hidden current answer/reference across navigation, held result, content draft/version fences, access loss |
+| Earlier concept notebook as history | `tests/earlier_history.rs`, `tests/earlier_notebook.rs`, `tests/web_render.rs`, `node --test qa/earlier-notebook.test.mjs`, `qa/walk --stories "US-002 US-011"` | Every stored state from `tests/fixtures/earlier-notebook.json` loaded into real workerd SQLite: zero requests reach a counting synthetic Jev across the alarm, every page, resume and a restart; a GET or HEAD changes no row, change count, persisted file or alarm; the export is the stored notebook; retired routes answer 410; Study beside it leaves every earlier row as stored |
+| HTML / Study protection | `tests/web_render.rs`, `tests/study.rs` | Real pointer/keyboard, native forms without JS, a protected Study Prompt hides answer-bearing pages, held result, content draft/version fences, access loss |
 | Persistence / archives | `src/persistence.rs` unit tests, `tests/application.rs` | Real SQLite/R2 archive with every referenced photo, full-byte remote readback, independent fresh-space restore, paused uncertain work |
 | Private Library | `tests/library.rs`, `node --test qa/library.test.mjs`, `qa/walk --stories "US-015"` | Compiled CLI through built isolated Worker, SQLite rows and complete local R2 readback; real Study/Attempt deletion refusal also runs in `qa/study.test.mjs` |
 | Text Study and exact grading | `tests/study.rs`, `tests/exact_v2.rs`, `tests/fsrs_golden.rs`, `node --test qa/study.test.mjs`, `qa/walk --stories "US-016 US-017"` | Compiled CLI through built Worker, rolling cap/order, held feedback, assistance, replay/concurrency, Correction, byte-stable reads, restart and fresh local R2 restore; authored synthetic wording only |
 | Phone exact Stream | `tests/study.rs`, `tests/phone_library.rs`, `qa/walk --stories "US-018"` | First-study Library/native-form path and protected Library access (`qa/phone-library.mjs`); arrival viewport/hit-test proof and native Full answer (`qa/feedback-arrival.mjs`); same frozen Prompt through phone and compiled CLI, real native forms and keyboard, light/dark 320/390/1280 px, 200% text sizing, held Diff, disclosure Attempt, Correction, offline/unknown/stale/access loss; emulation is not hardware acceptance |
-| Exact History | `tests/study.rs`, `qa/study.mjs`, `qa/phone-history.mjs` through the existing Study and phone walks | Saved Attempts/Corrections and immutable wording, reveal versus empty-answer truth, mixed per-Unit effects, native details, protected History return, CLI/export parity and restart/local R2 preservation; legacy page exposure may still write and is not claimed globally byte-stable |
+| Exact History | `tests/study.rs`, `qa/study.mjs`, `qa/phone-history.mjs` through the existing Study and phone walks | Saved Attempts/Corrections and immutable wording, reveal versus empty-answer truth, mixed per-Unit effects, native details, protected History return, CLI/export parity and restart/local R2 preservation; the earlier notebook's answers are listed after Study's and reading them writes nothing |
 | Private Worker ingress | WASM check and runtime review | Actual owner JWT signature/issuer/audience/sub, anonymous/forged denial, Host/origin/CSRF, alternate-host write rejection, logout/account return |
 | Historical recovery | `bun run test:recovery` | Corresponding historical format/artifact only; do not reinterpret old snapshots as rewrite archives |
 
@@ -110,10 +113,17 @@ The printed run directory identifies ownership; use an unused port via
 Begin with the empty notebook. The isolated preview alone offers “Explore an
 authored demo,” a deliberate fixture action that refuses existing learning
 state. The fixture has HTTP cache freshness/validation explanations and three
-questions. It is authored data, not a provider call, real cold recall, or an AI
-quality result. New generation requests are refused regardless of model configuration.
-Answers whose native meaning grader is unavailable remain saved and ungraded.
-No production store is imported.
+questions, and holds the first one unanswered. It is an earlier concept
+notebook: shown read-only under Earlier practice, never answered. It is authored
+data, not a provider call, real cold recall, or an AI quality result. New
+generation requests are refused regardless of model configuration. No
+production store is imported.
+
+Every other state of the earlier concept notebook comes from
+`tests/fixtures/earlier-notebook.json`. `qa/earlier-fixture.mjs` writes one
+state's exact rows, and the photo its archive carries, into an unused Durable
+Object; the walks, `qa/earlier-notebook.test.mjs` and the browser recovery
+checks load their states that way. No HTTP route can create them any more.
 
 Browser QA runs from a shell first:
 [verify-scry](../../.agents/skills/verify-scry/SKILL.md)'s Playwright helpers
@@ -164,10 +174,14 @@ recovery expectations below retain their original meanings.
 
 ### Historical journey compatibility
 
-Items 1, 2 and 5 below describe retired write paths, not current supported
-features. Preserve their historical fixtures and custody assertions. In item 3,
-replace active self-check with saved/ungraded on unavailable native grading.
-Items 4, 6, 7 and 8 remain current safety, resilience and usability requirements.
+Items 1 to 5 below describe retired write paths, not current supported
+features. Preserve their historical fixtures and custody assertions. The earlier
+concept notebook they drove is now history: for items 3 to 5 assert the
+read-only views, the 410 refusals and unchanged rows, and that no assistance
+gate, exposure write or selection happens on a read. Item 6 keeps its
+references and observed counts and loses nothing by navigation; its focus,
+pause and pace controls still write. Items 7 and 8 remain current resilience
+and usability requirements, exercised on Study answers.
 
 1. Create: a word, a phrase, and a long dictated-text request are valid without
    setup or a mode chooser. Capture saves one goal/operation; pasted URLs remain

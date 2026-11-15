@@ -26,26 +26,100 @@ export const capabilities={
  'US-017':'Grading',
  'US-018':'Open into study',
 };
+// The stored state of the earlier concept notebook each browser journey opens
+// on, from tests/fixtures/earlier-notebook.json. A journey with no entry opens
+// an unused space.
+export const seeds={
+ 'US-001':'history-rich',
+ 'US-002':'question-cold-choice',
+ 'US-003':'result-jev-wrong',
+ 'US-004':'question-cold-choice',
+ 'US-006':'history-rich',
+ 'US-007':'result-jev-wrong',
+ 'US-008':'self-check-unsure',
+ 'US-009':'result-held',
+ 'US-010':'question-cold-choice',
+ 'US-011':'empty-history',
+};
 const policy=(...names)=>async c=>c.policy(...names);
-const choice=async(c,index=0)=>{await c.page.locator('.choice').nth(index).click();await c.page.locator('[data-state="result"]').waitFor();};
 const map=async c=>{await c.page.goto(c.url('/map'));await c.page.getByRole('heading',{name:'A map of ideas.'}).waitFor();};
-const recall=async c=>{await choice(c);await c.page.getByRole('button',{name:'Next question'}).click();await c.page.locator('#answer').waitFor();};
-const concept=async c=>{await choice(c);await c.page.locator('.reference-link').click();await c.page.locator('.concept-page').waitFor();};
+const shows=async(c,state)=>c.page.locator(`[data-state="${state}"]`).waitFor();
+// Earlier practice offers nothing to answer, reveal, retry, dismiss or correct.
+const readOnly=async c=>{
+ assert.equal(await c.page.locator('main form,main button,main textarea,main [data-choice],main [data-poll],.choice').count(),0,'Earlier practice is read-only');
+ assert.equal(await c.page.getByRole('button',{name:/Next question|Check my answer|I was right|Count as a miss|Retry|Show me/}).count(),0);
+};
+// Reading changed no stored row of the space on screen.
+const unchanged=async(c,before)=>assert.deepEqual(await c.rows(),before,'A read wrote to the notebook');
+// A Study answer through the starter's own native forms: start it, try from
+// memory, answer. The earlier notebook beside it is left alone.
+const studyAnswer=async(c,answer)=>{
+ await c.page.goto(c.at('/?practice=nato'));
+ if(await c.page.locator('form[action="/practice/nato/start"]').count())await c.page.locator('form[action="/practice/nato/start"] button').tap();
+ else if(await c.page.locator('form[action="/practice/next"]').count())await c.page.locator('form[action="/practice/next"] button').tap();
+ await c.page.locator('form[action="/practice/quiz"] button, #answer').first().waitFor();
+ if(await c.page.locator('form[action="/practice/quiz"]').count())await c.page.locator('form[action="/practice/quiz"] button').tap();
+ await c.page.locator('#answer').fill(answer);await c.page.locator('form[action="/practice/answer"] button.primary').tap();
+ await c.page.locator('[data-state="exact-result"]').waitFor();
+};
+// The observed counts a Concept page must show, from the stored Events alone.
+const observed=(app,concept)=>{
+ const count={unaided:0,helped:0,missed:0};
+ for(const event of app.events){
+  const question=app.questions[event.question_id];
+  if(event.concept_id!==concept||!question||question.archived||event.result.authority==='ungraded')continue;
+  const correction=app.overrides.filter(o=>o.event_id===event.id).at(-1);
+  const rating=event.assisted?0:correction?(correction.correct?3:1):event.result.rating;
+  const outcome=correction?(correction.correct?'correct':'wrong'):event.result.outcome;
+  if(rating===3&&!event.assisted)count.unaided++;
+  else if(event.assisted||outcome==='revealed'||outcome.startsWith('warm_'))count.helped++;
+  else if(rating===1)count.missed++;
+ }
+ return count;
+};
 export const specs={
- 'US-001':[c=>c.retainedGoMigration(),async c=>{await concept(c);await c.page.locator('.reading').first().waitFor();c.policy('content_edits_leave_historical_presentations_immutable');}],
+ 'US-001':[c=>c.retainedGoMigration(),async c=>{
+   // Everything saved is reachable through secondary navigation and exported unchanged.
+   const app=c.app,before=await c.rows();
+   await c.page.locator('.account-menu>summary').tap();await c.page.getByRole('link',{name:'Earlier practice',exact:true}).tap();
+   await c.page.locator('.understanding-nav').getByRole('link',{name:'Map',exact:true}).tap();await shows(c,'map');
+   const goal=Object.values(app.goals).find(goal=>!goal.archived&&goal.concept_ids.some(id=>!app.concepts[id].archived));
+   await c.page.locator(`a[href="/goals/${goal.id}"]`).first().tap();await shows(c,'goal');
+   await c.page.getByRole('heading',{name:goal.title,exact:true}).waitFor();await c.page.locator('.saved-input').waitFor();
+   const concept=app.concepts[goal.concept_ids.find(id=>!app.concepts[id].archived)];
+   await c.page.locator(`main a[href="/concepts/${concept.id}"]`).first().tap();await shows(c,'concept');await c.page.locator('.reading').first().waitFor();
+   const question=Object.values(app.questions).find(q=>q.concept_id===concept.id&&!q.archived);
+   await c.page.locator('.question-reference summary').first().tap();
+   assert.ok((await c.page.locator('.saved-questions').innerText()).includes(question.versions.at(-1).answer),'A saved question shows its answer');
+   await c.page.locator('.account-menu>summary').tap();await c.page.getByRole('link',{name:'History',exact:true}).tap();await shows(c,'history');
+   assert.equal(await c.page.locator('article.history-entry').count(),app.events.length,'Every recorded answer is in History');
+   const exported=await c.page.request.get(c.at('/export'));assert.equal(exported.status(),200);
+   const archive=await exported.json();assert.deepEqual(archive.app,app,'The export holds the notebook exactly as stored');assert.equal(archive.photos.length,1);
+   for(const saved of Object.values(app.goals).filter(goal=>goal.photo))assert.equal((await c.page.request.get(c.at(`/photos/${saved.id}`))).status(),200);
+   await unchanged(c,before);
+   c.policy('every_state_round_trips_byte_for_byte','every_state_passes_full_validation','content_edits_leave_historical_presentations_immutable');
+  }],
  'US-002':[
-  async c=>{assert.equal(await c.page.locator('.choice').count(),3);assert.equal(await c.page.locator('.explanation,.answer-pair').count(),0);await c.page.getByRole('heading',{level:1}).waitFor();},
-  async c=>{await choice(c);await c.page.reload();await c.page.locator('[data-state="result"]').waitFor();await c.page.locator('.answer-pair').waitFor();assert.equal(await c.page.getByRole('button',{name:'Next question'}).count(),1);},
-  async c=>{await c.page.locator('details.overflow>summary').click();assert.equal(await c.page.getByRole('button',{name:'Count as a miss'}).count(),0);},
+  // A question that was left unanswered is shown as unanswered, with what was presented.
+  async c=>{await shows(c,'earlier-unanswered');await readOnly(c);await c.page.getByRole('heading',{name:'Not answered.',exact:true}).waitFor();assert.deepEqual(await c.page.locator('main ol li').allTextContents(),c.app.occurrence.presentation.choices);assert.equal(await c.page.locator('.explanation,.answer-pair').count(),0);await c.page.getByRole('heading',{level:1}).waitFor();},
+  // A held result stays a held result: no Next.
+  async c=>{await c.open('result-held');await shows(c,'earlier-result');await c.page.reload();await shows(c,'earlier-result');await c.page.locator('.answer-pair').waitFor();await readOnly(c);},
+  // It blocks nothing: with the unanswered question held, the export and History answer.
+  async c=>{const app=await c.open('question-cold'),before=await c.rows();await shows(c,'earlier-unanswered');assert.equal(await c.page.locator('details.overflow').count(),0);const exported=await c.page.request.get(c.at('/export'));assert.equal(exported.status(),200);assert.deepEqual((await exported.json()).app,app);assert.equal((await c.page.request.get(c.at('/history'))).status(),200);await unchanged(c,before);},
   async c=>{assert.deepEqual(await c.page.locator('.masthead nav a').allTextContents(),['Practice','Lessons','Library','History','Settings','Earlier practice','Changelog']);},
-  policy('reveal_is_held_and_next_is_deliberate','competing_occurrences_and_archive_cannot_publish_stale_answer')
+  // An answer saved without a Verdict says so, by the stored status of its check.
+  async c=>{for(const [state,label] of [['checking-queued','Check recorded: queued, never sent.'],['checking-sent','Check recorded: sent, never confirmed.'],['self-check-failed','Check recorded: failed.'],['self-check-unknown','Check recorded: outcome unknown.']]){await c.open(state);await shows(c,'earlier-ungraded');await c.page.getByRole('heading',{name:'Your answer is saved, not graded.',exact:true}).waitFor();await c.page.getByText(label,{exact:true}).waitFor();await readOnly(c);assert.equal(await c.page.getByRole('link',{name:/Resume meaning checks|Check again/}).count(),0);}},
+  policy('no_page_serves_an_earlier_question','a_refusal_and_a_resume_land_where_they_were_asked','current_generation_admission_refuses_every_old_entry_not_grading_or_external_authoring')
  ],
  'US-003':[
-  async c=>{await choice(c);c.policy('local_grading_accepts_only_authored_forms_and_choice_identity');},
-  policy('short_answer_thresholds_and_risks_fail_closed','assessment_send_once_timeout_unknown_reservation_and_explicit_retry'),
+  // A Study answer that matches is Good.
+  async c=>{await studyAnswer(c,'Alfa');await c.page.locator('[data-state="exact-result"] [data-verdict="Good"]').waitFor();c.policy('local_grading_accepts_only_authored_forms_and_choice_identity','an_exact_or_alias_match_is_good_at_once');},
+  policy('short_answer_thresholds_and_risks_fail_closed','an_empty_answer_is_again_at_once_and_never_sent','malformed_unsure_injected_and_oversized_responses_leave_the_answer_ungraded'),
   policy('required_idea_policy_and_shadow_classes_keep_honest_authority'),
-  async c=>{await c.page.getByRole('button',{name:'Next question'}).click();await c.page.locator('#answer').fill('a plausible synthetic nonexact answer');await c.page.getByRole('button',{name:'Check my answer'}).click();await c.page.locator('[data-state="self-check"]').waitFor();assert.match(await c.page.locator('.answer-pair').innerText(),/plausible synthetic/);assert.equal(await c.page.getByRole('button',{name:'I was right',exact:true}).count(),0);await c.page.getByRole('heading',{name:'Your answer is saved, not graded.',exact:true}).waitFor();},
-  async c=>{assert.match(await c.page.locator('.feedback').innerText(),/saved, not graded/);c.policy('missing_assessor_keeps_answer_and_learner_authority','exact_answer_event_schedule_and_receipt_are_one_transition');}
+  // With paid judgment off, any other answer is Again and the result shows the expected content.
+  async c=>{await studyAnswer(c,'not a code word');await c.page.locator('[data-state="exact-result"] [data-verdict="Again"]').waitFor();assert.match((await c.page.locator('[data-state="exact-result"] .nato-word').first().innerText()).trim(),/^[A-Z][A-Za-z-]+$/,'The result shows the expected code word');assert.equal(await c.page.getByRole('button',{name:'I was right',exact:true}).count(),0);},
+  // A stored Jev Verdict keeps its Authority and is shown without being judged again.
+  async c=>{const before=await c.rows();await c.page.goto(c.url('/'));await shows(c,'earlier-result');await c.page.getByRole('heading',{name:'Missed.',exact:true}).waitFor();await c.page.getByText('Meaning checked',{exact:true}).waitFor();assert.equal(c.app.occurrence.result.authority,'jev');await readOnly(c);await c.page.reload();await shows(c,'earlier-result');await unchanged(c,before);c.policy('the_result_and_history_pages_show_each_state_honestly');}
  ],
  'US-004':[
   policy('candidates_are_saved_before_critic_and_critic_retry_reuses_generation','normal_partial_output_is_honest_but_oversized_and_cyclic_output_fails'),
@@ -57,21 +131,49 @@ export const specs={
  ],
  'US-006':[
   policy('evidence_quotes_must_match_saved_input_exactly_and_general_claims_have_no_quotes'),
-  async c=>{await concept(c);await c.page.goto(c.url('/'));await c.page.locator('[data-state="result"]').waitFor();},
+  // A note that quotes supplied material keeps the exact evidence and its provenance;
+  // general knowledge is labelled and never presented as quoted support.
+  async c=>{
+   const app=c.app,before=await c.rows(),latest=concept=>concept.notes.at(-1);
+   const quoted=Object.values(app.concepts).find(concept=>latest(concept)?.quotes.length),general=Object.values(app.concepts).find(concept=>latest(concept)?.basis==='general');
+   assert.ok(quoted&&general,'The fixture holds a quoting note and a general one');
+   await c.page.goto(c.url(`/concepts/${quoted.id}`));await shows(c,'concept');
+   const support=c.page.locator('.concept-note .provenance');await support.getByText('From your material',{exact:true}).waitFor();
+   await support.locator('summary').tap();assert.deepEqual(await support.locator('blockquote').allTextContents(),latest(quoted).quotes);
+   const material=app.goals[quoted.goal_id];for(const quote of latest(quoted).quotes)assert.ok((material.transcript??material.intent).includes(quote),'A quote is the saved material, word for word');
+   await c.page.goto(c.url(`/concepts/${general.id}`));await shows(c,'concept');
+   await c.page.locator('.concept-note .provenance').getByText('General knowledge',{exact:true}).waitFor();assert.equal(await c.page.locator('.concept-note blockquote').count(),0);
+   await unchanged(c,before);
+  },
   policy('evidence_quotes_must_match_saved_input_exactly_and_general_claims_have_no_quotes','author_and_model_text_is_escaped_in_every_context')
  ],
  'US-007':[
-  async c=>{await choice(c,1);assert.equal(await c.page.getByRole('button',{name:'I was right',exact:true}).count(),0);},
-  async c=>{assert.equal(await c.page.locator('form[action="/review/override"]').count(),0);c.policy('current_generation_admission_refuses_every_old_entry_not_grading_or_external_authoring');},
-  policy('semantic_verdict_fenced_and_grade_override_keeps_original')
+  // A Study Verdict offers no way to overturn it.
+  async c=>{await studyAnswer(c,'Alpha');await c.page.locator('[data-state="exact-result"] [data-verdict="Again"]').waitFor();assert.equal(await c.page.getByRole('button',{name:/I was right|Count as a miss/}).count(),0);assert.equal(await c.page.locator('form[action="/practice/correct"]').count(),0);},
+  // Neither does a Verdict saved in the earlier notebook.
+  async c=>{await c.page.goto(c.url('/'));await shows(c,'earlier-result');assert.equal(await c.page.locator('form[action="/review/override"],form[action="/practice/correct"]').count(),0);await readOnly(c);c.policy('current_generation_admission_refuses_every_old_entry_not_grading_or_external_authoring','an_owner_correction_is_refused_on_an_answer_left_for_jev');},
+  // A saved Correction stays readable and unchanged.
+  async c=>{const app=await c.open('result-corrected'),before=await c.rows();await shows(c,'earlier-result');await c.page.getByText('Your Correction',{exact:true}).waitFor();assert.equal(app.overrides.length,1);await c.page.goto(c.url('/history'));await c.page.getByText('Grade corrected later',{exact:false}).first().waitFor();await unchanged(c,before);c.policy('semantic_verdict_fenced_and_grade_override_keeps_original');}
  ],
  'US-008':[
   policy('local_grading_accepts_only_authored_forms_and_choice_identity'),
-  policy('short_answer_thresholds_and_risks_fail_closed'),
-  async c=>{await recall(c);await c.page.locator('#answer').fill('nonexact synthetic answer');await c.page.getByRole('button',{name:'Check my answer'}).click();await c.page.locator('[data-state="self-check"]').waitFor();assert.match(await c.page.locator('.answer-pair').innerText(),/nonexact synthetic answer/);}
+  policy('short_answer_thresholds_and_risks_fail_closed','a_refused_http_response_and_a_lost_send_leave_the_answer_ungraded','an_interrupted_send_becomes_unknown_once_and_is_never_sent_again'),
+  // An answer no one could judge stays saved, shown and ungraded, with no self-grade.
+  async c=>{const before=await c.rows();await shows(c,'earlier-ungraded');await c.page.getByRole('heading',{name:'Your answer is saved, not graded.',exact:true}).waitFor();await c.page.getByText('Check recorded: inconclusive.',{exact:true}).waitFor();assert.ok((await c.page.locator('.answer-pair').innerText()).includes(c.app.occurrence.answer));await readOnly(c);await c.page.goto(c.url('/history'));await shows(c,'history');await unchanged(c,before);}
  ],
  'US-009':[
   async c=>{await map(c);await c.page.locator('svg.constellation').waitFor({state:'attached'});await c.page.locator('.concept-list').waitFor();},
+  // Prerequisite links both ways, and counts that are the stored Events and nothing more.
+  async c=>{
+   const app=c.app,before=await c.rows(),dependent=Object.values(app.concepts).find(concept=>concept.prerequisites.length),prerequisite=app.concepts[dependent.prerequisites[0]];
+   for(const [concept,heading,other] of [[prerequisite,'Used by',dependent],[dependent,'Builds on',prerequisite]]){
+    await c.page.goto(c.url(`/concepts/${concept.id}`));await shows(c,'concept');await c.page.getByRole('heading',{name:heading,exact:true}).waitFor();
+    assert.equal(await c.page.locator('.connected').getByRole('link',{name:other.name,exact:true}).getAttribute('href'),`/concepts/${other.id}`);
+    const count=observed(app,concept.id);
+    assert.equal((await c.page.locator('.practice-evidence>p').first().innerText()).replace(/\s+/g,' ').trim(),`${count.unaided} recalled · ${count.helped} with help · ${count.missed} missed`);
+   }
+   assert.ok(app.events.length>0);await unchanged(c,before);
+  },
   policy('observations_distinguish_exposure_help_and_cold_recall_without_mutations','solid_and_fading_are_recall_estimates_and_latest_help_prevents_solid')
  ],
  'US-010':[
@@ -80,8 +182,27 @@ export const specs={
   async c=>{await c.page.goto(c.url('/settings'));await c.page.locator('input[name="pace"][value="light"]').check();await c.page.getByRole('button',{name:'Save pace'}).click();assert.equal(await c.page.locator('input[name="pace"][value="light"]').isChecked(),true);}
  ],
  'US-011':[
-  policy('normal_partial_output_is_honest_but_oversized_and_cyclic_output_fails'),
-  policy('observations_distinguish_exposure_help_and_cold_recall_without_mutations','reveal_is_held_and_next_is_deliberate')
+  // Not served or scheduled: with a question due and nothing held, reading every
+  // page selects nothing and writes nothing.
+  async c=>{
+   const app=c.app,before=await c.rows();assert.equal(app.occurrence,null);assert.ok(Object.values(app.questions).some(question=>!question.archived),'A question is saved and due');
+   await shows(c,'earlier-empty');await readOnly(c);
+   for(const path of ['/map','/history','/settings',...Object.keys(app.goals).map(id=>`/goals/${id}`),...Object.keys(app.concepts).map(id=>`/concepts/${id}`),'/notebook']){await c.page.goto(c.at(path));assert.equal(await c.page.locator('main form[action^="/review/"],main form[action$="/practice"]').count(),0,path);}
+   assert.equal((await c.page.request.get(c.at('/export'))).status(),200);
+   await shows(c,'earlier-empty');await unchanged(c,before);
+  },
+  // Not graded: a check saved as queued is still queued, and nothing was sent or finished.
+  async c=>{await c.open('checking-queued');const before=await c.rows();await shows(c,'earlier-ungraded');await c.page.getByText('Check recorded: queued, never sent.',{exact:true}).waitFor();await c.page.waitForTimeout(1500);await c.page.reload();await shows(c,'earlier-ungraded');assert.equal(await c.page.locator('[data-poll]').count(),0);await unchanged(c,before);},
+  // Study never draws on it.
+  async c=>{
+   const earlier=rows=>Object.fromEntries(Object.entries(rows).filter(([key])=>/^(goals|concepts|questions|events|overrides|resets|feedback|assessments|jobs)\//.test(key)));
+   const before=await c.rows(),held=JSON.parse(before.meta).occurrence;await studyAnswer(c,'Alfa');const after=await c.rows();
+   assert.deepEqual(earlier(after),earlier(before),'Study changed the earlier notebook');assert.deepEqual(JSON.parse(after.meta).occurrence,held);
+   const versions=Object.keys(after).filter(key=>key.startsWith('library_versions/')).map(key=>key.slice('library_versions/'.length));
+   const attempts=Object.keys(after).filter(key=>key.startsWith('practice_attempts/')).map(key=>JSON.parse(after[key]));
+   assert.equal(attempts.length,1);assert.ok(versions.includes(attempts[0].version_id),'The Prompt Study served is of a Library Version');
+   c.policy('nothing_the_runtime_runs_completes_a_frozen_check','a_study_check_is_claimed_and_recovered_beside_a_frozen_one','study_beside_the_earlier_notebook_leaves_it_as_stored','a_held_earlier_question_blocks_and_masks_nothing');
+  }
  ],
  'US-013':[
   async c=>{await c.page.goto(c.url('/create'));await c.page.getByText('Native content generation is retired.',{exact:true}).waitFor();assert.equal(await c.page.locator('form[action="/create"],input[type="file"],input[name="mode"]').count(),0);c.policy('capture_word_phrase_dictated_and_url_stay_private_and_exact');},
