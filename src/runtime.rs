@@ -1422,9 +1422,6 @@ impl DurableObject for LearningSpace {
                 crate::study::make_room_for_autosave(&mut app);
             }
         }
-        // Whether this write would cross the ordinary threshold depends on
-        // where the notebook stood before it.
-        let footprint = persistence::footprint(&app);
         let result = engine::mutate_browser(
             &mut app,
             &path,
@@ -1451,14 +1448,9 @@ impl DurableObject for LearningSpace {
                 // Whatever this changed must fit a complete recovery archive,
                 // by the rule the API uses. Paid completions still retain their
                 // raw/ledger outcome through the separate durable work path.
-                if let Err(e) = persistence::admit_growth(
-                    &path,
-                    &fields,
-                    &footprint,
-                    before,
-                    &app,
-                    persistence::Client::Browser,
-                ) {
+                if let Err(e) =
+                    persistence::admit_growth(&path, before, &app, persistence::Client::Browser)
+                {
                     let retained = self.load()?;
                     if let Some(key) = photo_key
                         && !retained
@@ -1843,7 +1835,6 @@ impl LearningSpace {
             .as_ref()
             .map_or(MutationActor::Browser, |t| MutationActor::Token(&t.info));
         let seed = random_id()?;
-        let footprint = persistence::footprint(&app);
         let result = match engine::mutate_judged(
             &mut app,
             canonical_path,
@@ -1856,14 +1847,9 @@ impl LearningSpace {
             Ok(result) => result,
             Err(error) => return api_error(error),
         };
-        if let Err(error) = persistence::admit_growth(
-            canonical_path,
-            &fields,
-            &footprint,
-            before,
-            &app,
-            persistence::Client::Api,
-        ) {
+        if let Err(error) =
+            persistence::admit_growth(canonical_path, before, &app, persistence::Client::Api)
+        {
             return api_error(error);
         }
         if !matches!(

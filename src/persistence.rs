@@ -659,44 +659,8 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
 /// What a mutation refused for storage capacity says, from any client.
 pub const CAPACITY_REFUSAL: &str = "Storage is full. This would make the notebook too large for one complete backup, so nothing was saved.";
 
-/// Room kept below the archive limit for writes that never ask the capacity
-/// rule: a backup's status or failure text, a restore's marker and its
-/// per-Check reasons, alarm recovery, and records of paid work. Ordinary growth
-/// may not cross `ORDINARY_ARCHIVE_BYTES`; backup, export, restore and
-/// validation keep the full `MAX_ARCHIVE_BYTES`.
-///
-/// Arithmetic. Seven paid outcomes at most can follow (the 3.50 USD rolling
-/// allowance over 0.50 USD reservations), each up to 256 KiB of raw response,
-/// which JSON may escape to twice its length, plus 8 KiB of Verdict, effects
-/// and ledger: 7 x 520 KiB = 3,640 KiB. A thousand open Checks refused or made
-/// unknown by a claim, recovery or restore, at 150 bytes of status and reason
-/// each: 147 KiB. A restore marker and a backup's key, hash, time and failure
-/// text: under 1 KiB. Total 3,788 KiB, inside 4,096 KiB. Not covered: a raw
-/// response made of control characters, each escaped to six bytes.
-///
-/// The threshold is a line ordinary growth may not cross. A notebook already
-/// over it before a write, because it was that large before this rule existed
-/// or because bypassing writes took it there, keeps the earlier, weaker
-/// protection: its writes are admitted up to the full limit, as the API
-/// admitted them before, and its reserve is whatever room is left.
-pub const RESERVE_BYTES: usize = 4 * 1024 * 1024;
-pub const ORDINARY_ARCHIVE_BYTES: usize = MAX_ARCHIVE_BYTES - RESERVE_BYTES;
-
-/// Actions that only withdraw or settle something, or ask for a backup, and
-/// add at most a small receipt: admitted across the threshold, up to the full
-/// archive limit.
-fn withdraws(path: &str, fields: &BTreeMap<String, String>) -> bool {
-    matches!(
-        path,
-        "/tokens/revoke"
-            | "/settings/resume"
-            | "/practice/pause"
-            | "/practice/drop"
-            | "/practice/draft/discard"
-            | "/settings/backup"
-    ) || (path == "/settings/judgment"
-        && fields.get("paid_judgment").map(String::as_str) == Some("off"))
-}
+/// Over this share of the archive limit, Settings states the notebook's size.
+pub const SIZE_NOTICE_BYTES: usize = MAX_ARCHIVE_BYTES / 4 * 3;
 
 /// Browser writes that checked the complete archive before one capacity rule
 /// existed. A notebook whose archive cannot be measured for a reason other than
@@ -725,19 +689,16 @@ pub enum Client {
 
 /// One capacity rule for every client, decided by size alone. A mutation
 /// that changed the notebook is refused when the result would not fit one
-/// complete archive, or when an ordinary write would take a notebook at or
-/// under the ordinary threshold over it. Withdrawing, settling and asking for a
-/// backup may cross the threshold; a notebook already over it before the write
-/// is admitted up to the full limit. Revoking an Owner token is never refused
-/// for capacity, and a replay changes nothing and returns its committed
-/// result. A notebook whose archive cannot be measured for another reason is
-/// answered exactly as before this rule: the earlier checked browser paths and
-/// every API mutation refuse with that reason, and every other write is
-/// admitted. `before` is the notebook's footprint before the write.
+/// complete archive. Revoking an Owner token is never refused for capacity,
+/// and a replay changes nothing and returns its committed result. Writes that
+/// never ask (a backup's status, a restore's marker, records of paid work) can
+/// carry a notebook within a few hundred bytes of the limit past it; no
+/// reserve guards against that, because the live notebook's size is unknown.
+/// A notebook whose archive cannot be measured for another reason is answered
+/// exactly as before this rule: the earlier checked browser paths and every
+/// API mutation refuse with that reason, and every other write is admitted.
 pub fn admit_growth(
     path: &str,
-    fields: &BTreeMap<String, String>,
-    before: &Footprint,
     before_revision: u64,
     after: &App,
     client: Client,
@@ -749,17 +710,9 @@ pub fn admit_growth(
         {
             Err(error)
         }
-        Footprint::Unsizable(_) => Ok(()),
-        _ if !changed || path == "/tokens/revoke" => Ok(()),
+        Footprint::Unsizable(_) | Footprint::Fits(_) => Ok(()),
+        Footprint::TooLarge if !changed || path == "/tokens/revoke" => Ok(()),
         Footprint::TooLarge => Err(AppError::new(413, CAPACITY_REFUSAL)),
-        Footprint::Fits(bytes)
-            if bytes > ORDINARY_ARCHIVE_BYTES
-                && !withdraws(path, fields)
-                && matches!(before, Footprint::Fits(was) if *was <= ORDINARY_ARCHIVE_BYTES) =>
-        {
-            Err(AppError::new(413, CAPACITY_REFUSAL))
-        }
-        Footprint::Fits(_) => Ok(()),
     }
 }
 impl Archive {

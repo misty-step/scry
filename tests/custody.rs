@@ -128,7 +128,6 @@ fn fill_to(app: &mut App, limit: usize, room: usize) {
 
 #[test]
 fn growth_past_capacity_is_refused_by_one_rule_and_revocation_is_not() {
-    let none = BTreeMap::new();
     for client in [persistence::Client::Browser, persistence::Client::Api] {
         let mut o = Owner::new().text();
         let token = OwnerToken::issue("custody agent", None, false, NOW, &"c".repeat(48)).unwrap();
@@ -136,64 +135,36 @@ fn growth_past_capacity_is_refused_by_one_rule_and_revocation_is_not() {
         o.app.owner_tokens.insert(token_id.clone(), token);
         fill(&mut o.app, 600);
         let before = o.app.clone();
-        let was = persistence::footprint(&before);
         let pid = o.held();
         // An answer grows the notebook past one complete archive.
         o.call(
             "/practice/answer",
             &[("prompt_id", &pid), ("answer", "I believe in one God")],
         );
-        let error = persistence::admit_growth(
-            "/practice/answer",
-            &none,
-            &was,
-            before.revision,
-            &o.app,
-            client,
-        )
-        .unwrap_err();
+        let error = persistence::admit_growth("/practice/answer", before.revision, &o.app, client)
+            .unwrap_err();
         assert_eq!(error.status, 413);
         assert_eq!(error.message, persistence::CAPACITY_REFUSAL);
         // Nothing changed is nothing refused: a replay returns its committed result.
         assert!(
-            persistence::admit_growth(
-                "/practice/answer",
-                &none,
-                &was,
-                before.revision,
-                &before,
-                client
-            )
-            .is_ok()
+            persistence::admit_growth("/practice/answer", before.revision, &before, client).is_ok()
         );
         // Access can always be withdrawn, whatever storage holds.
         o.app = before.clone();
         o.call("/tokens/revoke", &[("token_id", &token_id)]);
         assert!(o.app.owner_tokens[&token_id].info.revoked_ms.is_some());
         assert!(
-            persistence::admit_growth(
-                "/tokens/revoke",
-                &none,
-                &was,
-                before.revision,
-                &o.app,
-                client
-            )
-            .is_ok()
+            persistence::admit_growth("/tokens/revoke", before.revision, &o.app, client).is_ok()
         );
         // Well within capacity the same answer is admitted.
         let mut roomy = Owner::new().text();
         let start = roomy.app.revision;
-        let small = persistence::footprint(&roomy.app);
         let pid = roomy.held();
         roomy.call(
             "/practice/answer",
             &[("prompt_id", &pid), ("answer", "I believe")],
         );
-        assert!(
-            persistence::admit_growth("/practice/answer", &none, &small, start, &roomy.app, client)
-                .is_ok()
-        );
+        assert!(persistence::admit_growth("/practice/answer", start, &roomy.app, client).is_ok());
     }
 }
 
@@ -237,8 +208,7 @@ fn a_notebook_that_cannot_be_measured_for_another_reason_is_answered_as_before()
         ));
         let mut changed = app.clone();
         changed.revision += 1;
-        let none = BTreeMap::new();
-        let was = persistence::footprint(&app);
+
         // Writes the browser never checked before stay admitted.
         for path in [
             "/practice/answer",
@@ -254,8 +224,6 @@ fn a_notebook_that_cannot_be_measured_for_another_reason_is_answered_as_before()
             assert!(
                 persistence::admit_growth(
                     path,
-                    &none,
-                    &was,
                     app.revision,
                     &changed,
                     persistence::Client::Browser
@@ -276,8 +244,6 @@ fn a_notebook_that_cannot_be_measured_for_another_reason_is_answered_as_before()
         ] {
             let error = persistence::admit_growth(
                 path,
-                &none,
-                &was,
                 app.revision,
                 &changed,
                 persistence::Client::Browser,
@@ -291,15 +257,9 @@ fn a_notebook_that_cannot_be_measured_for_another_reason_is_answered_as_before()
         }
         // The API checked every mutation before, a replay included.
         for (after, path) in [(&changed, "/practice/answer"), (&app, "/practice/answer")] {
-            let error = persistence::admit_growth(
-                path,
-                &none,
-                &was,
-                app.revision,
-                after,
-                persistence::Client::Api,
-            )
-            .unwrap_err();
+            let error =
+                persistence::admit_growth(path, app.revision, after, persistence::Client::Api)
+                    .unwrap_err();
             assert_eq!(error.message, reason.message, "{kind}: API");
         }
         // Export says nothing about storage being full.
@@ -316,171 +276,7 @@ fn a_notebook_that_cannot_be_measured_for_another_reason_is_answered_as_before()
     }
 }
 
-// --- Review 2: a reserve for the writes that never ask ------------------------
-
-#[test]
-fn ordinary_growth_stops_at_a_reserve_that_covers_every_write_that_bypasses_it() {
-    let none = BTreeMap::new();
-    assert_eq!(
-        persistence::ORDINARY_ARCHIVE_BYTES,
-        persistence::MAX_ARCHIVE_BYTES - persistence::RESERVE_BYTES
-    );
-    let mut o = Owner::new().text();
-    o.jev = true;
-    o.app.preferences.paid_judgment = true;
-    // Two open Checks: one queued, one sent with its reservation.
-    let pid = o.held();
-    o.call(
-        "/practice/answer",
-        &[("prompt_id", &pid), ("answer", "I believe in a single God")],
-    );
-    engine::claim_check_work(&mut o.app, NOW, "custody-reserve-lease-1", &generation())
-        .unwrap()
-        .unwrap();
-    let card = o
-        .app
-        .practice
-        .cards
-        .values()
-        .find(|c| c.unit_index == 1)
-        .unwrap()
-        .id
-        .clone();
-    let pid = o.held();
-    o.call("/practice/next", &[("after", &pid), ("card_id", &card)]);
-    if o.app.practice.current.as_ref().unwrap().source_visible() {
-        let pid = o.held();
-        o.call("/practice/quiz", &[("prompt_id", &pid)]);
-    }
-    let pid = o.held();
-    o.call(
-        "/practice/answer",
-        &[("prompt_id", &pid), ("answer", "the Father of might")],
-    );
-    // Exactly at the ordinary threshold.
-    fill_to(&mut o.app, persistence::ORDINARY_ARCHIVE_BYTES, 0);
-    let top = persistence::ORDINARY_ARCHIVE_BYTES - persistence::archive_size(&o.app).unwrap();
-    o.app
-        .operations
-        .get_mut("custody-capacity-0000")
-        .unwrap()
-        .result
-        .data = Some(
-        json!({"synthetic": format!("{}{}", o.app.operations["custody-capacity-0000"].result.data.as_ref().unwrap()["synthetic"].as_str().unwrap(), "x".repeat(top))}),
-    );
-    assert_eq!(
-        persistence::archive_size(&o.app).unwrap(),
-        persistence::ORDINARY_ARCHIVE_BYTES
-    );
-    let at = o.app.clone();
-    // Any ordinary growth is refused there, with the same words.
-    let mut grown = at.clone();
-    let card = grown
-        .practice
-        .cards
-        .values()
-        .find(|c| c.unit_index == 2)
-        .unwrap()
-        .id
-        .clone();
-    let pid = grown.practice.current.as_ref().unwrap().prompt.id.clone();
-    let mut g = Owner {
-        app: grown,
-        n: 900,
-        now: NOW,
-        jev: true,
-    };
-    g.call("/practice/next", &[("after", &pid), ("card_id", &card)]);
-    grown = g.app;
-    let error = persistence::admit_growth(
-        "/practice/next",
-        &none,
-        &persistence::footprint(&at),
-        at.revision,
-        &grown,
-        persistence::Client::Browser,
-    )
-    .unwrap_err();
-    assert_eq!(error.message, persistence::CAPACITY_REFUSAL);
-    // A backup's success, then its failure text, then success again.
-    let mut backed = at.clone();
-    backed.backup = BackupStatus {
-        completed_ms: Some(NOW),
-        key: Some(format!("snapshots/{}/{}-pre-release-{}.json", "s".repeat(128), NOW, "f".repeat(48))),
-        sha256: Some("a".repeat(64)),
-        error: Some("The complete snapshot could not be verified. Review remains available; inspect operator recovery configuration.".into()),
-    };
-    assert!(
-        persistence::archive_size(&backed).is_ok(),
-        "a backup's status always fits"
-    );
-    // A restore's marker and per-Check reasons, then alarm recovery.
-    let mut restored = at.clone();
-    engine::pause_restored(&mut restored, NOW + 1).unwrap();
-    assert!(
-        restored
-            .practice
-            .checks
-            .values()
-            .any(|c| c.status == scry::study::CheckStatus::Unknown)
-    );
-    assert!(
-        restored
-            .practice
-            .checks
-            .values()
-            .any(|c| c.status == scry::study::CheckStatus::Refused)
-    );
-    assert!(
-        persistence::archive_size(&restored).is_ok(),
-        "a restore always fits"
-    );
-    // Resuming after the restore is admitted within the reserve.
-    let mut resumed = Owner {
-        app: restored.clone(),
-        n: 950,
-        now: NOW,
-        jev: true,
-    };
-    let before = resumed.app.revision;
-    resumed.call("/settings/resume", &[]);
-    assert!(
-        persistence::admit_growth(
-            "/settings/resume",
-            &none,
-            &persistence::footprint(&restored),
-            before,
-            &resumed.app,
-            persistence::Client::Browser
-        )
-        .is_ok()
-    );
-    // Seven paid outcomes of 256 KiB, each doubled by escaping, still fit.
-    let mut paid = at.clone();
-    for i in 0..7 {
-        paid.operations.insert(
-            format!("custody-paid-{i}"),
-            Receipt {
-                acting_token: None,
-                path: None,
-                created_ms: None,
-                payload_hash: "a".repeat(64),
-                result: MutationResult {
-                    data: Some(
-                        json!({"raw": "\"".repeat(256 * 1024), "verdict": "x".repeat(8 * 1024)}),
-                    ),
-                    ..MutationResult::default()
-                },
-            },
-        );
-    }
-    assert!(
-        persistence::archive_size(&paid).is_ok(),
-        "seven paid outcomes fit the reserve"
-    );
-}
-
-// --- Review 3: withdrawing is admitted within the reserve ---------------------
+// --- One limit: 16 MiB --------------------------------------------------------
 
 /// A small receipt, standing in for what any write adds.
 fn grow(app: &App, bytes: usize) -> App {
@@ -526,188 +322,78 @@ fn exactly(room_below: usize, limit: usize) -> App {
     );
     o.app
 }
-fn pairs(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-    pairs
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
-}
-
 #[test]
-fn across_the_threshold_only_withdrawing_settling_or_backup_is_admitted() {
-    let at = exactly(0, persistence::ORDINARY_ARCHIVE_BYTES);
-    let was = persistence::footprint(&at);
-    let crossed = grow(&at, 300);
-    for client in [persistence::Client::Browser, persistence::Client::Api] {
-        for (path, fields) in [
-            ("/tokens/revoke", vec![]),
-            ("/settings/judgment", vec![("paid_judgment", "off")]),
-            ("/settings/resume", vec![]),
-            ("/settings/backup", vec![]),
-            ("/practice/pause", vec![]),
-            ("/practice/drop", vec![]),
-            ("/practice/draft/discard", vec![]),
-        ] {
-            assert!(
-                persistence::admit_growth(
-                    path,
-                    &pairs(&fields),
-                    &was,
-                    at.revision,
-                    &crossed,
-                    client
-                )
-                .is_ok(),
-                "{path}"
-            );
-        }
-        for (path, fields) in [
-            ("/settings/judgment", vec![("paid_judgment", "on")]),
-            ("/practice/answer", vec![]),
-            ("/practice/next", vec![]),
-            ("/practice/draft", vec![]),
-            ("/practice/resume", vec![]),
-            ("/tokens/create", vec![]),
-            ("/library/version/add", vec![]),
-        ] {
-            let error = persistence::admit_growth(
-                path,
-                &pairs(&fields),
-                &was,
-                at.revision,
-                &crossed,
-                client,
-            )
-            .unwrap_err();
-            assert_eq!(error.message, persistence::CAPACITY_REFUSAL, "{path}");
-        }
-        // Past the full limit, settling and backup requests are refused too;
-        // revocation never is.
-        let full = exactly(100, persistence::MAX_ARCHIVE_BYTES);
-        let over = grow(&full, 1_000);
-        for path in ["/settings/backup", "/settings/resume", "/practice/drop"] {
-            assert!(
-                persistence::admit_growth(
-                    path,
-                    &pairs(&[]),
-                    &persistence::footprint(&full),
-                    full.revision,
-                    &over,
-                    client
-                )
-                .is_err(),
-                "{path}"
-            );
-        }
-        assert!(
-            persistence::admit_growth(
-                "/tokens/revoke",
-                &pairs(&[]),
-                &persistence::footprint(&full),
-                full.revision,
-                &over,
-                client
-            )
-            .is_ok()
-        );
-    }
-}
-
-#[test]
-fn ordinary_growth_may_not_cross_the_threshold_and_never_passes_the_limit() {
+fn ordinary_growth_is_refused_only_past_the_full_limit() {
     let mib = 1024 * 1024;
     for client in [persistence::Client::Browser, persistence::Client::Api] {
-        // 11.99 MiB: a write that would cross is refused; one that stays under is not.
-        let under = exactly(
-            persistence::ORDINARY_ARCHIVE_BYTES - (11 * mib + 99 * mib / 100),
-            persistence::ORDINARY_ARCHIVE_BYTES,
-        );
-        let was = persistence::footprint(&under);
-        let room = persistence::ORDINARY_ARCHIVE_BYTES - persistence::archive_size(&under).unwrap();
-        let error = persistence::admit_growth(
-            "/practice/answer",
-            &pairs(&[]),
-            &was,
-            under.revision,
-            &grow(&under, room + 1_000),
-            client,
-        )
-        .unwrap_err();
-        assert_eq!(error.message, persistence::CAPACITY_REFUSAL);
-        assert!(
-            persistence::admit_growth(
-                "/practice/answer",
-                &pairs(&[]),
-                &was,
-                under.revision,
-                &grow(&under, 1_000),
-                client
-            )
-            .is_ok()
-        );
-        // 13 MiB, already over the threshold: admitted up to the full limit,
-        // the earlier, weaker protection.
+        // 13 MiB: every write that fits is admitted.
         let large = exactly(
             persistence::MAX_ARCHIVE_BYTES - 13 * mib,
             persistence::MAX_ARCHIVE_BYTES,
         );
-        let was = persistence::footprint(&large);
         for path in [
             "/practice/answer",
             "/practice/next",
             "/library/version/add",
             "/tokens/create",
+            "/settings/backup",
         ] {
             assert!(
-                persistence::admit_growth(
-                    path,
-                    &pairs(&[]),
-                    &was,
-                    large.revision,
-                    &grow(&large, 5_000),
-                    client
-                )
-                .is_ok(),
+                persistence::admit_growth(path, large.revision, &grow(&large, 5_000), client)
+                    .is_ok(),
                 "{path}"
             );
         }
-        // 15.99 MiB: a write that would pass the limit is refused.
+        // 15.99 MiB: a write that would pass the limit is refused, one that fits is not.
         let near = exactly(
             persistence::MAX_ARCHIVE_BYTES - (15 * mib + 99 * mib / 100),
             persistence::MAX_ARCHIVE_BYTES,
         );
-        let was = persistence::footprint(&near);
         let room = persistence::MAX_ARCHIVE_BYTES - persistence::archive_size(&near).unwrap();
-        let error = persistence::admit_growth(
+        for path in [
             "/practice/answer",
-            &pairs(&[]),
-            &was,
-            near.revision,
-            &grow(&near, room + 1_000),
-            client,
-        )
-        .unwrap_err();
-        assert_eq!(error.message, persistence::CAPACITY_REFUSAL);
+            "/settings/backup",
+            "/settings/resume",
+            "/practice/drop",
+        ] {
+            let error =
+                persistence::admit_growth(path, near.revision, &grow(&near, room + 1_000), client)
+                    .unwrap_err();
+            assert_eq!(
+                (error.status, error.message.as_str()),
+                (413, persistence::CAPACITY_REFUSAL),
+                "{path}"
+            );
+        }
         assert!(
             persistence::admit_growth(
                 "/practice/answer",
-                &pairs(&[]),
-                &was,
                 near.revision,
                 &grow(&near, 1_000),
                 client
             )
             .is_ok()
         );
+        // Revocation never is.
+        assert!(
+            persistence::admit_growth(
+                "/tokens/revoke",
+                near.revision,
+                &grow(&near, room + 1_000),
+                client
+            )
+            .is_ok()
+        );
     }
-    // Settings: nothing under the threshold; over it, a quiet size, never "full".
+    // Settings: nothing under three quarters; over it, the size, quietly.
     let o = |app: App| Owner {
         app,
         n: 0,
         now: NOW,
         jev: false,
     };
-    let under = o(exactly(1_000, persistence::ORDINARY_ARCHIVE_BYTES)).page("/settings", &[]);
+    assert_eq!(persistence::SIZE_NOTICE_BYTES, 12 * mib);
+    let under = o(exactly(1_000, persistence::SIZE_NOTICE_BYTES)).page("/settings", &[]);
     assert!(!under.contains("data-capacity"));
     let large = o(exactly(
         persistence::MAX_ARCHIVE_BYTES - 13 * mib,
@@ -716,6 +402,47 @@ fn ordinary_growth_may_not_cross_the_threshold_and_never_passes_the_limit() {
     .page("/settings", &[]);
     assert!(large.contains("<p class=\"fineprint\" data-capacity=\"large\">The notebook uses 13.0 MiB of the 16 MiB one complete backup can hold.</p>"));
     assert!(!large.contains("Storage is full"));
+}
+
+// The edge this change leaves, pinned as it is today so that a later reserve
+// has a failing-first test to flip: a write that never asks the rule carries a
+// notebook a few bytes under the limit past it.
+#[test]
+fn today_a_failed_backup_can_carry_a_notebook_just_under_the_limit_past_it() {
+    let edge = exactly(20, persistence::MAX_ARCHIVE_BYTES);
+    assert!(matches!(
+        persistence::footprint(&edge),
+        persistence::Footprint::Fits(_)
+    ));
+    // A failed backup records its reason without asking the rule.
+    let mut failed = edge.clone();
+    failed.backup.error = Some(FAILED.into());
+    assert!(matches!(
+        persistence::footprint(&failed),
+        persistence::Footprint::TooLarge
+    ));
+    assert_eq!(persistence::archive_size(&failed).unwrap_err().status, 413);
+    // Every growing write is now refused; nothing was deleted.
+    let error = persistence::admit_growth(
+        "/practice/answer",
+        failed.revision,
+        &grow(&failed, 10),
+        persistence::Client::Browser,
+    )
+    .unwrap_err();
+    assert_eq!(error.message, persistence::CAPACITY_REFUSAL);
+    assert_eq!(failed.operations.len(), edge.operations.len());
+    let settings = main_of(
+        &Owner {
+            app: failed,
+            n: 0,
+            now: NOW,
+            jev: false,
+        }
+        .page("/settings", &[]),
+    );
+    assert!(settings.contains("<p data-backup=\"failed\">"));
+    assert!(settings.contains("<p data-capacity=\"full\"><strong>Storage is full.</strong>"));
 }
 
 #[test]
