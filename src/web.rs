@@ -3908,16 +3908,21 @@ impl View<'_> {
                 verified(time)
             ),
             (None, _) => format!("<p>{backup}</p>"),
-        } + match crate::persistence::footprint(self.app) {
+        } + &match crate::persistence::footprint(self.app) {
             crate::persistence::Footprint::TooLarge => {
-                "<p data-capacity=\"full\"><strong>Storage is full.</strong> The notebook is too large for a complete backup or export, and changes that add to it are refused. Nothing has been deleted.</p>"
+                "<p data-capacity=\"full\"><strong>Storage is full.</strong> The notebook is too large for a complete backup or export, and changes that add to it are refused. Nothing has been deleted.</p>".to_string()
             }
+            // Over the ordinary threshold, under the limit: true and quiet.
             crate::persistence::Footprint::Fits(bytes)
                 if bytes > crate::persistence::ORDINARY_ARCHIVE_BYTES =>
             {
-                "<p data-capacity=\"full\"><strong>Storage is full.</strong> Changes that add to the notebook are refused, so that backups keep working. Nothing has been deleted.</p>"
+                format!(
+                    "<p class=\"fineprint\" data-capacity=\"large\">The notebook uses {:.1} MiB of the {} MiB one complete backup can hold.</p>",
+                    bytes as f64 / 1_048_576.0,
+                    crate::persistence::MAX_ARCHIVE_BYTES / 1_048_576
+                )
             }
-            _ => "",
+            _ => String::new(),
         };
         let resume = if self.app.restored_paused {
             format!(

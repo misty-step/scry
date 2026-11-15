@@ -24,14 +24,20 @@ observation. Stored records and archive formats are unchanged.
 - **Storage capacity.** Only size refuses. A mutation that changes the
   notebook, from the browser or the API, is refused with 413 and "Storage is
   full. This would make the notebook too large for one complete backup, so
-  nothing was saved." when the result would pass the ordinary threshold of
-  12 MiB: the 16 MiB archive limit less a 4 MiB reserve. The refused page keeps
-  the typed answer; nothing is written. A replay of a committed operation and a
-  token revocation are never refused for capacity. Actions that only withdraw or
-  settle something (turning paid judgment off, resuming after a restore,
-  pausing or dropping a Study, discarding a draft) are admitted up to the full
-  16 MiB. Asking for a backup in Settings adds a receipt and is ordinary growth;
-  the daily backup does not ask.
+  nothing was saved." when the result would pass the 16 MiB archive limit, or
+  when an ordinary write would take a notebook at or under the ordinary
+  threshold of 12 MiB (the limit less a 4 MiB reserve) over it. The refused
+  page keeps the typed answer; nothing is written. A replay of a committed
+  operation and a token revocation are never refused for capacity. Withdrawing,
+  settling and asking for a backup (turning paid judgment off, resuming after a
+  restore, pausing or dropping a Study, discarding a draft, the Settings backup
+  request) may cross the threshold, up to the full 16 MiB.
+- **A notebook already over 12 MiB** (one that was that large before this rule,
+  or one that writes bypassing the rule took there) keeps the earlier, weaker
+  protection: its writes are admitted up to 16 MiB, as the API admitted them
+  before, and its reserve is only the room left. Settings states its size in
+  fineprint ("The notebook uses 13.0 MiB of the 16 MiB one complete backup can
+  hold.") and does not call it full.
 - **The reserve.** Writes that never ask the rule use it: a backup's status or
   failure text, a restore's marker and per-Check reasons, alarm recovery, and
   records of paid work (a sent Check's outcome, its ledger entry). Seven paid
@@ -47,9 +53,7 @@ observation. Stored records and archive formats are unchanged.
   browser writes (Save draft, discard, starting NATO or a lesson, Library adds
   and edits) and every API mutation refuse with that reason; every other write
   is admitted; its backups fail and show as failed.
-- **Full notebooks.** None is ever trimmed. Past the ordinary threshold
-  Settings says "Storage is full." and that backups keep working. Past the full
-  limit (reachable only through a reserve overrun) every page, History, the
+- **Full notebooks.** None is ever trimmed. Past the full limit (reachable only through a reserve overrun) every page, History, the
   Library and the API reads stay available; `/export` and `/api/v1/export`
   answer 413 "Storage is full: the notebook is too large for one complete
   export. …"; backups fail and show as failed; `/healthz` turns stale after 26

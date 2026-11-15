@@ -1422,6 +1422,9 @@ impl DurableObject for LearningSpace {
                 crate::study::make_room_for_autosave(&mut app);
             }
         }
+        // Whether this write would cross the ordinary threshold depends on
+        // where the notebook stood before it.
+        let footprint = persistence::footprint(&app);
         let result = engine::mutate_browser(
             &mut app,
             &path,
@@ -1451,6 +1454,7 @@ impl DurableObject for LearningSpace {
                 if let Err(e) = persistence::admit_growth(
                     &path,
                     &fields,
+                    &footprint,
                     before,
                     &app,
                     persistence::Client::Browser,
@@ -1839,6 +1843,7 @@ impl LearningSpace {
             .as_ref()
             .map_or(MutationActor::Browser, |t| MutationActor::Token(&t.info));
         let seed = random_id()?;
+        let footprint = persistence::footprint(&app);
         let result = match engine::mutate_judged(
             &mut app,
             canonical_path,
@@ -1854,6 +1859,7 @@ impl LearningSpace {
         if let Err(error) = persistence::admit_growth(
             canonical_path,
             &fields,
+            &footprint,
             before,
             &app,
             persistence::Client::Api,
