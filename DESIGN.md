@@ -1,5 +1,23 @@
 # Scry: a recall instrument
 
+## Save draft without a script, and the words of practice — 2026-11-15
+
+Save draft is a plain secondary button under Check on every answer form, with
+or without JavaScript; Discard saved draft appears beside it only once a draft
+is saved. Both are full width, outlined, transparent, never as strong as
+Check. The custody line under them is fine ink-3 text. Without a script, a
+saved draft returns the same page with the text in its field; a refused save
+keeps the typed text and shows the refusal as the page's notice. Every answer
+button reads “Check” (it read “Check my answer” in Study and “Check answer” in
+lessons). Rest under Study is headed by the quiet context line “Study” (it read
+“All subjects”); the Study home and its Prompts carry no such line, since the
+Study button and the Work title already say it. A text's previous phrase is
+“Previous phrase” and its reveal heading “The phrase” (both said “Unit”). The
+NATO hold reads “Your practice is waiting.” and “Resume practice”, error and
+missing pages offer “Back to practice →”, and the earlier notebook's tab back
+to practice is “Practice”. Pause, resume, drop and Pace return to the Version
+page they were pressed on.
+
 ## Everything saved in the earlier notebook is reachable — 2026-11-15
 
 Archived Goals, Concepts and questions are listed where their live siblings

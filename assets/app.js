@@ -92,7 +92,6 @@
       autoEdited = true;
       answerUnsaved = true;
       if (!pending && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
-      else if (!pending && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.');
       else if (!pending && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.');
       else if (!pending && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.');
       else if (!pending) announce('Changes not yet saved.');
@@ -292,11 +291,6 @@
       if (request.automatic && response.type === 'opaqueredirect') throw new Error('The automatic save was redirected.');
       if (response.status === 401 || response.status === 403 || (response.status === 409 && response.headers.get('X-Scry-Scope-Mismatch') === '1') || (response.url && new URL(response.url, location.href).origin !== location.origin)) { conceal(); return; }
       if (!verifyScope(response.headers.get('X-Scry-Scope'))) return;
-      if (request.automatic && response.status === 429) {
-        pending = null; unlock(request); autoBlocked = 'limit'; cancelAuto();
-        announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.');
-        return;
-      }
       if (request.automatic && response.status === 200) {
         const receipt = await readCheckpoint(response, request);
         if (!valid()) return;
@@ -319,14 +313,13 @@
         acknowledgedDrafts.set(request.form, {value: request.snapshot, generation: receipt.generation});
         const discardControl = request.form.querySelector('[data-checkpoint-discard]');
         if (discardControl) { discardControl.dataset.checkpointPresent = 'true'; discardControl.hidden = false; }
-        if (receipt.remaining === 0) autoBlocked = 'limit';
         if (request.input.value === request.snapshot) {
           cancelAuto(); autoEdited = false; answerUnsaved = false;
-          announce(autoBlocked ? 'Saved. Automatic saving has reached its limit; use Save draft next time.' : 'Saved.');
+          announce('Saved.');
           checkpointAcknowledged = true;
         } else {
-          announce(autoBlocked ? 'Earlier text saved. Newer changes are not saved; use Save draft.' : 'Earlier text saved. Newer changes are not yet saved.');
-          if (request.followupAllowed && autoEdited && !autoBlocked) scheduleAuto(request.input);
+          announce('Earlier text saved. Newer changes are not yet saved.');
+          if (request.followupAllowed && autoEdited) scheduleAuto(request.input);
         }
         return;
       }
@@ -585,7 +578,7 @@
     if (suspended) { resume(); return; }
     if (pending?.sending) announce('Saving…', [], 'Wait for the current response before continuing.');
     else if (pending) announce(pending.automatic && pending.input.value !== pending.snapshot ? 'Reconcile the earlier save. Your newer changes are not saved.' : 'You are connected again. Reconcile your saved operation.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]]);
-    else { if (answerUnsaved && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); else if (answerUnsaved && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved) announce('Changes are not saved. Use Save draft or keep typing.'); else hideStatus(); schedulePoll(); }
+    else { if (answerUnsaved && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); else if (answerUnsaved && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved) announce('Changes are not saved. Use Save draft or keep typing.'); else hideStatus(); schedulePoll(); }
   });
   window.addEventListener('pagehide', conceal);
   window.addEventListener('pageshow', event => {

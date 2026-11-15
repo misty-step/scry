@@ -169,8 +169,19 @@ fn render_error(
     e: AppError,
     preparation_ready: bool,
 ) -> Result<Response> {
-    let view_path = web::mutation_error_path(app, path);
-    let query = view_query(env, fields, preparation_ready)?;
+    let control_page =
+        web::study_control_page(app, path, fields.get("study_id").map(String::as_str));
+    let view_path = control_page
+        .as_deref()
+        .unwrap_or_else(|| web::mutation_error_path(app, path));
+    let mut query = view_query(env, fields, preparation_ready)?;
+    // A refused native answer or save keeps the text typed for its Prompt.
+    if matches!(path, "/practice/answer" | "/practice/draft")
+        && let (Some(prompt), Some(answer)) = (fields.get("prompt_id"), fields.get("answer"))
+    {
+        query.insert("__typed_prompt".into(), prompt.clone());
+        query.insert("__typed".into(), answer.clone());
+    }
     private(
         Response::from_html(web::render(app, view_path, &query, now(), Some(&e.message)))?
             .with_status(e.status),
@@ -463,16 +474,14 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         }
         return api_json(&json!({"version": 1, "scope": scope}), 200);
     }
-    // Saving learner text is an enhanced-only action: do not buffer a body or
-    // contact the object without the page's original scope precondition.
-    if matches!(
-        req.path().as_str(),
-        "/practice/draft" | "/practice/draft/discard"
-    ) && req.headers().get("X-Scry-Request")?.as_deref() != Some("page")
+    let checkpoint_mode = req.headers().get("X-Scry-Checkpoint-Mode")?;
+    // Save draft is a native form, bound to its notebook by the same origin
+    // and CSRF checks as every other form. Automatic saving is enhanced-only:
+    // do not buffer its body or contact the object without the page's scope.
+    if checkpoint_mode.is_some() && req.headers().get("X-Scry-Request")?.as_deref() != Some("page")
     {
         return private(Response::error("Authenticated page required.", 403)?);
     }
-    let checkpoint_mode = req.headers().get("X-Scry-Checkpoint-Mode")?;
     if checkpoint_mode
         .as_deref()
         .is_some_and(|mode| mode != "auto-v1")
@@ -548,7 +557,13 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     } else {
         let max = if mode == "restore" {
             persistence::MAX_ARCHIVE_BYTES
-        } else if checkpoint_mode.as_deref() == Some("auto-v1") {
+        } else if checkpoint_mode.as_deref() == Some("auto-v1")
+            || matches!(
+                req.path().as_str(),
+                "/practice/draft" | "/practice/draft/discard"
+            )
+        {
+            // A draft is at most 32 KiB of text, however it is sent.
             128 * 1024
         } else {
             MAX_HTTP_BODY
@@ -1293,11 +1308,8 @@ impl DurableObject for LearningSpace {
             if !operation.starts_with(crate::study::AUTOSAVE_OPERATION_PREFIX) {
                 return private(Response::error("Invalid automatic save operation.", 422)?);
             }
-            if !replayed && crate::study::autosave_remaining(&app) == 0 {
-                return private(Response::error(
-                    "Automatic saving has reached its limit. Use Save draft.",
-                    429,
-                )?);
+            if !replayed {
+                crate::study::make_room_for_autosave(&mut app);
             }
         }
         let result = engine::mutate_browser(
@@ -1411,7 +1423,8 @@ impl DurableObject for LearningSpace {
                             "prompt_id": fields.get("prompt_id"),
                             "generation": generation.to_string(),
                             "current": crate::study::checkpoint_current(&latest, &fields, generation),
-                            "remaining": crate::study::autosave_remaining(&latest),
+                            // Kept for pages that still read it: saving has no budget.
+                            "remaining": crate::study::AUTOSAVE_RECEIPT_LIMIT,
                         }),
                         200,
                     );
@@ -1435,13 +1448,21 @@ impl DurableObject for LearningSpace {
                                 .as_ref()
                                 .and_then(|p| app.library.versions.get(&p.prompt.version_id))
                                 .is_some_and(crate::library::is_nato)));
-                let location = destination.map(String::as_str).unwrap_or_else(|| {
-                    if focused {
-                        "/?practice=nato"
-                    } else {
-                        web::mutation_redirect(&app, &path, &result.redirect)
-                    }
-                });
+                let control_page = web::study_control_page(
+                    &app,
+                    &path,
+                    fields.get("study_id").map(String::as_str),
+                );
+                let location = destination
+                    .or(control_page.as_ref())
+                    .map(String::as_str)
+                    .unwrap_or_else(|| {
+                        if focused {
+                            "/?practice=nato"
+                        } else {
+                            web::mutation_redirect(&app, &path, &result.redirect)
+                        }
+                    });
                 // The page says the text was already there; nothing was added.
                 if api::library_existing(&path, &result) == Some(true) {
                     return redirect(&format!("{location}?existing=1"));

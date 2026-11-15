@@ -36,7 +36,7 @@ async function saveLegacyDraft({rows,post,get}){
  const draft='Keep my saved answer before switching.';
  const fields={csrf:meta.csrf,operation_id:randomUUID(),prompt_id:prompt.id,generation:'0',answer:draft};
  const scope=JSON.parse(await get('/session/scope')).scope;
- assert.equal((await post('/practice/draft',fields)).status,403,'Checkpoint save requires an authenticated page.');
+ assert.equal((await post('/practice/draft',{...fields,operation_id:`autosave-${randomUUID()}`},{'X-Scry-Checkpoint-Mode':'auto-v1'})).status,403,'Automatic saving requires an authenticated page.');
  assert.equal((await post('/practice/draft',fields,{'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64)})).status,409,'Checkpoint save requires the original notebook scope.');
  assert.deepEqual(await rows(),before,'Unscoped or wrong-scope draft saves cannot write.');
  const saved=await post('/practice/draft',fields,{'X-Scry-Request':'page','X-Scry-Expected-Scope':scope});

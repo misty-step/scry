@@ -603,9 +603,13 @@ test('automatic save waits for composition and never starts on reconnect alone',
   f.emit('compositionend',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);f.calls[0].resolve(autosaveResponse(f,f.calls[0],1));await tick();
   f.navigator.onLine=false;f.emit('window:offline');input.value='offline edit';f.emit('input',{target:input});f.navigator.onLine=true;f.emit('window:online');await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);assert.match(f.status.children[0].textContent,/not saved/);
 });
-test('the automatic budget refusal leaves editing and manual saving available',async()=>{
-  const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));f.calls[0].resolve(f.response(429,'limit',{'x-scry-scope':scope}));await tick();assert.equal(input.readOnly,false);assert.match(f.status.children[0].textContent,/Use Save draft/);
+test('only a capacity refusal pauses automatic saving; editing and manual saving stay available',async()=>{
+  const f=fixture({fastAuto:true});const {form,input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));f.calls[0].resolve(f.response(413,'The complete archive exceeds its bounded size limit.',{'x-scry-scope':scope}));await tick();assert.equal(input.readOnly,false);assert.match(f.status.children[0].textContent,/Automatic saving is paused\. Use Save draft/);
   input.value='more';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,1);const submitter={formAction:'https://scry.test/practice/draft',hasAttribute:key=>key==='formaction'||key==='data-checkpoint-save'};f.emit('submit',{target:form,submitter,preventDefault(){}});assert.equal(f.calls.length,2);f.calls[1].resolve(f.response(401));await tick();
+});
+test('automatic saving has no lifetime budget: an acknowledgment never stops the next save',async()=>{
+  const f=fixture({fastAuto:true});const {input}=autosaveForm(f);f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));f.calls[0].resolve(autosaveResponse(f,f.calls[0],1,true,0));await tick();assert.equal(f.status.children[0].textContent,'Saved.');
+  input.value='more';f.emit('input',{target:input});await new Promise(r=>setTimeout(r,10));assert.equal(f.calls.length,2,'A zero from an earlier Worker is not a budget.');
 });
 
 test('backgrounded automatic save remains frozen until manual reconciliation',async()=>{

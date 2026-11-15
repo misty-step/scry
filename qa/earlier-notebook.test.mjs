@@ -135,7 +135,7 @@ function assertNoPractice(html,path){
  assertNoWrite(html,path);
  lacks(html,/action="\/review\//,`${path} posts to a review route`);
  lacks(html,/action="\/concepts\/[^"]+\/practice"/,`${path} offers concept practice`);
- lacks(html,/data-choice|Look it up|href="\/gate|Practice this idea|Next question|Check my answer|Show me the answer|Retry native check/,`${path} offers an answer, Next, Retry, reveal or the reference gate`);
+ lacks(html,/data-choice|Look it up|href="\/gate|Practice this idea|Next question|Check my answer|>Check<|Show me the answer|Retry native check/,`${path} offers an answer, Next, Retry, reveal or the reference gate`);
  lacks(html,/data-state="(intro|question|checking|self-check|result|gate|checking-reference|checking-paused)"/,`${path} renders a practice state`);
 }
 
