@@ -16,6 +16,32 @@ routine rollout needs no further approval. Private-data, credential, spend,
 irreversible-action and data-loss decisions retain their scoped authority.
 The dated receipts below remain historical evidence, not new rollout gates.
 
+## Failure reports and model authority — source as of 2026-11-15
+
+This describes source behavior, not a deployed observation.
+
+- **Triage reports.** The Worker sends one fixed category and its deployment
+  identity (`SENTRY_ENVIRONMENT`, `SCRY_VERSION`) through
+  `deploy/cloudflare-hosting/telemetry.mjs`, at most once a minute per isolate,
+  in `waitUntil`, never retried. Categories: `request_exception` (an error
+  escaped a request), `upstream_5xx` (a 5xx answer, such as a stored photo that
+  fails verification, a failed backup trigger, or `/healthz` unable to reach its
+  stored state), `alarm_failure` (the Durable Object alarm failed to load, back
+  up, claim or rearm) and `scheduled_failure` (a scheduled snapshot was not
+  verified). `/healthz` answering `backup_stale` or an unverified proof, and
+  every access denial or refusal below 500, are ordinary answers and send
+  nothing. A send needs `SENTRY_ENVIRONMENT` of `production` or
+  `synthetic-staging`.
+- **Model authority.** Only `SCRY_ENV=production` may send an answer to Jev.
+  `preview` may reach Jev only when `JEV_URL`'s host is under `.invalid`, the
+  controlled egress of the Worker QA, so a real key bound to a preview reaches
+  no provider and Settings says paid judgment is not available. Development,
+  restore and synthetic previews send nothing. A preview deployed from this
+  source therefore stops sending checks even if a provider key is still bound
+  to it. Paid judgment in production needs `JEV_API_KEY` (secret), `JEV_MODEL`
+  and `JEV_URL` on the production Worker; production bindings are unchanged by
+  this source.
+
 ## Canonical origin serving at 16:35 UTC, 2026-10-20
 
 The release watcher observed **https://scry.mistystep.io** as the canonical

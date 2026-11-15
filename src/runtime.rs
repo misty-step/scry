@@ -273,46 +273,64 @@ extern "C" {
     fn report_rust(env: &Env, ctx: &JsValue, category: &str) -> std::result::Result<(), JsValue>;
 }
 
+/// Sends one fixed failure category to the triage route. No request, response,
+/// error, learner identity or content crosses this interface: only the
+/// deployment's own bindings and a literal category. JS owns `waitUntil`, so
+/// the send never delays the caller, and even a reporter exception is ignored.
+fn report(env: &Env, ctx: &JsValue, category: &'static str) {
+    let _ = report_rust(env, ctx, category);
+}
+
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
-    let result = handle_fetch(req, env.clone()).await;
-    let category = match &result {
-        Err(_) => Some("request_exception"),
-        Ok(response) if response.status_code() >= 500 => Some("upstream_5xx"),
-        _ => None,
+    let (result, category) = if req.path() == "/healthz" && req.method() == Method::Get {
+        match health(&req, &env).await {
+            Ok((response, category)) => (Ok(response), category),
+            Err(error) => (Err(error), Some("request_exception")),
+        }
+    } else {
+        let result = handle_fetch(req, env.clone()).await;
+        let category = match &result {
+            Err(_) => Some("request_exception"),
+            Ok(response) if response.status_code() >= 500 => Some("upstream_5xx"),
+            _ => None,
+        };
+        (result, category)
     };
     if let Some(category) = category {
-        // No request, response, error, learner identity or content crosses this
-        // interface. JS owns waitUntil; even a reporter exception is ignored.
-        let _ = report_rust(&env, ctx.as_ref().as_ref(), category);
+        report(&env, ctx.as_ref().as_ref(), category);
     }
     result
 }
 
-async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
+/// Health answers with what it finds. An unhealthy answer that names a known
+/// state, a stale backup or an unverified proof, already says so and is not
+/// an incident. Failing to reach or load the stored state is one.
+async fn health(req: &Request, env: &Env) -> Result<(Response, Option<&'static str>)> {
     // The optional proof narrows the existing health verdict to an exact fully
     // verified archive and its persisted next alarm, never exposing metadata.
-    if req.path() == "/healthz" && req.method() == Method::Get {
-        let proof = req.headers().get(BACKUP_PROOF_HEADER)?;
-        if proof
-            .as_deref()
-            .is_some_and(|value| !valid_backup_proof(value))
-        {
-            return backup_proof_response(false, 400);
-        }
-        return match internal_request_with_proof(
-            &env,
-            "/__internal/health",
-            Method::Get,
-            proof.as_deref(),
-        )
-        .await
-        {
-            Ok(response) => private(response),
-            Err(_) if proof.is_some() => backup_proof_response(false, 503),
-            Err(_) => private(Response::error("backup_unavailable", 503)?),
-        };
+    let proof = req.headers().get(BACKUP_PROOF_HEADER)?;
+    if proof
+        .as_deref()
+        .is_some_and(|value| !valid_backup_proof(value))
+    {
+        return Ok((backup_proof_response(false, 400)?, None));
     }
+    Ok(
+        match internal_request_with_proof(env, "/__internal/health", Method::Get, proof.as_deref())
+            .await
+        {
+            Ok(response) => (private(response)?, None),
+            Err(_) if proof.is_some() => (backup_proof_response(false, 503)?, Some("upstream_5xx")),
+            Err(_) => (
+                private(Response::error("backup_unavailable", 503)?)?,
+                Some("upstream_5xx"),
+            ),
+        },
+    )
+}
+
+async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     let url = req.url()?;
     let canonical = match configured_origin(&env) {
         Ok(v) => v,
@@ -1476,8 +1494,18 @@ impl DurableObject for LearningSpace {
         // next one. A failure here must not end daily backups until the next
         // deliberate action.
         let outcome = self.run_alarm().await;
-        self.arm().await?;
-        outcome
+        let armed = self.arm().await;
+        // A failed backup, recovery, claim or rearm is unexpected. It is
+        // reported after the outcome is fixed and never changes it.
+        if armed.is_err()
+            || !outcome.as_ref().is_ok_and(|(response, backup_failed)| {
+                !*backup_failed && response.status_code() == 200
+            })
+        {
+            report(&self.env, self.state.as_raw().as_ref(), "alarm_failure");
+        }
+        armed?;
+        outcome.map(|(response, _)| response)
     }
 }
 
@@ -1496,7 +1524,8 @@ struct PersistedBackupProof {
     backup: BackupStatus,
 }
 impl LearningSpace {
-    async fn run_alarm(&self) -> Result<Response> {
+    /// The alarm's response, and whether a backup it attempted failed.
+    async fn run_alarm(&self) -> Result<(Response, bool)> {
         // The recovery alarm is installed before any paid send. An evicted or
         // timed-out send becomes uncertain once, never another invisible send.
         // Only Checks of Study answers are recovered, claimed and sent here.
@@ -1507,12 +1536,13 @@ impl LearningSpace {
         if app.revision != before {
             self.save(&mut app, Some(before))?;
         }
+        let mut backup_failed = false;
         if app
             .backup
             .completed_ms
             .is_none_or(|last| last <= now() - DAY_MS)
         {
-            let _ = self.backup(false).await;
+            backup_failed = self.backup(false).await.is_err();
         }
         let mut app = self.load()?;
         let before = app.revision;
@@ -1520,7 +1550,7 @@ impl LearningSpace {
             let config = self.work_config();
             let lease = random_id()?;
             match engine::claim_check_work(&mut app, now(), &lease, &config) {
-                Err(e) => return app_error(e),
+                Err(e) => return Ok((app_error(e)?, backup_failed)),
                 Ok(work) => {
                     if app.revision != before {
                         self.save(&mut app, Some(before))?;
@@ -1532,7 +1562,7 @@ impl LearningSpace {
                 }
             }
         }
-        private(Response::ok("ok")?)
+        Ok((private(Response::ok("ok")?)?, backup_failed))
     }
     fn bearer_token(&self, authorization: &str) -> Option<OwnerToken> {
         let secret = authorization.strip_prefix("Bearer ")?;
@@ -1958,7 +1988,7 @@ impl LearningSpace {
         let jev = !disabled
             && !secret(&self.env, "JEV_API_KEY").is_empty()
             && !jev_model.is_empty()
-            && valid_provider_url(&variable(&self.env, "JEV_URL"));
+            && judge_endpoint_allowed(&self.env);
         engine::WorkConfig {
             generation: false,
             jev,
@@ -1971,8 +2001,9 @@ impl LearningSpace {
         false
     }
     /// Whether this Scry can reach Jev at all: its key, model and endpoint are
-    /// bound and the space is the Owner's own, never a QA or synthetic one.
-    /// Where this is false every answer is graded locally and nothing is sent.
+    /// bound, the deployment holds model authority for that endpoint, and the
+    /// space is the Owner's own, never a QA or synthetic one. Where this is
+    /// false every answer is graded locally and nothing is sent.
     fn judgment_capable(&self) -> bool {
         self.work_config().jev
     }
@@ -2064,7 +2095,7 @@ impl LearningSpace {
             ));
         }
         let endpoint = variable(&self.env, "JEV_URL");
-        if !valid_provider_url(&endpoint) {
+        if !judge_endpoint_allowed(&self.env) {
             return Err((
                 "The model endpoint is not securely configured.".into(),
                 false,
@@ -2362,15 +2393,30 @@ impl LearningSpace {
         )?)
     }
 }
-fn valid_provider_url(raw: &str) -> bool {
-    Url::parse(raw).is_ok_and(|url| {
-        url.scheme() == "https"
-            && url.host_str().is_some()
-            && url.username().is_empty()
-            && url.password().is_none()
-            && url.query().is_none()
-            && url.fragment().is_none()
-    })
+/// Whether this deployment may send an answer to its bound judge endpoint.
+/// Only production holds model authority. A preview may reach Jev only at a
+/// host under `.invalid`, which DNS reserves and never resolves: there it is
+/// the controlled egress of a test harness, so a real key bound to a preview
+/// can never reach a provider. Every other environment sends nothing.
+fn judge_endpoint_allowed(env: &Env) -> bool {
+    let Ok(url) = Url::parse(&variable(env, "JEV_URL")) else {
+        return false;
+    };
+    let secure = url.scheme() == "https"
+        && url.host_str().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none();
+    let test_host = url
+        .host_str()
+        .is_some_and(|host| host == "invalid" || host.ends_with(".invalid"));
+    secure
+        && match variable(env, "SCRY_ENV").as_str() {
+            "production" => true,
+            "preview" => test_host,
+            _ => false,
+        }
 }
 async fn set_alarm(storage: &Storage, millis: i64) -> Result<()> {
     storage
@@ -2387,7 +2433,7 @@ async fn set_alarm(storage: &Storage, millis: i64) -> Result<()> {
 pub async fn scheduled(
     _event: worker::worker_sys::ScheduledEvent,
     env: Env,
-    _ctx: worker::worker_sys::ScheduleContext,
+    ctx: worker::worker_sys::ScheduleContext,
 ) -> std::result::Result<(), JsValue> {
     std::panic::AssertUnwindSafe(async move {
         if variable(&env, "SCRY_ENV") == "restore" {
@@ -2406,6 +2452,7 @@ pub async fn scheduled(
         // Binding errors and response bodies may contain private context. The
         // operation is enough to identify this failure without exposing it.
         result.map_err(|_| {
+            report(&env, ctx.as_ref(), "scheduled_failure");
             js_sys::Error::new("The scheduled complete snapshot could not be verified.").into()
         })
     })

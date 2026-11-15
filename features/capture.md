@@ -14,6 +14,13 @@ owns complete recovery.
   before jobs, assets, receipts, reservations or provider calls.
 - Existing generation jobs remain historical: reads, alarms and meaning-check
   resumption cannot send or publish them.
+- `goal-generation-records` (`/goals/{id}`, section "Generation records"): one
+  read-only entry per job (`#job-{id}`) with its kind, date, attempt, recorded
+  status and model attribution, its recorded outcome and defect reasons, then
+  closed native disclosures holding the saved candidates, critic result, kept
+  critic results and raw response exactly as stored; each request's usage
+  (`#usage-{id}`) shows purpose, model, known cost or the counted unknown
+  reservation, and its raw response. Import markers are not shown as models.
 - Native answer grading continues. Unsupported earlier answers remain saved and
   ungraded rather than requesting a learner-supplied Verdict.
 
@@ -27,6 +34,8 @@ exists. Legacy links remain safe to read; they do not reactivate preparation.
 
 `tests/generation_retirement.rs` exercises current admission, grading-only
 claims, preserved historical jobs and read-only Home/ungraded answers.
+`tests/earlier_reachable.rs` and `qa/earlier-notebook.test.mjs` crawl from the
+Menu and find every stored job and usage entry on its Goal's page, inert.
 `qa/generation-retirement.test.mjs` exercises the built Worker refusal boundary,
 including multipart requests and API calls, checking unchanged SQLite/R2 state.
 Historical generation policy fixtures remain compatibility proof, not evidence

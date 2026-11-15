@@ -303,6 +303,49 @@ test('a deployment without the Jev bindings, and a verification space, say "not 
   }finally{await qa.close();}
 });
 
+// SPEC § Privacy: build and preview environments hold no model authority. A
+// key, model and endpoint bound outside production reach nothing, unless the
+// endpoint is this harness's own reserved `.invalid` host.
+test('outside production a judge bound to a real endpoint is not available and sends nothing',{timeout:90000},async()=>{
+  const REAL='https://judge-provider.example/v1/decisions';
+  const n=await notebook();
+  try{
+    // The Owner turned paid judgment on while the synthetic judge was bound.
+    await n.turnOn();
+    await n.study(await n.addMapping('Synthetic harbour practice',HARBOUR));
+    await n.rebind({...n.base,JEV_URL:REAL});
+    const settings=await n.page('/settings');
+    assert.match(settings,/data-paid-judgment="unavailable"/);assert.match(settings,/Paid judgment is not available here\./);
+    assert.equal(n.form(settings,'/settings/judgment'),undefined,'No control is offered.');
+    const {attempt,state}=await n.answer('test the bilge pump');
+    assert.equal(state.attempts[attempt].judgment,undefined);assert.equal(state.attempts[attempt].grade.verdict,'Again');
+    assert.equal((await n.alarm()),200);await sleep(1600);
+    const after=await n.state();assert.deepEqual(after.checks,{});assert.deepEqual(after.spend,[]);
+    assert.deepEqual(n.jev.elsewhere,[],'Nothing reached the real endpoint.');assert.equal(n.jev.sent.length,0);
+    // Production holds model authority for the same bindings.
+    await n.rebind({...n.base,JEV_URL:REAL,SCRY_ENV:'production'});
+    assert.match(await n.page('/settings'),/data-paid-judgment="on"/);
+  }finally{await n.close();}
+  // A development build refuses to serve at all with a key bound, and its
+  // alarm sends nothing; with only a model and endpoint, judgment is unavailable.
+  const name='judgment-dev-'+randomUUID(),space='synthetic-'+randomUUID(),local='http://127.0.0.1:8793';
+  const reached=[];
+  const dev={SCRY_ENV:'development',CANONICAL_ORIGIN:local,SPACE_NAME:space,INTERNAL_KEY:internalKey,JEV_MODEL,JEV_URL:REAL};
+  const runtime=await createRuntime({bindings:{...dev,JEV_API_KEY:JEV_KEY},name,artifact,inspect:true,egress:async request=>{reached.push(request.url);throw new Error('Nothing may leave a development build.');}});
+  try{
+    for(const path of ['/','/settings','/recall']){
+      const refused=await runtime.worker.fetch(local+path);
+      assert.equal(refused.status,503);assert.equal(await refused.text(),'Development requires loopback and isolated capabilities.');
+    }
+    const ns=await runtime.mf.getDurableObjectNamespace('LEARNING_SPACE'),stub=ns.get(ns.idFromName(space));
+    try{assert.equal(await stub.qaAlarm(),200);}finally{stub[Symbol.dispose]?.();}
+    const {worker}=await runtime.rebind(dev);
+    const settings=await(await worker.fetch(local+'/settings')).text();
+    assert.match(settings,/data-paid-judgment="unavailable"/);assert.match(settings,/Paid judgment is not available here\./);
+    await sleep(1300);assert.deepEqual(reached,[]);
+  }finally{await runtime.mf.dispose();}
+});
+
 test('Jev decides a mismatch: accepted wording, another identity, a negation, and an accept it cannot stand behind',{timeout:90000},async()=>{
   const n=await notebook();
   try{

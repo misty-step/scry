@@ -93,6 +93,20 @@ export function expectedOnPages(app){
  for(const r of app.resets)out.push([question(r.question_id),`id="reset-${r.id}"`]);
  for(const a of Object.values(app.assessments))out.push([question(a.question_id),`id="check-${a.id}" data-check="${a.status}"`],[question(a.question_id),escapeHtml(a.answer)]);
  for(const f of app.feedback)out.push([null,escapeHtml(f.text)]);
+ // Retired generation records, on their Goal's page, exactly as saved.
+ const raw=text=>`<pre class="raw-record">${escapeHtml(text)}</pre>`;
+ for(const j of Object.values(app.jobs??{})){
+  const path=`/goals/${j.goal_id}`;
+  out.push([path,`id="job-${j.id}"`],[path,`Recorded status: ${escapeHtml(j.status)}`]);
+  for(const text of [j.candidate_json,j.critic_json,j.critic_cache_json])if(text)out.push([path,raw(text)]);
+  for(const reason of j.rejected)out.push([path,`<li>${escapeHtml(reason)}</li>`]);
+  for(const model of [j.model,j.critic_model])if(model&&!model.startsWith('legacy-import'))out.push([path,escapeHtml(model)]);
+  if(j.raw_response)out.push([path,escapeHtml(j.raw_response)]);
+  for(const s of (app.spend??[]).filter(s=>s.work_id===j.id)){
+   out.push([path,`id="usage-${s.id}"`]);
+   if(s.raw_response)out.push([path,raw(s.raw_response)]);
+  }
+ }
  return out;
 }
 // The stored messages of saved checks, which no page shows.

@@ -15,7 +15,7 @@ straight into the next due Unit. Behavior authority:
 - `study-judged` (off unless the Owner turns on Paid judgment in Settings): a mismatch is saved with no Verdict and shows `[data-state="exact-checking"]`, which looks again by itself with JavaScript and offers Refresh without. Jev's answer becomes Good or Again labelled "Judged by Jev", with the Diff shown as "comparison, not the Verdict"; anything else is `[data-state="exact-ungraded"]`, "Saved, not graded", with its reason and Check again (`scry check ATTEMPT`, tool `scry_check`). A Card whose check is open is not served again.
 - `study-assist` records Show me as assistance before showing it; the retry that follows is assisted.
 - `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 at `/api/v1/correct` because self-grading is a [non-goal](../SPEC.md#purpose-and-non-goals), and the CLI has no `correct` command.
-- `study-control` pauses, resumes or drops a Study and chooses its Pace from the Version's Manage Study disclosure, `scry study pause|resume|drop|pace` or `/api/v1/studies/*`.
+- `study-control` pauses, resumes or drops a Study and chooses its Pace from the Version's Manage Study disclosure, `scry study pause|resume|drop|pace` or `/api/v1/studies/*`. A text's Version page counts new phrases ("Pause stops new phrases", "Pace · new phrases each day"); other Kinds count new Units. A text's stream has no earlier-notebook link; the Menu holds it.
 - `study-caught-up`: opening practice with nothing held selects nothing. It offers one Study action, or says Rest for now with Browse and the next scheduled review instead of inventing practice.
 - `study-cli` covers the same actions through `scry mix` (Study's mix), `next`, `answer`, `due`, `history` and `export`.
 - `study-history` reads saved Attempts and appended Corrections from the footer's
@@ -57,8 +57,10 @@ Preconditions:
   Exact Prompt protection gates all historical wording; a protected legacy
   question gates exact Attempts and preserves its per-concept history fence.
 - **Paid judgment.** `node --test qa/judgment.test.mjs` drives the built Worker
-  against a synthetic Jev endpoint inside the test process: the switch, the
-  three cases in which nothing is sent, every outcome of a check, exactly-once
+  against a synthetic Jev endpoint inside the test process, bound to a preview
+  at a `.invalid` host (outside production only such a host has model
+  authority; a real endpoint bound to a preview or development build sends
+  nothing): the switch, the three cases in which nothing is sent, every outcome of a check, exactly-once
   sending, Check again, the API, CLI and tool server, the `judged-v4` archive and
   phone-width pages with and without JavaScript. Set `SCRY_JUDGMENT_OLD_WORKER`
   to a build of the source before paid judgment to run the previous-Worker

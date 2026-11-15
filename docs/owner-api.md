@@ -639,7 +639,12 @@ Settings. That switch is a browser form (`POST /settings/judgment`); no API
 route, CLI command or tool reaches it, and an Owner token is refused whatever
 permission it carries. Asking for the setting it already has is refused with
 nothing written (409). Settings offers it only where this Scry has Jev's key,
-model and endpoint bound; elsewhere it says paid judgment is not available.
+model and endpoint bound and holds model authority for that endpoint; elsewhere
+it says paid judgment is not available. Only production holds model authority.
+A preview reaches Jev only at a host under `.invalid`, which never resolves
+(the controlled egress of `qa/judgment.test.mjs`), so a real key bound to a
+preview sends nothing; development, restore and synthetic previews send nothing
+at all.
 
 An answer leaves Scry to be judged only when all three hold: this Scry can
 reach Jev, the switch is on, and the request carries paid permission (the

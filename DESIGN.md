@@ -1,5 +1,22 @@
 # Scry: a recall instrument
 
+## A Goal's generation records, and a text's phrases — 2026-11-15
+
+A Goal's page ends, before saved feedback, with "Generation records": one ruled
+entry per job, like a recorded answer. Its fine meta line names the kind
+(Preparation, Fix draft), date and attempt; a fineprint line gives the recorded
+status and model. A recorded outcome reads as plain ink-2 text; defect reasons
+are a short list under "Defect reasons". Saved candidates, the critic result,
+kept critic results and raw responses each fold into the closed native
+disclosure the question page uses, holding the exact stored text in a quiet
+monospaced sheet that wraps at phone width. Each request's usage follows under
+a dashed rule: purpose, date and model, then "Cost $0.041" or "Unknown cost ·
+$0.50 counted". Nothing in it is a control. On a text's Version page Pace and
+Pause count phrases ("Pause stops new phrases", "Pace · new phrases each day",
+"Pace: 6 new phrases a day"); other Kinds keep Units. A text's stream no longer
+ends with "Concept practice →"; the Menu's Earlier practice is the one way
+there.
+
 ## Save draft without a script, and the words of practice — 2026-11-15
 
 Save draft is a plain secondary button under Check on every answer form, with

@@ -18,7 +18,8 @@ and no page offers a write. Walk journeys: US-001, US-006, US-009, US-010. Inten
   Concept the number of answers recorded for it, and "Archived" when it is.
   Every star of the constellation is drawn alike; a Goal with no live Concept
   draws none.
-- `map-goal` opens a goal (`/goals/{id}`) with its reference and original request.
+- `map-goal` opens a goal (`/goals/{id}`) with its reference, original request
+  and its [generation records](capture.md).
 - `map-concept` opens a concept (`/concepts/{id}`) with every note, saved
   questions and answers, observed counts of recalled, helped and missed
   answers (of its live questions), and prerequisite links both ways; links to
