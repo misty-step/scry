@@ -79,7 +79,20 @@ and ordinary denials, send nothing. Access signing keys the provider or the
 network cannot supply are reported as `access_keys_unavailable`, and a backup
 requested from Settings that fails as `backup_failure`
 ([custody, 2026-11-15](runbook.md#custody--source-as-of-2026-11-15)). The
-verification space takes no backups. Only production holds model authority: a
+verification space takes no backups.
+
+Storage capacity keeps a 4 MiB reserve below the 16 MiB complete-archive limit
+(`persistence::RESERVE_BYTES`). Ordinary growth may not take a notebook at or
+under 12 MiB over that line; withdrawing, settling and Settings backup requests
+may cross it, and a notebook already over 12 MiB keeps the earlier protection,
+admitted up to 16 MiB. The reserve covers every write that never asks the rule:
+seven paid outcomes at most (3.50 USD rolling allowance over 0.50 USD
+reservations), each up to 256 KiB of raw response that JSON may escape to twice
+its length plus 8 KiB of Verdict, effects and ledger, 7 x 520 KiB = 3,640 KiB;
+a thousand open Checks refused or made unknown by a claim, recovery or restore
+at 150 bytes each, 147 KiB; a restore marker and a backup's status and failure
+text, under 1 KiB. Total 3,788 KiB, inside 4,096 KiB. A raw response made of
+control characters, each escaped to six bytes, is not covered. Only production holds model authority: a
 preview reaches Jev only at a `.invalid` test host. The
 [runbook](runbook.md#failure-reports-and-model-authority--source-as-of-2026-11-15)
 lists the categories and the bindings paid judgment needs.
