@@ -24,11 +24,9 @@ function reconcile(source, actual, space) {
   // These are the existing restore's only cross-namespace changes. Never
   // normalize content, schedule, assistance, spend, history or receipt values.
   for (const key of ['revision', 'csrf', 'restored_paused', 'backup']) expected[key] = got[key];
+  // Retired generation jobs are restored exactly as stored; only absent
+  // Serde defaults are filled.
   for (const job of Object.values(expected.jobs)) {
-    if (['queued', 'candidates'].includes(job.status)) Object.assign(job,
-      {status: 'paused', error: 'Preparation is paused in this restored learning space.'});
-    else if (['sent', 'critic-sent'].includes(job.status)) Object.assign(job,
-      {status: 'unknown', error: 'Restored request has an uncertain paid outcome. Its usage is retained.'});
     for (const key of ['critic_cache_json', 'critic_model', 'critic_parent_id']) if (!(key in job)) job[key] = null;
     if (!('critic_inherited_keys' in job)) job.critic_inherited_keys = [];
   }

@@ -1,5 +1,19 @@
 # Scry: a recall instrument
 
+## Backup status, full storage and a paused restore — 2026-11-15
+
+Settings' Backup section leads with its state in one plain paragraph. A failed
+latest attempt reads "**The last backup failed.** Last verified backup: <date>."
+or "… No verified backup exists." in ink, outside any disclosure; the stored
+reason stays under "Backup details". When the notebook is past one complete
+archive, a second line reads "**Storage is full.** …" and says nothing has been
+deleted. Neither uses colour to carry the state. The verification space's
+Backup section holds only "Backups do not apply to this verification space."
+with no button. A refusal for capacity is the page's ordinary notice, with the
+typed answer kept. In a restored, paused notebook, the notice under "Saved, not
+graded." ends with the underlined link "Resume checks in Settings", which opens
+Settings at "Preparation is paused."; Check again is not offered there.
+
 ## A Goal's generation records, and a text's phrases — 2026-11-15
 
 A Goal's page ends, before saved feedback, with "Generation records": one ruled

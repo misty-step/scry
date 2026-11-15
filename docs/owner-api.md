@@ -12,8 +12,21 @@ cannot recover it. An optional expiry is a Unix timestamp in milliseconds.
 Paid permission defaults to off. Any Owner token holder can mint, list and
 revoke ordinary tokens. Granting paid permission requires the Access owner or
 an Owner token that already has paid permission; an unpaid grant attempt is
-refused before creating a token or operation receipt. Owner tokens do not
+refused before creating a token or operation receipt. A token that expires
+cannot mint one that outlives it: the new token needs an `expires_ms` no later
+than its own, and a request without one, or with a later one, answers 403
+`This Owner token expires, so a token it creates must expire no later than it
+does. Nothing was created.` before anything is written. A token without an
+expiry, and the signed-in Owner, may set any expiry or none. Owner tokens do not
 authorize operator backup or restore.
+
+Every mutation, from the API or the browser, is refused with 413 `Storage is
+full. This would make the notebook too large for one complete backup, so
+nothing was saved.` when what it changed would no longer fit one complete
+archive; a replay of a committed operation and a token revocation are never
+refused for capacity. A notebook already past capacity (records of paid work
+are saved even then) answers `GET /api/v1/export` with 413 and stays readable
+through every other read.
 
 ## Use the CLI
 

@@ -75,7 +75,11 @@ honestly; do not turn a missing observation into a claim of success.
 
 Unexpected failures reach the Owner's triage route as a fixed category and the
 deployment identity only; an unhealthy `/healthz` that names a stale backup,
-and ordinary denials, send nothing. Only production holds model authority: a
+and ordinary denials, send nothing. Access signing keys the provider or the
+network cannot supply are reported as `access_keys_unavailable`, and a backup
+requested from Settings that fails as `backup_failure`
+([custody, 2026-11-15](runbook.md#custody--source-as-of-2026-11-15)). The
+verification space takes no backups. Only production holds model authority: a
 preview reaches Jev only at a `.invalid` test host. The
 [runbook](runbook.md#failure-reports-and-model-authority--source-as-of-2026-11-15)
 lists the categories and the bindings paid judgment needs.

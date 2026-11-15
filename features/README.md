@@ -75,6 +75,12 @@ Each file has a title and a user-visible paragraph, then `Sub-features`,
   deploy its exact Worker bytes, then read back code and storage identity.
   Product backup behavior stays covered by `qa/backup-proof.test.mjs`; hosted
   disaster recovery is not a deployment prerequisite or a claimed outcome.
+- [Custody](../SPEC.md#backup-and-recovery): storage capacity from the browser
+  and the API, a failed backup in Settings, the verification space without
+  backups, cross-site reads, restore of retired generation jobs and Owner token
+  expiry. `node --test qa/custody.test.mjs` drives the built Worker;
+  `tests/custody.rs` covers the engine rule, restore and pages. Source:
+  `src/runtime.rs`, `src/persistence.rs`, `src/engine.rs`, `src/web.rs`.
 
 
 Old Go and retired-Worker receipts, as well as synthetic material, do not

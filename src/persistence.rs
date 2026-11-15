@@ -630,6 +630,28 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
     .map_err(|_| AppError::new(413, "The complete archive exceeds its bounded size limit."))?;
     Ok(size.bytes)
 }
+/// What a mutation refused for storage capacity says, from any client.
+pub const CAPACITY_REFUSAL: &str = "Storage is full. This would make the notebook too large for one complete backup, so nothing was saved.";
+
+/// One capacity rule for every client: a mutation that changed the notebook
+/// commits only if the result still fits one complete archive. A replay
+/// changes nothing and returns its committed result. Revoking an Owner token is
+/// never refused for capacity: access can always be withdrawn. Records of paid
+/// work are saved through the runtime's work path, which does not ask.
+pub fn admit_growth(path: &str, before_revision: u64, after: &App) -> AppResult<()> {
+    if after.revision == before_revision || path == "/tokens/revoke" {
+        return Ok(());
+    }
+    within_capacity(after)
+}
+/// Whether the notebook fits one complete archive, refused in plain words.
+pub fn within_capacity(app: &App) -> AppResult<()> {
+    match archive_size(app) {
+        Ok(_) => Ok(()),
+        Err(error) if error.status == 413 => Err(AppError::new(413, CAPACITY_REFUSAL)),
+        Err(error) => Err(error),
+    }
+}
 impl Archive {
     pub fn new(app: App, photos: Vec<ArchivedPhoto>, now: i64) -> Self {
         Self {

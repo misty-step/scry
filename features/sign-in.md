@@ -10,7 +10,8 @@ Agents never use the owner's account. They sign in through the same production f
 the dedicated AgentMail QA account `scry-qa@agentmail.to`, which phaedrus
 authorized via Home on 2026-10-21. The Worker gives that identity the isolated
 QA principal: owner capabilities inside the `scry-qa` space, and no owner
-operations. Intent: [SPEC § Privacy](../SPEC.md#privacy). The
+operations or backups: its Settings says backups do not apply, a backup request
+is refused, and its alarm takes none. Intent: [SPEC § Privacy](../SPEC.md#privacy). The
 dated configuration is in the [runbook](../docs/runbook.md#owner-subject-re-pointed--2026-10-20).
 
 ## Sub-features

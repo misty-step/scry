@@ -178,6 +178,19 @@ pub fn mutate_judged(
         paid: actor.paid(),
     };
     let response = apply(&mut next, path, fields, now, seed, judging)?;
+    // A token cannot create one that outlives it: one that expires later than
+    // it does, or never. The signed-in Owner's tokens are unbounded.
+    if path == "/tokens/create"
+        && let MutationActor::Token(acting) = actor
+        && let Some(limit) = acting.expires_ms
+        && response
+            .entity_id
+            .as_ref()
+            .and_then(|id| next.owner_tokens.get(id))
+            .is_none_or(|created| created.info.expires_ms.is_none_or(|t| t > limit))
+    {
+        return Err(owner_token::expiry_refusal());
+    }
     if let Some(checkpoint) = &mut next.practice.answer_checkpoint
         && checkpoint.draft.as_ref().is_some_and(|draft| {
             next.practice.current.as_ref().is_none_or(|current| {
@@ -2929,23 +2942,14 @@ pub fn pause_for_restore(app: &mut App, now: i64) -> AppResult<()> {
 /// again. The earlier concept notebook is restored exactly as it was saved: its
 /// checks, held question and Concepts are not read. Nothing claims them, so a
 /// check saved as queued or sent is never sent from the restored notebook.
+/// Retired generation jobs are history and stay byte for byte as stored:
+/// nothing claims, sends or recovers generation work in any state.
 pub fn pause_restored(app: &mut App, now: i64) -> AppResult<()> {
     let revision = app
         .revision
         .checked_add(1)
         .ok_or_else(|| AppError::new(422, "State revision exhausted."))?;
     app.restored_paused = true;
-    for j in app.jobs.values_mut() {
-        if matches!(j.status.as_str(), "sent" | "critic-sent") {
-            j.status = "unknown".into();
-            j.error = Some(
-                "Restored request has an uncertain paid outcome. Its usage is retained.".into(),
-            );
-        } else if matches!(j.status.as_str(), "queued" | "candidates") {
-            j.status = "paused".into();
-            j.error = Some("Preparation is paused in this restored learning space.".into());
-        }
-    }
     // A queued Check is never sent from a restored notebook; a sent one has an
     // uncertain paid outcome. Either leaves its answer saved and not graded.
     for check in app.practice.checks.values_mut() {
