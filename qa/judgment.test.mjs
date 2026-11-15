@@ -1067,16 +1067,13 @@ test('phone width, with and without JavaScript: the switch, checking, Good, Agai
 });
 
 // SPEC § Backup and recovery: growth past storage capacity is refused, and
-// records of paid work are kept even at capacity. A paid record may carry the
-// notebook over the ordinary threshold into the reserve made for it; the
-// notebook then keeps backing up, and keeps the earlier protection.
-test('a paid Check\'s outcome is recorded across the threshold, and the notebook keeps backing up',{timeout:180000},async()=>{
+// records of paid work are kept even at capacity.
+test('at capacity a paid Check\'s outcome is still recorded, and the next growth is refused',{timeout:180000},async()=>{
   const n=await notebook();
   try{
     await n.turnOn();
     await n.study(await n.addMapping('Synthetic harbour practice',HARBOUR));
-    // Ordinary growth stops 4 MiB below the archive limit; paid records use the reserve.
-    const ORDINARY=16*1024*1024-4*1024*1024;
+    const MAX=16*1024*1024;
     // The archive's measured size, at the widest creation time the rule allows.
     const size=async()=>{const {bytes}=await n.export();return bytes.length+'-9223372036854775808'.length-String(Date.now()).length;};
     // A received response large enough that its record cannot fit the room left.
@@ -1094,9 +1091,9 @@ test('a paid Check\'s outcome is recorded across the threshold, and the notebook
       JSON.stringify({acting_token:null,path:null,created_ms:null,payload_hash:'a'.repeat(64),result:{redirect:'/',entity_id:null,message:null,data:{synthetic:'x'.repeat(pad)}}}));
     const room=answered+600;
     start=await size();
-    while(ORDINARY-room-start>950000){await put(i++,900000);start=await size();}
-    await put(i,1000);const overhead=await size()-start-1000;await put(i,ORDINARY-room-start-overhead);
-    assert.equal(await size(),ORDINARY-room);
+    while(MAX-room-start>950000){await put(i++,900000);start=await size();}
+    await put(i,1000);const overhead=await size()-start-1000;await put(i,MAX-room-start-overhead);
+    assert.equal(await size(),MAX-room);
     const second=await n.answer('sound a horn');
     const recorded=await n.settle(n.closed(second.attempt),'the Check at capacity');
     const check=n.checksOf(recorded,second.attempt)[0];
@@ -1105,18 +1102,14 @@ test('a paid Check\'s outcome is recorded across the threshold, and the notebook
     const ledger=recorded.spend.find(s=>s.work_id===check.id);
     assert.equal(ledger.status,'known');assert.ok(ledger.raw_response.includes('p'.repeat(60000)),'its raw response is kept');
     assert.equal(n.jev.sent.length,2);
-    // Over the ordinary threshold now, within the reserve: the notebook reads,
-    // backs up and exports, states its size without calling itself full, and
-    // admits writes up to the full limit, as before the threshold existed.
-    assert.ok(await size()>ORDINARY,'the paid record went past the ordinary threshold');
-    const settings=await n.page('/settings');
-    assert.match(settings,/<p class="fineprint" data-capacity="large">The notebook uses 12\.\d MiB of the 16 MiB one complete backup can hold\.<\/p>/);
-    assert.doesNotMatch(settings,/Storage is full/);
-    assert.equal((await n.submit('/settings','/settings/backup')).response.status,303,'a backup can be asked for');
-    const backed=(await n.state()).meta.backup;assert.equal(backed.error,null,'the backup is verified');assert.ok(backed.completed_ms);
-    assert.match(await n.page('/recall'),/data-verdict="Good"/,'the held result stays readable');
+    // Past capacity now: the notebook reads and says so; growth is refused.
+    const exported=await n.req('/export');assert.equal(exported.status,413);
+    assert.match(await n.page('/settings'),/<p data-capacity="full"><strong>Storage is full\.<\/strong>/);
+    const before=await n.rows();
     const {response}=await n.submit('/recall','/practice/next');
-    assert.equal(response.status,303,'already over the threshold: admitted up to the full limit');
+    assert.equal(response.status,413);assert.match(await response.text(),/Storage is full\. This would make the notebook too large for one complete backup, so nothing was saved\./);
+    assert.deepEqual(await n.rows(),before);
+    assert.match(await n.page('/recall'),/data-verdict="Good"/,'the held result stays readable');
   }finally{await n.close();}
 });
 

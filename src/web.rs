@@ -3912,9 +3912,9 @@ impl View<'_> {
             crate::persistence::Footprint::TooLarge => {
                 "<p data-capacity=\"full\"><strong>Storage is full.</strong> The notebook is too large for a complete backup or export, and changes that add to it are refused. Nothing has been deleted.</p>".to_string()
             }
-            // Over the ordinary threshold, under the limit: true and quiet.
+            // Over three quarters of the limit: its size, quietly.
             crate::persistence::Footprint::Fits(bytes)
-                if bytes > crate::persistence::ORDINARY_ARCHIVE_BYTES =>
+                if bytes > crate::persistence::SIZE_NOTICE_BYTES =>
             {
                 format!(
                     "<p class=\"fineprint\" data-capacity=\"large\">The notebook uses {:.1} MiB of the {} MiB one complete backup can hold.</p>",

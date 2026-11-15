@@ -24,40 +24,36 @@ observation. Stored records and archive formats are unchanged.
 - **Storage capacity.** Only size refuses. A mutation that changes the
   notebook, from the browser or the API, is refused with 413 and "Storage is
   full. This would make the notebook too large for one complete backup, so
-  nothing was saved." when the result would pass the 16 MiB archive limit, or
-  when an ordinary write would take a notebook at or under the ordinary
-  threshold of 12 MiB (the limit less a 4 MiB reserve) over it. The refused
-  page keeps the typed answer; nothing is written. A replay of a committed
-  operation and a token revocation are never refused for capacity. Withdrawing,
-  settling and asking for a backup (turning paid judgment off, resuming after a
-  restore, pausing or dropping a Study, discarding a draft, the Settings backup
-  request) may cross the threshold, up to the full 16 MiB.
-- **A notebook already over 12 MiB** (one that was that large before this rule,
-  or one that writes bypassing the rule took there) keeps the earlier, weaker
-  protection: its writes are admitted up to 16 MiB, as the API admitted them
-  before, and its reserve is only the room left. Settings states its size in
-  fineprint ("The notebook uses 13.0 MiB of the 16 MiB one complete backup can
-  hold.") and does not call it full.
-- **The reserve.** Writes that never ask the rule use it: a backup's status or
-  failure text, a restore's marker and per-Check reasons, alarm recovery, and
-  records of paid work (a sent Check's outcome, its ledger entry). Seven paid
-  outcomes can follow at most (3.50 USD over 0.50 USD reservations), each up to
-  256 KiB of raw response that JSON may escape to twice its size plus 8 KiB of
-  Verdict and ledger: 3,640 KiB; a thousand open Checks refused or made unknown
-  at 150 bytes each: 147 KiB; a marker and a backup's status: under 1 KiB.
-  Total 3,788 KiB, inside 4 MiB. Backup, export, restore and validation keep
-  the full limit.
+  nothing was saved." when the result would pass the 16 MiB complete-archive
+  limit. The refused page keeps the typed answer; nothing is written. A replay
+  of a committed operation and a token revocation are never refused for
+  capacity. Records of paid work (a sent Check's outcome, its ledger entry, an
+  interrupted send's unknown spend) are saved through the work path without
+  asking.
+- **The edge left open.** Writes that never ask the rule (a failed backup's
+  status, a restore's marker and per-Check reasons, a paid Check's record) can
+  carry a notebook within a few hundred bytes of the limit past it. From then
+  on it cannot back up or export until an operator intervenes: every backup
+  fails and shows as failed, export answers 413, every growing write is
+  refused, `/healthz` reports the stale backup after 26 hours, and nothing is
+  deleted. The remedy is a reserve kept below the limit for those writes. It
+  was not shipped because the live notebook's size is unknown, and a reserve
+  that refuses ordinary growth could lock out a notebook already inside it.
+  `qa/custody.test.mjs` and `tests/custody.rs` pin this state as it is today.
+- **Size in Settings.** Over 12 MiB (three quarters of the limit) Settings
+  states the size in fineprint ("The notebook uses 13.0 MiB of the 16 MiB one
+  complete backup can hold."); under it, nothing.
 - **Unmeasurable archives.** A notebook whose archive cannot be built for a
   reason other than size (a stored photo over the photo limit, conflicting
   photo records) is answered exactly as before this rule: the earlier checked
   browser writes (Save draft, discard, starting NATO or a lesson, Library adds
   and edits) and every API mutation refuse with that reason; every other write
   is admitted; its backups fail and show as failed.
-- **Full notebooks.** None is ever trimmed. Past the full limit (reachable only through a reserve overrun) every page, History, the
-  Library and the API reads stay available; `/export` and `/api/v1/export`
-  answer 413 "Storage is full: the notebook is too large for one complete
-  export. …"; backups fail and show as failed; `/healthz` turns stale after 26
-  hours as before.
+- **Full notebooks.** None is ever trimmed. Past the limit every page,
+  History, the Library and the API reads stay available; `/export` and
+  `/api/v1/export` answer 413 "Storage is full: the notebook is too large for
+  one complete export. …"; Settings says "Storage is full."; backups fail and
+  show as failed.
 - **Failed backup.** Settings leads with "The last backup failed." and the
   last verified date, or "No verified backup exists.", outside any disclosure.
   A failed backup asked for in Settings returns to Settings (303), keeps study

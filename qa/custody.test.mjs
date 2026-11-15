@@ -15,8 +15,7 @@ const origin='https://scry-custody-synthetic.invalid';
 const team='custody-synthetic.cloudflareaccess.com',audience='synthetic-custody-audience',owner='synthetic-custody-owner';
 const qaEmail='custody-qa@synthetic.invalid';
 const MAX=16*1024*1024;
-// Ordinary growth stops 4 MiB below the archive limit (persistence::RESERVE_BYTES).
-const ORDINARY=MAX-4*1024*1024;
+const MIB=1024*1024;
 const CAPACITY='Storage is full. This would make the notebook too large for one complete backup, so nothing was saved.';
 const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const publicJwk={...publicKey.export({format:'jwk'}),kid:'synthetic-key',alg:'RS256',use:'sig'};
@@ -94,9 +93,8 @@ test('an answer past capacity is refused by one rule from the browser and the AP
   try{
     const secret=await n.token();
     await heldNato(n);
-    // Room below the ordinary threshold for the Quiz and a backup request
-    // with its status, not for an answer.
-    await n.fill(2500,ORDINARY);
+    // Room for the Quiz and a backup request with its status, not an answer.
+    await n.fill(2500);
     const answer=await quiz(n);
     const before=await n.rows();
     const typed='CAPACITY_TYPED_ALFA';
@@ -364,18 +362,13 @@ for(const kind of ['oversized','conflicting'])test(`only size refuses: a noteboo
   }finally{await n.runtime.mf.dispose();}
 });
 
-test('a notebook exactly at the ordinary threshold backs up, survives a failed backup, and restores into one that backs up and resumes',async()=>{
+test('a notebook at 13 MiB backs up, survives a failed backup, and restores into one that backs up and resumes',async()=>{
   const n=await notebook();
   const restoreToken='synthetic-custody-restore-key-at-least-32chars';
   try{
     const {record}=await savedPhoto(n);
     await heldNato(n);
-    await n.fill(0,ORDINARY);
-    // Any ordinary growth is refused there, in the same words.
-    const before=await n.rows();
-    const quizzed=await n.submit('/?practice=nato','/practice/quiz');
-    assert.equal(quizzed.status,413);assert.ok(unescape(await quizzed.text()).includes(CAPACITY));
-    assert.deepEqual(await n.rows(),before);
+    await n.fill(MAX-13*MIB);
     // The daily backup: verified, then a failed attempt, then verified again.
     const backup=async()=>{await setMeta(n,m=>{m.backup.completed_ms=m.backup.completed_ms&&Date.now()-25*3600_000;});return n.alarm(n.space);};
     assert.equal((await backup()).status,200);assert.equal((await n.meta()).backup.error,null);
@@ -413,59 +406,7 @@ test('a notebook exactly at the ordinary threshold backs up, survives a failed b
   }finally{await n.runtime.mf.dispose();}
 });
 
-// Exactly limit - room bytes, by resizing the first test-owned receipt.
-async function trim(n,limit,room=0){
-  const sql=await n.sql(),key='operations/custody-capacity-0000';
-  const value=JSON.parse((await sql.exec('SELECT value FROM records WHERE key=?',key))[0].value);
-  const gap=limit-room-await n.size();
-  value.result.data.synthetic+= gap>0?'x'.repeat(gap):'';
-  if(gap<0)value.result.data.synthetic=value.result.data.synthetic.slice(0,gap);
-  await sql.exec('UPDATE records SET value=? WHERE key=?',JSON.stringify(value),key);
-  assert.equal(await n.size(),limit-room);
-}
-
-test('across the ordinary threshold the Owner can still withdraw, settle and ask for a backup; ordinary growth cannot cross',async()=>{
-  const n=await notebook();
-  try{
-    const secret=await n.token();
-    await heldNato(n);
-    await setMeta(n,m=>{m.preferences.paid_judgment=true;m.restored_paused=true;});
-    await (await n.sql()).exec("INSERT INTO records(key,value) VALUES('judgment_compatibility/v1','1') ON CONFLICT(key) DO NOTHING");
-    await n.fill(0,ORDINARY);
-    // Exactly at the threshold, nothing about storage is said.
-    assert.doesNotMatch(await n.page('/settings'),/data-capacity/);
-    // Ordinary growth may not cross, in the same words.
-    const before=await n.rows();
-    const crossing=await n.submit('/?practice=nato','/practice/quiz');
-    assert.equal(crossing.status,413);assert.ok(unescape(await crossing.text()).includes(CAPACITY));
-    assert.deepEqual(await n.rows(),before);
-    // Each settling action crosses it from exactly the threshold.
-    const study=(await n.rows()).find(r=>r.key.startsWith('practice_studies/')).key.split('/')[1];
-    const tokenId=(await n.rows()).find(r=>r.key.startsWith('owner_tokens/')).key.split('/')[1];
-    for(const [label,act,check] of [
-      ['ask for a backup',async()=>n.submit('/settings','/settings/backup'),async()=>{const b=(await n.meta()).backup;assert.equal(b.error,null);assert.ok(b.completed_ms);}],
-      ['turn paid judgment off',async()=>n.post('/settings/judgment',{...await freshFields(n),paid_judgment:'off'}),async()=>assert.equal((await n.meta()).preferences.paid_judgment??false,false)],
-      ['resume after a restore',async()=>n.post('/settings/resume',await freshFields(n)),async()=>assert.equal((await n.meta()).restored_paused,false)],
-      ['pause a Study',async()=>n.post('/practice/pause',{...await freshFields(n),study_id:study}),async()=>{}],
-      ['drop a Study',async()=>n.post('/practice/drop',{...await freshFields(n),study_id:study}),async()=>{}],
-    ]){
-      await trim(n,ORDINARY);
-      const response=await act();
-      assert.equal(response.status,303,label);await check();
-      // Dropping a Study can shrink the notebook; every other one grows it.
-      if(label!=='drop a Study')assert.ok(await n.size()>ORDINARY,`${label} crossed the threshold`);
-    }
-    await trim(n,ORDINARY);
-    assert.equal((await n.api('/api/v1/tokens/revoke',secret,{operation_id:'custody-'+randomUUID(),token_id:tokenId})).status,200,'revoke a token');
-    // Over the threshold, Settings states the size quietly and never says full.
-    const settings=await n.page('/settings');
-    assert.match(settings,/<p class="fineprint" data-capacity="large">The notebook uses 12\.0 MiB of the 16 MiB one complete backup can hold\.<\/p>/);
-    assert.doesNotMatch(settings,/Storage is full/);
-  }finally{await n.runtime.mf.dispose();}
-});
-
-test('a notebook already over the threshold keeps the earlier protection: admitted up to the full limit, never past it',async()=>{
-  const mib=1024*1024;
+test('one limit: at 13 MiB every write is admitted and Settings states the size; one that would pass 16 MiB is refused',async()=>{
   const text=size=>Array.from({length:Math.ceil(size/40)},(_,i)=>`Synthetic line ${String(i).padStart(6,'0')} of words.`).join('\n')+'\n';
   const add=(n,secret,title,size)=>n.api('/api/v1/library/versions',secret,{operation_id:'custody-'+randomUUID(),data:{title,name:'Authored',kind:'text',text:text(size)}});
   // 13 MiB, as an earlier notebook may already be.
@@ -473,12 +414,11 @@ test('a notebook already over the threshold keeps the earlier protection: admitt
   try{
     const secret=await n.token();
     await heldNato(n);
-    await n.fill(16*mib-13*mib,MAX);
+    await n.fill(MAX-13*MIB);
     const answer=await quiz(n);
     assert.equal((await n.post('/practice/answer',{...answer,answer:'Alfa'})).status,303,'browser answer');
     assert.equal((await n.submit('/?practice=nato','/practice/next')).status,303,'browser Next');
-    const browserAdd=await n.post('/library/version/add',{...await freshFields(n),title:'Synthetic browser text',name:'Authored',text:text(2000)});
-    assert.equal(browserAdd.status,303,'browser Library add');
+    assert.equal((await n.post('/library/version/add',{...await freshFields(n),title:'Synthetic browser text',name:'Authored',text:text(2000)})).status,303,'browser Library add');
     assert.equal((await add(n,secret,'Synthetic API text',2000)).status,200,'API Library add');
     const api=await n.api('/api/v1/quiz',secret,{operation_id:'custody-'+randomUUID(),prompt_id:n.form(await n.page('/?practice=nato'),'/practice/quiz').prompt_id});
     assert.equal(api.status,200,'API Quiz');
@@ -486,30 +426,68 @@ test('a notebook already over the threshold keeps the earlier protection: admitt
     assert.equal((await n.api('/api/v1/answer',secret,{operation_id:'custody-'+randomUUID(),prompt_id:held.prompt_id,answer:'Bravo'})).status,200,'API answer');
     const study=(await n.rows()).find(r=>r.key.startsWith('practice_studies/')).key.split('/')[1];
     assert.equal((await n.api('/api/v1/next',secret,{operation_id:'custody-'+randomUUID(),study_id:study,after:held.prompt_id})).status,200,'API Next');
-    assert.match(await n.page('/settings'),/data-capacity="large">The notebook uses 13\.\d MiB of the 16 MiB/);
-    assert.doesNotMatch(await n.page('/settings'),/Storage is full/);
+    assert.equal((await n.submit('/settings','/settings/backup')).status,303,'a backup');
+    assert.equal((await n.meta()).backup.error,null);
+    const settings=await n.page('/settings');
+    assert.match(settings,/<p class="fineprint" data-capacity="large">The notebook uses 13\.\d MiB of the 16 MiB one complete backup can hold\.<\/p>/);
+    assert.doesNotMatch(settings,/Storage is full/);
   }finally{await n.runtime.mf.dispose();}
-  // 11.99 MiB: a write that would cross is refused; a smaller one is not.
+  // Under three quarters of the limit Settings says nothing about size.
+  n=await notebook();
+  try{
+    await n.fill(4*MIB+1000);
+    assert.doesNotMatch(await n.page('/settings'),/data-capacity/);
+  }finally{await n.runtime.mf.dispose();}
+  // 15.99 MiB: a write that would pass the limit is refused; one that fits is not.
   n=await notebook();
   try{
     const secret=await n.token();
-    await n.fill(12*mib-(11*mib+Math.floor(99*mib/100)),ORDINARY);
-    const before=await n.rows();
-    const crossing=await add(n,secret,'Synthetic crossing text',30000);
-    assert.equal(crossing.status,413);assert.deepEqual(await crossing.json(),{error:CAPACITY});
-    assert.deepEqual(await n.rows(),before);
-    assert.equal((await add(n,secret,'Synthetic small text',500)).status,200);
-  }finally{await n.runtime.mf.dispose();}
-  // 15.99 MiB: a write that would pass the limit is refused.
-  n=await notebook();
-  try{
-    const secret=await n.token();
-    await n.fill(16*mib-(15*mib+Math.floor(99*mib/100)),MAX);
+    await n.fill(MAX-(15*MIB+Math.floor(99*MIB/100)));
     const before=await n.rows();
     const exceeding=await add(n,secret,'Synthetic exceeding text',30000);
     assert.equal(exceeding.status,413);assert.deepEqual(await exceeding.json(),{error:CAPACITY});
     assert.deepEqual(await n.rows(),before);
+    const browser=await n.post('/library/version/add',{...await freshFields(n),title:'Synthetic exceeding browser text',name:'Authored',text:text(30000)});
+    assert.equal(browser.status,413);assert.ok(unescape(await browser.text()).includes(CAPACITY));
+    assert.deepEqual(await n.rows(),before);
     assert.equal((await add(n,secret,'Synthetic small text',500)).status,200,'within the limit it is admitted');
+  }finally{await n.runtime.mf.dispose();}
+});
+
+// The edge this change leaves, pinned as it is today so that a later reserve
+// has a failing-first test to flip. A write that never asks the rule (here a
+// failed backup's status) carries a notebook a few bytes under the limit past
+// it; from then on it cannot back up or export until an operator intervenes,
+// health turns stale, and nothing is deleted.
+test('today a failed backup can carry a notebook a few bytes under the limit past it, and backups stop',async()=>{
+  const n=await notebook();
+  try{
+    const {record}=await savedPhoto(n);
+    await heldNato(n);
+    await n.fill(60);
+    const keys=(await n.rows()).map(r=>r.key);
+    // The daily backup meets a transient failure: the photo cannot be read.
+    const assets=await n.runtime.mf.getR2Bucket('SCRY_ASSETS');
+    await assets.delete(record.key);
+    assert.equal((await n.alarm(n.space)).status,200);
+    assert.ok((await n.meta()).backup.error,'the failure is recorded');
+    // That record carried the notebook past the limit.
+    const exported=await n.req('/export');
+    assert.equal(exported.status,413);assert.match(await exported.text(),/^Storage is full: the notebook is too large for one complete export\./);
+    // The cause goes away, and still no backup can be made.
+    await assets.put(record.key,photoBytes);
+    await setMeta(n,m=>{m.backup.completed_ms=Date.now()-27*3600_000;});
+    assert.equal((await n.alarm(n.space)).status,200);
+    assert.ok((await n.meta()).backup.error);
+    const request=await n.submit('/settings','/settings/backup');
+    assert.equal(request.status,413,'asking for a backup adds to a full notebook');
+    assert.deepEqual((await n.backups()).filter(key=>key.startsWith(`snapshots/${n.space}/`)),[]);
+    const settings=outsideDisclosures(await n.page('/settings'));
+    assert.match(settings,/<p data-backup="failed">/);assert.match(settings,/<p data-capacity="full"><strong>Storage is full\.<\/strong>/);
+    assert.equal((await n.req('/healthz',{token:()=>''})).status,503,'health reports the stale backup');
+    const after=(await n.rows()).map(r=>r.key);
+    for(const key of keys)assert.ok(after.includes(key),`${key} was kept`);
+    assert.equal((await n.req('/?practice=nato')).status,200,'the notebook stays readable');
   }finally{await n.runtime.mf.dispose();}
 });
 
