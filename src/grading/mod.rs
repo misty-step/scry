@@ -299,34 +299,78 @@ fn grade_with_policy(
     })
 }
 
-/// The position of a year among mapping words: one to four digits, alone or
-/// with one AD or CE marker before or after it, written with or without stops.
-fn year_index(tokens: &[unicode::Token]) -> Option<usize> {
+/// Whether a year was written in the common era (with AD or CE, or none) or
+/// before it (with BC or BCE).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Era {
+    Common,
+    BeforeCommon,
+}
+
+/// A year as typed: one to four digits, alone or with one AD, CE, BC or BCE
+/// marker before or after them, and nothing else but whitespace and stops
+/// inside or directly after the marker. So "1066", "AD 1066", "1066 c.e." and
+/// "44 B.C." are years as typed; "1066.", "1066,", "(1066)", "-1066", "in
+/// 1066" and "1066 to 1087" are not. Returns the tokens, the digits' position
+/// and the era. This one definition decides both whether the year rule may
+/// grade a text and whether an answer is graded by Scry alone, never sent.
+fn typed_year(text: &str) -> Option<(Vec<unicode::Token>, usize, Era)> {
+    let tokens = unicode::mapping_tokens(text);
     let words: Vec<&str> = tokens.iter().map(|t| t.normalized.as_str()).collect();
-    let era = |words: &[&str]| matches!(words, ["ad"] | ["ce"] | ["a", "d"] | ["c", "e"]);
     let i = words
         .iter()
         .position(|w| (1..=4).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_digit()))?;
-    let (before, after) = (&words[..i], &words[i + 1..]);
-    ((before.is_empty() && (after.is_empty() || era(after))) || (after.is_empty() && era(before)))
-        .then_some(i)
+    // Typed as digits, ASCII or full-width: never "⑻", which is "(8)".
+    if !tokens[i]
+        .word
+        .text
+        .chars()
+        .all(|c| c.is_ascii_digit() || ('\u{FF10}'..='\u{FF19}').contains(&c))
+    {
+        return None;
+    }
+    let marker = match (&words[..i], &words[i + 1..]) {
+        ([], []) => &[][..],
+        ([], after) => after,
+        (before, []) => before,
+        _ => return None,
+    };
+    let era = match marker {
+        [] | ["ad"] | ["ce"] | ["a", "d"] | ["c", "e"] => Era::Common,
+        ["bc"] | ["bce"] | ["b", "c"] | ["b", "c", "e"] => Era::BeforeCommon,
+        _ => return None,
+    };
+    let mut covered = vec![false; text.len()];
+    let mut after_marker = vec![false; text.len() + 1];
+    for (n, token) in tokens.iter().enumerate() {
+        covered[token.word.span.clone()].fill(true);
+        if n != i {
+            after_marker[token.word.span.end] = true;
+        }
+    }
+    // A stop is allowed only directly after a marker letter: "A.D.", never "1066.".
+    let mut previous_end = None;
+    for (at, c) in text.char_indices() {
+        let allowed = covered[at]
+            || c.is_whitespace()
+            || (c == '.' && previous_end.is_some_and(|end: usize| after_marker[end]));
+        if !allowed {
+            return None;
+        }
+        previous_end = Some(at + c.len_utf8());
+        if c == '.' {
+            // "A.D." : the stop belongs to the marker letter before it.
+            previous_end = None;
+        }
+    }
+    Some((tokens, i, era))
 }
 
-/// A year as typed, for the year rule: the text holds only its digits and
-/// an optional AD or CE marker, separated by spaces, the marker written with
-/// or without stops. A sign, dash, extra word, range or any other character
-/// means the text is not a year to the rule, so the plain grader decides.
+/// A year the year rule may grade: a year as typed in the common era.
 fn year_as_typed(text: &str) -> Option<(Vec<unicode::Token>, usize)> {
-    let tokens = unicode::mapping_tokens(text);
-    let i = year_index(&tokens)?;
-    let era = tokens.len() > 1;
-    let mut covered = vec![false; text.len()];
-    for token in &tokens {
-        covered[token.word.span.clone()].fill(true);
-    }
-    text.char_indices()
-        .all(|(at, c)| covered[at] || c.is_whitespace() || (era && c == '.'))
-        .then_some((tokens, i))
+    typed_year(text)
+        .filter(|(_, _, era)| *era == Era::Common)
+        .map(|(tokens, i, _)| (tokens, i))
 }
 
 /// The year a mapping text is to the year rule, as its normalized digits:
@@ -335,33 +379,11 @@ pub fn mapping_year(text: &str) -> Option<String> {
     year_as_typed(text).map(|(tokens, i)| tokens[i].normalized.clone())
 }
 
-/// Whether a mapping text names a year in any era: one to four digits, alone
-/// or with AD, CE, BC or BCE before or after. Such an answer to a year value is
-/// graded by Scry alone, as written or by the year rule, and never judged.
+/// Whether a mapping text is a year as typed, in any era. An answer that is
+/// one, to a value that is one, is graded by Scry alone (by the year rule in
+/// the common era, as written before it) and never sent to be judged.
 pub fn mapping_year_shaped(text: &str) -> bool {
-    let words = mapping_words(text);
-    let words: Vec<&str> = words.iter().map(String::as_str).collect();
-    let era = |w: &[&str]| {
-        matches!(
-            w,
-            ["ad"]
-                | ["ce"]
-                | ["bc"]
-                | ["bce"]
-                | ["a", "d"]
-                | ["c", "e"]
-                | ["b", "c"]
-                | ["b", "c", "e"]
-        )
-    };
-    let Some(i) = words
-        .iter()
-        .position(|w| (1..=4).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_digit()))
-    else {
-        return false;
-    };
-    let (before, after) = (&words[..i], &words[i + 1..]);
-    (before.is_empty() && (after.is_empty() || era(after))) || (after.is_empty() && era(before))
+    typed_year(text).is_some()
 }
 
 /// `grade_mapping`, then the year rule: where a single expected value and the

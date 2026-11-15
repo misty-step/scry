@@ -292,8 +292,11 @@ is recorded only where it turns a miss into Good: that Attempt records grader
 version `1;unicode=17.0.0;mapping=1;year=1`. Any other Attempt, a year miss
 included, is stored exactly as `;mapping=1` stores it, so a notebook in which
 the rule never made a miss Good keeps its bytes and format name. The rule reads
-the answer as typed: digits and an optional AD or CE marker only, so a sign,
-dash or other character leaves it to the plain grader. Replay regrades each
+the answer as typed: one definition of a year as typed (digits with an optional
+AD, CE, BC or BCE marker, stops only inside or directly after the marker)
+decides both whether the rule may grade it, for AD and CE, and whether an
+answer to a year value is graded by Scry alone, never sent. Anything else is
+left to the plain grader and, where it would be, to Jev. Replay regrades each
 Attempt under the version it recorded; an Attempt under the year version must
 be one the rule made Good, and earlier Attempts the rule would now accept stay
 as they were decided. With `both`, values the rule calls the same year are the

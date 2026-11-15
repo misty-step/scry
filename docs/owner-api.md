@@ -318,12 +318,18 @@ other local miss, and no Check, reservation or request.
 
 A value that is a year (one to four digits, alone or with AD or CE before or
 after, with or without stops) accepts the same digits with or without AD or CE.
-The answer must be just that as typed: a sign, dash, extra word, range or other
-character leaves it to the ordinary comparison. It is graded by Scry as an
-exact number, and a year before the common era (`44 BC`) is graded as written:
-`44` or `44 BCE` is a miss for it. A year answer (one to four digits with or
-without AD, CE, BC or BCE) to a year value is never sent to Jev, whether paid
-judgment is on or off. The year rule is recorded only where it turns a miss
+A year as typed is one to four digits, alone or with one AD, CE, BC or BCE
+marker before or after them, and nothing else but whitespace and stops inside
+or directly after the marker (`1066`, `AD 1066`, `1066 c.e.`, `44 B.C.`). That
+one definition decides both whether the year rule may grade a text and whether
+an answer is graded by Scry alone. A year is graded by Scry as an exact number,
+and a year before the common era (`44 BC`) is graded as written: `44` or
+`44 BCE` is a miss for it. An answer that is a year as typed, to a value that
+is one, is never sent to Jev, whether paid judgment is on or off. Anything else
+(`1066.`, `1066,`, `(1066)`, `-1066`, `in 1066`, `1066 to 1087`) is an
+ordinary answer, and a value such as `1066.` is an ordinary value: the
+ordinary comparison decides, and with paid judgment on a mismatch to content
+that is not Spelling-strict is judged. The year rule is recorded only where it turns a miss
 into Good: that Attempt records grader version
 `1;unicode=17.0.0;mapping=1;year=1` with a Diff comparing the numbers. Every
 other mapping Attempt, a year miss included, is stored exactly as `;mapping=1`

@@ -1059,3 +1059,87 @@ fn values_that_are_the_same_year_are_the_same_value_both_ways_and_may_share_a_pa
         assert!(r["mapping_feedback"].get("answered_key").is_none());
     }
 }
+
+/// One definition of a year as typed serves the year rule and the check that
+/// an answer is graded by Scry alone. Anything else is an ordinary answer: with
+/// paid judgment on and non-strict content, a mismatch is judged as before.
+#[test]
+fn the_year_rule_and_the_never_sent_check_share_one_definition_of_a_year_as_typed() {
+    // (value, answer, Verdict, whether it is sent to Jev)
+    let cases = [
+        ("1066 AD", "1066.", None, true),
+        ("1066 AD", "(1066)", None, true),
+        ("1066 AD", "1066,", None, true),
+        ("1066", "1066 BC", Some("Again"), false),
+        // The plain grader takes "B.C." as two words, so it is not "BC": Again, by Scry.
+        ("44 BC", "44 B.C.", Some("Again"), false),
+        ("44 BC", "44 bc", Some("Good"), false),
+        // A value that is not a year as typed is an ordinary value.
+        ("1066.", "1066 AD", None, true),
+        ("8 AD", "\u{247B}", None, true),
+        ("1066", "1066 AD.", Some("Good"), false),
+    ];
+    for (n, (value, answer, expected, sent)) in cases.into_iter().enumerate() {
+        let mut o = Owner::judged();
+        let vid = o
+            .add(json!({"title":format!("Synthetic typed year {n}"),"direction":"forward","spelling_strict":false,"pairs":[{"key":"Synthetic event","value":value}]}))
+            .unwrap();
+        let sid = o.learn(&vid, "intense");
+        o.next(&sid);
+        let r = o.answer(answer);
+        let verdict =
+            r["attempt"]["judgment"]["decided"]["verdict"]
+                .as_str()
+                .or(r["attempt"]["judgment"]
+                    .is_null()
+                    .then(|| r["attempt"]["grade"]["verdict"].as_str().unwrap()));
+        assert_eq!(verdict, expected, "{value} {answer}");
+        assert_eq!(
+            !r["attempt"]["judgment"].is_null(),
+            sent,
+            "{value} {answer}"
+        );
+        assert_eq!(
+            o.app.practice.checks.len(),
+            usize::from(sent),
+            "{value} {answer}"
+        );
+    }
+}
+
+/// With paid judgment off, each of those answers is stored as the plain grader
+/// stores it, and needs no new stored shape, except where the year rule made a
+/// miss Good.
+#[test]
+fn with_paid_judgment_off_an_answer_that_is_not_a_year_as_typed_keeps_the_plain_grade() {
+    for (value, answer) in [
+        ("1066 AD", "1066."),
+        ("1066 AD", "(1066)"),
+        ("1066", "1066 BC"),
+        ("44 BC", "44 B.C."),
+        ("1066.", "1066 AD"),
+        ("8 AD", "\u{247B}"),
+    ] {
+        let mut o = Owner::new();
+        let vid = o
+            .add(json!({"title":"Synthetic plain year","direction":"forward","spelling_strict":false,"pairs":[{"key":"Synthetic event","value":value}]}))
+            .unwrap();
+        let sid = o.learn(&vid, "intense");
+        o.next(&sid);
+        let r = o.answer(answer);
+        let mut stored = r["attempt"]["grade"].clone();
+        stored["wrong_version_hint"] = Value::Null;
+        assert_eq!(
+            stored,
+            shifted(
+                plain_grade(value, answer, false),
+                "Synthetic event".len() + 1
+            ),
+            "{value} {answer}"
+        );
+        assert!(
+            !persistence::rows(&o.app).unwrap().contains_key(MARKER),
+            "{value} {answer}"
+        );
+    }
+}

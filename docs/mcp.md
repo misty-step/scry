@@ -70,9 +70,10 @@ use `title`, `direction` (`"forward"`, or `"both"` to practise each pair in
 reverse too, which needs unique values and no safety-bearing pair), and
 `pairs: [{"key":"A","value":"Alfa"}]`, where a pair may add
 `"safety_bearing": true`, plus the supported optional metadata. A year value
-accepts the year with or without AD or CE, as an exact number, and a year
-answer is never sent to Jev, except to a safety-bearing pair, where the year
-rule does not apply. Exactly another pair's value (or key in reverse)
+accepts the year with or without AD or CE, as an exact number, and an answer
+that is a year as typed (digits with an optional AD, CE, BC or BCE marker and
+nothing else) is never sent to Jev, except to a safety-bearing pair, where the
+year rule does not apply. Exactly another pair's value (or key in reverse)
 is the wrong key: Again at once, never sent. A reverse
 Prompt has `cue_level: "mapping_value"` and shows the value; see the Owner API
 guide for the result's `mapping_feedback`. Both reuse native Library validation.
