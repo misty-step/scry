@@ -185,7 +185,9 @@ export async function phoneLibraryWalk(browser, capture) {
       assert.equal(original.version.sections.flatMap(section => section.units).map(unit => unit.text).join(''),text);
       await shot('version');
       await page.goto(f.origin + '/library/add'); await fillDraft(page); await activate(addButton(page));
-      await page.waitForURL(f.origin + versionPath(vid));
+      // The repeated save lands on the same Version and says nothing was added.
+      await page.waitForURL(f.origin + versionPath(vid) + '?existing=1');
+      assert.ok((await page.locator('main').innerText()).includes('That text was already in the Library. Nothing was added.'));
       assert.equal(await count(f,'library_versions/'),1);
       assert.equal(await count(f,'library_works/'),1);
       assert.deepEqual((await f.cli(['version','show',vid])).version,original.version);
@@ -336,7 +338,8 @@ export async function phoneLibraryRecovery(browser, capture) {
     const destination=page.url(), vid=new URL(destination).pathname.split('/').at(-1);
     const original=(await f.cli(['version','show',vid])).version;
     const secondResponse=other.waitForResponse(response => response.request().method()==='POST' && new URL(response.url()).pathname==='/library/version/add');
-    await Promise.all([other.waitForURL(destination,{waitUntil:'domcontentloaded'}),addButton(other).tap()]);
+    // The second tab's text is already there: same Version, and it says so.
+    await Promise.all([other.waitForURL(destination+'?existing=1',{waitUntil:'domcontentloaded'}),addButton(other).tap()]);
     assert.equal((await secondResponse).status(),303);
     await other.locator('[data-state="library-version"]').waitFor();
     assert.equal(await count(f,'library_works/'),1); assert.equal(await count(f,'library_versions/'),1); assert.equal(await count(f,'practice_studies/'),0);

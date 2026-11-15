@@ -50,7 +50,9 @@ export async function starterJourney(){
   const result=await f.get('/recall');assert.match(result,/data-verdict="Good"/);assert.match(result,/Alfa/);assert.doesNotMatch(result,/I was right|Count as a miss/);
   const domain=await f.rows(),library=await f.get('/library');assert.doesNotMatch(library,/id="nato-starter"/,'An existing deck does not repeat the Add promotion.');
   // A retained native request must remain idempotent even after its promotion disappears.
-  const envelope=nativeFields(await f.get('/library/add'),'/library/version/add'),again={...add,csrf:envelope.csrf,revision:envelope.revision,operation_id:envelope.operation_id};assert.equal((await f.post('/library/mapping/add',again)).headers.get('location'),path);
+  const envelope=nativeFields(await f.get('/library/add'),'/library/version/add'),again={...add,csrf:envelope.csrf,revision:envelope.revision,operation_id:envelope.operation_id};
+  // A new operation finds the alphabet already there: same Version, and the page says so.
+  assert.equal((await f.post('/library/mapping/add',again)).headers.get('location'),path+'?existing=1');
   const repeated=await f.rows();for(const [key,value]of Object.entries(domain))if(key!=='meta')assert.deepEqual(repeated[key],value,`Repeated Add retains ${key}`);
   const content=rows=>Object.fromEntries(Object.entries(rows).filter(([key])=>key.startsWith('library_')||key.startsWith('practice_')));assert.deepEqual(content(repeated),content(domain));assert.deepEqual(repeated.meta.practice,domain.meta.practice);assert.equal(f.egress,0);
   return {status:'pass',native_forms:true,explicit_add:true,pairs:26,repeat_preserves_history:true,client_override_refused:true,egress:0};

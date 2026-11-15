@@ -65,8 +65,18 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 `operation_id`. Version drafts use the existing Library shape. Mapping drafts
 use `title`, `direction: "forward"`, and `pairs: [{"key":"A","value":"Alfa"}]`,
 plus the supported optional metadata. Both reuse native Library validation.
-Validation does not query the remote Library or prove deduplication, available
-storage, authorization, Study admission, learning efficacy or deployment.
+Both formats take an optional `provenance` (`supplied`, the default,
+`model_from_memory` or `checked_against_sources`, which needs a source) and
+`relations`, an array of `{"kind":"part_of"|"related_to","work":"TITLE OR ALIAS"}`
+naming Works already in the Library. Validation checks the shape of each
+Relation and reports how many there are; import checks that each named Work
+exists, and refuses the whole manifest otherwise. A text already in the
+Library returns its Version with `existing: true` and records nothing from the
+manifest, Relations included; the same text with different Units, aliases,
+pairs or Spelling-strict setting is refused with what differs.
+Validation does not query the remote Library or prove deduplication, related
+Works, available storage, authorization, Study admission, learning efficacy or
+deployment. Corrections and deletions are API and CLI actions, not tools.
 
 Where the Owner has turned paid judgment on and the login's Owner token carries
 paid permission, `scry_answer` may return `practice.judgment.state: "checking"`:

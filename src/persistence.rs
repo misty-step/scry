@@ -168,6 +168,9 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
     if judged(app) {
         result.insert(JUDGMENT_MARKER.into(), "1".into());
     }
+    if crate::library::uses_corrections_and_provenance(&app.library) {
+        result.insert(LIBRARY_MARKER.into(), "1".into());
+    }
     object.remove("owner_tokens");
     object.remove("study_version_refs");
     result.insert("meta".into(), bounded_json(&value)?);
@@ -190,7 +193,11 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
         practice.insert("checks".into(), serde_json::json!({}));
     }
     for (key, data) in rows {
-        if key == "meta" || key == "checkpoint_compatibility/v1" || key == JUDGMENT_MARKER {
+        if key == "meta"
+            || key == "checkpoint_compatibility/v1"
+            || key == JUDGMENT_MARKER
+            || key == LIBRARY_MARKER
+        {
             continue;
         }
         let (field, id) = key
@@ -316,6 +323,14 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             "Judgment compatibility marker is invalid.",
         ));
     }
+    if rows.get(LIBRARY_MARKER).map(String::as_str)
+        != crate::library::uses_corrections_and_provenance(&app.library).then_some("1")
+    {
+        return Err(AppError::new(
+            500,
+            "Library compatibility marker is invalid.",
+        ));
+    }
     if app.schema != SCHEMA {
         return Err(AppError::new(500, "A compatible Scry build is required."));
     }
@@ -337,6 +352,11 @@ pub fn sha256(bytes: &[u8]) -> String {
 
 const JUDGMENT_MARKER: &str = "judgment_compatibility/v1";
 const JUDGED_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-study-judged-v4";
+/// Present only where the Library holds a Provenance other than supplied or a
+/// correction whose normalized text equals another Version's. An older reader
+/// refuses the row by name, and the archive by its format name.
+const LIBRARY_MARKER: &str = "library_compatibility/v1";
+const LIBRARY_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-library-v5";
 
 /// Whether this notebook holds anything of paid judgment: the Owner's switch,
 /// a Check, an Attempt left for Jev, or a receipt of either action. Only then
@@ -354,6 +374,9 @@ pub fn judged(app: &App) -> bool {
 }
 
 fn archive_format(app: &App) -> &'static str {
+    if crate::library::uses_corrections_and_provenance(&app.library) {
+        return LIBRARY_ARCHIVE_FORMAT;
+    }
     if judged(app) {
         return JUDGED_ARCHIVE_FORMAT;
     }

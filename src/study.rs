@@ -603,6 +603,10 @@ pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback>
 /// Resolve immutable response references only after the runtime has committed.
 pub fn wire_response(app: &App, result: &MutationResult) -> Option<Value> {
     let mut data = result.data.clone()?;
+    // A Library add that found its text already there carries no practice.
+    if data.get("existing").is_some() {
+        return None;
+    }
     if let Some(id) = data.get("attempt_id").and_then(Value::as_str) {
         let attempt = app.practice.attempts.get(id);
         let feedback = attempt.and_then(|a| mapping_feedback(app, a));
@@ -1439,10 +1443,12 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         let input = crate::lessons::input(starter).expect("curated default exists");
         let is_michael = *starter == "st-michael-en";
         let represented = if is_michael {
-            app.library
-                .works
-                .values()
-                .any(|w| w.title == input.title && studied_works.contains(w.id.as_str()))
+            starter_studied(app, &input)
+                || app
+                    .library
+                    .works
+                    .values()
+                    .any(|w| w.title == input.title && studied_works.contains(w.id.as_str()))
                 || app.library.versions.values().any(|v| {
                     catalog.iter().any(|l| {
                         l.matches(v)
@@ -1452,7 +1458,8 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
                     })
                 })
         } else {
-            app.library.works.values().any(|w| w.title == input.title)
+            starter_studied(app, &input)
+                || app.library.works.values().any(|w| w.title == input.title)
                 || app.library.versions.values().any(|v| {
                     if *starter == "nato" {
                         crate::library::is_nato(v)
@@ -1475,6 +1482,35 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         .map(|(_, _, c)| c)
 }
 
+/// The Version a starter, lesson or NATO entry resolves to; see
+/// `Library::admit_starter`. A Version kept for its Study must be one this
+/// entry can practise: the canonical alphabet for NATO, any studyable
+/// Version otherwise.
+fn starter_version(
+    app: &mut App,
+    input: crate::library::VersionInput,
+    seed: &str,
+) -> AppResult<String> {
+    let nato = crate::library::is_nato_input(&input);
+    let studies = &app.practice.studies;
+    let studied = |id: &str| studies.values().any(|s| s.version_id == id);
+    let usable = |v: &crate::library::Version| {
+        if nato {
+            crate::library::is_nato(v)
+        } else {
+            reviewable(v).is_ok()
+        }
+    };
+    app.library.admit_starter(input, seed, &studied, &usable)
+}
+/// Whether the Owner already studies a Version with this starter's text, in
+/// any structure: that Study is his choice and Study does not bypass it.
+fn starter_studied(app: &App, input: &crate::library::VersionInput) -> bool {
+    app.library.same_text_versions(input).is_ok_and(|ids| {
+        ids.iter()
+            .any(|id| app.practice.studies.values().any(|s| &s.version_id == id))
+    })
+}
 /// Home-only subject preview. Never render editable metadata as a recall cue.
 pub fn continuous_preview(app: &App, now: i64) -> Option<String> {
     let vid = match continuous_choice(app, now)? {
@@ -1507,8 +1543,7 @@ fn continuous_present(
                     let vid = match choice {
                         ContinuousChoice::Version(vid) => vid,
                         ContinuousChoice::Starter(starter) => {
-                            app.library
-                                .add(crate::lessons::input(&starter)?, seed, None)?
+                            starter_version(app, crate::lessons::input(&starter)?, seed)?
                         }
                         _ => unreachable!(),
                     };
@@ -2013,8 +2048,7 @@ fn lesson_start(
     let vid = if starter.is_empty() {
         supplied.to_string()
     } else {
-        app.library
-            .add(crate::lessons::input(starter)?, seed, None)?
+        starter_version(app, crate::lessons::input(starter)?, seed)?
     };
     let version = app
         .library
@@ -2736,7 +2770,7 @@ pub fn mutate_judged(
             }
             // Engine applies this whole operation to a clone: a held different
             // Study or import conflict cannot leave a partial starter behind.
-            let vid = app.library.add(crate::library::nato_input()?, seed, None)?;
+            let vid = starter_version(app, crate::library::nato_input()?, seed)?;
             if !crate::library::is_nato(&app.library.versions[&vid]) {
                 return Err(AppError::new(
                     409,

@@ -391,7 +391,8 @@ impl View<'_> {
             for item in found.matches {
                 let _ = write!(
                     out,
-                    "<section class=\"library-work\"><h2>{}</h2>",
+                    "<section class=\"library-work\"><h2><a href=\"/library/works/{}\">{}</a></h2>",
+                    escape(&item.work.id),
                     escape(&item.work.title)
                 );
                 if !item.work.aliases.is_empty() {
@@ -401,18 +402,9 @@ impl View<'_> {
                         escape(&item.work.aliases.join(" · "))
                     );
                 }
-                out.push_str("<ul class=\"library-versions\">");
-                for v in item.versions {
-                    let _ = write!(
-                        out,
-                        "<li><a class=\"version-link\" href=\"/library/versions/{}\">{}</a><p class=\"fineprint\">{}</p>{}</li>",
-                        escape(&v.id),
-                        escape(version_name(v)),
-                        version_metadata(v),
-                        self.study_status(&v.id)
-                    );
-                }
-                out.push_str("</ul></section>");
+                out.push_str(&self.work_relations(&item.work.id));
+                out.push_str(&self.version_list(&item.versions, false));
+                out.push_str("</section>");
             }
             out.push_str("</div>");
         }
@@ -449,6 +441,146 @@ impl View<'_> {
             )
         )
     }
+    fn work_link(&self, id: &str) -> String {
+        let title = self
+            .app
+            .library
+            .works
+            .get(id)
+            .map_or("", |w| w.title.as_str());
+        format!(
+            "<a class=\"text-link\" href=\"/library/works/{}\">{}</a>",
+            escape(id),
+            escape(title)
+        )
+    }
+    fn version_link(&self, id: &str) -> String {
+        let name = self.app.library.versions.get(id).map_or("", version_name);
+        format!(
+            "<a class=\"text-link\" href=\"/library/versions/{}\">{}</a>",
+            escape(id),
+            escape(name)
+        )
+    }
+    /// The Relations of a Work, shown on both Works each one links.
+    fn work_relations(&self, id: &str) -> String {
+        use crate::library::Relation;
+        let mut out = String::new();
+        for relation in self.app.library.relations.values() {
+            let (label, other) = match relation {
+                Relation::PartOf {
+                    work_id,
+                    parent_work_id,
+                } if work_id == id => ("Part of", parent_work_id),
+                Relation::PartOf {
+                    work_id,
+                    parent_work_id,
+                } if parent_work_id == id => ("Includes", work_id),
+                Relation::RelatedTo {
+                    work_id,
+                    related_work_id,
+                } if work_id == id => ("Related to", related_work_id),
+                Relation::RelatedTo {
+                    work_id,
+                    related_work_id,
+                } if related_work_id == id => ("Related to", work_id),
+                _ => continue,
+            };
+            let _ = write!(
+                out,
+                "<p class=\"fineprint library-relation\">{label} {}</p>",
+                self.work_link(other)
+            );
+        }
+        out
+    }
+    /// A correction and the Version it supersedes each name the other.
+    fn version_relations(&self, id: &str) -> String {
+        use crate::library::Relation;
+        let mut out = String::new();
+        for relation in self.app.library.relations.values() {
+            if let Relation::Supersedes {
+                version_id,
+                previous_id,
+            } = relation
+            {
+                if version_id == id {
+                    let _ = write!(
+                        out,
+                        "<p class=\"fineprint library-relation\">Corrects {}</p>",
+                        self.version_link(previous_id)
+                    );
+                } else if previous_id == id {
+                    let _ = write!(
+                        out,
+                        "<p class=\"fineprint library-relation\" data-superseded>Corrected by {}</p>",
+                        self.version_link(version_id)
+                    );
+                }
+            }
+        }
+        out
+    }
+    /// With `detail`, each Version also shows its Provenance and Rights status.
+    fn version_list(&self, versions: &[&crate::library::Version], detail: bool) -> String {
+        let mut out = String::from("<ul class=\"library-versions\">");
+        for v in versions {
+            let _ = write!(
+                out,
+                "<li><a class=\"version-link\" href=\"/library/versions/{}\">{}</a><p class=\"fineprint\">{}{}</p>{}{}</li>",
+                escape(&v.id),
+                escape(version_name(v)),
+                version_metadata(v),
+                if detail {
+                    format!(
+                        "<br>{} · {}",
+                        provenance_label(v.provenance),
+                        rights_label(v.rights)
+                    )
+                } else {
+                    String::new()
+                },
+                self.version_relations(&v.id),
+                self.study_status(&v.id)
+            );
+        }
+        out.push_str("</ul>");
+        out
+    }
+    fn library_work(&self, id: &str) -> String {
+        if self.app.practice.protected() {
+            return self.library_gate();
+        }
+        let Ok(item) = self.app.library.show_work(id) else {
+            return self.not_found();
+        };
+        let mut out = format!(
+            "<section class=\"library-page\" data-state=\"library-work\"><a class=\"text-link\" href=\"/library\">Back to Library</a><h1>{}</h1>",
+            escape(&item.work.title)
+        );
+        if !item.work.aliases.is_empty() {
+            let _ = write!(
+                out,
+                "<p class=\"fineprint\">Also known as {}</p>",
+                escape(&item.work.aliases.join(" · "))
+            );
+        }
+        if !item.work.context.is_empty() {
+            let _ = write!(
+                out,
+                "<p class=\"fineprint source-context\">{}</p>",
+                escape(&item.work.context)
+            );
+        }
+        out.push_str(&self.work_relations(id));
+        if item.versions.is_empty() {
+            out.push_str("<p class=\"lede\">This Work has no Versions.</p>");
+        } else {
+            out.push_str(&self.version_list(&item.versions, true));
+        }
+        out.push_str("</section>");
+        out
+    }
     fn study_status(&self, version_id: &str) -> String {
         self.app
             .practice
@@ -478,6 +610,21 @@ impl View<'_> {
             escape(version_name(v)),
             version_metadata(v)
         );
+        if self.query.get("existing").is_some_and(|v| v == "1") {
+            out = out.replacen(
+                "data-state=\"library-version\">",
+                "data-state=\"library-version\"><p class=\"notice\" role=\"status\">That text was already in the Library. Nothing was added.</p>",
+                1,
+            );
+        }
+        let corrections = self.version_relations(id);
+        if !corrections.is_empty() {
+            out = out.replacen(
+                "<details class=\"library-details version-details\">",
+                &format!("{corrections}<details class=\"library-details version-details\">"),
+                1,
+            );
+        }
         if !v.sources.is_empty() {
             let _ = write!(
                 out,
@@ -492,14 +639,14 @@ impl View<'_> {
                 escape(&item.work.context)
             );
         }
-        let rights = match v.rights {
-            crate::library::Rights::PrivateOnly => "Private only",
-            crate::library::Rights::Licensed => "Licensed",
-            crate::library::Rights::PublicDomain => "Public domain",
-        };
+        let rights = rights_label(v.rights);
         let _ = write!(
             out,
-            "<p class=\"fineprint\">Supplied text · {rights}</p></details>"
+            "<p class=\"fineprint\">{} · {rights}</p>{}<a class=\"text-link\" href=\"/library/works/{}\">Every Version of {}</a></details>",
+            provenance_label(v.provenance),
+            self.work_relations(&item.work.id),
+            escape(&item.work.id),
+            escape(&item.work.title)
         );
         let reviewable = crate::study::reviewable(v).is_ok();
         if !reviewable && v.kind == crate::library::Kind::Text {
@@ -3731,12 +3878,29 @@ fn generated_markdown_cannot_activate_raw_html_or_untrusted_urls() {
 /// Only known, same-origin Library pages can follow the assistance POST.
 pub fn library_destination(path: &str) -> bool {
     matches!(path, "/library" | "/library/add")
-        || path.strip_prefix("/library/versions/").is_some_and(|id| {
-            id.len() == 32
-                && id
-                    .bytes()
-                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        })
+        || path
+            .strip_prefix("/library/versions/")
+            .or_else(|| path.strip_prefix("/library/works/"))
+            .is_some_and(|id| {
+                id.len() == 32
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
+}
+fn rights_label(r: crate::library::Rights) -> &'static str {
+    match r {
+        crate::library::Rights::PrivateOnly => "Private only",
+        crate::library::Rights::Licensed => "Licensed",
+        crate::library::Rights::PublicDomain => "Public domain",
+    }
+}
+fn provenance_label(p: crate::library::Provenance) -> &'static str {
+    match p {
+        crate::library::Provenance::Supplied => "Supplied text",
+        crate::library::Provenance::ModelFromMemory => "Written by a model from memory",
+        crate::library::Provenance::CheckedAgainstSources => "Checked against cited sources",
+    }
 }
 fn version_name(v: &crate::library::Version) -> &str {
     if v.name.trim().is_empty() {
@@ -3930,6 +4094,7 @@ pub fn render(
             let segments: Vec<_> = path.trim_matches('/').split('/').collect();
             match segments.as_slice() {
                 ["library", "versions", id] => view.library_version(id),
+                ["library", "works", id] => view.library_work(id),
                 ["goals", id] => view.goal(id),
                 ["concepts", id] => view.concept(id),
                 ["questions", id, "edit"] => view.question_page(id),

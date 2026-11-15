@@ -158,19 +158,25 @@ struct Reveal {
 /// The same domain validator used by import, in a disposable empty Library.
 /// This deliberately proves no remote deduplication, authorization or capacity.
 fn validate(format: &str, data: Value) -> InputResult<Value> {
-    let input = match format {
+    let mut input = match format {
         "version" => parse::<VersionInput>(data)?,
         "mapping" => parse::<MappingInput>(data)?.into_version()
             .map_err(|_| "Invalid mapping: use unique keys, direction forward, and nonempty key/value pairs without control characters or surrounding whitespace.")?,
         _ => return Err("format must be version or mapping."),
     };
+    // The Works a manifest relates to exist only in the remote Library.
+    crate::library::check_relation_inputs(&input.relations).map_err(
+        |_| "Invalid relations: name each related Work once by its title or alias, at most 32.",
+    )?;
+    let relations = std::mem::take(&mut input.relations).len();
     let mut library = Library::default();
     let id = library.add(input, "local-mcp-validation", None)
         .map_err(|_| "Invalid Library draft: check metadata and byte/count limits; Sections must join to text exactly.")?;
     let version = &library.versions[&id];
     Ok(
         json!({"valid":true,"scope":"local_structure_only","remote_admission_checked":false,
-        "kind":version.kind,"text_bytes":version.text.len(),"sections":version.sections.len(),
+        "kind":version.kind,"provenance":version.provenance,"relations":relations,
+        "text_bytes":version.text.len(),"sections":version.sections.len(),
         "units":version.sections.iter().map(|s| s.units.len()).sum::<usize>()}),
     )
 }
