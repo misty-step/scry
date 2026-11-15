@@ -86,7 +86,7 @@ Specification, code, commits and conversation use these words.
   being learned, such as the NATO words "Alfa" and "Juliett".
 - **Starter shelf:** the curated Works Scry offers without an agent: the
   NATO alphabet, the four Rosary sets, the Saint Michael prayer in named
-  English and Latin editions, and the baby-care mappings. Their wording ships
+  English editions and in Latin, and the baby-care mappings. Their wording ships
   with Scry as supplied content, written outside it.
 - **Lesson:** practice of one Work the Owner chose from the lesson shelf.
 - **Focused practice:** practice kept to one Lesson until the Owner leaves
@@ -215,7 +215,8 @@ source, answering a question, checking, a held result, an answer saved but
 ungraded, nothing left to do, and a conflict or error are visibly different
 states.
  It feels immediate with a keyboard: Enter submits a one-line answer and
-chooses Next on a result, while in a several-line answer Enter starts a new
+chooses a result's leading action, while in a several-line answer Enter
+starts a new
 line and Check submits. Focus is visible and restored, and transitions are
 subtle and respect reduced-motion preferences. Every control is labelled, a
 result is announced to assistive technology, and contrast is adequate. Icons
@@ -285,13 +286,15 @@ horizontal clipping, including with long questions and explanations.
 
 - Scry assesses each submitted answer on the server against the frozen
   Version, the Prompt's scope and the Learning objective. An answer that
-  matches the expected content or an authored alias is Good, once case,
+  matches the expected content, or a list item's authored alias, is Good,
+  once case,
   spacing and a hyphen or space inside a word are set aside. An empty answer,
   and any other answer to Spelling-strict content, is Again.
 - With paid judgment off, any other answer is Again. With it on, any other
-  answer is saved with no Verdict and judged by Jev: its accept is Good, its
-  reject is Again, and anything else leaves the answer saved and ungraded. An
-  answer too long to send is graded as if paid judgment were off.
+  answer is saved with no Verdict and judged by Jev, except one this document
+  says Scry decides alone: Jev's accept is Good, its reject is Again, and
+  anything else leaves the answer saved and ungraded. An answer too long to
+  send is graded as if paid judgment were off.
 - Valid recall is never failed merely because its wording is absent from a
   list of accepted answers. A related but different identity is never
   accepted as a match, and broad string similarity never decides
@@ -303,7 +306,8 @@ horizontal clipping, including with long questions and explanations.
   in a Spelling-strict Version, where the misspelling is a miss and the
   official form is shown.
 - An answer that belongs to another Version of the same Work is identified as
-  that other wording, never silently accepted or substituted.
+  that other wording, never silently accepted or substituted. It is Again,
+  and Scry decides it alone.
 - Dictated text is assessed exactly as typed text.
 - The result shows the expected content and a concise, useful correction. For
   exact-word practice it includes the Diff. A mechanical Diff never
@@ -326,7 +330,7 @@ horizontal clipping, including with long questions and explanations.
   that resolves gives the Attempt its Verdict once; it changes the schedule
   only if the Card has no newer Attempt.
 - A Verdict cannot be overturned. Where the content was at fault, an agent
-  supplies a corrected Version, with any alias it lacked; later practice
+  supplies a corrected Version, with any list alias it lacked; later practice
   uses it, and the recorded Attempt stays as it was.
 
 ### Assistance
@@ -376,7 +380,7 @@ horizontal clipping, including with long questions and explanations.
 ### Lessons
 
 - A quiet lesson shelf on the practice screen groups the Starter shelf by
-  Work rather than as a flat catalogue, with essential wording and language
+  subject rather than as a flat catalogue, with essential wording and language
   labels explicit. Current practice is distinguished from starting another
   lesson.
 - Browsing or dismissing the shelf keeps the typed draft and the held
@@ -388,7 +392,8 @@ horizontal clipping, including with long questions and explanations.
 - Browsing never imports content or starts a Study. Deliberate selection
   imports the immutable supplied content once and enters scheduled practice
   for that lesson. Selecting again returns the same content and Study without
-  resetting anything.
+  resetting anything; if that Study was paused or dropped, starting its
+  lesson resumes it.
 - A copy of a starter's text already in the Library never blocks that
   starter. A copy the Owner already studies is kept as that lesson; otherwise
   the starter's own wording is imported beside the copy, which is unchanged.
@@ -452,7 +457,8 @@ horizontal clipping, including with long questions and explanations.
 
 ### NATO alphabet
 
-- Choosing the alphabet offers one **Start practice**. It imports the
+- Choosing the alphabet offers one action, **Start practice**, which reads
+  **Continue practice** once practice has begun. It imports the
   canonical alphabet, starts or resumes its Study and begins with its first
   eligible letter, with no Library, Version, Pace or setup screen. Starting
   again never duplicates content, resets a schedule or replaces another
@@ -515,8 +521,9 @@ horizontal clipping, including with long questions and explanations.
 - A Version stores its Kind, ordered Sections and Units, Provenance, Rights
   status, edition name and sources. If its Units joined in order do not
   reproduce its text exactly, it is refused and nothing is stored.
-- An agent states a Version's Provenance; text the Owner adds in the app is
-  supplied. A Version checked against cited sources names at least one.
+- An agent may state a Version's Provenance. Unstated, and for text the
+  Owner adds in the app, it is supplied. A Version checked against cited
+  sources names at least one.
 - An agent declares that a Work is part of, or related to, another Work in
   the manifest that adds a Version. A Relation to a Work that does not exist,
   to the Work itself, or that would make a Work part of itself is refused.
@@ -559,9 +566,10 @@ horizontal clipping, including with long questions and explanations.
   the Starter shelf: learn, ask what is due, take the next Prompt, move from
   study to Quiz, submit a raw answer, reveal, ask for an ungraded answer to be
   checked again, and pause, resume or drop a Study.
-- A bounded local tool server for agents exposes the same validation, import,
-  search, show, learn, due, next, Quiz, answer, reveal and check-again actions
-  under the same rules. It offers no generation, self-rating, Correction,
+- A bounded local tool server for agents exposes the same import, search,
+  show, learn, due, Study, next, Quiz, answer, reveal and check-again actions
+  under the same rules, and checks a manifest's structure before sending it.
+  It offers no generation, self-rating, Correction,
   credential creation or arbitrary network tool.
 
 ### Owner tokens
@@ -589,8 +597,9 @@ horizontal clipping, including with long questions and explanations.
 - **Save draft** checkpoints the text typed for the exact unanswered Prompt.
   Saving never grades, advances, schedules or calls a paid service. Anyone
   acting with the Owner's authority, on any device or through a token, can
-  read it. The Owner can discard it; competing saves and discards settle on
-  the newest. A committed answer or a deliberate change of Prompt clears the
+  read it. The Owner can discard it. Of competing saves and discards, one made
+  from a stale page is refused and never overwrites a newer one. A committed
+  answer or a deliberate change of Prompt clears the
   checkpoint.
 - With JavaScript, an edited answer is also checkpointed quietly after five
   seconds in the foreground. The editor stays usable, and the status
@@ -643,7 +652,9 @@ horizontal clipping, including with long questions and explanations.
 
 - Only the approved Owner identity, signed in or holding a valid Owner token,
   can read, export or change anything.
-- Cross-site requests are rejected. Text from the Owner, an agent or a model
+- A cross-site request that would change anything is rejected, and so is
+  one another site makes to load a page's content. Following a link to Scry
+  is allowed. Text from the Owner, an agent or a model
   is always rendered inert.
 - Private pages are not cached. After sign-out, loss of access or a change of
   identity, Back, history and cached pages reveal nothing, and returning
