@@ -21,10 +21,38 @@ pub enum Rights {
     #[default]
     PrivateOnly,
 }
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+/// How a Version's text was obtained. Scry records the claim; it never writes,
+/// checks or fetches the text itself.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Provenance {
+    /// Supplied by the Owner or his agent.
+    #[default]
     Supplied,
+    /// Written by a model from memory, outside Scry.
+    ModelFromMemory,
+    /// Checked against the Version's cited sources, which it must name.
+    CheckedAgainstSources,
+}
+impl Provenance {
+    pub fn is_supplied(&self) -> bool {
+        *self == Self::Supplied
+    }
+}
+/// The Relations a manifest may declare. Version of and supersedes are Scry's own.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum RelationKind {
+    PartOf,
+    RelatedTo,
+}
+/// A Relation from the Work receiving the Version to an existing Work, named
+/// by its title or alias.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RelationInput {
+    pub kind: RelationKind,
+    pub work: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Work {
@@ -117,6 +145,10 @@ pub struct VersionInput {
     pub ordered_aliases: BTreeMap<usize, Vec<String>>,
     /// Omit for deterministic line/clause segmentation. Supplied boundaries are checked verbatim.
     pub sections: Option<Vec<SectionInput>>,
+    #[serde(default, skip_serializing_if = "Provenance::is_supplied")]
+    pub provenance: Provenance,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relations: Vec<RelationInput>,
 }
 /// External authoring manifest. The adapter stores only existing immutable
 /// Version/Section/Unit records; it never generates content or creates a Study.
@@ -149,6 +181,10 @@ pub struct MappingInput {
     pub rights: Rights,
     #[serde(default = "strict_mapping")]
     pub spelling_strict: bool,
+    #[serde(default, skip_serializing_if = "Provenance::is_supplied")]
+    pub provenance: Provenance,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relations: Vec<RelationInput>,
 }
 /// The immutable supplied starter, shared by import and the focused review entry.
 pub fn nato_input() -> AppResult<VersionInput> {
@@ -221,6 +257,8 @@ impl MappingInput {
                 heading: "Pairs".into(),
                 units,
             }]),
+            provenance: self.provenance,
+            relations: self.relations,
         };
         checked_sections(&input)?;
         Ok(input)
@@ -455,6 +493,12 @@ fn checked_sections(input: &VersionInput) -> AppResult<Vec<SectionInput>> {
     {
         return Err(invalid());
     }
+    if input.provenance == Provenance::CheckedAgainstSources && input.sources.is_empty() {
+        return Err(AppError::new(
+            422,
+            "A Version checked against cited sources must name at least one source.",
+        ));
+    }
     let sections = input.sections.clone().unwrap_or_else(|| {
         if input.kind == Kind::KeyedMapping {
             vec![SectionInput {
@@ -500,6 +544,65 @@ fn checked_sections(input: &VersionInput) -> AppResult<Vec<SectionInput>> {
         ));
     }
     Ok(sections)
+}
+fn relation_invalid() -> AppError {
+    AppError::new(
+        422,
+        "Name each related Work once, by the title or alias of a Work already in the Library, and never the Work itself; at most 32.",
+    )
+}
+/// The shape of a manifest's Relations, checked before anything is admitted.
+/// Whether each named Work exists is checked against the Library at admission.
+pub fn check_relation_inputs(relations: &[RelationInput]) -> AppResult<()> {
+    let mut seen = BTreeSet::new();
+    if relations.len() > 32
+        || relations.iter().any(|r| {
+            !label(&r.work, 240) || key(&r.work).is_empty() || !seen.insert((r.kind, key(&r.work)))
+        })
+    {
+        return Err(relation_invalid());
+    }
+    Ok(())
+}
+fn relation_key(relation: &Relation) -> String {
+    match relation {
+        Relation::VersionOf { version_id, .. } => format!("version-of-{version_id}"),
+        Relation::Supersedes { previous_id, .. } => format!("supersedes-{previous_id}"),
+        Relation::PartOf {
+            work_id,
+            parent_work_id,
+        } => format!("part-of-{work_id}-{parent_work_id}"),
+        Relation::RelatedTo {
+            work_id,
+            related_work_id,
+        } => format!("related-to-{work_id}-{related_work_id}"),
+    }
+}
+/// Whether two stored Versions agree on everything a correction could change.
+fn same_content(v: &Version, input: &VersionInput, sections: &[SectionInput]) -> bool {
+    v.text == input.text
+        && v.name == input.name
+        && v.provenance == input.provenance
+        && v.rights == input.rights
+        && v.sources == input.sources
+        && v.spelling_strict == input.spelling_strict
+        && v.ordered_aliases == input.ordered_aliases
+        && v.sections.len() == sections.len()
+        && v.sections.iter().zip(sections).all(|(a, b)| {
+            a.heading == b.heading
+                && a.units.len() == b.units.len()
+                && a.units.iter().zip(&b.units).all(|(u, t)| &u.text == t)
+        })
+}
+/// Whether this Library holds a record that a Worker older than Provenance and
+/// unconditional corrections cannot honor in full: a Provenance other than
+/// supplied, or a correction whose normalized text equals another Version's.
+pub fn uses_corrections_and_provenance(library: &Library) -> bool {
+    let mut hashes = BTreeSet::new();
+    library
+        .versions
+        .values()
+        .any(|v| !v.provenance.is_supplied() || !hashes.insert(&v.normalized_hash))
 }
 // Keep every historical no-alias hash unchanged. Authored aliases bind both
 // accepted identities and Unit boundaries into a versioned grading-policy hash.
@@ -653,6 +756,7 @@ impl Library {
         if input.kind == Kind::KeyedMapping {
             check_mapping_units(sections.iter().flat_map(|s| &s.units).map(String::as_str))?;
         }
+        check_relation_inputs(&input.relations)?;
         let mut proposed = Work {
             id: identity(seed, "work"),
             revision: 1,
@@ -663,6 +767,30 @@ impl Library {
         };
         if !valid_work(&proposed) {
             return Err(invalid());
+        }
+        // Every named Work must already exist; names are unique across Works.
+        let targets = input
+            .relations
+            .iter()
+            .map(|r| {
+                let wanted = key(&r.work);
+                self.works
+                    .values()
+                    .find(|w| names(w).any(|n| n == wanted))
+                    .map(|w| (r.kind, w.id.clone()))
+                    .ok_or_else(relation_invalid)
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        let hash = content_hash(&input.text, &sections, &input.ordered_aliases);
+        let pairs = (input.kind == Kind::KeyedMapping)
+            .then(|| mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str)))
+            .flatten();
+        // A correction always creates a new Version. Any other text already in
+        // the Library returns that Version, whatever Work the names point to.
+        if previous.is_none()
+            && let Some(id) = self.duplicate(&input, &sections, &hash, pairs.as_ref())?
+        {
+            return Ok(id);
         }
         let matching: Vec<_> = self
             .works
@@ -682,93 +810,51 @@ impl Library {
             }
             proposed = w.clone();
         }
-        let hash = content_hash(&input.text, &sections, &input.ordered_aliases);
-        let pairs = (input.kind == Kind::KeyedMapping)
-            .then(|| mapping_identity(sections.iter().flat_map(|s| &s.units).map(String::as_str)))
-            .flatten();
-        let hash_match = self.versions.values().find(|v| v.normalized_hash == hash);
-        if let Some(v) = hash_match {
-            if (input.kind == Kind::OrderedList || v.kind == Kind::OrderedList)
-                && (input.kind != v.kind
-                    || input.spelling_strict != v.spelling_strict
-                    || sections
-                        .iter()
-                        .flat_map(|s| &s.units)
-                        .map(|s| crate::ordered::name_key(s))
-                        .collect::<Vec<_>>()
-                        != v.sections
-                            .iter()
-                            .flat_map(|s| &s.units)
-                            .map(|u| crate::ordered::name_key(&u.text))
-                            .collect::<Vec<_>>())
-            {
+        if let Some(old) = previous {
+            let Some(corrected) = self.versions.get(old).filter(|v| v.work_id == proposed.id)
+            else {
+                return Err(AppError::conflict());
+            };
+            if self.relations.contains_key(&format!("supersedes-{old}")) {
                 return Err(AppError::new(
                     409,
-                    "That normalized text has different ordered-list boundaries or grading policy.",
+                    "That Version already has a correction. Correct the newer Version instead.",
                 ));
             }
-            // The historical content hash deliberately ignores spacing. For
-            // mappings that must not erase pair boundaries or grading policy.
-            if (input.kind == Kind::KeyedMapping || v.kind == Kind::KeyedMapping)
-                && (input.kind != v.kind
-                    || input.spelling_strict != v.spelling_strict
-                    || pairs
-                        != mapping_identity(
-                            v.sections
-                                .iter()
-                                .flat_map(|s| &s.units)
-                                .map(|u| u.text.as_str()),
-                        ))
-            {
+            if same_content(corrected, &input, &sections) {
                 return Err(AppError::new(
-                    409,
-                    "That normalized text has different mapping boundaries or grading policy. Keep the existing Version unchanged.",
+                    422,
+                    "That correction matches the Version it corrects exactly. Nothing was saved.",
                 ));
             }
         }
-        // Mapping identity follows its own pinned normalization, not the
-        // historical text hash (which, for example, expands '&' to 'and').
-        // Check legacy hash conflicts first; never rewrite old bytes or hashes.
-        let duplicate = hash_match.or_else(|| {
-            pairs.as_ref().and_then(|pairs| {
-                self.versions.values().find(|v| {
-                    v.kind == Kind::KeyedMapping
-                        && mapping_identity(
-                            v.sections
-                                .iter()
-                                .flat_map(|s| &s.units)
-                                .map(|u| u.text.as_str()),
-                        )
-                        .as_ref()
-                            == Some(pairs)
-                })
-            })
-        });
-        if let Some(v) = duplicate {
-            if input.kind == Kind::KeyedMapping && input.spelling_strict != v.spelling_strict {
-                return Err(AppError::new(
-                    409,
-                    "Those mapping pairs already have a different grading policy. Keep the existing Version unchanged.",
-                ));
+        let mut relations = Vec::new();
+        for (kind, target) in targets {
+            let relation = match kind {
+                RelationKind::PartOf => Relation::PartOf {
+                    work_id: proposed.id.clone(),
+                    parent_work_id: target.clone(),
+                },
+                RelationKind::RelatedTo => Relation::RelatedTo {
+                    work_id: proposed.id.clone(),
+                    related_work_id: target.clone(),
+                },
+            };
+            if target == proposed.id
+                || (kind == RelationKind::PartOf && self.part_of(&target, &proposed.id))
+            {
+                return Err(relation_invalid());
             }
-            if existing.is_some_and(|w| w.id != v.work_id) || previous.is_some() {
-                return Err(AppError::new(
-                    409,
-                    "That text already belongs to an existing Version. Show it instead.",
-                ));
+            let reverse = Relation::RelatedTo {
+                work_id: target,
+                related_work_id: proposed.id.clone(),
+            };
+            if !self.relations.contains_key(&relation_key(&relation))
+                && !(kind == RelationKind::RelatedTo
+                    && self.relations.contains_key(&relation_key(&reverse)))
+            {
+                relations.push(relation);
             }
-            return Ok(v.id.clone());
-        }
-        if let Some(old) = previous
-            && (self
-                .versions
-                .get(old)
-                .is_none_or(|v| v.work_id != proposed.id)
-                || self.relations.values().any(
-                    |r| matches!(r,Relation::Supersedes{previous_id,..} if previous_id == old),
-                ))
-        {
-            return Err(AppError::conflict());
         }
         let version_id = identity(seed, "version");
         let version = Version {
@@ -778,7 +864,7 @@ impl Library {
             kind: input.kind,
             text: input.text,
             normalized_hash: hash,
-            provenance: Provenance::Supplied,
+            provenance: input.provenance,
             rights: input.rights,
             sources: input.sources,
             spelling_strict: input.spelling_strict,
@@ -806,23 +892,136 @@ impl Library {
         }
         self.works.insert(proposed.id.clone(), proposed.clone());
         self.versions.entry(version_id.clone()).or_insert(version);
-        self.relations.insert(
-            format!("version-of-{version_id}"),
-            Relation::VersionOf {
-                version_id: version_id.clone(),
-                work_id: proposed.id,
-            },
-        );
+        relations.push(Relation::VersionOf {
+            version_id: version_id.clone(),
+            work_id: proposed.id,
+        });
         if let Some(old) = previous {
-            self.relations.insert(
-                format!("supersedes-{old}"),
-                Relation::Supersedes {
-                    version_id: version_id.clone(),
-                    previous_id: old.into(),
-                },
-            );
+            relations.push(Relation::Supersedes {
+                version_id: version_id.clone(),
+                previous_id: old.into(),
+            });
+        }
+        for relation in relations {
+            self.relations.insert(relation_key(&relation), relation);
         }
         Ok(version_id)
+    }
+    /// Whether `work` is, through any chain of part-of Relations, part of `whole`.
+    fn part_of(&self, work: &str, whole: &str) -> bool {
+        let mut pending = vec![work.to_string()];
+        let mut seen = BTreeSet::new();
+        while let Some(next) = pending.pop() {
+            if next == whole {
+                return true;
+            }
+            if seen.insert(next.clone()) {
+                pending.extend(self.relations.values().filter_map(|r| match r {
+                    Relation::PartOf {
+                        work_id,
+                        parent_work_id,
+                    } if *work_id == next => Some(parent_work_id.clone()),
+                    _ => None,
+                }));
+            }
+        }
+        false
+    }
+    fn superseded(&self, id: &str) -> bool {
+        self.relations.contains_key(&format!("supersedes-{id}"))
+    }
+    /// The existing Version whose normalized text equals the input's, if any.
+    /// A Version that has been corrected is chosen only when no other matches.
+    /// Different list boundaries, mapping pairs or grading policy behind the
+    /// same normalized text are refused rather than silently reused.
+    fn duplicate(
+        &self,
+        input: &VersionInput,
+        sections: &[SectionInput],
+        hash: &str,
+        pairs: Option<&Vec<(Vec<String>, Vec<String>)>>,
+    ) -> AppResult<Option<String>> {
+        let ordered = |v: &Version| {
+            sections
+                .iter()
+                .flat_map(|s| &s.units)
+                .map(|s| crate::ordered::name_key(s))
+                .collect::<Vec<_>>()
+                == v.sections
+                    .iter()
+                    .flat_map(|s| &s.units)
+                    .map(|u| crate::ordered::name_key(&u.text))
+                    .collect::<Vec<_>>()
+        };
+        let stored_pairs = |v: &Version| {
+            mapping_identity(
+                v.sections
+                    .iter()
+                    .flat_map(|s| &s.units)
+                    .map(|u| u.text.as_str()),
+            )
+        };
+        let mut by_hash: Vec<_> = self
+            .versions
+            .values()
+            .filter(|v| v.normalized_hash == hash)
+            .collect();
+        by_hash.sort_by_key(|v| self.superseded(&v.id));
+        let mut refusal = None;
+        for v in by_hash {
+            let compatible = if (input.kind == Kind::OrderedList || v.kind == Kind::OrderedList)
+                && (input.kind != v.kind
+                    || input.spelling_strict != v.spelling_strict
+                    || !ordered(v))
+            {
+                Err(AppError::new(
+                    409,
+                    "That normalized text has different ordered-list boundaries or grading policy.",
+                ))
+            // The historical content hash deliberately ignores spacing. For
+            // mappings that must not erase pair boundaries or grading policy.
+            } else if (input.kind == Kind::KeyedMapping || v.kind == Kind::KeyedMapping)
+                && (input.kind != v.kind
+                    || input.spelling_strict != v.spelling_strict
+                    || pairs != stored_pairs(v).as_ref())
+            {
+                Err(AppError::new(
+                    409,
+                    "That normalized text has different mapping boundaries or grading policy. Keep the existing Version unchanged.",
+                ))
+            } else {
+                Ok(())
+            };
+            match compatible {
+                Ok(()) => return Ok(Some(v.id.clone())),
+                Err(error) => {
+                    refusal.get_or_insert(error);
+                }
+            }
+        }
+        if let Some(error) = refusal {
+            return Err(error);
+        }
+        // Mapping identity follows its own pinned normalization, not the
+        // historical text hash (which, for example, expands '&' to 'and').
+        // Legacy hash conflicts are checked first; old bytes and hashes stay.
+        let Some(pairs) = pairs else {
+            return Ok(None);
+        };
+        let mut same: Vec<_> = self
+            .versions
+            .values()
+            .filter(|v| v.kind == Kind::KeyedMapping && stored_pairs(v).as_ref() == Some(pairs))
+            .collect();
+        same.sort_by_key(|v| self.superseded(&v.id));
+        match same.first() {
+            Some(v) if input.spelling_strict != v.spelling_strict => Err(AppError::new(
+                409,
+                "Those mapping pairs already have a different grading policy. Keep the existing Version unchanged.",
+            )),
+            Some(v) => Ok(Some(v.id.clone())),
+            None => Ok(None),
+        }
     }
     pub fn edit(&mut self, edit: WorkEdit) -> AppResult<String> {
         let mut next = self.works.get(&edit.work_id).ok_or_else(missing)?.clone();
@@ -898,7 +1097,6 @@ impl Library {
     }
     pub fn validate(&self) -> AppResult<()> {
         let mut all_names = BTreeSet::new();
-        let mut hashes = BTreeSet::new();
         let mut ids = BTreeSet::new();
         for (id, w) in &self.works {
             if id != &w.id || !valid_id(id) || w.revision == 0 || !valid_work(w) {
@@ -914,7 +1112,6 @@ impl Library {
             if id != &v.id
                 || !valid_id(id)
                 || self.works.get(&v.work_id).is_none_or(|w| w.kind != v.kind)
-                || !hashes.insert(&v.normalized_hash)
             {
                 return Err(invalid());
             }
@@ -938,6 +1135,8 @@ impl Library {
                         })
                         .collect(),
                 ),
+                provenance: v.provenance,
+                relations: vec![],
             };
             let sections = checked_sections(&input)?;
             if v.normalized_hash != content_hash(&v.text, &sections, &v.ordered_aliases) {

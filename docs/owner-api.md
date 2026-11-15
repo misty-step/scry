@@ -117,11 +117,24 @@ The numbers above illustrate successive revisions, not values to reuse blindly.
 `--clear-aliases` removes them. Omitted title, aliases, and context stay unchanged.
 Kind belongs to the Work and is fixed; Version text and metadata are immutable.
 Supersede takes the same draft flags as add, with an existing Version ID and
-its Work revision. A correction to wording that already exists conflicts.
+its Work revision. A correction always creates a new Version that supersedes
+the old one, even when only case, punctuation or spacing changed; the old
+Version and every Attempt against it stay unchanged. A correction identical in
+every field is refused (422) and stores nothing. A Version is corrected once:
+correct the newer Version instead (409).
 
 Version flags include `--rights private_only|public_domain|licensed`,
-`--spelling-strict`, `--sections-file PATH`, and `--ordered-aliases-file PATH`. Rights default to private-only
-and Provenance is always supplied. Sources are optional and never fetched.
+`--provenance supplied|model_from_memory|checked_against_sources`,
+`--part-of WORK`, `--related-to WORK`,
+`--spelling-strict`, `--sections-file PATH`, and `--ordered-aliases-file PATH`. Rights default to private-only.
+Provenance says how the text was obtained: supplied by the Owner or his agent
+(the default), written by a model from memory, or checked against the cited
+sources, which then need at least one `--source`. Scry records the claim; it
+never checks or fetches a source.
+`--part-of` and `--related-to` repeat and name a Work already in the Library by
+its title or alias. A missing, repeated or self-naming Work refuses the whole
+add (422), as does a part-of that would make a Work part of itself. A Relation
+appears on both Works it links; one that already exists is not repeated.
 `--kind` accepts `text`, `ordered_list`, and `keyed_mapping`. Authored ordered-list
 lessons and supplied forward mappings are described below. Text files must be UTF-8, at most 256 KiB.
 Each Version also allows at most 4,096 Sections and 8,192 Units in total,
@@ -154,9 +167,13 @@ with `Version Units must join to the submitted text exactly.` for a join mismatc
 `A Version supports at most 8192 Units.` for excess Units. These refusals store
 nothing. Supplied Sections must satisfy the same limits and exact byte join;
 they do not bypass capacity checks. The CLI reports these refusals as
-`API request failed.` with a nonzero exit. Case, punctuation,
-and spacing differences return the existing Version, preserving its original
-bytes and metadata. Titles and aliases resolve one Work; ambiguous names conflict.
+`API request failed.` with a nonzero exit. A text that equals an existing
+Version, ignoring case, punctuation and spacing, returns that Version and
+creates nothing, whatever Work the supplied title or aliases name; its
+original bytes, metadata and Relations are kept, and Relations in the repeated
+draft are not added. Different ordered-list items, mapping pairs or grading
+policy behind the same text conflict (409). A new text attaches to the Work its
+title or alias names; names that point to different Works conflict.
 Search matches titles, aliases, and the first 240 characters of each Version.
 An empty query lists the Library. No matches returns
 `{"matches":[],"empty":true,"message":"Nothing matches."}`.
@@ -174,7 +191,9 @@ An empty query lists the Library. No matches returns
 | POST | `/api/v1/library/works/delete` | `operation_id`, `work_id`, `revision` |
 
 The Version draft is an object with `title`, `kind`, `text`, optional `name`,
-`aliases`, `context`, `sources`, `rights`, `spelling_strict`, and `sections`.
+`aliases`, `context`, `sources`, `rights`, `provenance`, `relations`,
+`spelling_strict`, and `sections`. `relations` is an array of at most 32
+`{"kind":"part_of"|"related_to","work":"TITLE OR ALIAS"}`.
 Each Section has `heading` and an ordered `units` array of exact strings.
 Only Library `data` supports nested JSON; other foundation API fields remain
 scalar. Mutations return the shared `result.entity_id`, `redirect`, and
@@ -215,8 +234,9 @@ start its Study:
 
 This short example is not the complete alphabet; `examples/nato-alphabet.json`
 contains all 26 official words and source links. Manifest optional fields are
-`name`, `aliases`, `context`, `sources`, `rights`, and `spelling_strict` (defaults
-to true). Rights default to private-only. Sources are retained, not fetched.
+`name`, `aliases`, `context`, `sources`, `rights`, `provenance`, `relations`
+and `spelling_strict` (defaults to true), with the same meaning as for a
+Version draft. Rights default to private-only. Sources are retained, not fetched.
 The only accepted direction is the explicitly declared `forward`. Unknown
 fields (including generation, grades and media) are refused rather than silently
 ignored. The CLI reads at most 1 MiB of manifest JSON; the stored Version retains
@@ -483,6 +503,10 @@ practice response that names such an Attempt adds `practice.judgment`: `state`
 (`checking`, `ungraded` or `decided`), `verdict`, `authority`, `reason` and
 `check_id`. An archive that holds any of these records is named
 `scry-rust-durable-sqlite-study-judged-v4`, and earlier readers refuse it.
+A notebook whose Library holds a Provenance other than supplied, or a
+correction whose normalized text equals another Version's, is named
+`scry-rust-durable-sqlite-library-v5` instead, which every earlier reader
+refuses.
 
 ### Paid judgment (Jev)
 
