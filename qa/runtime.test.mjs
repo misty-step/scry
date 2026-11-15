@@ -403,6 +403,9 @@ try {
   await check('independent complete restore is paused and refuses overwrite',async()=>{
     const response=await restore(archiveBytes);assert.equal(response.status,200);assert.match(await response.text(),/paused/);assert.equal((await restore(archiveBytes)).status,409);
     const ns=await restored.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName('fresh-isolated-restore-only'));const readback=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});assert.equal(readback.status,200);const recovered=await readback.json();assert.equal(recovered.app.restored_paused,true);assert.equal(recovered.app.preferences.pace,'steady');assert.equal(Object.keys(recovered.app.goals).length,2);assert.equal(recovered.photos.length,1);assert.deepEqual(Buffer.from(recovered.photos[0].bytes,"base64"),photoBytes);assert.notEqual(recovered.photos[0].photo.key,JSON.parse(archiveBytes).photos[0].photo.key);assert.deepEqual(recovered.app.events,JSON.parse(archiveBytes).app.events);assert.deepEqual(recovered.app.operations,JSON.parse(archiveBytes).app.operations);
+    // SPEC § Retired generation records: restored exactly as stored, whatever their state.
+    const sourceJobs=JSON.parse(archiveBytes).app.jobs;
+    assert.equal(JSON.stringify(recovered.app.jobs),JSON.stringify(sourceJobs),'every retired generation job is restored byte for byte');
   });
   await check('learner Settings resume refuses CSRF, replays safely and preserves historical work',async()=>{
     const activeBindings={...baseBindings,SPACE_NAME:'fresh-isolated-restore-only',OPENROUTER_API_KEY:'synthetic-recovery-generator-key',OPENROUTER_MODEL:'synthetic-recovery-model'};
@@ -543,7 +546,7 @@ try {
     } finally {await fixture.mf.dispose();}
   });
   for (const mode of ['preview', 'production']) {
-    await check(`${mode}: exact QA principal owns isolated SQLite, photos, backups and restarted alarms`, async () => {
+    await check(`${mode}: exact QA principal owns isolated SQLite and photos, and never backups or a backup alarm`, async () => {
       const client = 'dedicated-scry-qa.access';
       const serviceClaims = {sub:'', common_name:client};
       const service = jwt(serviceClaims);
@@ -644,35 +647,31 @@ try {
         active = await fixture.rebind({...bindings,ALTERNATE_HOSTS:'alternate-synthetic.invalid,unused.invalid'});
         ownerBackups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
         assert.deepEqual((await exported(service)).app,qaArchive.app);
-        const initialSettings = fields(await (await req('/settings')).text());
-        assert.equal((await post('/settings/backup',initialSettings)).status,303);
-        const qaBefore = (await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects.map(o=>o.key);
+        // SPEC § Privacy: the verification space never reaches backups. Its
+        // Settings says so, a crafted request is refused before any write, and
+        // neither a deliberate action nor its restarted alarm takes one.
+        const initialHtml = await (await req('/settings')).text();
+        assert.match(initialHtml,/Backups do not apply to this verification space\./);
+        const initialSettings = fields(initialHtml);
         const qaStorage = await storage('scry-qa');
+        const qaRowsBefore = await qaStorage.exec('SELECT key,value FROM records ORDER BY key');
+        assert.equal((await post('/settings/backup',initialSettings)).status,403);
+        assert.deepEqual(await qaStorage.exec('SELECT key,value FROM records ORDER BY key'),qaRowsBefore);
         const meta = JSON.parse((await qaStorage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
         meta.backup.completed_ms = Date.now()-25*60*60*1000;
         await qaStorage.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
-        // A read never arms or moves the alarm: the overdue backup stays untaken.
         await req('/settings');await new Promise(resolve=>setTimeout(resolve,1500));
-        assert.deepEqual((await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects.map(o=>o.key).sort(),[...qaBefore].sort(),'A page read must not arm the alarm.');
-        // A deliberate action arms it: here, starting a starter Study. Real
-        // timer delivery, not an inspection API.
+        // A deliberate action arms no backup alarm in the verification space.
         assert.equal((await post('/practice/nato/start',{csrf:initialSettings.csrf,operation_id:'qa-arms-the-alarm-deliberately'})).status,303);
-        const deadline = Date.now()+5000;
-        let snapshots;
-        do {
-          snapshots = await ownerBackups.list({prefix:'snapshots/scry-qa/'});
-          if (snapshots.objects.some(o=>!qaBefore.includes(o.key))) break;
-          await new Promise(resolve=>setTimeout(resolve,50));
-        } while (Date.now()<deadline);
-        const alarmSnapshot = snapshots.objects.find(o=>!qaBefore.includes(o.key));
-        assert.ok(alarmSnapshot,'Restarted QA alarm must create a QA-prefixed complete snapshot.');
-        const qaSnapshot = await (await ownerBackups.get(alarmSnapshot.key)).json();
-        assert.deepEqual(qaSnapshot.app.goals,qaArchive.app.goals);
-        assert.deepEqual(qaSnapshot.photos,qaArchive.photos);
-        assert.doesNotMatch(JSON.stringify(qaSnapshot),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        await new Promise(resolve=>setTimeout(resolve,2500));
+        assert.deepEqual((await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects,[],'The verification space never writes a snapshot.');
+        const freshNs = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
+        const qaAlarm = freshNs.get(freshNs.idFromName('scry-qa'));
+        try {assert.equal(await qaAlarm.qaAlarmTime(),null,'No backup alarm is armed for it.');assert.equal(await qaAlarm.qaAlarm(),200);} finally {qaAlarm[Symbol.dispose]?.();}
+        assert.deepEqual((await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects,[]);
         assert.deepEqual((await ownerBackups.list({prefix:`snapshots/${baseBindings.SPACE_NAME}/`})).objects.map(o=>o.key),ownerBefore);
         const qaSettings = fields(await (await req('/settings')).text());
-        assert.equal((await post('/settings/backup',qaSettings)).status,303,'QA may back up only its own notebook.');
+        assert.equal((await post('/settings/backup',qaSettings)).status,403,'QA never backs up, its own notebook included.');
         const ownerAfter = await exported(jwt());
         const ownerSnapshot = await (await ownerBackups.get(ownerAfter.app.backup.key)).json();
         assert.doesNotMatch(JSON.stringify(ownerSnapshot),/QA_ONLY_NOTEBOOK_CANARY/);
@@ -885,14 +884,14 @@ try {
       };
       const post = (path,values) => req(path,{method:'POST',body:new URLSearchParams(values),
         headers:{'X-Scry-Test-Origin':currentOrigin,'Content-Type':'application/x-www-form-urlencoded'}});
+      // The space's complete export, read inside the object: the verification
+      // space has no backups to read it back from (SPEC § Privacy).
       const snapshot = async identity => {
         const ns = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
         const stub = ns.get(ns.idFromName('scry-qa'));
-        assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',
-          headers:{'x-scry-internal-key':internalKey,'x-scry-owner':identity}})).status,200);
-        const bucket = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
-        const objects = (await bucket.list({prefix:'snapshots/scry-qa/'})).objects;
-        return (await (await bucket.get(objects.sort((a,b)=>b.uploaded-a.uploaded)[0].key)).json()).app;
+        const response = await stub.fetch('https://internal.invalid/export',{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':identity}});
+        assert.equal(response.status,200);
+        return (await response.json()).app;
       };
       try {
         // The earlier notebook as the retired authored demo left it, one question

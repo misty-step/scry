@@ -190,9 +190,13 @@ fn paid_token_grants_require_paid_authority_at_the_shared_engine_boundary() {
     let unpaid = OwnerToken::issue("practice", Some(NOW + 100), false, NOW, SEED).unwrap();
     app.owner_tokens
         .insert(unpaid.info.id.clone(), unpaid.clone());
+    // SPEC § Owner tokens: a token cannot create one that outlives it, so the
+    // child of an expiring token expires no later than it does.
+    let limit = (NOW + 100).to_string();
     let ordinary_request = fields(&[
         ("operation_id", "ordinary-child-operation"),
         ("name", "ordinary child"),
+        ("expires_ms", limit.as_str()),
     ]);
     let ordinary = engine::mutate_as(
         &mut app,
@@ -205,7 +209,7 @@ fn paid_token_grants_require_paid_authority_at_the_shared_engine_boundary() {
     .unwrap();
     let ordinary = app.owner_tokens[&ordinary.entity_id.unwrap()].clone();
     assert!(!ordinary.info.paid);
-    assert_eq!(ordinary.info.expires_ms, None);
+    assert_eq!(ordinary.info.expires_ms, Some(NOW + 100));
     let paid_request = fields(&[
         ("operation_id", "paid-child-grant-operation"),
         ("name", "paid child"),

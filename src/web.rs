@@ -1475,19 +1475,29 @@ impl View<'_> {
                     ),
                 );
             }
-            let again = if view.checks_left {
+            // While checks are paused, asking again would only be refused.
+            let again = if self.app.restored_paused {
+                String::new()
+            } else if view.checks_left {
                 self.check_again(a, "exact-form")
             } else {
                 "<p class=\"fineprint\">Three checks are saved for this answer. It stays saved and not graded.</p>".into()
             };
             return (
                 format!(
-                    "<div class=\"feedback feedback-self\" role=\"status\"><h1>Saved, not graded.</h1></div><p class=\"notice\">{}</p><p class=\"fineprint\">This answer has no Verdict and its schedule is unchanged.</p>{answer}{}",
+                    "<div class=\"feedback feedback-self\" role=\"status\"><h1>Saved, not graded.</h1></div><p class=\"notice\">{}{}</p><p class=\"fineprint\">This answer has no Verdict and its schedule is unchanged.</p>{answer}{}",
                     escape(
                         view.check
                             .and_then(|c| c.reason.as_deref())
                             .unwrap_or("Jev did not judge this answer.")
                     ),
+                    // Checks stay paused in a restored notebook until the
+                    // Owner resumes them, which is done in Settings.
+                    if self.app.restored_paused {
+                        " <a href=\"/settings#preparation\">Resume checks in Settings</a>"
+                    } else {
+                        ""
+                    },
                     full("Expected text and comparison", "")
                 ),
                 format!("{again}{}", next(false)),
@@ -3868,6 +3878,52 @@ impl View<'_> {
             .filter(|s| s.cost_micros.is_none())
             .count();
         let backup=match self.app.backup.completed_ms{Some(time)=>format!("Last verified backup: {}.{}",date(time),if self.now-time>DAY_MS{" A fresh backup needs attention."}else{""}),None=>"No verified remote backup is recorded. Recovery needs attention before personal use.".into()};
+        // A restore stores its marker where a backup's failure goes; it is
+        // not a failure. A restored notebook says so until it backs up here.
+        let restored_marker = self
+            .app
+            .backup
+            .error
+            .as_deref()
+            .is_some_and(|e| e.starts_with(crate::engine::RESTORE_MARKER));
+        let restored = restored_marker
+            || (self.app.restored_paused
+                && self.app.backup.error.is_none()
+                && self.app.backup.completed_ms.is_none());
+        let verified = |time: Option<i64>| {
+            time.map_or_else(
+                || "No verified backup exists.".to_string(),
+                |time| format!("Last verified backup: {}.", date(time)),
+            )
+        };
+        // A failed latest attempt leads, outside any disclosure, with the last
+        // verified date beside it. A full notebook says so too.
+        let backup = match (&self.app.backup.error, self.app.backup.completed_ms) {
+            _ if restored => format!(
+                "<p data-backup=\"restored\"><strong>Restored here; no backup has been taken here yet.</strong> {}</p>",
+                verified(self.app.backup.completed_ms)
+            ),
+            (Some(_), time) => format!(
+                "<p data-backup=\"failed\"><strong>The last backup failed.</strong> {}</p>",
+                verified(time)
+            ),
+            (None, _) => format!("<p>{backup}</p>"),
+        } + &match crate::persistence::footprint(self.app) {
+            crate::persistence::Footprint::TooLarge => {
+                "<p data-capacity=\"full\"><strong>Storage is full.</strong> The notebook is too large for a complete backup or export, and changes that add to it are refused. Nothing has been deleted.</p>".to_string()
+            }
+            // Over three quarters of the limit: its size, quietly.
+            crate::persistence::Footprint::Fits(bytes)
+                if bytes > crate::persistence::SIZE_NOTICE_BYTES =>
+            {
+                format!(
+                    "<p class=\"fineprint\" data-capacity=\"large\">The notebook uses {:.1} MiB of the {} MiB one complete backup can hold.</p>",
+                    bytes as f64 / 1_048_576.0,
+                    crate::persistence::MAX_ARCHIVE_BYTES / 1_048_576
+                )
+            }
+            _ => String::new(),
+        };
         let resume = if self.app.restored_paused {
             format!(
                 "<section class=\"notice\" id=\"preparation\"><h2>Preparation is paused.</h2><p>This restored notebook has background work paused. Resume future meaning checks when you are ready. Native content generation stays retired. Historical uncertain work stays stopped; its allowance and your learning history stay saved.</p>{}</section>",
@@ -3889,17 +3945,30 @@ impl View<'_> {
             "",
             "<button class=\"button secondary\">Create a verified backup</button>",
         );
+        let backup = if self
+            .query
+            .get("__verification")
+            .is_some_and(|v| v == "true")
+        {
+            "<p data-backup=\"not-applicable\">Backups do not apply to this verification space.</p>"
+                .to_string()
+        } else {
+            format!(
+                "{backup}<details><summary>Recovery targets</summary><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p></details>{}{backup_action}",
+                self.app
+                    .backup
+                    .error
+                    .as_ref()
+                    .filter(|_| !restored_marker)
+                    .map(|e| format!(
+                        "<details><summary>Backup details</summary><p>{}</p></details>",
+                        escape(e)
+                    ))
+                    .unwrap_or_default()
+            )
+        };
         let mut out = format!(
-            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><h1>Settings</h1></div>{resume}<details class=\"settings-section\"><summary>Usage allowance</summary><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></details><section class=\"settings-section\"><h2>Backup</h2><p>{backup}</p><details><summary>Recovery targets</summary><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p></details>{}{backup_action}</section><section class=\"settings-section\"><h2>Export</h2><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><details class=\"settings-section font-colophon\"><summary>About</summary><p>Literata and Atkinson Hyperlegible Next.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses</a></details></section>",
-            self.app
-                .backup
-                .error
-                .as_ref()
-                .map(|e| format!(
-                    "<details><summary>Backup details</summary><p>{}</p></details>",
-                    escape(e)
-                ))
-                .unwrap_or_default()
+            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><h1>Settings</h1></div>{resume}<details class=\"settings-section\"><summary>Usage allowance</summary><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></details><section class=\"settings-section\"><h2>Backup</h2>{backup}</section><section class=\"settings-section\"><h2>Export</h2><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><details class=\"settings-section font-colophon\"><summary>About</summary><p>Literata and Atkinson Hyperlegible Next.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses</a></details></section>"
         );
         out.push_str(&self.owner_tokens());
         out.push_str(&self.paid_judgment());
@@ -4247,6 +4316,9 @@ pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
         "/library/add"
     } else if matches!(path, "/create" | "/add" | "/settings") || path.ends_with("/edit") {
         path
+    } else if path == "/settings/backup" {
+        // A refused backup request is answered with the backup status.
+        "/settings"
     } else if let Some(page) = earlier_page(path) {
         page
     } else {
