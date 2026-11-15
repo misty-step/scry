@@ -22,11 +22,12 @@ authorize operator backup or restore.
 
 Every mutation, from the API or the browser, is refused with 413 `Storage is
 full. This would make the notebook too large for one complete backup, so
-nothing was saved.` when what it changed would no longer fit one complete
-archive; a replay of a committed operation and a token revocation are never
-refused for capacity. A notebook already past capacity (records of paid work
-are saved even then) answers `GET /api/v1/export` with 413 and stays readable
-through every other read.
+nothing was saved.` when what it changed would pass 12 MiB of complete archive,
+4 MiB below the 16 MiB limit; that reserve holds backups' status and records of
+paid work. Revoking a token, pausing or dropping a Study and discarding a draft
+are admitted up to the full limit, and a replay of a committed operation is
+never refused for capacity. A notebook past the full limit answers
+`GET /api/v1/export` with 413 and stays readable through every other read.
 
 ## Use the CLI
 

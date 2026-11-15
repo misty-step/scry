@@ -3878,19 +3878,46 @@ impl View<'_> {
             .filter(|s| s.cost_micros.is_none())
             .count();
         let backup=match self.app.backup.completed_ms{Some(time)=>format!("Last verified backup: {}.{}",date(time),if self.now-time>DAY_MS{" A fresh backup needs attention."}else{""}),None=>"No verified remote backup is recorded. Recovery needs attention before personal use.".into()};
+        // A restore stores its marker where a backup's failure goes; it is
+        // not a failure. A restored notebook says so until it backs up here.
+        let restored_marker = self
+            .app
+            .backup
+            .error
+            .as_deref()
+            .is_some_and(|e| e.starts_with(crate::engine::RESTORE_MARKER));
+        let restored = restored_marker
+            || (self.app.restored_paused
+                && self.app.backup.error.is_none()
+                && self.app.backup.completed_ms.is_none());
+        let verified = |time: Option<i64>| {
+            time.map_or_else(
+                || "No verified backup exists.".to_string(),
+                |time| format!("Last verified backup: {}.", date(time)),
+            )
+        };
         // A failed latest attempt leads, outside any disclosure, with the last
-        // verified date beside it. A notebook past capacity says so too.
+        // verified date beside it. A full notebook says so too.
         let backup = match (&self.app.backup.error, self.app.backup.completed_ms) {
-            (Some(_), Some(time)) => format!(
-                "<p data-backup=\"failed\"><strong>The last backup failed.</strong> Last verified backup: {}.</p>",
-                date(time)
+            _ if restored => format!(
+                "<p data-backup=\"restored\"><strong>Restored here; no backup has been taken here yet.</strong> {}</p>",
+                verified(self.app.backup.completed_ms)
             ),
-            (Some(_), None) => "<p data-backup=\"failed\"><strong>The last backup failed.</strong> No verified backup exists.</p>".into(),
+            (Some(_), time) => format!(
+                "<p data-backup=\"failed\"><strong>The last backup failed.</strong> {}</p>",
+                verified(time)
+            ),
             (None, _) => format!("<p>{backup}</p>"),
-        } + if crate::persistence::within_capacity(self.app).is_err_and(|e| e.status == 413) {
-            "<p data-capacity=\"full\"><strong>Storage is full.</strong> The notebook is too large for a complete backup or export, and changes that add to it are refused. Nothing has been deleted.</p>"
-        } else {
-            ""
+        } + match crate::persistence::footprint(self.app) {
+            crate::persistence::Footprint::TooLarge => {
+                "<p data-capacity=\"full\"><strong>Storage is full.</strong> The notebook is too large for a complete backup or export, and changes that add to it are refused. Nothing has been deleted.</p>"
+            }
+            crate::persistence::Footprint::Fits(bytes)
+                if bytes > crate::persistence::ORDINARY_ARCHIVE_BYTES =>
+            {
+                "<p data-capacity=\"full\"><strong>Storage is full.</strong> Changes that add to the notebook are refused, so that backups keep working. Nothing has been deleted.</p>"
+            }
+            _ => "",
         };
         let resume = if self.app.restored_paused {
             format!(
@@ -3927,6 +3954,7 @@ impl View<'_> {
                     .backup
                     .error
                     .as_ref()
+                    .filter(|_| !restored_marker)
                     .map(|e| format!(
                         "<details><summary>Backup details</summary><p>{}</p></details>",
                         escape(e)

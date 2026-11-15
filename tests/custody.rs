@@ -94,10 +94,14 @@ impl Owner {
 /// Test-owned receipts that each fit a row and together approach the
 /// archive bound, leaving `room` bytes, as the Worker capacity tests do.
 fn fill(app: &mut App, room: usize) {
+    fill_to(app, persistence::MAX_ARCHIVE_BYTES, room);
+}
+/// Test-owned receipts that bring the archive to within `room` bytes of `limit`.
+fn fill_to(app: &mut App, limit: usize, room: usize) {
     let mut i = 0;
     loop {
         let size = persistence::archive_size(app).unwrap();
-        let left = persistence::MAX_ARCHIVE_BYTES - size;
+        let left = limit - size;
         if left <= room + 2_000 {
             break;
         }
@@ -124,39 +128,391 @@ fn fill(app: &mut App, room: usize) {
 
 #[test]
 fn growth_past_capacity_is_refused_by_one_rule_and_revocation_is_not() {
+    let none = BTreeMap::new();
+    for client in [persistence::Client::Browser, persistence::Client::Api] {
+        let mut o = Owner::new().text();
+        let token = OwnerToken::issue("custody agent", None, false, NOW, &"c".repeat(48)).unwrap();
+        let token_id = token.info.id.clone();
+        o.app.owner_tokens.insert(token_id.clone(), token);
+        fill(&mut o.app, 600);
+        let before = o.app.clone();
+        let pid = o.held();
+        // An answer grows the notebook past one complete archive.
+        o.call(
+            "/practice/answer",
+            &[("prompt_id", &pid), ("answer", "I believe in one God")],
+        );
+        let error =
+            persistence::admit_growth("/practice/answer", &none, before.revision, &o.app, client)
+                .unwrap_err();
+        assert_eq!(error.status, 413);
+        assert_eq!(error.message, persistence::CAPACITY_REFUSAL);
+        // Nothing changed is nothing refused: a replay returns its committed result.
+        assert!(
+            persistence::admit_growth("/practice/answer", &none, before.revision, &before, client)
+                .is_ok()
+        );
+        // Access can always be withdrawn, whatever storage holds.
+        o.app = before.clone();
+        o.call("/tokens/revoke", &[("token_id", &token_id)]);
+        assert!(o.app.owner_tokens[&token_id].info.revoked_ms.is_some());
+        assert!(
+            persistence::admit_growth("/tokens/revoke", &none, before.revision, &o.app, client)
+                .is_ok()
+        );
+        // Well within capacity the same answer is admitted.
+        let mut roomy = Owner::new().text();
+        let start = roomy.app.revision;
+        let pid = roomy.held();
+        roomy.call(
+            "/practice/answer",
+            &[("prompt_id", &pid), ("answer", "I believe")],
+        );
+        assert!(
+            persistence::admit_growth("/practice/answer", &none, start, &roomy.app, client).is_ok()
+        );
+    }
+}
+
+// --- Review 1: only size refuses -----------------------------------------------
+
+/// A notebook whose archive cannot be built for a reason other than its size:
+/// one stored photo larger than the photo limit, or two Goals naming the same
+/// photo with different records.
+fn unsizable(kind: &str) -> App {
+    let (mut app, _) = common::earlier("history-rich");
+    let mut goals = app.goals.values().filter(|g| g.photo.is_some()).cloned();
+    let mut goal = goals.next().expect("a saved photo");
+    match kind {
+        "oversized" => goal.photo.as_mut().unwrap().size = scry::model::PHOTO_LIMIT + 1,
+        _ => {
+            let mut other = app
+                .goals
+                .values()
+                .find(|g| g.photo.is_none())
+                .unwrap()
+                .clone();
+            let mut photo = goal.photo.clone().unwrap();
+            photo.sha256 = "0".repeat(64);
+            other.photo = Some(photo);
+            app.goals.insert(other.id.clone(), other);
+        }
+    }
+    app.goals.insert(goal.id.clone(), goal);
+    app
+}
+
+#[test]
+fn a_notebook_that_cannot_be_measured_for_another_reason_is_answered_as_before() {
+    for kind in ["oversized", "conflicting"] {
+        let app = unsizable(kind);
+        let reason = persistence::archive_size(&app).unwrap_err();
+        assert_ne!(reason.message, persistence::CAPACITY_REFUSAL);
+        assert!(matches!(
+            persistence::footprint(&app),
+            persistence::Footprint::Unsizable(_)
+        ));
+        let mut changed = app.clone();
+        changed.revision += 1;
+        let none = BTreeMap::new();
+        // Writes the browser never checked before stay admitted.
+        for path in [
+            "/practice/answer",
+            "/practice/next",
+            "/practice/quiz",
+            "/practice/reveal",
+            "/settings/backup",
+            "/settings/judgment",
+            "/settings/resume",
+            "/tokens/create",
+            "/tokens/revoke",
+        ] {
+            assert!(
+                persistence::admit_growth(
+                    path,
+                    &none,
+                    app.revision,
+                    &changed,
+                    persistence::Client::Browser
+                )
+                .is_ok(),
+                "{kind}: {path}"
+            );
+        }
+        // The browser paths checked before keep that check and its reason.
+        for path in [
+            "/practice/draft",
+            "/practice/draft/discard",
+            "/practice/nato/start",
+            "/practice/lesson/start",
+            "/library/version/add",
+            "/library/mapping/add",
+            "/library/work/edit",
+        ] {
+            let error = persistence::admit_growth(
+                path,
+                &none,
+                app.revision,
+                &changed,
+                persistence::Client::Browser,
+            )
+            .unwrap_err();
+            assert_eq!(
+                (error.status, &error.message),
+                (reason.status, &reason.message),
+                "{kind}: {path}"
+            );
+        }
+        // The API checked every mutation before, a replay included.
+        for (after, path) in [(&changed, "/practice/answer"), (&app, "/practice/answer")] {
+            let error = persistence::admit_growth(
+                path,
+                &none,
+                app.revision,
+                after,
+                persistence::Client::Api,
+            )
+            .unwrap_err();
+            assert_eq!(error.message, reason.message, "{kind}: API");
+        }
+        // Export says nothing about storage being full.
+        assert!(
+            !Owner {
+                app: app.clone(),
+                n: 0,
+                now: NOW,
+                jev: false
+            }
+            .page("/settings", &[])
+            .contains("data-capacity")
+        );
+    }
+}
+
+// --- Review 2: a reserve for the writes that never ask ------------------------
+
+#[test]
+fn ordinary_growth_stops_at_a_reserve_that_covers_every_write_that_bypasses_it() {
+    let none = BTreeMap::new();
+    assert_eq!(
+        persistence::ORDINARY_ARCHIVE_BYTES,
+        persistence::MAX_ARCHIVE_BYTES - persistence::RESERVE_BYTES
+    );
     let mut o = Owner::new().text();
-    let token = OwnerToken::issue("custody agent", None, false, NOW, &"c".repeat(48)).unwrap();
-    let token_id = token.info.id.clone();
-    o.app.owner_tokens.insert(token_id.clone(), token);
-    fill(&mut o.app, 600);
-    let before = o.app.clone();
+    o.jev = true;
+    o.app.preferences.paid_judgment = true;
+    // Two open Checks: one queued, one sent with its reservation.
     let pid = o.held();
-    // An answer grows the notebook past one complete archive.
     o.call(
         "/practice/answer",
-        &[("prompt_id", &pid), ("answer", "I believe in one God")],
+        &[("prompt_id", &pid), ("answer", "I believe in a single God")],
     );
-    let error = persistence::admit_growth("/practice/answer", before.revision, &o.app).unwrap_err();
-    assert_eq!(error.status, 413);
-    assert_eq!(error.message, persistence::CAPACITY_REFUSAL);
-    // Nothing changed is nothing refused: a replay returns its committed result.
-    assert!(persistence::admit_growth("/practice/answer", before.revision, &before).is_ok());
-    // Access can always be withdrawn, whatever storage holds.
-    let mut revoked = before.clone();
-    o.app = revoked.clone();
-    o.call("/tokens/revoke", &[("token_id", &token_id)]);
-    revoked = o.app.clone();
-    assert!(revoked.owner_tokens[&token_id].info.revoked_ms.is_some());
-    assert!(persistence::admit_growth("/tokens/revoke", before.revision, &revoked).is_ok());
-    // Within capacity the same answer is admitted.
-    let mut roomy = Owner::new().text();
-    let start = roomy.app.revision;
-    let pid = roomy.held();
-    roomy.call(
+    engine::claim_check_work(&mut o.app, NOW, "custody-reserve-lease-1", &generation())
+        .unwrap()
+        .unwrap();
+    let card = o
+        .app
+        .practice
+        .cards
+        .values()
+        .find(|c| c.unit_index == 1)
+        .unwrap()
+        .id
+        .clone();
+    let pid = o.held();
+    o.call("/practice/next", &[("after", &pid), ("card_id", &card)]);
+    if o.app.practice.current.as_ref().unwrap().source_visible() {
+        let pid = o.held();
+        o.call("/practice/quiz", &[("prompt_id", &pid)]);
+    }
+    let pid = o.held();
+    o.call(
         "/practice/answer",
-        &[("prompt_id", &pid), ("answer", "I believe")],
+        &[("prompt_id", &pid), ("answer", "the Father of might")],
     );
-    assert!(persistence::admit_growth("/practice/answer", start, &roomy.app).is_ok());
+    // Exactly at the ordinary threshold.
+    fill_to(&mut o.app, persistence::ORDINARY_ARCHIVE_BYTES, 0);
+    let top = persistence::ORDINARY_ARCHIVE_BYTES - persistence::archive_size(&o.app).unwrap();
+    o.app
+        .operations
+        .get_mut("custody-capacity-0000")
+        .unwrap()
+        .result
+        .data = Some(
+        json!({"synthetic": format!("{}{}", o.app.operations["custody-capacity-0000"].result.data.as_ref().unwrap()["synthetic"].as_str().unwrap(), "x".repeat(top))}),
+    );
+    assert_eq!(
+        persistence::archive_size(&o.app).unwrap(),
+        persistence::ORDINARY_ARCHIVE_BYTES
+    );
+    let at = o.app.clone();
+    // Any ordinary growth is refused there, with the same words.
+    let mut grown = at.clone();
+    let card = grown
+        .practice
+        .cards
+        .values()
+        .find(|c| c.unit_index == 2)
+        .unwrap()
+        .id
+        .clone();
+    let pid = grown.practice.current.as_ref().unwrap().prompt.id.clone();
+    let mut g = Owner {
+        app: grown,
+        n: 900,
+        now: NOW,
+        jev: true,
+    };
+    g.call("/practice/next", &[("after", &pid), ("card_id", &card)]);
+    grown = g.app;
+    let error = persistence::admit_growth(
+        "/practice/next",
+        &none,
+        at.revision,
+        &grown,
+        persistence::Client::Browser,
+    )
+    .unwrap_err();
+    assert_eq!(error.message, persistence::CAPACITY_REFUSAL);
+    // A backup's success, then its failure text, then success again.
+    let mut backed = at.clone();
+    backed.backup = BackupStatus {
+        completed_ms: Some(NOW),
+        key: Some(format!("snapshots/{}/{}-pre-release-{}.json", "s".repeat(128), NOW, "f".repeat(48))),
+        sha256: Some("a".repeat(64)),
+        error: Some("The complete snapshot could not be verified. Review remains available; inspect operator recovery configuration.".into()),
+    };
+    assert!(
+        persistence::archive_size(&backed).is_ok(),
+        "a backup's status always fits"
+    );
+    // A restore's marker and per-Check reasons, then alarm recovery.
+    let mut restored = at.clone();
+    engine::pause_restored(&mut restored, NOW + 1).unwrap();
+    assert!(
+        restored
+            .practice
+            .checks
+            .values()
+            .any(|c| c.status == scry::study::CheckStatus::Unknown)
+    );
+    assert!(
+        restored
+            .practice
+            .checks
+            .values()
+            .any(|c| c.status == scry::study::CheckStatus::Refused)
+    );
+    assert!(
+        persistence::archive_size(&restored).is_ok(),
+        "a restore always fits"
+    );
+    // Resuming after the restore is admitted within the reserve.
+    let mut resumed = Owner {
+        app: restored.clone(),
+        n: 950,
+        now: NOW,
+        jev: true,
+    };
+    let before = resumed.app.revision;
+    resumed.call("/settings/resume", &[]);
+    assert!(
+        persistence::admit_growth(
+            "/settings/resume",
+            &none,
+            before,
+            &resumed.app,
+            persistence::Client::Browser
+        )
+        .is_ok()
+    );
+    // Seven paid outcomes of 256 KiB, each doubled by escaping, still fit.
+    let mut paid = at.clone();
+    for i in 0..7 {
+        paid.operations.insert(
+            format!("custody-paid-{i}"),
+            Receipt {
+                acting_token: None,
+                path: None,
+                created_ms: None,
+                payload_hash: "a".repeat(64),
+                result: MutationResult {
+                    data: Some(
+                        json!({"raw": "\"".repeat(256 * 1024), "verdict": "x".repeat(8 * 1024)}),
+                    ),
+                    ..MutationResult::default()
+                },
+            },
+        );
+    }
+    assert!(
+        persistence::archive_size(&paid).is_ok(),
+        "seven paid outcomes fit the reserve"
+    );
+}
+
+// --- Review 3: withdrawing is admitted within the reserve ---------------------
+
+#[test]
+fn within_the_reserve_only_withdrawing_or_settling_is_admitted() {
+    let mut o = Owner::new().text();
+    fill_to(&mut o.app, persistence::ORDINARY_ARCHIVE_BYTES, 0);
+    // Past the ordinary threshold, within the full limit.
+    o.app.operations.insert(
+        "custody-over-ordinary".into(),
+        Receipt {
+            acting_token: None,
+            path: None,
+            created_ms: None,
+            payload_hash: "a".repeat(64),
+            result: MutationResult {
+                data: Some(json!({"synthetic": "x".repeat(10_000)})),
+                ..MutationResult::default()
+            },
+        },
+    );
+    let at = o.app.clone();
+    let mut changed = at.clone();
+    changed.revision += 1;
+    let fields = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    };
+    for client in [persistence::Client::Browser, persistence::Client::Api] {
+        for (path, pairs) in [
+            ("/tokens/revoke", vec![]),
+            ("/settings/judgment", vec![("paid_judgment", "off")]),
+            ("/settings/resume", vec![]),
+            ("/practice/pause", vec![]),
+            ("/practice/drop", vec![]),
+            ("/practice/draft/discard", vec![]),
+        ] {
+            assert!(
+                persistence::admit_growth(path, &fields(&pairs), at.revision, &changed, client)
+                    .is_ok(),
+                "{path}"
+            );
+        }
+        for (path, pairs) in [
+            ("/settings/judgment", vec![("paid_judgment", "on")]),
+            ("/practice/answer", vec![]),
+            ("/practice/next", vec![]),
+            ("/practice/draft", vec![]),
+            ("/practice/resume", vec![]),
+            ("/settings/backup", vec![]),
+            ("/tokens/create", vec![]),
+            ("/library/version/add", vec![]),
+        ] {
+            let error =
+                persistence::admit_growth(path, &fields(&pairs), at.revision, &changed, client)
+                    .unwrap_err();
+            assert_eq!(error.message, persistence::CAPACITY_REFUSAL, "{path}");
+        }
+    }
+    let settings = o.page("/settings", &[]);
+    assert!(settings.contains("<p data-capacity=\"full\"><strong>Storage is full.</strong> Changes that add to the notebook are refused, so that backups keep working."));
 }
 
 #[test]
@@ -512,5 +868,49 @@ fn a_token_cannot_create_one_that_outlives_it() {
             .entity_id
             .unwrap();
         assert_eq!(o.app.owner_tokens[&id].info.expires_ms, None);
+    }
+}
+
+// --- Review 4: a restore is not a failed backup ---------------------------------
+
+#[test]
+fn settings_after_a_restore_says_it_was_restored_not_that_a_backup_failed() {
+    for verified in [Some(NOW - 3_600_000), None] {
+        let mut o = Owner::new();
+        o.app.backup.completed_ms = verified;
+        o.app.backup.key = verified.map(|_| "snapshots/synthetic/1-daily-y.json".into());
+        let stored = {
+            let mut app = o.app.clone();
+            engine::pause_restored(&mut app, NOW).unwrap();
+            app
+        };
+        assert!(
+            stored
+                .backup
+                .error
+                .as_deref()
+                .unwrap()
+                .starts_with(engine::RESTORE_MARKER)
+        );
+        o.app = stored;
+        let settings = main_of(&o.page("/settings", &[]));
+        assert!(!settings.contains("The last backup failed"), "{verified:?}");
+        let expected = match verified {
+            Some(_) => {
+                "<p data-backup=\"restored\"><strong>Restored here; no backup has been taken here yet.</strong> Last verified backup: "
+            }
+            None => {
+                "<p data-backup=\"restored\"><strong>Restored here; no backup has been taken here yet.</strong> No verified backup exists.</p>"
+            }
+        };
+        assert!(settings.contains(expected), "{verified:?}");
+        // As the runtime restores: the status starts empty and checks are paused.
+        o.app.backup = BackupStatus::default();
+        assert!(main_of(&o.page("/settings", &[])).contains(
+            "<p data-backup=\"restored\"><strong>Restored here; no backup has been taken here yet.</strong> No verified backup exists.</p>"
+        ));
+        // A real failure after the restore reads as a failure.
+        o.app.backup.error = Some(FAILED.into());
+        assert!(main_of(&o.page("/settings", &[])).contains("<p data-backup=\"failed\">"));
     }
 }

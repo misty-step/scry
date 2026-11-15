@@ -21,19 +21,39 @@ The dated receipts below remain historical evidence, not new rollout gates.
 This describes source behavior on branch `custody-local`, not a deployed
 observation. Stored records and archive formats are unchanged.
 
-- **Storage capacity.** Every mutation that changes the notebook, from the
-  browser or the API, is refused with 413 and "Storage is full. This would make
-  the notebook too large for one complete backup, so nothing was saved." when
-  the result would not fit one complete archive (16 MiB). The refused page keeps
+- **Storage capacity.** Only size refuses. A mutation that changes the
+  notebook, from the browser or the API, is refused with 413 and "Storage is
+  full. This would make the notebook too large for one complete backup, so
+  nothing was saved." when the result would pass the ordinary threshold of
+  12 MiB: the 16 MiB archive limit less a 4 MiB reserve. The refused page keeps
   the typed answer; nothing is written. A replay of a committed operation and a
-  token revocation are never refused for capacity. Records of paid work (a sent
-  Check's outcome, its ledger entry, an interrupted send's unknown spend) are
-  saved through the work path even past capacity.
-- **Past capacity.** Such a notebook is never trimmed. Every page, History,
-  the Library and the API reads stay available; `/export` and
-  `/api/v1/export` answer 413 "Storage is full: the notebook is too large for
-  one complete export. …"; Settings says "Storage is full."; backups fail and
-  are shown as failed; `/healthz` turns stale after 26 hours as before.
+  token revocation are never refused for capacity. Actions that only withdraw or
+  settle something (turning paid judgment off, resuming after a restore,
+  pausing or dropping a Study, discarding a draft) are admitted up to the full
+  16 MiB. Asking for a backup in Settings adds a receipt and is ordinary growth;
+  the daily backup does not ask.
+- **The reserve.** Writes that never ask the rule use it: a backup's status or
+  failure text, a restore's marker and per-Check reasons, alarm recovery, and
+  records of paid work (a sent Check's outcome, its ledger entry). Seven paid
+  outcomes can follow at most (3.50 USD over 0.50 USD reservations), each up to
+  256 KiB of raw response that JSON may escape to twice its size plus 8 KiB of
+  Verdict and ledger: 3,640 KiB; a thousand open Checks refused or made unknown
+  at 150 bytes each: 147 KiB; a marker and a backup's status: under 1 KiB.
+  Total 3,788 KiB, inside 4 MiB. Backup, export, restore and validation keep
+  the full limit.
+- **Unmeasurable archives.** A notebook whose archive cannot be built for a
+  reason other than size (a stored photo over the photo limit, conflicting
+  photo records) is answered exactly as before this rule: the earlier checked
+  browser writes (Save draft, discard, starting NATO or a lesson, Library adds
+  and edits) and every API mutation refuse with that reason; every other write
+  is admitted; its backups fail and show as failed.
+- **Full notebooks.** None is ever trimmed. Past the ordinary threshold
+  Settings says "Storage is full." and that backups keep working. Past the full
+  limit (reachable only through a reserve overrun) every page, History, the
+  Library and the API reads stay available; `/export` and `/api/v1/export`
+  answer 413 "Storage is full: the notebook is too large for one complete
+  export. …"; backups fail and show as failed; `/healthz` turns stale after 26
+  hours as before.
 - **Failed backup.** Settings leads with "The last backup failed." and the
   last verified date, or "No verified backup exists.", outside any disclosure.
   A failed backup asked for in Settings returns to Settings (303), keeps study
@@ -46,12 +66,15 @@ observation. Stored records and archive formats are unchanged.
   backups and `/healthz` are unchanged.
 - **Restore.** A restore leaves every retired generation job exactly as
   stored; only practice Checks become refused (queued) or unknown (sent).
-  `revival/restore.mjs` reconciles on that basis.
+  `revival/restore.mjs` reconciles on that basis. Until it backs up, a restored
+  notebook's Settings reads "Restored here; no backup has been taken here yet."
+  with the last verified date, if any; the restore marker kept in the backup
+  status is not shown as a failure.
 - **Cross-site reads.** A GET or HEAD with `Sec-Fetch-Site: cross-site` is
   answered 403 before any access check or state read unless it is a top-level
   navigation (`Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document`), which
   includes the sign-in redirect back from Access. Requests without fetch
-  metadata are unchanged.
+  metadata are unchanged. `GET` and `HEAD /healthz` answer before this check.
 - **Owner tokens.** A token that expires cannot create one that expires later
   or never.
 - **Triage.** Two categories join those listed below:

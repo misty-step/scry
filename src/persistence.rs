@@ -584,10 +584,21 @@ impl Write for BoundedSize {
     }
 }
 
-/// Check the complete archive footprint without loading any R2 photo bodies.
+/// How one complete archive of the notebook measures.
+pub enum Footprint {
+    /// It fits, in this many bytes.
+    Fits(usize),
+    /// It is larger than one complete archive can be.
+    TooLarge,
+    /// It cannot be measured for a reason other than its size, such as a
+    /// stored photo larger than the photo limit or conflicting photo records.
+    Unsizable(AppError),
+}
+
+/// Measure the complete archive footprint without loading any R2 photo bodies.
 /// Base64 needs exactly four ASCII bytes per three input bytes; it requires no
 /// JSON escaping. The timestamp bound also covers future compatible exports.
-pub fn archive_size(app: &App) -> AppResult<usize> {
+pub fn footprint(app: &App) -> Footprint {
     #[derive(Serialize)]
     struct PhotoSize<'a> {
         photo: &'a Photo,
@@ -604,52 +615,133 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
     }
     let mut size = BoundedSize { bytes: 0 };
     let mut photos = Vec::new();
-    for photo in required_photos(app)?.into_values() {
+    let required = match required_photos(app) {
+        Ok(required) => required,
+        Err(error) => return Footprint::Unsizable(error),
+    };
+    for photo in required.into_values() {
         if photo.size > PHOTO_LIMIT {
-            return Err(AppError::new(
+            return Footprint::Unsizable(AppError::new(
                 413,
                 "A photo exceeds the archive size limit.",
             ));
         }
-        size.add(photo.size.div_ceil(3) * 4).map_err(|_| {
-            AppError::new(413, "The complete archive exceeds its bounded size limit.")
-        })?;
+        if size.add(photo.size.div_ceil(3) * 4).is_err() {
+            return Footprint::TooLarge;
+        }
         photos.push(PhotoSize { photo, bytes: "" });
     }
-    serde_json::to_writer(
-        &mut size,
-        &ArchiveSize {
-            format: archive_format(app),
-            schema: SCHEMA,
-            algorithm: ALGORITHM,
-            created_ms: i64::MIN,
-            app,
-            photos,
-        },
-    )
-    .map_err(|_| AppError::new(413, "The complete archive exceeds its bounded size limit."))?;
-    Ok(size.bytes)
+    let archive = ArchiveSize {
+        format: archive_format(app),
+        schema: SCHEMA,
+        algorithm: ALGORITHM,
+        created_ms: i64::MIN,
+        app,
+        photos,
+    };
+    match serde_json::to_writer(&mut size, &archive) {
+        Ok(()) => Footprint::Fits(size.bytes),
+        Err(_) => Footprint::TooLarge,
+    }
 }
+/// The complete archive's size, refused as before when it cannot be built.
+pub fn archive_size(app: &App) -> AppResult<usize> {
+    match footprint(app) {
+        Footprint::Fits(bytes) => Ok(bytes),
+        Footprint::TooLarge => Err(AppError::new(
+            413,
+            "The complete archive exceeds its bounded size limit.",
+        )),
+        Footprint::Unsizable(error) => Err(error),
+    }
+}
+
 /// What a mutation refused for storage capacity says, from any client.
 pub const CAPACITY_REFUSAL: &str = "Storage is full. This would make the notebook too large for one complete backup, so nothing was saved.";
 
-/// One capacity rule for every client: a mutation that changed the notebook
-/// commits only if the result still fits one complete archive. A replay
-/// changes nothing and returns its committed result. Revoking an Owner token is
-/// never refused for capacity: access can always be withdrawn. Records of paid
-/// work are saved through the runtime's work path, which does not ask.
-pub fn admit_growth(path: &str, before_revision: u64, after: &App) -> AppResult<()> {
-    if after.revision == before_revision || path == "/tokens/revoke" {
-        return Ok(());
-    }
-    within_capacity(after)
+/// Room kept below the archive limit for writes that never ask the capacity
+/// rule: a backup's status or failure text, a restore's marker and its
+/// per-Check reasons, alarm recovery, and records of paid work. Ordinary
+/// growth stops at `ORDINARY_ARCHIVE_BYTES`; backup, export, restore and
+/// validation keep the full `MAX_ARCHIVE_BYTES`.
+///
+/// Seven paid outcomes at most can follow (the 3.50 USD rolling allowance over
+/// 0.50 USD reservations), each up to 256 KiB of raw response, which JSON may
+/// escape to twice its length, plus 8 KiB of Verdict, effects and ledger:
+/// 7 x 520 KiB = 3,640 KiB. A thousand open Checks refused or made unknown by
+/// a claim, recovery or restore, at 150 bytes of status and reason each:
+/// 147 KiB. A restore marker and a backup's key, hash, time and failure text:
+/// under 1 KiB. Total 3,788 KiB, inside 4 MiB.
+pub const RESERVE_BYTES: usize = 4 * 1024 * 1024;
+pub const ORDINARY_ARCHIVE_BYTES: usize = MAX_ARCHIVE_BYTES - RESERVE_BYTES;
+
+/// Actions that only withdraw or settle something and add at most a small
+/// receipt: admitted within the reserve, up to the full archive limit.
+fn withdraws(path: &str, fields: &BTreeMap<String, String>) -> bool {
+    matches!(
+        path,
+        "/tokens/revoke"
+            | "/settings/resume"
+            | "/practice/pause"
+            | "/practice/drop"
+            | "/practice/draft/discard"
+    ) || (path == "/settings/judgment"
+        && fields.get("paid_judgment").map(String::as_str) == Some("off"))
 }
-/// Whether the notebook fits one complete archive, refused in plain words.
-pub fn within_capacity(app: &App) -> AppResult<()> {
-    match archive_size(app) {
-        Ok(_) => Ok(()),
-        Err(error) if error.status == 413 => Err(AppError::new(413, CAPACITY_REFUSAL)),
-        Err(error) => Err(error),
+
+/// Browser writes that checked the complete archive before one capacity rule
+/// existed. A notebook whose archive cannot be measured for a reason other than
+/// its size keeps exactly that behaviour.
+fn checked_before(path: &str) -> bool {
+    matches!(
+        path,
+        "/create"
+            | "/add"
+            | "/library/version/add"
+            | "/library/mapping/add"
+            | "/practice/nato/start"
+            | "/practice/lesson/start"
+            | "/practice/draft"
+            | "/practice/draft/discard"
+    ) || path.ends_with("/edit")
+}
+
+/// Which client asked: the two once differed, and an unmeasurable notebook
+/// keeps each one's earlier answer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Client {
+    Browser,
+    Api,
+}
+
+/// One capacity rule for every client. Only size refuses: a mutation that
+/// changed the notebook commits if the result stays within the ordinary
+/// threshold, or within the full limit for an action that only withdraws or
+/// settles something; revoking an Owner token is never refused for capacity.
+/// A replay changes nothing and returns its committed result. A notebook whose
+/// archive cannot be measured for another reason is answered exactly as it was
+/// before this rule: the earlier checked browser paths and every API mutation
+/// refuse with that reason, and every other write is admitted.
+pub fn admit_growth(
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    before_revision: u64,
+    after: &App,
+    client: Client,
+) -> AppResult<()> {
+    let changed = after.revision != before_revision;
+    match footprint(after) {
+        Footprint::Unsizable(error)
+            if client == Client::Api || (changed && checked_before(path)) =>
+        {
+            Err(error)
+        }
+        Footprint::Unsizable(_) => Ok(()),
+        _ if !changed || path == "/tokens/revoke" => Ok(()),
+        Footprint::Fits(bytes) if bytes <= ORDINARY_ARCHIVE_BYTES || withdraws(path, fields) => {
+            Ok(())
+        }
+        Footprint::Fits(_) | Footprint::TooLarge => Err(AppError::new(413, CAPACITY_REFUSAL)),
     }
 }
 impl Archive {

@@ -2933,6 +2933,10 @@ fn archive_schedule_chains(app: &App, checks: &mut ArchiveChecks) -> AppResult<(
     Ok(())
 }
 
+/// How the marker `pause_restored` stores in the backup status begins. It
+/// names the restore, not a failed backup.
+pub const RESTORE_MARKER: &str = "Restored into an isolated space at ";
+
 /// `pause_restored` under its earlier name.
 pub fn pause_for_restore(app: &mut App, now: i64) -> AppResult<()> {
     pause_restored(app, now)
@@ -2968,7 +2972,7 @@ pub fn pause_restored(app: &mut App, now: i64) -> AppResult<()> {
         check.reason = Some(reason.into());
     }
     app.backup.error = Some(format!(
-        "Restored into an isolated space at {now}; external work remains paused."
+        "{RESTORE_MARKER}{now}; external work remains paused."
     ));
     app.revision = revision;
     Ok(())

@@ -15,6 +15,8 @@ const origin='https://scry-custody-synthetic.invalid';
 const team='custody-synthetic.cloudflareaccess.com',audience='synthetic-custody-audience',owner='synthetic-custody-owner';
 const qaEmail='custody-qa@synthetic.invalid';
 const MAX=16*1024*1024;
+// Ordinary growth stops 4 MiB below the archive limit (persistence::RESERVE_BYTES).
+const ORDINARY=MAX-4*1024*1024;
 const CAPACITY='Storage is full. This would make the notebook too large for one complete backup, so nothing was saved.';
 const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
 const publicJwk={...publicKey.export({format:'jwk'}),kid:'synthetic-key',alg:'RS256',use:'sig'};
@@ -63,17 +65,17 @@ async function notebook({traceObjectFetch=false}={}){
   // widest creation time the capacity rule allows for.
   n.size=async()=>{const response=await n.req('/export');assert.equal(response.status,200,'export');return (await response.arrayBuffer()).byteLength+'-9223372036854775808'.length-String(Date.now()).length;};
   // Test-owned receipts, each within one row's bound, bring the notebook to
-  // exactly MAX - room bytes, as the Worker capacity tests fill it.
-  n.fill=async room=>{
+  // exactly limit - room bytes, as the Worker capacity tests fill it.
+  n.fill=async(room,limit=MAX)=>{
     const sql=await n.sql();
     const put=(i,pad)=>sql.exec('INSERT INTO records(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',`operations/custody-capacity-${String(i).padStart(4,'0')}`,
       JSON.stringify({acting_token:null,path:null,created_ms:null,payload_hash:'a'.repeat(64),result:{redirect:'/',entity_id:null,message:null,data:{synthetic:'x'.repeat(pad)}}}));
     const start=await n.size();
     await put(0,900000);const one=await n.size()-start;
-    let i=1;for(let total=start+one;MAX-room-total>one+50000;total+=one)await put(i++,900000);
+    let i=1;for(let total=start+one;limit-room-total>one+50000;total+=one)await put(i++,900000);
     const before=await n.size();await put(i,1000);const overhead=await n.size()-before-1000;
-    await put(i,MAX-room-before-overhead);
-    assert.equal(await n.size(),MAX-room,'filled to the exact margin');
+    await put(i,limit-room-before-overhead);
+    assert.equal(await n.size(),limit-room,'filled to the exact margin');
   };
   return n;
 }
@@ -92,8 +94,9 @@ test('an answer past capacity is refused by one rule from the browser and the AP
   try{
     const secret=await n.token();
     await heldNato(n);
-    // Room for the Quiz and a backup request with its status, not an answer.
-    await n.fill(2500);
+    // Room below the ordinary threshold for the Quiz and a backup request
+    // with its status, not for an answer.
+    await n.fill(2500,ORDINARY);
     const answer=await quiz(n);
     const before=await n.rows();
     const typed='CAPACITY_TYPED_ALFA';
@@ -311,5 +314,169 @@ test('a restore leaves retired generation jobs saved as queued and sent byte for
         assert.equal(JSON.stringify((await readback.json()).app.jobs),JSON.stringify(JSON.parse(bytes).app.jobs));
       }finally{stub[Symbol.dispose]?.();}
     }finally{await target.mf.dispose();}
+  }finally{await n.runtime.mf.dispose();}
+});
+
+// --- Independent review ---------------------------------------------------------
+
+const photoBytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=','base64');
+// A Goal with a saved photo, as the retired capture stored one.
+async function savedPhoto(n,operation='custody-historical-photo'){
+  const csrf=n.form(await n.page('/settings'),'/tokens/create').csrf;
+  const hash=createHash('sha256').update(photoBytes).digest('hex');
+  const record={key:`photos/${n.space}/${operation}-${hash}`,mime:'image/png',size:photoBytes.length,sha256:hash};
+  const saved=await historicalMutation(await n.sql(),{path:'/create',fields:{csrf,operation_id:operation,intent:'Synthetic saved photo',__photo:JSON.stringify(record)},now_ms:Date.now(),seed:operation});
+  await (await n.runtime.mf.getR2Bucket('SCRY_ASSETS')).put(record.key,photoBytes);
+  return {record,goal:saved.result.entity_id};
+}
+const editRow=async(n,key,change)=>{const sql=await n.sql();const row=(await sql.exec('SELECT value FROM records WHERE key=?',key))[0];const value=JSON.parse(row.value);change(value);await sql.exec('UPDATE records SET value=? WHERE key=?',JSON.stringify(value),key);};
+const setMeta=async(n,change)=>editRow(n,'meta',change);
+const freshFields=async n=>{const f=n.form(await n.page('/settings'),'/tokens/create');return {csrf:f.csrf,revision:f.revision,operation_id:'custody-'+randomUUID()};};
+
+for(const kind of ['oversized','conflicting'])test(`only size refuses: a notebook whose archive cannot be built (${kind} photo) is answered as before`,async()=>{
+  const n=await notebook();
+  try{
+    const {record,goal}=await savedPhoto(n);
+    await heldNato(n);
+    // The stored state nobody has inspected: no archive of it can be built.
+    if(kind==='oversized')await editRow(n,`goals/${goal}`,g=>{g.photo.size=4*1024*1024+1;});
+    else{const other=await savedPhoto(n,'custody-historical-other');await editRow(n,`goals/${other.goal}`,g=>{g.photo={...record,sha256:'0'.repeat(64)};});}
+    assert.equal((await n.req('/export')).status,500,'no complete export can be built');
+    // Practice goes on: Try from memory, an answer, Next and Try from memory again.
+    const answer=await quiz(n);
+    assert.equal((await n.post('/practice/answer',{...answer,answer:'Alfa'})).status,303);
+    assert.equal((await n.submit('/?practice=nato','/practice/next')).status,303);
+    const next=await quiz(n);
+    // Save draft checked the archive before this rule existed, and still does.
+    const before=await n.rows();
+    const draft=await n.post('/practice/draft',{...next,generation:'0',answer:'Brav'});
+    const draftStatus=draft.status,draftText=unescape(await draft.text());
+    assert.deepEqual(await n.rows(),before,'a refused draft writes nothing');
+    assert.ok(!draftText.includes(CAPACITY),'never called full storage');
+    // Settings actions go on; the backup's own failure stays visible.
+    assert.equal((await n.submit('/settings','/settings/backup')).status,303);
+    assert.match(outsideDisclosures(await n.page('/settings')),/<p data-backup="failed">/);
+    assert.doesNotMatch(await n.page('/settings'),/data-capacity/);
+    const secret=await n.token();
+    const tokens=await n.api('/api/v1/tokens',secret);assert.equal(tokens.status,200);
+    console.log(JSON.stringify({kind,draft:draftStatus,draftReason:/<div class="notice"[^>]*>([^<]*)</.exec(draftText)?.[1]}));
+    assert.equal(draftStatus,kind==='oversized'?413:422);
+  }finally{await n.runtime.mf.dispose();}
+});
+
+test('a notebook exactly at the ordinary threshold backs up, survives a failed backup, and restores into one that backs up and resumes',async()=>{
+  const n=await notebook();
+  const restoreToken='synthetic-custody-restore-key-at-least-32chars';
+  try{
+    const {record}=await savedPhoto(n);
+    await heldNato(n);
+    await n.fill(0,ORDINARY);
+    // Any ordinary growth is refused there, in the same words.
+    const before=await n.rows();
+    const quizzed=await n.submit('/?practice=nato','/practice/quiz');
+    assert.equal(quizzed.status,413);assert.ok(unescape(await quizzed.text()).includes(CAPACITY));
+    assert.deepEqual(await n.rows(),before);
+    // The daily backup: verified, then a failed attempt, then verified again.
+    const backup=async()=>{await setMeta(n,m=>{m.backup.completed_ms=m.backup.completed_ms&&Date.now()-25*3600_000;});return n.alarm(n.space);};
+    assert.equal((await backup()).status,200);assert.equal((await n.meta()).backup.error,null);
+    const assets=await n.runtime.mf.getR2Bucket('SCRY_ASSETS');
+    await assets.delete(record.key);
+    await setMeta(n,m=>{m.backup.completed_ms=Date.now()-25*3600_000;});
+    assert.equal((await n.alarm(n.space)).status,200);
+    assert.ok((await n.meta()).backup.error,'the failure is recorded');
+    assert.match(outsideDisclosures(await n.page('/settings')),/<p data-backup="failed">/);
+    await assets.put(record.key,photoBytes);
+    await setMeta(n,m=>{m.backup.completed_ms=Date.now()-25*3600_000;});
+    assert.equal((await n.alarm(n.space)).status,200);
+    const verified=(await n.meta()).backup;
+    assert.equal(verified.error,null,'a backup succeeds after a failed one');
+    assert.equal((await n.req('/healthz',{token:()=>''})).status,200);
+    const exported=await n.req('/export');assert.equal(exported.status,200);
+    // Restore that backup into a fresh space: it backs up and resumes.
+    const bytes=Buffer.from(await (await (await n.runtime.mf.getR2Bucket('SCRY_BACKUPS')).get(verified.key)).arrayBuffer());
+    const name='custody-threshold-restore-'+randomUUID(),space='synthetic-custody-threshold';
+    const target=await createRuntime({bindings:{SCRY_ENV:'restore',CANONICAL_ORIGIN:origin,SPACE_NAME:space,INTERNAL_KEY:internalKey,RESTORE_TOKEN:restoreToken},name,artifact,inspect:true,egress:async request=>{assert.equal(request.url,`https://${team}/cdn-cgi/access/certs`);return new Response(JSON.stringify({keys:[publicJwk]}));}});
+    try{
+      const restored=await target.worker.fetch(origin+'/operator/restore',{method:'POST',body:bytes,headers:{'x-scry-restore-token':restoreToken,'x-scry-sha256':createHash('sha256').update(bytes).digest('hex')}});
+      assert.equal(restored.status,200,await restored.clone().text());
+      const live=await target.rebind({SCRY_ENV:'preview',CANONICAL_ORIGIN:origin,SPACE_NAME:space,ACCESS_TEAM:team,ACCESS_AUDIENCE:audience,OWNER_SUBJECT:owner,INTERNAL_KEY:internalKey});
+      const req=(path,init={})=>live.worker.fetch(origin+path,{redirect:'manual',...init,headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});
+      const post=async action=>{const html=await (await req('/settings')).text();const fields=n.form(html,action);assert.ok(fields,action);return req(action,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});};
+      assert.match(outsideDisclosures(await (await req('/settings')).text()),/<p data-backup="restored">/);
+      // Its daily backup runs at once: a fresh space has none.
+      const ns=await target.mf.getDurableObjectNamespace('LEARNING_SPACE'),stub=ns.get(ns.idFromName(space));
+      try{assert.equal(await stub.qaAlarm(),200);}finally{stub[Symbol.dispose]?.();}
+      const meta=JSON.parse((await (await target.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space})).exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+      assert.equal(meta.backup.error,null,'the restored notebook backs up');assert.ok(meta.backup.completed_ms);
+      assert.equal((await post('/settings/resume')).status,303,'and resumes');
+    }finally{await target.mf.dispose();}
+  }finally{await n.runtime.mf.dispose();}
+});
+
+test('within the reserve the Owner can still withdraw or settle: paid judgment off, resume, pause, drop, discard, revoke',async()=>{
+  const n=await notebook();
+  try{
+    const secret=await n.token();
+    await heldNato(n);
+    await setMeta(n,m=>{m.preferences.paid_judgment=true;m.restored_paused=true;});
+    await (await n.sql()).exec("INSERT INTO records(key,value) VALUES('judgment_compatibility/v1','1') ON CONFLICT(key) DO NOTHING");
+    await n.fill(5000,ORDINARY);
+    const answer=await quiz(n);
+    assert.equal((await n.post('/practice/draft',{...answer,generation:'0',answer:'Alf'})).status,303);
+    // Past the ordinary threshold, within the full limit.
+    await (await n.sql()).exec('INSERT INTO records(key,value) VALUES(?,?)','operations/custody-capacity-over',
+      JSON.stringify({acting_token:null,path:null,created_ms:null,payload_hash:'a'.repeat(64),result:{redirect:'/',entity_id:null,message:null,data:{synthetic:'x'.repeat(10000)}}}));
+    assert.match(await n.page('/settings'),/<p data-capacity="full"><strong>Storage is full\.<\/strong> Changes that add to the notebook are refused, so that backups keep working\./);
+    // Ordinary growth is refused.
+    const grown=await n.post('/practice/answer',{...n.form(await n.page('/?practice=nato'),'/practice/answer'),answer:'Alfa'});
+    assert.equal(grown.status,413);assert.ok(unescape(await grown.text()).includes(CAPACITY));
+    // Withdrawing or settling is not.
+    const page=await n.page('/?practice=nato');
+    const discard=n.form(page,'/practice/draft/discard')||{...answer,generation:'1'};
+    assert.equal((await n.post('/practice/draft/discard',{...discard,operation_id:'custody-'+randomUUID()})).status,303,'discard a draft');
+    assert.equal((await n.post('/settings/judgment',{...await freshFields(n),paid_judgment:'off'})).status,303,'turn paid judgment off');
+    assert.equal((await n.meta()).preferences.paid_judgment??false,false);
+    assert.equal((await n.post('/settings/resume',await freshFields(n))).status,303,'resume after a restore');
+    assert.equal((await n.meta()).restored_paused,false);
+    const study=(await n.rows()).find(r=>r.key.startsWith('practice_studies/')).key.split('/')[1];
+    assert.equal((await n.post('/practice/pause',{...await freshFields(n),study_id:study})).status,303,'pause a Study');
+    assert.equal((await n.post('/practice/drop',{...await freshFields(n),study_id:study})).status,303,'drop a Study');
+    const tokenId=Object.keys(Object.fromEntries((await n.rows()).filter(r=>r.key.startsWith('owner_tokens/')).map(r=>[r.key.slice(13),1])))[0];
+    assert.equal((await n.api('/api/v1/tokens/revoke',secret,{operation_id:'custody-'+randomUUID(),token_id:tokenId})).status,200,'revoke a token');
+    // And a backup still works there.
+    assert.equal((await n.alarm(n.space)).status,200);assert.equal((await n.meta()).backup.error,null);
+  }finally{await n.runtime.mf.dispose();}
+});
+
+test('Settings after a restore says it was restored, not that a backup failed',async()=>{
+  const n=await notebook();
+  try{
+    await n.page('/settings');
+    const completed=Date.now()-3600_000;
+    // The marker a restore stores where a backup's failure goes.
+    await setMeta(n,m=>{m.restored_paused=true;m.backup={completed_ms:completed,key:'snapshots/synthetic/1-daily-y.json',sha256:'a'.repeat(64),error:`Restored into an isolated space at ${completed+1000}; external work remains paused.`};});
+    let shown=outsideDisclosures(await n.page('/settings'));
+    assert.doesNotMatch(shown,/The last backup failed/);
+    assert.match(shown,/<p data-backup="restored"><strong>Restored here; no backup has been taken here yet\.<\/strong> Last verified backup: /);
+    // As the runtime restores: no status and checks paused.
+    await setMeta(n,m=>{m.backup={completed_ms:null,key:null,sha256:null,error:null};});
+    shown=outsideDisclosures(await n.page('/settings'));
+    assert.match(shown,/<p data-backup="restored"><strong>Restored here; no backup has been taken here yet\.<\/strong> No verified backup exists\.<\/p>/);
+    // Once it backs up here, the ordinary line returns.
+    assert.equal((await n.submit('/settings','/settings/backup')).status,303);
+    assert.match(outsideDisclosures(await n.page('/settings')),/<p>Last verified backup: /);
+  }finally{await n.runtime.mf.dispose();}
+});
+
+test('HEAD /healthz answers like GET, whatever the fetch metadata',async()=>{
+  const n=await notebook();
+  try{
+    const health=(method,headers={})=>n.runtime.worker.fetch(origin+'/healthz',{method,headers});
+    const metadata={'Sec-Fetch-Site':'cross-site','Sec-Fetch-Dest':'image','X-Scry-Test-Fetch-Mode':'no-cors'};
+    for(const expected of [503,200]){
+      for(const headers of [{},metadata])for(const method of ['GET','HEAD'])
+        assert.equal((await health(method,headers)).status,expected,`${method} ${JSON.stringify(headers)}`);
+      if(expected===503)assert.equal((await n.submit('/settings','/settings/backup')).status,303);
+    }
   }finally{await n.runtime.mf.dispose();}
 });

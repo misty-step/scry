@@ -207,7 +207,8 @@ test('a read writes nothing, in every stored state',{timeout:900000},async()=>{
    const files=await s.files();assert.ok(files.some(file=>file.path.endsWith('.sqlite')),'The persisted database is compared.');
    for(const method of ['GET','HEAD'])for(const path of [...pages,...other,...api,'/healthz']){
     const response=await s.req(path,{method});
-    assert.equal(response.status,method==='GET'&&path==='/healthz'?503:200,`${state}: ${method} ${path} answered ${response.status}`);
+    // SPEC § Backup and recovery: health is unhealthy with no verified backup, for HEAD as for GET.
+    assert.equal(response.status,path==='/healthz'?503:200,`${state}: ${method} ${path} answered ${response.status}`);
     if(method==='GET'&&pages.includes(path))assertNoPractice(await response.text(),path);else await response.arrayBuffer();
     await unchanged(`on ${method} ${path}`);
    }

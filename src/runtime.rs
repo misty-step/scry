@@ -291,21 +291,23 @@ fn report(env: &Env, ctx: &JsValue, category: &'static str) {
 
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
-    let (result, category) = if req.path() == "/healthz" && req.method() == Method::Get {
-        match health(&req, &env).await {
-            Ok((response, category)) => (Ok(response), category),
-            Err(error) => (Err(error), Some("request_exception")),
-        }
-    } else {
-        let mut incident = None;
-        let result = handle_fetch(req, env.clone(), &mut incident).await;
-        let category = match &result {
-            Err(_) => Some("request_exception"),
-            Ok(response) if response.status_code() >= 500 => Some("upstream_5xx"),
-            _ => incident,
+    // Health answers GET and HEAD alike, before any other boundary check.
+    let (result, category) =
+        if req.path() == "/healthz" && matches!(req.method(), Method::Get | Method::Head) {
+            match health(&req, &env).await {
+                Ok((response, category)) => (Ok(response), category),
+                Err(error) => (Err(error), Some("request_exception")),
+            }
+        } else {
+            let mut incident = None;
+            let result = handle_fetch(req, env.clone(), &mut incident).await;
+            let category = match &result {
+                Err(_) => Some("request_exception"),
+                Ok(response) if response.status_code() >= 500 => Some("upstream_5xx"),
+                _ => incident,
+            };
+            (result, category)
         };
-        (result, category)
-    };
     if let Some(category) = category {
         report(&env, ctx.as_ref().as_ref(), category);
     }
@@ -1129,9 +1131,10 @@ impl DurableObject for LearningSpace {
             }
             if path == "/export" {
                 // A notebook past capacity says so; nothing is deleted to fit.
-                if let Err(error) = persistence::within_capacity(&app)
-                    && error.status == 413
-                {
+                if matches!(
+                    persistence::footprint(&app),
+                    persistence::Footprint::TooLarge
+                ) {
                     return private(Response::error(EXPORT_FULL, 413)?);
                 }
                 // Includes referenced assets, never just the database metadata.
@@ -1445,7 +1448,13 @@ impl DurableObject for LearningSpace {
                 // Whatever this changed must fit a complete recovery archive,
                 // by the rule the API uses. Paid completions still retain their
                 // raw/ledger outcome through the separate durable work path.
-                if let Err(e) = persistence::admit_growth(&path, before, &app) {
+                if let Err(e) = persistence::admit_growth(
+                    &path,
+                    &fields,
+                    before,
+                    &app,
+                    persistence::Client::Browser,
+                ) {
                     let retained = self.load()?;
                     if let Some(key) = photo_key
                         && !retained
@@ -1710,9 +1719,10 @@ impl LearningSpace {
                     if app.practice.protected() {
                         return api_error(AppError::new(409, "Record assistance before export."));
                     }
-                    if let Err(error) = persistence::within_capacity(&app)
-                        && error.status == 413
-                    {
+                    if matches!(
+                        persistence::footprint(&app),
+                        persistence::Footprint::TooLarge
+                    ) {
                         return api_error(AppError::new(413, EXPORT_FULL));
                     }
                     let mut snapshot = app;
@@ -1841,7 +1851,13 @@ impl LearningSpace {
             Ok(result) => result,
             Err(error) => return api_error(error),
         };
-        if let Err(error) = persistence::admit_growth(canonical_path, before, &app) {
+        if let Err(error) = persistence::admit_growth(
+            canonical_path,
+            &fields,
+            before,
+            &app,
+            persistence::Client::Api,
+        ) {
             return api_error(error);
         }
         if !matches!(

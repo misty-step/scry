@@ -1073,7 +1073,8 @@ test('at capacity a paid Check\'s outcome is still recorded, and the next growth
   try{
     await n.turnOn();
     await n.study(await n.addMapping('Synthetic harbour practice',HARBOUR));
-    const MAX=16*1024*1024;
+    // Ordinary growth stops 4 MiB below the archive limit; paid records use the reserve.
+    const ORDINARY=16*1024*1024-4*1024*1024;
     // The archive's measured size, at the widest creation time the rule allows.
     const size=async()=>{const {bytes}=await n.export();return bytes.length+'-9223372036854775808'.length-String(Date.now()).length;};
     // A received response large enough that its record cannot fit the room left.
@@ -1091,9 +1092,9 @@ test('at capacity a paid Check\'s outcome is still recorded, and the next growth
       JSON.stringify({acting_token:null,path:null,created_ms:null,payload_hash:'a'.repeat(64),result:{redirect:'/',entity_id:null,message:null,data:{synthetic:'x'.repeat(pad)}}}));
     const room=answered+600;
     start=await size();
-    while(MAX-room-start>950000){await put(i++,900000);start=await size();}
-    await put(i,1000);const overhead=await size()-start-1000;await put(i,MAX-room-start-overhead);
-    assert.equal(await size(),MAX-room);
+    while(ORDINARY-room-start>950000){await put(i++,900000);start=await size();}
+    await put(i,1000);const overhead=await size()-start-1000;await put(i,ORDINARY-room-start-overhead);
+    assert.equal(await size(),ORDINARY-room);
     const second=await n.answer('sound a horn');
     const recorded=await n.settle(n.closed(second.attempt),'the Check at capacity');
     const check=n.checksOf(recorded,second.attempt)[0];
@@ -1102,9 +1103,13 @@ test('at capacity a paid Check\'s outcome is still recorded, and the next growth
     const ledger=recorded.spend.find(s=>s.work_id===check.id);
     assert.equal(ledger.status,'known');assert.ok(ledger.raw_response.includes('p'.repeat(60000)),'its raw response is kept');
     assert.equal(n.jev.sent.length,2);
-    // Past capacity now: the notebook reads and says so; growth is refused.
-    const exported=await n.req('/export');assert.equal(exported.status,413);
-    assert.match(await n.page('/settings'),/<p data-capacity="full"><strong>Storage is full\.<\/strong>/);
+    // Past the ordinary threshold now, within the reserve: the notebook reads,
+    // backs up and exports, says storage is full, and refuses growth.
+    assert.ok(await size()>ORDINARY,'the paid record went past the ordinary threshold');
+    assert.match(await n.page('/settings'),/<p data-capacity="full"><strong>Storage is full\.<\/strong> Changes that add to the notebook are refused, so that backups keep working\./);
+    assert.equal((await n.submit('/settings','/settings/backup')).response.status,413,'asking for a backup adds to the notebook');
+    assert.equal(await n.alarm(),200);
+    const backed=(await n.state()).meta.backup;assert.equal(backed.error,null,'the daily backup succeeds');assert.ok(backed.completed_ms);
     const before=await n.rows();
     const {response}=await n.submit('/recall','/practice/next');
     assert.equal(response.status,413);assert.match(await response.text(),/Storage is full\. This would make the notebook too large for one complete backup, so nothing was saved\./);
