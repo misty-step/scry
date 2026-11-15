@@ -496,14 +496,23 @@ horizontal clipping, including with long questions and explanations.
 - A Version added under an existing Work's title or alias attaches to that
   Work. Adding a Version whose text equals an existing one, ignoring case,
   punctuation and spacing, returns the existing Version and creates nothing.
+  The same text offered with different Units, aliases, pairs or
+  Spelling-strict setting is refused, and Scry says why.
 - A Version stores its Kind, ordered Sections and Units, Provenance, Rights
   status, edition name and sources. If its Units joined in order do not
   reproduce its text exactly, it is refused and nothing is stored.
+- An agent states a Version's Provenance; text the Owner adds in the app is
+  supplied. A Version checked against cited sources names at least one.
+- An agent declares that a Work is part of, or related to, another Work in
+  the manifest that adds a Version. A Relation to a Work that does not exist,
+  to the Work itself, or that would make a Work part of itself is refused.
 - Ordered aliases are optional, bounded, unambiguous after normalization and
   fixed with their Version.
 - Correcting a named Version always creates a new Version that supersedes
   it, even when only case, punctuation or spacing changed. The old Version
-  and every Attempt against it stay unchanged.
+  and every Attempt against it stay unchanged. A Version is corrected at most
+  once: a further correction is made to the newest Version. A correction
+  identical to the Version it corrects is refused.
 - Text supplied without Unit boundaries is divided at its line breaks and
   clause punctuation, and its Units still rejoin to the text exactly.
 - Showing a Work or Version shows its Versions, Units, Provenance, Rights
