@@ -137,6 +137,13 @@ struct Next {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct Mix {
+    operation_id: String,
+    after: Option<String>,
+    leave: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Answer {
     operation_id: String,
     prompt_id: String,
@@ -367,6 +374,21 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
                 }
             }
             Ok(write("/api/v1/next", payload))
+        }
+        "scry_mix" => {
+            let input: Mix = parse(args)?;
+            operation(&input.operation_id)?;
+            if input.after.is_some() && input.leave.is_some() {
+                return Err("Use after or leave, not both.");
+            }
+            let mut payload = json!({"operation_id":input.operation_id});
+            for (field, value) in [("after", input.after), ("leave", input.leave)] {
+                if let Some(value) = value {
+                    identity(&value)?;
+                    payload[field] = json!(value);
+                }
+            }
+            Ok(write("/api/v1/mix", payload))
         }
         "scry_answer" => {
             let input: Answer = parse(args)?;
@@ -768,9 +790,7 @@ mod lesson_tests {
         );
     }
     /// Common tool-calling clients refuse a tool whose input schema combines
-    /// schemas at its top level, and with it the whole server. The two manifest
-    /// tools have carried a top-level `allOf` since before this test; they are
-    /// named here so that no other tool gains one unnoticed.
+    /// schemas at its top level, and with it the whole server. No tool has one.
     #[test]
     fn every_tool_is_named_once_and_no_other_input_schema_has_a_top_level_combinator() {
         let tools = schema::tools();
@@ -792,10 +812,47 @@ mod lesson_tests {
                 }
             }
         }
-        assert_eq!(
-            combined,
-            [("scry_validate", "allOf"), ("scry_import", "allOf")]
+        assert_eq!(combined, Vec::<(&str, &str)>::new());
+    }
+    #[test]
+    fn mix_tool_is_study_and_next_and_takes_no_selector_or_grade() {
+        let op = "mix-mcp-operation-0001";
+        let after = "a".repeat(32);
+        for args in [
+            json!({"operation_id":op}),
+            json!({"operation_id":op,"after":after}),
+            json!({"operation_id":op,"leave":after}),
+        ] {
+            match prepare("scry_mix", args.clone()).unwrap() {
+                Call::Api { path, payload } => {
+                    assert_eq!(path, "/api/v1/mix");
+                    assert_eq!(payload.unwrap(), args);
+                }
+                _ => panic!("not API"),
+            }
+        }
+        assert!(
+            prepare(
+                "scry_mix",
+                json!({"operation_id":op,"after":after,"leave":after})
+            )
+            .is_err()
         );
+        for field in ["study_id", "card_id", "verdict", "grade", "pace", "due_ms"] {
+            let mut supplied = json!({"operation_id":op});
+            supplied[field] = json!("a".repeat(32));
+            assert!(prepare("scry_mix", supplied).is_err(), "{field}");
+        }
+        assert!(prepare("scry_mix", json!({"operation_id":op,"after":"short"})).is_err());
+        assert!(prepare("scry_mix", json!({})).is_err());
+        assert_eq!(
+            crate::api::mutation_path("/api/v1/mix"),
+            Some("/practice/review/start")
+        );
+        // Study control and Pace stay API and CLI actions, not tools.
+        for name in ["scry_pause", "scry_resume", "scry_drop", "scry_pace"] {
+            assert!(!schema::NAMES.contains(&name));
+        }
     }
     #[test]
     fn lesson_tools_share_native_routes_and_reject_self_grades() {

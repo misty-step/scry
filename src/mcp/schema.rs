@@ -12,6 +12,7 @@ pub(super) const NAMES: &[&str] = &[
     "scry_lesson_next",
     "scry_due",
     "scry_next",
+    "scry_mix",
     "scry_answer",
     "scry_check",
     "scry_reveal",
@@ -59,30 +60,21 @@ pub(super) fn manifests() -> Value {
         "validation_scope":"Local shape/domain validation only; remote duplicates, related Works, policy, capacity, study admission and hosted access are not checked.",
         "limits":"All domain text limits are UTF-8 bytes, not characters. JSON Schema bounds are supplemented by the native Library validator.",
         "multimedia":"Not implemented in this slice; no media URL is fetched.",
-        "study_support":"Text, ordered lists and forward keyed mappings. Authored Lessons introduce up to 128 phrases/items and preserve existing schedules."})
+        "study_support":"Text, ordered lists and forward keyed mappings. A text or list lesson introduces every phrase or item at once and a mapping lesson its pairs at its Pace, preserving existing schedules."})
 }
 
 pub(super) fn tools() -> Vec<Value> {
     let empty = object(json!({}), &[]);
-    let schemas = manifests();
-    let manifest = object(
-        json!({"format":choices(&["version","mapping"]),"data":{"type":"object","description":"Use scry_schema to select the version or mapping schema."}}),
+    // No combinator at the top level: common tool-calling clients refuse a
+    // tool list that has one. Scry validates `data` against the schema that
+    // `format` names, exactly as scry_schema publishes it.
+    let validate = object(
+        json!({"format":choices(&["version","mapping"]),"data":{"type":"object","description":"The manifest itself: for format version, scry_schema's version schema; for format mapping, its mapping schema. Scry validates it whole and refuses unknown fields."}}),
         &["format", "data"],
     );
-    let mut import = manifest.clone();
+    let mut import = validate.clone();
     import["properties"]["operation_id"] = operation();
     import["required"] = json!(["operation_id", "format", "data"]);
-    // Branch-specific data schemas are machine-readable as well as discoverable.
-    import["allOf"] = json!([
-        {"if":{"properties":{"format":{"const":"version"}}},"then":{"properties":{"data":schemas["version"]}}},
-        {"if":{"properties":{"format":{"const":"mapping"}}},"then":{"properties":{"data":schemas["mapping"]}}}
-    ]);
-    let mut validate = import.clone();
-    validate["properties"]
-        .as_object_mut()
-        .unwrap()
-        .remove("operation_id");
-    validate["required"] = json!(["format", "data"]);
     let definitions = [
         (
             "scry_capabilities",
@@ -164,6 +156,15 @@ pub(super) fn tools() -> Vec<Value> {
             "Present/resume the current Prompt or held result. Only after deliberately releases an answered Prompt. Reconcile every unknown answer/reveal response BEFORE Next.",
             object(
                 json!({"operation_id":operation(),"after":id(),"study_id":id(),"card_id":id(),"recite":choices(&["whole","section"]),"section_id":id()}),
+                &["operation_id"],
+            ),
+            false,
+        ),
+        (
+            "scry_mix",
+            "Study's mix: the next due review across every Study, least recently served first, then unfinished Studies and Works not yet started. Without after or leave it returns the held Prompt or result. after releases the answered Prompt; leave closes the identified unanswered Prompt without a grade. Never supply both. Retain operation_id.",
+            object(
+                json!({"operation_id":operation(),"after":id(),"leave":id()}),
                 &["operation_id"],
             ),
             false,

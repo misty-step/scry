@@ -156,6 +156,14 @@ test('SPEC § Library: duplicates, corrections, Provenance and Relations through
   assert.ok(gloriousPage.includes(`Part of <a class="text-link" href="/library/works/${rosaryWork}">Spec Rosary</a>`));
   assert.ok(gloriousPage.includes(`Related to <a class="text-link" href="/library/works/${sorrowfulWork}">Spec Sorrowful</a>`));
   assert.ok((await page('/library/versions/'+glorious)).html.includes(`Part of <a class="text-link" href="/library/works/${rosaryWork}">Spec Rosary</a>`));
+  // Showing a Version shows its Work's Relations too, through the CLI and the tool server.
+  const gloriousVersion=await ok(['version','show',glorious]);
+  assert.ok(gloriousVersion.relations.some(r=>r.kind==='part_of'&&r.work_id===gloriousWork&&r.parent_work_id===rosaryWork));
+  assert.ok(gloriousVersion.relations.some(r=>r.kind==='related_to'&&r.related_work_id===gloriousWork));
+  assert.ok(gloriousVersion.relations.some(r=>r.kind==='version_of'));
+  const sorrowfulVersion=await toolOk('scry_show',{kind:'version',id:sorrowful});
+  assert.ok(sorrowfulVersion.relations.some(r=>r.kind==='part_of'&&r.work_id===sorrowfulWork));
+  assert.ok(sorrowfulVersion.relations.some(r=>r.kind==='related_to'&&r.work_id===sorrowfulWork));
   // Replaying the CLI add returns the same Version and creates no Relation.
   const relations=Object.keys((await library()).relations).length;
   assert.equal((await ok(['version','add','--title','Spec Glorious','--kind','text','--text-file',await file('g1.txt','Glorious spec words.\n'),'--part-of','spec rosary','--operation-id','spec-qa-glorious-add'])).replayed,true);

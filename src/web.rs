@@ -692,7 +692,30 @@ impl View<'_> {
                     ),
                 ));
             }
-            out.push_str("</div></details>");
+            out.push_str("</div>");
+            let mut paces = String::new();
+            for (value, label, pace) in [
+                ("light", "3 · Light", crate::study::Pace::Light),
+                ("steady", "6 · Steady", crate::study::Pace::Steady),
+                ("intense", "12 · Intense", crate::study::Pace::Intense),
+            ] {
+                let _ = write!(
+                    paces,
+                    "<label><input type=\"radio\" name=\"pace\" value=\"{value}\"{}> {label}</label>",
+                    if study.pace == pace { " checked" } else { "" }
+                );
+            }
+            out.push_str(&self.form(
+                "/practice/pace",
+                "pace",
+                "",
+                "",
+                &format!(
+                    "{}<fieldset><legend>Pace · new Units each day</legend>{paces}</fieldset><button class=\"button quiet\">Set Pace</button>",
+                    hidden("study_id", &study.id)
+                ),
+            ));
+            out.push_str("</details>");
         } else if reviewable {
             let body = format!(
                 "{}<details class=\"library-details\"><summary>Pace: 6 new Units a day</summary><fieldset><legend>New Units each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
@@ -3915,10 +3938,11 @@ fn version_metadata(v: &crate::library::Version) -> String {
         crate::library::Kind::OrderedList => "Ordered list",
         crate::library::Kind::KeyedMapping => "Keyed mapping",
     };
+    let count = |n: usize, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
     format!(
-        "{kind} · {} Sections · {} Units",
-        v.sections.len(),
-        v.sections.iter().map(|s| s.units.len()).sum::<usize>()
+        "{kind} · {} · {}",
+        count(v.sections.len(), "Section"),
+        count(v.sections.iter().map(|s| s.units.len()).sum(), "Unit")
     )
 }
 
@@ -3934,6 +3958,9 @@ fn exact_stream_active(app: &App) -> bool {
 pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
     if matches!(path, "/library/version/add" | "/library/mapping/add") {
         redirect.strip_prefix("/api/v1").unwrap_or("/library")
+    } else if path == "/practice/pace" {
+        // A Study's Pace is chosen on its Version's page and returns there.
+        redirect
     } else if path == "/practice/check" && redirect == "/history" {
         // An earlier answer was checked again from History: return there.
         "/history"
@@ -4019,8 +4046,13 @@ pub fn render(
     let content = match path {
         "/" | "/recall"
             if app.practice.current.as_ref().is_some_and(|p| {
-                app.practice.studies[&p.prompt.study_id].lesson
+                let study = &app.practice.studies[&p.prompt.study_id];
+                // A text that Study's mix reached first offers lesson controls
+                // only once every phrase has a Card; until then, outside the
+                // mix, it is ordinary Study practice at its Pace.
+                study.lesson
                     && !crate::library::is_nato(&app.library.versions[&p.prompt.version_id])
+                    && (app.practice.mixed_review || crate::study::fully_introduced(app, study))
             }) =>
         {
             view.lesson_screen()

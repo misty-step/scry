@@ -349,6 +349,31 @@ mod cli {
                 Some(&json!({"operation_id":operation,"version_id":args[1],"pace":pace})),
             );
         }
+        if args.starts_with(&["study".into(), "pace".into()]) {
+            let pace = option(&mut args, "--pace")?;
+            if args.len() != 3 || pace.is_none() {
+                return Err("Usage: scry study pace STUDY --pace light|steady|intense");
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/studies/pace",
+                Some(&json!({"operation_id":operation,"study_id":args[2],"pace":pace})),
+            );
+        }
+        // Study's mix: what the app's Study and Next serve.
+        if args.first().is_some_and(|a| a == "mix") {
+            let mut payload = json!({"operation_id":operation});
+            for (option_name, field) in [("--after", "after"), ("--leave", "leave")] {
+                if let Some(value) = option(&mut args, option_name)? {
+                    payload[field] = json!(value);
+                }
+            }
+            if args.len() != 1 || payload.get("after").is_some() && payload.get("leave").is_some() {
+                return Err("Usage: scry mix [--after PROMPT | --leave PROMPT]");
+            }
+            return request(&client, &login, "/api/v1/mix", Some(&payload));
+        }
         if args.first().is_some_and(|a| a == "study")
             && args.len() == 3
             && matches!(args[1].as_str(), "pause" | "resume" | "drop")
@@ -482,23 +507,6 @@ mod cli {
                 Some(&json!({"operation_id":operation,"prompt_id":args[1]})),
             );
         }
-        if args.first().is_some_and(|a| a == "correct") {
-            let verdict = option(&mut args, "--verdict")?.ok_or("Use --verdict Good|Again.")?;
-            let unit = option(&mut args, "--unit")?.unwrap_or_default();
-            if args.len() != 3 {
-                return Err(
-                    "Usage: scry correct PROMPT ATTEMPT --verdict Good|Again [--unit UNIT]",
-                );
-            }
-            return request(
-                &client,
-                &login,
-                "/api/v1/correct",
-                Some(
-                    &json!({"operation_id":operation,"prompt_id":args[1],"attempt_id":args[2],"unit_id":unit,"verdict":verdict}),
-                ),
-            );
-        }
         if args.starts_with(&["mapping".into(), "add".into()]) {
             let file =
                 option(&mut args, "--file")?.ok_or("Use mapping add --file MANIFEST.json.")?;
@@ -628,7 +636,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|check|draft|save-draft|discard-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study [list|pause|resume|drop|pace]|mix|next|answer|check|draft|save-draft|discard-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
         )
     }
 }

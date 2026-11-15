@@ -105,11 +105,15 @@ test('MCP lifecycle, version negotiation, discovery, IDs and notifications', {ti
   assert.equal((await f.request('tools/list')).error.code,-32000);
   f.send({jsonrpc:'2.0',method:'notifications/initialized'});
   const list = await f.request('tools/list');
-  assert.equal(list.result.tools.length,15);
-  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,15);
+  assert.equal(list.result.tools.length,16);
+  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,16);
+  assert.ok(list.result.tools.some(tool=>tool.name==='scry_mix'),'Study\'s mix is a tool, as the app\'s Study and Next.');
   for(const tool of list.result.tools) {
     assert.equal(tool.inputSchema.type,'object');
     assert.equal(tool.inputSchema.additionalProperties,false);
+    // Common tool-calling clients refuse a whole tool list over one of these.
+    for(const combinator of ['oneOf','anyOf','allOf','not','if','then','else']) assert.ok(!(combinator in tool.inputSchema),`${tool.name} has a top-level ${combinator}`);
+    assert.ok(!/pause|resume|drop|pace/.test(tool.name),'Study control stays an API and CLI action.');
     assert.ok(!/correct|generate|token|grade/.test(tool.name));
   }
   assert.equal((await f.request('tools/list',{cursor:'unsupported'})).error.code,-32602);
@@ -187,6 +191,9 @@ test('Each tool forwards only its exact existing Owner API route and frozen payl
     ['scry_lesson_start',{operation_id:operation('lesson-leave'),starter:'rosary-joyful',leave:prompt},'/api/v1/lessons/start',{operation_id:operation('lesson-leave'),starter:'rosary-joyful',leave:prompt}],
     ['scry_due',{},'/api/v1/due',undefined],
     ['scry_next',{operation_id:operation('next'),after:prompt,study_id:entity},'/api/v1/next',{operation_id:operation('next'),after:prompt,study_id:entity}],
+    ['scry_mix',{operation_id:operation('mix')},'/api/v1/mix',{operation_id:operation('mix')}],
+    ['scry_mix',{operation_id:operation('mix-after'),after:prompt},'/api/v1/mix',{operation_id:operation('mix-after'),after:prompt}],
+    ['scry_mix',{operation_id:operation('mix-leave'),leave:prompt},'/api/v1/mix',{operation_id:operation('mix-leave'),leave:prompt}],
     ['scry_answer',{operation_id:operation('answer'),prompt_id:prompt,answer:'Raw\nanswer Ω'},'/api/v1/answer',{operation_id:operation('answer'),prompt_id:prompt,answer:'Raw\nanswer Ω'}],
     ['scry_reveal',{operation_id:operation('reveal'),prompt_id:prompt},'/api/v1/reveal',{operation_id:operation('reveal'),prompt_id:prompt}],
     ['scry_quiz',{operation_id:operation('quiz'),prompt_id:prompt},'/api/v1/quiz',{operation_id:operation('quiz'),prompt_id:prompt}],
@@ -205,6 +212,8 @@ test('Each tool forwards only its exact existing Owner API route and frozen payl
     ['scry_lesson_next',{operation_id:operation('bad-next'),after:prompt,mode:'selfgrade'}],
     ['scry_lesson_start',{operation_id:operation('bad-leave'),starter:'rosary-joyful',after:prompt,leave:prompt}],
     ['scry_next',{}],['scry_next',{operation_id:operation('next'),recite:'section'}],
+    ['scry_mix',{}],['scry_mix',{operation_id:operation('bad-mix'),after:prompt,leave:prompt}],
+    ['scry_mix',{operation_id:operation('bad-mix'),study_id:entity}],['scry_mix',{operation_id:operation('bad-mix'),verdict:'Good'}],
     ['scry_show',{kind:'version',id:'../../tokens'}],
     ['scry_import',{operation_id:operation('invalid'),format:'version',data:{...version,text:''}}],
   ]) assert.equal(error(await f.call(name,args)).code,'invalid_arguments');

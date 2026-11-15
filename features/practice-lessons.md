@@ -15,6 +15,9 @@ native feedback. [SPEC § Lessons](../SPEC.md#lessons) owns the target behavior.
 - A Rosary set not yet practised is shown whole, its five mysteries in order,
   before its whole-sequence Quiz. An ordered list is never drilled item by item.
 - Rosary sequence practice identifies missing or misplaced mysteries.
+- A text that Study's mix reached first, outside the mix, is ordinary Study
+  practice with a working Next until every phrase has a Card; lesson
+  controls (Next phrase, Join, Full text) appear once the lesson is entered.
 
 ## How to get to it (user POV)
 
