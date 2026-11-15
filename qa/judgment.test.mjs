@@ -1065,3 +1065,74 @@ test('phone width, with and without JavaScript: the switch, checking, Good, Agai
     }finally{await context.close();await n.close();}
   }finally{await browser.close();}
 });
+
+// SPEC § Backup and recovery: growth past storage capacity is refused, and
+// records of paid work are kept even at capacity.
+test('at capacity a paid Check\'s outcome is still recorded, and the next growth is refused',{timeout:180000},async()=>{
+  const n=await notebook();
+  try{
+    await n.turnOn();
+    await n.study(await n.addMapping('Synthetic harbour practice',HARBOUR));
+    const MAX=16*1024*1024;
+    // The archive's measured size, at the widest creation time the rule allows.
+    const size=async()=>{const {bytes}=await n.export();return bytes.length+'-9223372036854775808'.length-String(Date.now()).length;};
+    // A received response large enough that its record cannot fit the room left.
+    const padded=()=>new Response(JSON.stringify({model:'synthetic-jev-large',usage:{cost:0.000345},answers:answers('accept',0.98),padding:'p'.repeat(60000)}),{headers:{'Content-Type':'application/json'}});
+    // One measured round: Quiz and a paid answer, then its outcome.
+    let start=await size();n.jev.respond=()=>padded();
+    const first=await n.answer('test the bilge pump');
+    const pending=await size(),answered=pending-start;
+    await n.settle(n.closed(first.attempt),'the first Check');
+    assert.ok(await size()-pending>60000,'a received outcome is recorded whole');
+    await n.next();
+    // Leave room for the next Quiz and paid answer, not for its outcome.
+    const sql=await n.sql();let i=0;
+    const put=(key,pad)=>sql.exec('INSERT INTO records(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',`operations/judged-capacity-${String(key).padStart(4,'0')}`,
+      JSON.stringify({acting_token:null,path:null,created_ms:null,payload_hash:'a'.repeat(64),result:{redirect:'/',entity_id:null,message:null,data:{synthetic:'x'.repeat(pad)}}}));
+    const room=answered+600;
+    start=await size();
+    while(MAX-room-start>950000){await put(i++,900000);start=await size();}
+    await put(i,1000);const overhead=await size()-start-1000;await put(i,MAX-room-start-overhead);
+    assert.equal(await size(),MAX-room);
+    const second=await n.answer('sound a horn');
+    const recorded=await n.settle(n.closed(second.attempt),'the Check at capacity');
+    const check=n.checksOf(recorded,second.attempt)[0];
+    assert.equal(check.status,'accepted','the paid outcome is recorded at capacity');
+    assert.equal(recorded.attempts[second.attempt].judgment.decided.verdict,'Good');
+    const ledger=recorded.spend.find(s=>s.work_id===check.id);
+    assert.equal(ledger.status,'known');assert.ok(ledger.raw_response.includes('p'.repeat(60000)),'its raw response is kept');
+    assert.equal(n.jev.sent.length,2);
+    // Past capacity now: the notebook reads and says so; growth is refused.
+    const exported=await n.req('/export');assert.equal(exported.status,413);
+    assert.match(await n.page('/settings'),/<p data-capacity="full"><strong>Storage is full\.<\/strong>/);
+    const before=await n.rows();
+    const {response}=await n.submit('/recall','/practice/next');
+    assert.equal(response.status,413);assert.match(await response.text(),/Storage is full\. This would make the notebook too large for one complete backup, so nothing was saved\./);
+    assert.deepEqual(await n.rows(),before);
+    assert.match(await n.page('/recall'),/data-verdict="Good"/,'the held result stays readable');
+  }finally{await n.close();}
+});
+
+// SPEC § Backup and recovery: while paused, Scry says so and points to Settings.
+test('in a restored, paused notebook practice says checks are paused and links to where they resume',{timeout:90000},async()=>{
+  const n=await notebook();
+  try{
+    await n.turnOn();
+    await n.study(await n.addMapping('Synthetic harbour practice',HARBOUR));
+    // A restored notebook keeps paid work paused until the Owner resumes it.
+    const sql=await n.sql();const meta=JSON.parse((await sql.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
+    meta.restored_paused=true;await sql.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
+    const {attempt}=await n.answer('test the bilge pump');
+    const state=await n.settle(n.closed(attempt),'a refused Check');
+    assert.match(n.checksOf(state,attempt)[0].reason,/Checks are paused in this restored notebook\./);
+    const html=await n.page('/recall');
+    assert.match(html,/Checks are paused in this restored notebook\./);
+    assert.match(html,/<p class="notice">Checks are paused in this restored notebook\. Your answer is saved and not graded\. <a href="\/settings#preparation">Resume checks in Settings<\/a><\/p>/);
+    assert.doesNotMatch(html,/action="\/practice\/check"/,'Check again is not offered while checks are paused');
+    const settings=await n.page('/settings');
+    assert.match(settings,/<section class="notice" id="preparation">/);assert.ok(n.form(settings,'/settings/resume'));
+    assert.equal(n.jev.sent.length,0,'nothing is sent while paused');
+    assert.equal((await n.submit('/settings','/settings/resume')).response.status,303);
+    assert.doesNotMatch(await n.page('/recall'),/\/settings#preparation/);
+  }finally{await n.close();}
+});

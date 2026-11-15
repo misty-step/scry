@@ -16,6 +16,49 @@ routine rollout needs no further approval. Private-data, credential, spend,
 irreversible-action and data-loss decisions retain their scoped authority.
 The dated receipts below remain historical evidence, not new rollout gates.
 
+## Custody — source as of 2026-11-15
+
+This describes source behavior on branch `custody-local`, not a deployed
+observation. Stored records and archive formats are unchanged.
+
+- **Storage capacity.** Every mutation that changes the notebook, from the
+  browser or the API, is refused with 413 and "Storage is full. This would make
+  the notebook too large for one complete backup, so nothing was saved." when
+  the result would not fit one complete archive (16 MiB). The refused page keeps
+  the typed answer; nothing is written. A replay of a committed operation and a
+  token revocation are never refused for capacity. Records of paid work (a sent
+  Check's outcome, its ledger entry, an interrupted send's unknown spend) are
+  saved through the work path even past capacity.
+- **Past capacity.** Such a notebook is never trimmed. Every page, History,
+  the Library and the API reads stay available; `/export` and
+  `/api/v1/export` answer 413 "Storage is full: the notebook is too large for
+  one complete export. …"; Settings says "Storage is full."; backups fail and
+  are shown as failed; `/healthz` turns stale after 26 hours as before.
+- **Failed backup.** Settings leads with "The last backup failed." and the
+  last verified date, or "No verified backup exists.", outside any disclosure.
+  A failed backup asked for in Settings returns to Settings (303), keeps study
+  available and reports `backup_failure`.
+- **Verification space.** The `scry-qa` space never writes, reads or prunes
+  `SCRY_BACKUPS`: Settings says "Backups do not apply to this verification
+  space.", `POST /settings/backup` answers 403 before any write, and its alarm
+  arms and takes no backup. Earlier `snapshots/scry-qa/` objects are not
+  touched by this source; their removal is an operator decision. The Owner's
+  backups and `/healthz` are unchanged.
+- **Restore.** A restore leaves every retired generation job exactly as
+  stored; only practice Checks become refused (queued) or unknown (sent).
+  `revival/restore.mjs` reconciles on that basis.
+- **Cross-site reads.** A GET or HEAD with `Sec-Fetch-Site: cross-site` is
+  answered 403 before any access check or state read unless it is a top-level
+  navigation (`Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document`), which
+  includes the sign-in redirect back from Access. Requests without fetch
+  metadata are unchanged.
+- **Owner tokens.** A token that expires cannot create one that expires later
+  or never.
+- **Triage.** Two categories join those listed below:
+  `access_keys_unavailable` (the Access certificate endpoint failed, timed
+  out, or returned keys that cannot be read; the answer stays the ordinary
+  401) and `backup_failure` (a backup asked for in Settings was not verified).
+
 ## Failure reports and model authority — source as of 2026-11-15
 
 This describes source behavior, not a deployed observation.

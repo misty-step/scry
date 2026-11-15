@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {EventEmitter,once} from 'node:events';
 import {performance} from 'node:perf_hooks';
+import {generateKeyPairSync,sign} from 'node:crypto';
 import test from 'node:test';
 import {createRuntime,Response,internalKey} from './runtime-helper.mjs';
 import {seedEarlier,storedApp} from './earlier-fixture.mjs';
@@ -174,6 +175,69 @@ try {
       assert.equal((await local.worker.fetch(origin+'/create')).status,200);
     }finally{await local.mf.dispose();mode='ok';}
   });
+  // SPEC § Failure reporting: the access provider or the network failing to
+  // supply its signing keys is an incident; an ordinary denial is not. The
+  // answer is the same 401 either way.
+  {
+    const team='telemetry-synthetic.cloudflareaccess.com',audience='synthetic-telemetry-audience',host='https://scry-telemetry.invalid';
+    const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
+    const jwk={...publicKey.export({format:'jwk'}),kid:'synthetic-key',alg:'RS256',use:'sig'};
+    const b64=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+    const assertion=(claims={},header={})=>{const epoch=Math.floor(Date.now()/1000);const encoded=`${b64({alg:'RS256',kid:'synthetic-key',typ:'JWT',...header})}.${b64({iss:`https://${team}`,sub:'PRIVATE-owner-canary',aud:[audience],iat:epoch,nbf:epoch-1,exp:epoch+600,...claims})}`;return `${encoded}.${sign('RSA-SHA256',Buffer.from(encoded),privateKey).toString('base64url')}`;};
+    const keys=async(certs)=>{
+      received.length=0;
+      const bindings={...base,SCRY_ENV:'preview',CANONICAL_ORIGIN:host,ACCESS_TEAM:team,ACCESS_AUDIENCE:audience};
+      return createRuntime({bindings,name:'scry-rust-telemetry',inspect:true,egress:async request=>{
+        if(request.url===`https://${team}/cdn-cgi/access/certs`)return certs();
+        assert.equal(request.url,'https://o4510313803677696.ingest.us.sentry.io/api/4510313841426432/envelope/');
+        const response=await fetch(`http://127.0.0.1:${sink.address().port}/envelope`,{method:'POST',body:await request.text()});
+        return new Response(await response.text(),{status:response.status,headers:response.headers});
+      }});
+    };
+    const failures={
+      network:async()=>{throw new Error('PRIVATE-network-canary');},
+      status:async()=>new Response('PRIVATE-status-canary',{status:503}),
+      malformed:async()=>new Response('{"keys":[PRIVATE-malformed-canary',{status:200}),
+      'not keys':async()=>new Response(JSON.stringify({PRIVATE:'canary'}),{status:200}),
+      oversized:async()=>new Response(JSON.stringify({keys:[jwk],padding:'x'.repeat(70*1024)}),{status:200}),
+    };
+    for(const [failure,certs] of Object.entries(failures))await test(`signing keys the provider cannot supply (${failure}) are reported once; the answer is unchanged`,async()=>{
+      const local=await keys(certs);
+      try {
+        const start=performance.now();
+        const page=await local.worker.fetch(host+'/?PRIVATE-url-canary',{headers:{'Cf-Access-Jwt-Assertion':assertion(),cookie:'PRIVATE-cookie-canary'}});
+        assert.equal(page.status,401);assert.equal(await page.text(),'Owner authorization required.');
+        const api=await local.worker.fetch(host+'/api/v1/studies',{headers:{'Cf-Access-Jwt-Assertion':assertion()}});
+        assert.equal(api.status,401);assert.deepEqual(await api.json(),{error:'Owner authorization required.'});
+        assert(performance.now()-start<2000,'Reporting never delays the answer');
+        await settle();envelope('access_keys_unavailable');
+      }finally{await local.mf.dispose();}
+    });
+    await test('ordinary access denials with readable signing keys report nothing',async()=>{
+      let fetched=0;
+      const local=await keys(async()=>{fetched++;return new Response(JSON.stringify({keys:[jwk]}),{status:200});});
+      try {
+        const forged=generateKeyPairSync('rsa',{modulusLength:2048}).privateKey;
+        const [h,c]=assertion().split('.');
+        for(const token of ['', 'PRIVATE-forged-canary', assertion({exp:1}), assertion({sub:'PRIVATE-other-canary'}), assertion({},{kid:'PRIVATE-unknown-kid'}),
+          `${h}.${c}.${sign('RSA-SHA256',Buffer.from(`${h}.${c}`),forged).toString('base64url')}`])
+          assert.equal((await local.worker.fetch(host+'/',{headers:{'Cf-Access-Jwt-Assertion':token}})).status,401);
+        assert.ok(fetched>=1,'the keys were read');
+        assert.equal((await local.worker.fetch(host+'/',{headers:{'Cf-Access-Jwt-Assertion':assertion()}})).status,200);
+        await settle();assert.equal(received.length,0);
+      }finally{await local.mf.dispose();}
+    });
+    await test('a hanging sink cannot delay the refusal when the signing keys are unavailable',async()=>{
+      mode='hang';
+      const local=await keys(failures.network);
+      try {
+        const start=performance.now();
+        assert.equal((await local.worker.fetch(host+'/',{headers:{'Cf-Access-Jwt-Assertion':assertion()}})).status,401);
+        assert(performance.now()-start<1000,'Telemetry stalled the answer');
+        await settle();envelope('access_keys_unavailable');
+      }finally{await local.mf.dispose();mode='ok';}
+    });
+  }
   await test('a successful alarm reports nothing',async()=>{
     const local=await instance();
     try {
