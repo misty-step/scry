@@ -3012,12 +3012,6 @@ pub fn mutate_judged(
             if !judging.paid {
                 return Err(crate::owner_token::paid_refusal());
             }
-            if !judging.capable || !app.preferences.paid_judgment {
-                return Err(AppError::new(
-                    409,
-                    "Paid judgment is off. Your answer stays saved and not graded.",
-                ));
-            }
             let aid = field(fields, "attempt_id");
             let a = app
                 .practice
@@ -3027,6 +3021,12 @@ pub fn mutate_judged(
             let judgment = a.judgment.as_ref().ok_or_else(|| {
                 AppError::new(409, "Scry graded this answer. It has no check to repeat.")
             })?;
+            if !judging.capable || !app.preferences.paid_judgment {
+                return Err(AppError::new(
+                    409,
+                    "Paid judgment is off. Your answer stays saved and not graded.",
+                ));
+            }
             // The saved answer and its comparison are answer-bearing.
             if app.practice.protected() {
                 return Err(AppError::new(

@@ -649,6 +649,18 @@ fn apply(
                     "Paid judgment is not available here. Nothing was changed.",
                 ));
             }
+            // A request that changes nothing is refused, so it leaves no
+            // record: a notebook that never used the switch stays one.
+            if on == app.preferences.paid_judgment {
+                return Err(AppError::new(
+                    409,
+                    if on {
+                        "Paid judgment is already on. Nothing was changed."
+                    } else {
+                        "Paid judgment is already off. Nothing was changed."
+                    },
+                ));
+            }
             app.preferences.paid_judgment = on;
             Ok(result("/settings", None))
         }

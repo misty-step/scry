@@ -489,7 +489,8 @@ practice response that names such an Attempt adds `practice.judgment`: `state`
 Paid judgment is off in every notebook until the signed-in Owner turns it on in
 Settings. That switch is a browser form (`POST /settings/judgment`); no API
 route, CLI command or tool reaches it, and an Owner token is refused whatever
-permission it carries. Settings offers it only where this Scry has Jev's key,
+permission it carries. Asking for the setting it already has is refused with
+nothing written (409). Settings offers it only where this Scry has Jev's key,
 model and endpoint bound; elsewhere it says paid judgment is not available.
 
 An answer leaves Scry to be judged only when all three hold: this Scry can
@@ -499,6 +500,14 @@ graded by the local comparison exactly as before and nothing is sent or
 reserved. An exact or alias match, an empty answer, any answer to
 Spelling-strict content and an answer too large to send (32 KiB with its
 expected content) are always graded locally.
+
+One check is one request to Jev. Besides the model name it carries, for that
+answer only: the answer as typed; the expected content of the Prompt's scope;
+what names the question (the Work's title and the place in it, or a mapping's
+key, or a Section's heading); the Learning objective; and, for an ordered
+list, the authored aliases of its items. It carries no identifier, no other
+content of the Library, no token and nothing that identifies the Owner.
+Settings says the same before the Owner turns the switch on.
 
 When an answer is left for Jev, `answer` returns at once with
 `practice.judgment.state: "checking"` and `scry answer` exits 0: the answer is
@@ -526,8 +535,8 @@ effect and leaves the schedule as the newer Attempt set it.
 
 `check` asks for one more check of the same saved answer. It never creates a
 second Attempt. It needs paid permission (403 without), and is refused with
-nothing written when the switch is off or Jev is not reachable (409), a check
-is already open (409), the answer already has its Verdict (409), the Study was
+nothing written when Scry graded the answer itself (409), the switch is off or
+Jev is not reachable (409), a check is already open (409), the answer already has its Verdict (409), the Study was
 dropped (409), the daily allowance is used (429) or three checks are already
 saved for that answer (422). Each Check is sent at most once. A send that is
 interrupted becomes `ungraded` with its 0.50 reservation kept as unknown spend;
