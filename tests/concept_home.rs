@@ -108,8 +108,19 @@ fn archived_goal_concepts_leave_active_navigation_but_keep_their_reference() {
         assert!(detail.contains(&c.name));
         assert!(detail.contains("Archived: retained for reference."));
         assert!(!detail.contains("Practice this idea"));
-        assert!(!detail.contains("<h2>Related</h2>"));
-        assert!(!detail.contains("<h3>Builds on</h3>") && !detail.contains("<h3>Used by</h3>"));
+        // Its links to the other archived Concepts stay, each labelled archived.
+        let related: Vec<_> = app
+            .concepts
+            .values()
+            .filter(|o| c.prerequisites.contains(&o.id) || o.prerequisites.contains(&c.id))
+            .collect();
+        assert_eq!(detail.contains("<h2>Related</h2>"), !related.is_empty());
+        for o in related {
+            assert!(detail.contains(&format!(
+                "href=\"/concepts/{}\">{}</a><span class=\"fineprint related-archived\">Archived</span>",
+                o.id, o.name
+            )));
+        }
     }
     assert_eq!(
         app, before,

@@ -13,7 +13,7 @@ import {mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,relative} from 'node:path';
 import {createRuntime,Response,internalKey} from './runtime-helper.mjs';
-import {states,stored,storedApp,storedMeta,rawField,seedEarlier,earlierRows} from './earlier-fixture.mjs';
+import {states,stored,storedApp,storedMeta,rawField,seedEarlier,earlierRows,crawl,menuLinks,assertReachable} from './earlier-fixture.mjs';
 import {nativeFields} from './nato-starter.mjs';
 import {enterMemory} from './study-review.mjs';
 
@@ -299,6 +299,31 @@ test('a held unanswered question blocks no export, history or reference',{timeou
    has(welcome,/From Alfa to Zulu\./,`${state}: the welcome title`);
    has(welcome,/<summary>Alphabet reference<\/summary>/,`${state}: the alphabet reference`);
    assert.deepEqual(await s.rows(),fixture.rows,`${state}: none of this wrote`);
+  }finally{await s.close();}
+ }
+});
+
+// Everything saved is reachable from the Menu by following links: every Goal,
+// Concept, note, prerequisite link, question version, choice, draft, recorded
+// answer, Correction, reset, feedback entry, saved check and photo. Reading all
+// of it writes nothing and sets no alarm.
+test('everything saved is reachable from the Menu, and reading it writes nothing',{timeout:300000},async()=>{
+ for(const state of ['history-rich','three-checks','result-corrected','checking-queued']){
+  const fixture=stored(state),s=await space(state,{at:fixture.now_ms+100*SECOND});
+  try{
+   const app=storedApp(state),changes=await s.changes();
+   const site=await crawl(s.get,menuLinks(await s.get('/')));
+   const earlier=assertReachable(site,app,state);
+   for(const goal of Object.values(app.goals).filter(goal=>goal.photo)){
+    assert.ok(site.links.has(`/photos/${goal.id}`),`${state}: the photo is linked`);
+    const photo=await s.req(`/photos/${goal.id}`);assert.equal(photo.status,200);
+    assert.equal(createHash('sha256').update(Buffer.from(await photo.arrayBuffer())).digest('hex'),goal.photo.sha256);
+   }
+   for(const path of earlier)assertNoPractice(site.pages.get(path),path);
+   assert.deepEqual(await s.rows(),fixture.rows,`${state}: a read wrote a row`);
+   assert.equal(await s.changes(),changes,`${state}: SQLite recorded a write`);
+   assert.equal(await s.alarmAt(),null,`${state}: a read set an alarm`);
+   assert.equal(s.jev.sent.length,0);
   }finally{await s.close();}
  }
 });
