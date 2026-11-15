@@ -249,3 +249,123 @@ for(const entry of ['nato','lesson','mix']) test(`SPEC § Open into study: the $
  const nowCards=await prefixed('practice_cards/');
  for(const [key,value] of Object.entries(cards)) assert.equal(nowCards[key],value,'V1\'s schedule is unchanged.');
 });
+
+// The Starter shelf is Scry's own content and always startable: a copy of a
+// starter's text never blocks it, and a studied copy is kept.
+test('SPEC § Lessons and § Library: a copy of a starter\'s text never blocks the starter, and a studied copy is kept',{timeout:180000},async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'scry-library-shelf-'));
+ const config=join(directory,'login.json'),name='library-shelf-'+randomUUID();
+ const bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:name,INTERNAL_KEY:internalKey};
+ let runtime=await createRuntime({port:0,name,inspect:true,bindings});
+ t.after(async()=>{await runtime.mf.dispose();await rm(directory,{recursive:true,force:true});});
+ const origin=(await runtime.mf.ready).origin;
+ runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin})};
+ const storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+ const rows=async()=>Object.fromEntries((await storage.exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,r.value]));
+ const meta=async()=>JSON.parse((await rows()).meta);
+ const page=async path=>(await(await runtime.worker.fetch(origin+path)).text());
+ // The native form whose hidden fields include every given name and value.
+ const form=(html,action,want={})=>{
+  const found=[...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].filter(m=>m[1]===action).map(m=>Object.fromEntries([...m[2].matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"/g)].map(x=>[x[1],x[2]]))).find(f=>Object.entries(want).every(([k,v])=>f[k]===v));
+  assert.ok(found,`form ${action} ${JSON.stringify(want)}`);return found;
+ };
+ const post=(path,body)=>runtime.worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+ const issued=await post('/tokens/create',{...form(await page('/settings'),'/tokens/create'),name:'Synthetic shelf agent; unpaid'});
+ const secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await issued.text())?.[1];assert.ok(secret);
+ const api=async(path,payload)=>{const r=await runtime.worker.fetch(origin+path,{...(payload?{method:'POST',body:JSON.stringify({operation_id:randomUUID(),...payload})}:{}),headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'}});return {status:r.status,body:await r.json()};};
+ const cli=async args=>{const {code,out}=await cliProcess(cliBinary,[...args,'--json','--config',config],{env:{PATH:process.env.PATH,HOME:directory}});return {code,value:JSON.parse(out)};};
+ assert.equal((await cliProcess(cliBinary,['login','--url',origin,'--token-stdin','--json','--config',config],{env:{PATH:process.env.PATH,HOME:directory},input:secret+'\n'})).code,0);
+ const lessons=JSON.parse(await (await import('node:fs/promises')).readFile('assets/lessons.json','utf8'));
+ const starter=id=>lessons.find(l=>l.id===id).input;
+ const appAdd=async(title,text)=>{const r=await post('/library/version/add',{...form(await page('/library/add'),'/library/version/add'),title,text});assert.equal(r.status,303);return r.headers.get('Location').split('/').at(-1).split('?')[0];};
+ const copyRows=async id=>{const all=await rows();const v=JSON.parse(all['library_versions/'+id]);return [all['library_versions/'+id],all['library_works/'+v.work_id]];};
+ const shelf=async id=>{const current=(await meta()).practice?.current;const want={starter:id};if(current?.attempt_id)want.after=current.prompt.id;return post('/practice/lesson/start',form(await page('/lessons'),'/practice/lesson/start',want));};
+ const answer=async()=>{let c=(await meta()).practice.current;if(c.phase==='study'){assert.equal((await api('/api/v1/quiz',{prompt_id:c.prompt.id})).status,200);c=(await meta()).practice.current;}assert.equal((await api('/api/v1/answer',{prompt_id:c.prompt.id,answer:'synthetic miss'})).status,200);};
+ const michael=starter('st-michael-en');
+
+ // (a) NATO start for an alphabet pasted into the add form, with nothing held.
+ const alphabet=JSON.parse(await (await import('node:fs/promises')).readFile('examples/nato-alphabet.json','utf8')).pairs.map(p=>`${p.key}\t${p.value}\n`).join('');
+ const pasted=await appAdd('My alphabet',alphabet);
+ const natoBefore=await copyRows(pasted);
+ const natoPage=await page('/?practice=nato');
+ const nato=await post('/practice/nato/start',form(natoPage,'/practice/nato/start'));assert.ok([200,303].includes(nato.status),String(nato.status));
+ const natoVersion=(await meta()).practice.current.prompt.version_id;assert.notEqual(natoVersion,pasted);
+ assert.equal((await api('/api/v1/library/versions/'+natoVersion)).body.version.kind,'keyed_mapping');
+ assert.deepEqual(await copyRows(pasted),natoBefore);
+
+ await answer();
+ // (a) The Owner pasted the English Saint Michael prayer under his own title.
+ const copy=await appAdd('My Saint Michael',michael.text);
+ const before=await copyRows(copy);
+ const started=await shelf('st-michael-en');assert.equal(started.status,303,await started.text());
+ const own=(await meta()).practice.current.prompt.version_id;assert.notEqual(own,copy);
+ const shown=(await api('/api/v1/library/versions/'+own)).body.version;assert.equal(shown.text,michael.text);assert.equal(shown.name,michael.name);
+ assert.deepEqual(await copyRows(copy),before,'The copy is unchanged.');
+ // (d) Repeating the entry returns the same Version and Study.
+ await answer();const studies=Object.keys(await rows()).filter(k=>k.startsWith('practice_studies/'));
+ // The shelf shows a current lesson without a form; an agent repeats it.
+ const repeated=await api('/api/v1/lessons/start',{starter:'st-michael-en',after:(await meta()).practice.current.prompt.id});assert.equal(repeated.status,200,JSON.stringify(repeated.body));assert.equal((await meta()).practice.current.prompt.version_id,own);
+ assert.deepEqual(Object.keys(await rows()).filter(k=>k.startsWith('practice_studies/')),studies);
+ // The starter's own Version shares the copy's normalized text: the notebook is named for it.
+ assert.equal((await rows())['library_compatibility/v1'],'1');
+ // (e) What an agent adds is still refused for the same text with another structure.
+ const before2=await rows();
+ const refused=await api('/api/v1/library/versions',{data:{title:'Agent Saint Michael',kind:'text',text:michael.text,sections:[{heading:'All',units:[michael.text]}]}});
+ assert.equal(refused.status,409);assert.match(refused.body.error,/Nothing was saved/);
+ const after2=await rows();delete before2.meta;delete after2.meta;assert.deepEqual(after2,before2);
+
+ // (b) A studied copy is kept, active, paused or dropped, and resumed by the shelf.
+ const joy=starter('rosary-joyful');
+ const listCopy=(await api('/api/v1/library/versions',{data:{title:'My Joyful set',kind:'ordered_list',text:joy.text,sections:joy.sections}})).body.result.entity_id;
+ const study=(await cli(['learn',listCopy])).value.practice.study;
+ for(const status of ['active','pause','drop']){
+  if(status!=='active')assert.equal((await cli(['study',status,study.id])).code,0);
+  const versions=Object.keys(await rows()).filter(k=>k.startsWith('library_versions/')).length;
+  const count=Object.keys(await rows()).filter(k=>k.startsWith('practice_studies/')).length;
+  let c=(await meta()).practice.current;if(c&&!c.attempt_id)await answer();
+  const r=await shelf('rosary-joyful');assert.equal(r.status,303,status);
+  c=(await meta()).practice.current;assert.equal(c.prompt.version_id,listCopy,status);assert.equal(c.prompt.study_id,study.id,status);
+  assert.equal(Object.keys(await rows()).filter(k=>k.startsWith('library_versions/')).length,versions,`${status}: no second Version`);
+  assert.equal(Object.keys(await rows()).filter(k=>k.startsWith('practice_studies/')).length,count,`${status}: no second Study`);
+ }
+});
+
+test('SPEC § Open into study: on the starter\'s turn, Study never refuses or bypasses the Owner\'s dropped or paused copy',{timeout:180000},async t=>{
+ for(const status of ['drop','pause']){
+  const directory=await mkdtemp(join(tmpdir(),'scry-library-turn-'));
+  const config=join(directory,'login.json'),name='library-turn-'+randomUUID();
+  const bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:name,INTERNAL_KEY:internalKey};
+  let runtime=await createRuntime({port:0,name,inspect:true,bindings});
+  try{
+   const origin=(await runtime.mf.ready).origin;
+   runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin})};
+   const storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+   const rows=async()=>Object.fromEntries((await storage.exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,r.value]));
+   const page=async path=>(await(await runtime.worker.fetch(origin+path)).text());
+   const hidden=(html,action)=>{const m=[...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m=>m[1]===action);assert.ok(m,action);return Object.fromEntries([...m[2].matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"/g)].map(x=>[x[1],x[2]]));};
+   const post=(path,body)=>runtime.worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+   const issued=await post('/tokens/create',{...hidden(await page('/settings'),'/tokens/create'),name:'Synthetic turn agent; unpaid'});
+   const secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await issued.text())?.[1];assert.ok(secret);
+   const api=async(path,payload)=>{const r=await runtime.worker.fetch(origin+path,{...(payload?{method:'POST',body:JSON.stringify({operation_id:randomUUID(),...payload})}:{}),headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'}});const body=await r.json();assert.equal(r.status,200,JSON.stringify(body));return body;};
+   const lessons=JSON.parse(await (await import('node:fs/promises')).readFile('assets/lessons.json','utf8'));
+   const michael=lessons.find(l=>l.id==='st-michael-en').input.text;
+   const copy=await post('/library/version/add',{...hidden(await page('/library/add'),'/library/version/add'),title:'My Saint Michael',text:michael});
+   const copyId=copy.headers.get('Location').split('/').at(-1);
+   const fillers=['NATO spelling alphabet','Joyful Mysteries','Luminous Mysteries','Sorrowful Mysteries','Glorious Mysteries','Safe soothing','Everyday readiness','Montessori-informed care'];
+   const ids=[copyId];
+   for(const [i,title] of fillers.entries()) ids.push((await api('/api/v1/library/versions',{data:{title,kind:'text',text:`Filler words number ${i}.\n`}})).result.entity_id);
+   for(const [i,id] of ids.entries()){const s=(await api('/api/v1/learn',{version_id:id})).practice.study;await api(i===0&&status==='pause'?'/api/v1/studies/pause':'/api/v1/studies/drop',{study_id:s.id});}
+   const versions=Object.keys(await rows()).filter(k=>k.startsWith('library_versions/')).length;
+   const studies=Object.keys(await rows()).filter(k=>k.startsWith('practice_studies/')).length;
+   // Where Home offers Study, pressing it never answers a refusal.
+   const home=await page('/');
+   if(home.includes('action="/practice/review/start"')){
+    const r=await post('/practice/review/start',hidden(home,'/practice/review/start'));
+    assert.equal(r.status,303,`${status}: Study answers without a refusal`);
+   }
+   assert.equal(Object.keys(await rows()).filter(k=>k.startsWith('library_versions/')).length,versions,`${status}: no second Version`);
+   assert.equal(Object.keys(await rows()).filter(k=>k.startsWith('practice_studies/')).length,studies,`${status}: no second Study`);
+   assert.match(await page('/'),/Rest for now/,`${status}: nothing is due and the copy is not bypassed`);
+  } finally {await runtime.mf.dispose();await rm(directory,{recursive:true,force:true});}
+ }
+});

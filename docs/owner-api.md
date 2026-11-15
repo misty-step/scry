@@ -179,7 +179,14 @@ Spelling-strict setting is refused (409) with nothing written, and the message
 names what differs, for example `That text is already in the Library in a
 Version with different Units. Nothing was saved; to change that Version,
 correct it.` Text supplied without Sections matches a stored text Version
-whatever its Units, since Scry divides such text itself. A new text attaches to
+whatever its Units, since Scry divides such text itself.
+That refusal applies to what the Owner or an agent adds, never to the Starter
+shelf, which is always startable. A lesson, NATO or Study entry for a starter
+uses a stored Version the same as the starter's manifest, preferring one with a
+Study; otherwise a Version with the same text in any structure that already
+has a Study of any status (NATO keeps only one it can practise as the
+alphabet), which a lesson start resumes and Study never bypasses; otherwise
+the starter's own Version, added beside any copy, which stays unchanged. A new text attaches to
 the Work its title or alias names; names that point to different Works conflict.
 Search matches titles, aliases, and the first 240 characters of each Version.
 An empty query lists the Library. No matches returns
