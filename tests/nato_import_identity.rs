@@ -226,11 +226,22 @@ fn nato_identity_requires_all_ordered_correct_pairs_strict_policy_and_consistent
         assert!(!library::is_nato(&a.library.versions[&vid]));
         let before = a.clone();
         if !a.library.versions[&vid].spelling_strict {
-            assert_eq!(
-                focused(&mut a, "nato-negative-focus").unwrap_err().status,
-                409
+            // SPEC § NATO alphabet: Start practice imports the canonical
+            // alphabet; the Starter shelf is always startable. The agent's
+            // pairs without Spelling-strict stay as they are, beside it.
+            let mut started = a.clone();
+            focused(&mut started, "nato-negative-focus").unwrap();
+            let canonical = &started.practice.current.as_ref().unwrap().prompt.version_id;
+            assert_ne!(canonical, &vid);
+            assert!(library::is_nato(&started.library.versions[canonical]));
+            assert_eq!(started.library.versions[&vid], a.library.versions[&vid]);
+            assert!(
+                started
+                    .practice
+                    .studies
+                    .values()
+                    .all(|s| s.version_id != vid)
             );
-            assert_eq!(a, before);
         }
         assert_eq!(
             api_mutate(

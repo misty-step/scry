@@ -243,9 +243,14 @@ setting is returned; otherwise the add is refused with what differs. Text
 supplied without Units matches any text Version's Units. A Version an earlier
 build stored beside one that now counts as its duplicate stays valid. The add
 receipt records `{"existing": true}` only when nothing was added, so creation
-receipts keep their shape. Starter, lesson and NATO entries resolve through the
-same comparison and keep a Version that already has a Study, whatever
-corrections exist. A correction skips that lookup: it always
+receipts keep their shape. Starter, lesson, NATO and Study entries never meet
+that refusal (`Library::admit_starter`): they use a Version the same as the
+starter's manifest, preferring one with a Study; otherwise a same-text Version
+of any structure with a Study of any status that the entry can practise;
+otherwise they admit the starter's own Version beside any copy. Beside a text
+copy that Version shares its normalized hash, which the marker and
+`library-v5` name below cover; beside a list copy without aliases its hash
+differs and the notebook keeps an earlier name. A correction skips that lookup: it always
 creates a new Version with a `supersedes` Relation, including when only case,
 punctuation or spacing changed. A correction identical in every stored field is
 refused, and a Version that already has a correction is corrected through the
@@ -266,4 +271,5 @@ row by its unknown key, the archive by its format name or unknown Provenance.
 Any other notebook keeps its rows, archive bytes, hash and format name.
 Part-of and related-to Relations need no new name: earlier readers already
 validate and keep them. Validation refuses a part-of cycle, which admission
-never creates and no earlier build could store.
+never creates and no earlier build could store, with one traversal that is
+linear in the number of Relations.

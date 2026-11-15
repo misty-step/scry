@@ -1116,3 +1116,428 @@ fn an_add_that_finds_its_text_already_there_says_so() {
     assert!(shown.contains("That text was already in the Library. Nothing was added."));
     assert!(!page(&app, &format!("/library/versions/{id}")).contains("already in the Library"));
 }
+
+// --- Second review: the Starter shelf is always startable ---
+
+/// Exactly the fields the app's add form produces.
+fn app_form_add(app: &mut App, op: &str, title: &str, words: &str) -> AppResult<String> {
+    let mut fields = BTreeMap::from([
+        ("operation_id".to_string(), op.to_string()),
+        ("title".to_string(), title.to_string()),
+        ("text".to_string(), words.to_string()),
+        ("name".to_string(), String::new()),
+        ("source".to_string(), String::new()),
+    ]);
+    api::library_form_fields(&mut fields)?;
+    let token = app.owner_tokens.values().next().unwrap().info.clone();
+    let result = engine::mutate_as(
+        app,
+        "/library/version/add",
+        &fields,
+        NOW,
+        op,
+        MutationActor::Token(&token),
+    )?;
+    engine::validate_app(app).unwrap();
+    Ok(result.entity_id.unwrap())
+}
+fn starter_input(id: &str) -> Value {
+    let lessons: Value = serde_json::from_str(include_str!("../assets/lessons.json")).unwrap();
+    lessons
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["id"] == id)
+        .unwrap()["input"]
+        .clone()
+}
+fn nato_text() -> String {
+    scry::library::nato_input().unwrap().text
+}
+fn held_version(app: &App) -> String {
+    app.practice
+        .current
+        .as_ref()
+        .unwrap()
+        .prompt
+        .version_id
+        .clone()
+}
+fn copy_rows(app: &App, copy: &str) -> (Value, Value) {
+    let v = &app.library.versions[copy];
+    (
+        serde_json::to_value(v).unwrap(),
+        serde_json::to_value(&app.library.works[&v.work_id]).unwrap(),
+    )
+}
+/// Every default starter but the one under test is represented by a dropped
+/// Study, so Study's next choice is that starter.
+fn only_this_starter_left(app: &mut App, keep: &str) {
+    let titles = [
+        ("nato", "NATO spelling alphabet"),
+        ("st-michael-en", "Saint Michael the Archangel"),
+        ("rosary-joyful", "Joyful Mysteries"),
+        ("rosary-luminous", "Luminous Mysteries"),
+        ("rosary-sorrowful", "Sorrowful Mysteries"),
+        ("rosary-glorious", "Glorious Mysteries"),
+        ("baby-soothing", "Safe soothing"),
+        ("baby-everyday", "Everyday readiness"),
+        ("baby-montessori", "Montessori-informed care"),
+    ];
+    for (i, (id, title)) in titles.iter().enumerate().filter(|(_, (id, _))| *id != keep) {
+        let v = add(
+            app,
+            &format!("spec-filler-{i:02}-{id}-op"),
+            text(title, &format!("Filler words number {i}.\n")),
+        )
+        .unwrap();
+        let s = call(
+            app,
+            "/api/v1/learn",
+            &format!("spec-filler-learn-{i:02}-op"),
+            json!({"version_id":v}),
+        )
+        .unwrap()
+        .entity_id
+        .unwrap();
+        call(
+            app,
+            "/api/v1/studies/drop",
+            &format!("spec-filler-drop-{i:02}-op"),
+            json!({"study_id":s}),
+        )
+        .unwrap();
+    }
+}
+fn start_entry(app: &mut App, entry: &str, op: &str) -> AppResult<MutationResult> {
+    let after = app
+        .practice
+        .current
+        .as_ref()
+        .filter(|p| p.attempt_id.is_some())
+        .map(|p| p.prompt.id.clone());
+    match entry {
+        "nato" => engine_call(app, "/practice/nato/start", op, NOW, json!({})),
+        "mix" => match after {
+            Some(after) => engine_call(
+                app,
+                "/practice/review/next",
+                op,
+                NOW,
+                json!({"after":after}),
+            ),
+            None => engine_call(app, "/practice/review/start", op, NOW, json!({})),
+        },
+        starter => {
+            let mut fields = json!({"starter":starter});
+            if let Some(after) = after {
+                fields["after"] = json!(after);
+            }
+            engine_call(app, "/practice/lesson/start", op, NOW, fields)
+        }
+    }
+}
+
+#[test]
+fn an_unstudied_copy_never_blocks_a_starter_which_starts_on_its_own_version() {
+    let michael = starter_input("st-michael-en");
+    for entry in ["st-michael-en", "nato", "rosary-joyful"] {
+        let mut app = app();
+        let copy = match entry {
+            "nato" => {
+                app_form_add(&mut app, "spec-copy-nato-op", "My alphabet", &nato_text()).unwrap()
+            }
+            // An agent's copy of the list, without the starter's aliases.
+            "rosary-joyful" => {
+                let joy = starter_input("rosary-joyful");
+                add(&mut app, "spec-copy-joyful-op", json!({"title":"My Joyful set","kind":"ordered_list","text":joy["text"],"sections":joy["sections"]})).unwrap()
+            }
+            _ => app_form_add(
+                &mut app,
+                "spec-copy-michael-op",
+                "My Saint Michael",
+                michael["text"].as_str().unwrap(),
+            )
+            .unwrap(),
+        };
+        let before = copy_rows(&app, &copy);
+        start_entry(&mut app, entry, &format!("spec-starter-own-{entry}-op"))
+            .unwrap_or_else(|e| panic!("{entry}: {} {}", e.status, e.message));
+        let own = held_version(&app);
+        assert_ne!(own, copy, "{entry}: the starter's own Version");
+        let v = &app.library.versions[&own];
+        if entry == "nato" {
+            assert!(scry::library::is_nato(v));
+        } else {
+            assert!(
+                scry::lessons::catalog()
+                    .iter()
+                    .any(|l| l.id == entry && l.matches(v)),
+                "{entry}"
+            );
+        }
+        assert_eq!(
+            copy_rows(&app, &copy),
+            before,
+            "{entry}: the copy is unchanged"
+        );
+        assert!(
+            app.practice.studies.values().all(|s| s.version_id != copy),
+            "{entry}"
+        );
+        // Repeating the entry returns the same Version and Study.
+        let studies = app.practice.studies.clone();
+        answer_held(&mut app, &format!("spec-starter-own-{entry}-answer"), NOW);
+        start_entry(
+            &mut app,
+            entry,
+            &format!("spec-starter-own-{entry}-again-op"),
+        )
+        .unwrap();
+        assert_eq!(held_version(&app), own, "{entry}: repeated");
+        assert_eq!(
+            app.practice.studies.len(),
+            studies.len(),
+            "{entry}: no new Study"
+        );
+    }
+}
+
+#[test]
+fn study_offers_an_unstudied_copy_as_a_library_work_and_never_refuses() {
+    // Library Works not yet started come before the Starter shelf, so with an
+    // unstudied copy Study starts the copy's Work; the starter is never refused.
+    let mut app = app();
+    let michael = starter_input("st-michael-en");
+    let copy = app_form_add(
+        &mut app,
+        "spec-mix-copy-op",
+        "My Saint Michael",
+        michael["text"].as_str().unwrap(),
+    )
+    .unwrap();
+    only_this_starter_left(&mut app, "st-michael-en");
+    let versions = app.library.versions.len();
+    start_entry(&mut app, "mix", "spec-mix-copy-start-op").unwrap();
+    assert_eq!(held_version(&app), copy);
+    assert_eq!(app.library.versions.len(), versions);
+    answer_held(&mut app, "spec-mix-copy-answer", NOW);
+    start_entry(&mut app, "mix", "spec-mix-copy-again-op").unwrap();
+    assert_eq!(
+        app.library.versions.len(),
+        versions,
+        "the starter is represented by the copy now"
+    );
+    assert!(
+        app.practice
+            .studies
+            .values()
+            .filter(|s| s.status == scry::study::Status::Active)
+            .all(|s| s.version_id == copy)
+    );
+}
+
+#[test]
+fn a_studied_copy_is_kept_by_the_starter_entry_whatever_its_status() {
+    let michael = starter_input("st-michael-en");
+    for status in ["active", "paused", "dropped"] {
+        for entry in ["st-michael-en", "mix"] {
+            let mut app = app();
+            let copy = app_form_add(
+                &mut app,
+                "spec-kept-copy-op",
+                "My Saint Michael",
+                michael["text"].as_str().unwrap(),
+            )
+            .unwrap();
+            if entry == "mix" {
+                only_this_starter_left(&mut app, "st-michael-en");
+            }
+            let sid = call(
+                &mut app,
+                "/api/v1/learn",
+                "spec-kept-learn-op",
+                json!({"version_id":copy}),
+            )
+            .unwrap()
+            .entity_id
+            .unwrap();
+            if status != "active" {
+                let route = if status == "paused" {
+                    "/api/v1/studies/pause"
+                } else {
+                    "/api/v1/studies/drop"
+                };
+                call(
+                    &mut app,
+                    route,
+                    "spec-kept-status-op",
+                    json!({"study_id":sid}),
+                )
+                .unwrap();
+            }
+            let versions = app.library.versions.len();
+            let studies = app.practice.studies.len();
+            let result = start_entry(&mut app, entry, &format!("spec-kept-{status}-{entry}-op"));
+            assert_eq!(
+                app.library.versions.len(),
+                versions,
+                "{status} {entry}: no second Version"
+            );
+            assert_eq!(
+                app.practice.studies.len(),
+                studies,
+                "{status} {entry}: no second Study"
+            );
+            if entry == "mix" {
+                // Study never bypasses the Owner's chosen wording with the starter.
+                result.unwrap();
+                assert!(
+                    app.practice
+                        .current
+                        .as_ref()
+                        .is_none_or(|p| p.prompt.version_id == copy),
+                    "{status}"
+                );
+                assert_eq!(
+                    app.practice.studies[&sid].status == scry::study::Status::Active,
+                    status == "active"
+                );
+            } else {
+                result.unwrap_or_else(|e| panic!("{status}: {} {}", e.status, e.message));
+                assert_eq!(
+                    held_version(&app),
+                    copy,
+                    "{status}: the copy's Study is kept or resumed"
+                );
+                assert_eq!(
+                    app.practice.studies[&sid].status,
+                    scry::study::Status::Active
+                );
+                assert_eq!(app.practice.current.as_ref().unwrap().prompt.study_id, sid);
+                // Repeating returns the same Version and Study.
+                answer_held(&mut app, &format!("spec-kept-{status}-answer"), NOW);
+                start_entry(&mut app, entry, &format!("spec-kept-{status}-again-op")).unwrap();
+                assert_eq!(held_version(&app), copy);
+                assert_eq!(app.practice.studies.len(), studies);
+            }
+        }
+    }
+    // A list starter keeps the agent's studied copy without aliases.
+    let mut app = app();
+    let joy = starter_input("rosary-joyful");
+    let copy = add(&mut app, "spec-kept-joyful-op", json!({"title":"My Joyful set","kind":"ordered_list","text":joy["text"],"sections":joy["sections"]})).unwrap();
+    call(
+        &mut app,
+        "/api/v1/learn",
+        "spec-kept-joyful-learn",
+        json!({"version_id":copy}),
+    )
+    .unwrap();
+    start_entry(&mut app, "rosary-joyful", "spec-kept-joyful-start-op").unwrap();
+    assert_eq!(held_version(&app), copy);
+    assert_eq!(app.library.versions.len(), 1);
+}
+
+#[test]
+fn what_the_owner_or_an_agent_adds_is_still_refused_for_the_same_text_with_another_structure() {
+    let mut app = app();
+    start_entry(&mut app, "st-michael-en", "spec-refuse-start-op").unwrap();
+    let starter = held_version(&app);
+    let words = app.library.versions[&starter].text.clone();
+    let before = app.library.clone();
+    let form =
+        app_form_add(&mut app, "spec-refuse-form-op", "My Saint Michael", &words).unwrap_err();
+    assert_eq!(form.status, 409);
+    assert!(form.message.contains("Nothing was saved"));
+    let mut manifest = text("My Saint Michael", &words);
+    manifest["sections"] = json!([{"heading":"All","units":[words]}]);
+    let agent = add(&mut app, "spec-refuse-agent-op", manifest).unwrap_err();
+    assert_eq!(agent.status, 409);
+    assert_eq!(app.library, before);
+}
+
+#[test]
+fn a_starter_beside_an_owner_copy_is_named_for_the_shared_text_or_keeps_its_bytes() {
+    // Text: the starter and the copy share a normalized hash.
+    let mut app = app();
+    let michael = starter_input("st-michael-en");
+    app_form_add(
+        &mut app,
+        "spec-beside-copy-op",
+        "My Saint Michael",
+        michael["text"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(archive(&app).format, PLAIN_FORMAT);
+    start_entry(&mut app, "st-michael-en", "spec-beside-start-op").unwrap();
+    let rows = persistence::rows(&app).unwrap();
+    assert_eq!(rows.get(MARKER).map(String::as_str), Some("1"));
+    let mut unmarked = rows.clone();
+    unmarked.remove(MARKER);
+    assert!(persistence::app_from_rows(&unmarked).is_err());
+    assert_eq!(persistence::app_from_rows(&rows).unwrap(), app);
+    let named = archive(&app);
+    assert_eq!(named.format, NEW_FORMAT);
+    let bytes = named.encode().unwrap();
+    assert_eq!(
+        persistence::Archive::decode(&bytes, &persistence::sha256(&bytes))
+            .unwrap()
+            .encode()
+            .unwrap(),
+        bytes
+    );
+    // A list: the starter's aliases give it another stored hash, so no marker.
+    let mut app = self::app();
+    let joy = starter_input("rosary-joyful");
+    add(&mut app, "spec-beside-joyful-op", json!({"title":"My Joyful set","kind":"ordered_list","text":joy["text"],"sections":joy["sections"]})).unwrap();
+    start_entry(&mut app, "rosary-joyful", "spec-beside-joyful-start").unwrap();
+    assert_eq!(app.library.versions.len(), 2);
+    let hashes: std::collections::BTreeSet<_> = app
+        .library
+        .versions
+        .values()
+        .map(|v| &v.normalized_hash)
+        .collect();
+    assert_eq!(hashes.len(), 2);
+    assert!(!persistence::rows(&app).unwrap().contains_key(MARKER));
+    assert_ne!(archive(&app).format, NEW_FORMAT);
+}
+
+#[test]
+fn a_long_part_of_chain_validates_quickly_and_a_cycle_at_any_depth_is_refused() {
+    let mut library = scry::library::Library::default();
+    let depth = 5000;
+    let ids: Vec<String> = (0..depth).map(|i| format!("{i:032x}")).collect();
+    for (i, id) in ids.iter().enumerate() {
+        let work: scry::library::Work = serde_json::from_value(json!({"id":id,"revision":1,"title":format!("Chain work {i}"),"aliases":[],"kind":"text","context":""})).unwrap();
+        library.works.insert(id.clone(), work);
+        if i > 0 {
+            library.relations.insert(
+                format!("part-of-{}-{}", ids[i - 1], id),
+                Relation::PartOf {
+                    work_id: ids[i - 1].clone(),
+                    parent_work_id: id.clone(),
+                },
+            );
+        }
+    }
+    let started = std::time::Instant::now();
+    library.validate().unwrap();
+    let took = started.elapsed();
+    assert!(
+        took < std::time::Duration::from_secs(2),
+        "{depth} part-of Relations took {took:?}"
+    );
+    for back in [1, 2, depth / 2, depth - 1] {
+        let mut cycle = library.clone();
+        cycle.relations.insert(
+            "part-of-cycle".into(),
+            Relation::PartOf {
+                work_id: ids[depth - 1].clone(),
+                parent_work_id: ids[depth - 1 - back].clone(),
+            },
+        );
+        assert!(cycle.validate().is_err(), "a cycle {back} deep");
+    }
+}

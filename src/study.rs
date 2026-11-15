@@ -1443,10 +1443,12 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         let input = crate::lessons::input(starter).expect("curated default exists");
         let is_michael = *starter == "st-michael-en";
         let represented = if is_michael {
-            app.library
-                .works
-                .values()
-                .any(|w| w.title == input.title && studied_works.contains(w.id.as_str()))
+            starter_studied(app, &input)
+                || app
+                    .library
+                    .works
+                    .values()
+                    .any(|w| w.title == input.title && studied_works.contains(w.id.as_str()))
                 || app.library.versions.values().any(|v| {
                     catalog.iter().any(|l| {
                         l.matches(v)
@@ -1456,7 +1458,8 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
                     })
                 })
         } else {
-            app.library.works.values().any(|w| w.title == input.title)
+            starter_studied(app, &input)
+                || app.library.works.values().any(|w| w.title == input.title)
                 || app.library.versions.values().any(|v| {
                     if *starter == "nato" {
                         crate::library::is_nato(v)
@@ -1479,23 +1482,34 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         .map(|(_, _, c)| c)
 }
 
-/// The Version a starter, lesson or NATO entry resolves to. One the Owner
-/// already studies is kept, whatever corrections exist; otherwise the Library
-/// offers its unsuperseded Version, importing the supplied content once.
+/// The Version a starter, lesson or NATO entry resolves to; see
+/// `Library::admit_starter`. A Version kept for its Study must be one this
+/// entry can practise: the canonical alphabet for NATO, any studyable
+/// Version otherwise.
 fn starter_version(
     app: &mut App,
     input: crate::library::VersionInput,
     seed: &str,
 ) -> AppResult<String> {
-    let studied = app
-        .library
-        .existing(&input)?
-        .into_iter()
-        .find(|id| app.practice.studies.values().any(|s| &s.version_id == id));
-    match studied {
-        Some(id) => Ok(id),
-        None => app.library.add(input, seed, None),
-    }
+    let nato = crate::library::is_nato_input(&input);
+    let studies = &app.practice.studies;
+    let studied = |id: &str| studies.values().any(|s| s.version_id == id);
+    let usable = |v: &crate::library::Version| {
+        if nato {
+            crate::library::is_nato(v)
+        } else {
+            reviewable(v).is_ok()
+        }
+    };
+    app.library.admit_starter(input, seed, &studied, &usable)
+}
+/// Whether the Owner already studies a Version with this starter's text, in
+/// any structure: that Study is his choice and Study does not bypass it.
+fn starter_studied(app: &App, input: &crate::library::VersionInput) -> bool {
+    app.library.same_text_versions(input).is_ok_and(|ids| {
+        ids.iter()
+            .any(|id| app.practice.studies.values().any(|s| &s.version_id == id))
+    })
 }
 /// Home-only subject preview. Never render editable metadata as a recall cue.
 pub fn continuous_preview(app: &App, now: i64) -> Option<String> {

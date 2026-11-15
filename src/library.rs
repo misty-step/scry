@@ -222,6 +222,14 @@ pub fn is_nato(version: &Version) -> bool {
                 )
         })
 }
+/// Whether a draft is the supplied NATO starter manifest itself.
+pub fn is_nato_input(input: &VersionInput) -> bool {
+    nato_input().is_ok_and(|canonical| {
+        canonical.text == input.text
+            && canonical.kind == input.kind
+            && canonical.spelling_strict == input.spelling_strict
+    })
+}
 fn strict_mapping() -> bool {
     true
 }
@@ -746,6 +754,15 @@ impl Library {
         seed: &str,
         previous: Option<&str>,
     ) -> AppResult<(String, bool)> {
+        self.admit_inner(input, seed, previous, true)
+    }
+    fn admit_inner(
+        &mut self,
+        input: VersionInput,
+        seed: &str,
+        previous: Option<&str>,
+        dedupe: bool,
+    ) -> AppResult<(String, bool)> {
         let sections = checked_sections(&input)?;
         if input.kind == Kind::Text {
             check_text_units(sections.iter().flat_map(|s| &s.units).map(String::as_str))?;
@@ -794,6 +811,7 @@ impl Library {
         // A correction always creates a new Version. Any other text already in
         // the Library returns that Version, whatever Work the names point to.
         if previous.is_none()
+            && dedupe
             && let Some(id) = self.same_text(&input, &sections)?.into_iter().next()
         {
             return Ok((id, true));
@@ -914,21 +932,61 @@ impl Library {
         Ok((version_id, false))
     }
     /// Whether `work` is, through any chain of part-of Relations, part of `whole`.
+    /// Linear in the number of Relations.
     fn part_of(&self, work: &str, whole: &str) -> bool {
-        let mut pending = vec![work.to_string()];
+        let parents = self.parents();
+        let mut pending = vec![work];
         let mut seen = BTreeSet::new();
         while let Some(next) = pending.pop() {
             if next == whole {
                 return true;
             }
-            if seen.insert(next.clone()) {
-                pending.extend(self.relations.values().filter_map(|r| match r {
-                    Relation::PartOf {
-                        work_id,
-                        parent_work_id,
-                    } if *work_id == next => Some(parent_work_id.clone()),
-                    _ => None,
-                }));
+            if seen.insert(next) {
+                pending.extend(parents.get(next).into_iter().flatten().copied());
+            }
+        }
+        false
+    }
+    fn parents(&self) -> BTreeMap<&str, Vec<&str>> {
+        let mut parents = BTreeMap::<&str, Vec<&str>>::new();
+        for relation in self.relations.values() {
+            if let Relation::PartOf {
+                work_id,
+                parent_work_id,
+            } = relation
+            {
+                parents.entry(work_id).or_default().push(parent_work_id);
+            }
+        }
+        parents
+    }
+    /// Whether any chain of part-of Relations returns to where it started:
+    /// one depth-first traversal with visited and in-progress marks.
+    fn part_of_cycle(&self) -> bool {
+        let parents = self.parents();
+        let mut done = BTreeSet::new();
+        for start in parents.keys().copied() {
+            if done.contains(start) {
+                continue;
+            }
+            let mut on_path = BTreeSet::from([start]);
+            let mut stack = vec![(start, 0usize)];
+            while let Some((work, next)) = stack.last_mut() {
+                let children = parents.get(*work).map_or(&[][..], Vec::as_slice);
+                if let Some(parent) = children.get(*next).copied() {
+                    *next += 1;
+                    if on_path.contains(parent) {
+                        return true;
+                    }
+                    if !done.contains(parent) {
+                        on_path.insert(parent);
+                        stack.push((parent, 0));
+                    }
+                } else {
+                    on_path.remove(*work);
+                    done.insert(*work);
+                    stack.pop();
+                }
             }
         }
         false
@@ -943,6 +1001,20 @@ impl Library {
     /// what differs. Text supplied without Units matches a stored text Version
     /// whatever its Units, since Scry divides such text itself.
     fn same_text(&self, input: &VersionInput, sections: &[SectionInput]) -> AppResult<Vec<String>> {
+        let (same, _, refusal) = self.matches(input, sections);
+        match refusal {
+            Some(error) if same.is_empty() => Err(error),
+            _ => Ok(same),
+        }
+    }
+    /// The stored Versions whose normalized text equals the draft's, best first:
+    /// those the same in Kind, Units, aliases, pairs and Spelling-strict setting,
+    /// then the others, with the refusal that names how the first other differs.
+    fn matches(
+        &self,
+        input: &VersionInput,
+        sections: &[SectionInput],
+    ) -> (Vec<String>, Vec<String>, Option<AppError>) {
         let offered: Vec<&str> = sections
             .iter()
             .flat_map(|s| &s.units)
@@ -1021,33 +1093,59 @@ impl Library {
             }
             differ
         };
-        let same: Vec<String> = candidates
-            .iter()
-            .filter(|v| differences(v).is_empty())
-            .map(|v| v.id.clone())
-            .collect();
-        if same.is_empty()
-            && let Some(first) = candidates.first()
-        {
+        let (same, other): (Vec<&Version>, Vec<&Version>) = candidates
+            .into_iter()
+            .partition(|v| differences(v).is_empty());
+        let refusal = other.first().map(|first| {
             let differ = differences(first);
             let named = match differ.split_last() {
                 Some((last, [])) => (*last).to_string(),
                 Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
                 None => unreachable!("a candidate that differs names what differs"),
             };
-            return Err(AppError::new(
+            AppError::new(
                 409,
                 format!(
                     "That text is already in the Library in a Version with different {named}. Nothing was saved; to change that Version, correct it."
                 ),
-            ));
-        }
+            )
+        });
+        let ids = |vs: Vec<&Version>| vs.into_iter().map(|v| v.id.clone()).collect();
+        (ids(same), ids(other), refusal)
+    }
+    /// Every stored Version whose normalized text equals the draft's, whatever
+    /// its structure.
+    pub fn same_text_versions(&self, input: &VersionInput) -> AppResult<Vec<String>> {
+        let sections = checked_sections(input)?;
+        let (mut same, other, _) = self.matches(input, &sections);
+        same.extend(other);
         Ok(same)
     }
-    /// The stored Versions a validated draft would be returned as, best first.
-    pub fn existing(&self, input: &VersionInput) -> AppResult<Vec<String>> {
-        let sections = checked_sections(input)?;
-        self.same_text(input, &sections)
+    /// The Version a Starter shelf entry resolves to. The shelf is Scry's own
+    /// content and is always startable: a stored Version the same as the
+    /// manifest, preferring one with a Study; otherwise one with the same text
+    /// and any structure that already has a Study and that `usable` accepts;
+    /// otherwise the starter's own Version, admitted beside any copy, which is
+    /// left as it is.
+    pub fn admit_starter(
+        &mut self,
+        input: VersionInput,
+        seed: &str,
+        studied: &dyn Fn(&str) -> bool,
+        usable: &dyn Fn(&Version) -> bool,
+    ) -> AppResult<String> {
+        let sections = checked_sections(&input)?;
+        let (same, other, _) = self.matches(&input, &sections);
+        if let Some(id) = same.iter().find(|id| studied(id)).or(same.first()) {
+            return Ok(id.clone());
+        }
+        if let Some(id) = other
+            .iter()
+            .find(|id| studied(id) && usable(&self.versions[id.as_str()]))
+        {
+            return Ok(id.clone());
+        }
+        Ok(self.admit_inner(input, seed, None, false)?.0)
     }
     pub fn edit(&mut self, edit: WorkEdit) -> AppResult<String> {
         let mut next = self.works.get(&edit.work_id).ok_or_else(missing)?.clone();
@@ -1202,6 +1300,9 @@ impl Library {
                 return Err(invalid());
             }
         }
+        if self.part_of_cycle() {
+            return Err(invalid());
+        }
         for relation in self.relations.values() {
             let valid = match relation {
                 Relation::VersionOf {
@@ -1229,7 +1330,6 @@ impl Library {
                     work_id != parent_work_id
                         && self.works.contains_key(work_id)
                         && self.works.contains_key(parent_work_id)
-                        && !self.part_of(parent_work_id, work_id)
                 }
                 Relation::RelatedTo {
                     work_id,
