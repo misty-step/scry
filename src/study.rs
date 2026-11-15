@@ -1901,15 +1901,6 @@ fn next(
             "Choose one Card or one Recitation scope.",
         ));
     }
-    // Focused NATO practice, entered as a lesson or from its own screen and
-    // not reached through Study's mix, keeps its own Next.
-    let focused = !app.practice.mixed_review
-        && app
-            .practice
-            .current
-            .as_ref()
-            .and_then(|p| app.practice.studies.get(&p.prompt.study_id))
-            .is_some_and(|s| s.nato_all_letters);
     app.practice.mixed_review = false;
     let after = field(fields, "after");
     if let Some(p) = &app.practice.current {
@@ -2019,10 +2010,11 @@ fn next(
             ));
         }
         hold(app, presentation)?;
-    } else if sid.is_empty() && field(fields, "card_id").is_empty() && !focused {
+    } else if sid.is_empty() && field(fields, "card_id").is_empty() {
         // Next with nothing named selects exactly as Study does. The letter
         // or pair just answered is served only when nothing else is.
-        // Unlike Study, it never begins a Work not yet started.
+        // Unlike Study, it never begins a Work not yet started. Practice
+        // kept to one Study names that Study.
         let avoid = siblings.into_iter().chain(nato_previous).collect();
         study_serve(app, now, &avoid, false, seed)?;
     } else {
@@ -3605,10 +3597,17 @@ pub fn due(app: &App, now: i64) -> Value {
         .filter(|s| list_waits(app, s))
         .map(|s| s.id.as_str())
         .collect::<BTreeSet<_>>();
-    // An introduction never answered is new learning, not a due review.
+    // An introduction never answered is new learning, not a due review. A
+    // Card answered but not yet reviewed (only with help, or left ungraded)
+    // is unfinished learning, which Study serves from an Active Study only.
     let served = cards
         .iter()
-        .filter(|c| !waits.contains(c.study_id.as_str()) && practised(app, c))
+        .filter(|c| {
+            !waits.contains(c.study_id.as_str())
+                && practised(app, c)
+                && (c.state.schedule.last_review_ms.is_some()
+                    || app.practice.studies[&c.study_id].status == Status::Active)
+        })
         .collect::<Vec<_>>();
     // A Card whose answer is still with Jev is not served until it has a
     // Verdict or is left not graded. It is named apart, only where one exists.

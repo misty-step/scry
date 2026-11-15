@@ -192,7 +192,10 @@ pub fn request_detailed(
             .then(|| refusal_reason(response, &login.token, payload))
             .flatten()
         {
-            Some(reason) if reason != fixed => Cow::Owned(format!("{fixed} {reason}")),
+            // A stale browser page's wording says nothing to an agent.
+            Some(reason) if reason != fixed && reason != crate::model::AppError::STALE_PAGE => {
+                Cow::Owned(format!("{fixed} {reason}"))
+            }
             _ => fixed.into(),
         };
         // A proxy failure is not evidence that the upstream mutation did not commit.

@@ -399,16 +399,85 @@ fn practice_and_error_pages_carry_no_reassurance() {
 }
 
 #[test]
-fn next_inside_focused_nato_practice_keeps_its_own_order() {
-    // An agent's NATO lesson drills every letter in order, beyond a Study's
-    // Pace: Next with nothing named stays inside it.
+fn next_keeps_to_the_alphabet_only_when_its_study_is_named() {
+    // A text Study exists before the NATO lesson is entered.
     let mut a = Agent::new();
-    a.call("/api/v1/lessons/start", json!({"starter":"nato"}));
-    let sid = a.held().prompt.study_id.clone();
+    let canticle = a.add("Synthetic Canticle", "", CANTICLE);
+    let text = a.learn(&canticle);
+    a.next();
+    a.answer_exactly();
+    let after = a.held().prompt.id.clone();
+    a.call(
+        "/api/v1/lessons/start",
+        json!({"starter":"nato","after":after}),
+    );
+    let nato = a.held().prompt.study_id.clone();
+    assert_ne!(nato, text);
+    // Naming the Study keeps practice to the alphabet, in order and beyond
+    // a Study's Pace.
     for letter in 0..8 {
-        assert_eq!(a.held().prompt.study_id, sid);
+        assert_eq!(a.held().prompt.study_id, nato);
         assert_eq!(a.held().targets[0].unit_index, letter);
         a.answer_exactly();
-        a.next();
+        let after = a.held().prompt.id.clone();
+        a.call("/api/v1/next", json!({"after":after,"study_id":nato}));
     }
+    // With nothing named, Next selects as Study does: the Study served least
+    // recently, here the text, and never the old order that kept to whichever
+    // Study was created first.
+    assert_eq!(a.held().prompt.study_id, nato);
+    a.answer_exactly();
+    a.next();
+    assert_eq!(a.held().prompt.study_id, text);
+}
+
+#[test]
+fn next_with_nothing_named_leaves_the_alphabet_for_a_study_served_less_recently() {
+    // The NATO lesson is entered first, then a text Study is added: Next
+    // with nothing named does not stay with whichever Study came first.
+    let mut a = Agent::new();
+    a.call("/api/v1/lessons/start", json!({"starter":"nato"}));
+    let nato = a.held().prompt.study_id.clone();
+    a.answer_exactly();
+    let canticle = a.add("Synthetic Canticle", "", CANTICLE);
+    let text = a.learn(&canticle);
+    let mut served = Vec::new();
+    for _ in 0..4 {
+        a.next();
+        served.push(a.held().prompt.study_id.clone());
+        a.answer_exactly();
+    }
+    assert!(served.contains(&text), "{served:?}");
+    assert!(served.contains(&nato), "{served:?}");
+}
+
+#[test]
+fn a_card_answered_only_with_help_is_not_a_due_review() {
+    // Revealed, then answered: the schedule never moved, so no review exists.
+    let mut a = Agent::new();
+    let canticle = a.add("Synthetic Canticle", "", CANTICLE);
+    let sid = a.learn(&canticle);
+    a.next();
+    let pid = a.held().prompt.id.clone();
+    a.call("/api/v1/quiz", json!({"prompt_id":pid}));
+    let pid = a.held().prompt.id.clone();
+    a.call("/api/v1/reveal", json!({"prompt_id":pid}));
+    a.answer("Light on the hill,");
+    let card = a.held().targets[0].card_id.clone();
+    assert!(
+        a.app.practice.cards[&card]
+            .state
+            .schedule
+            .last_review_ms
+            .is_none()
+    );
+    let after = a.held().prompt.id.clone();
+    // A paused Study keeps its due reviews and gets no new material. Asking
+    // what is due and Next agree: nothing is due, and nothing is served.
+    a.call("/api/v1/studies/pause", json!({"study_id":sid}));
+    a.now += 24 * 60 * MINUTE;
+    assert_eq!(a.due()["due"], json!([]));
+    assert_eq!(a.due()["next_due_ms"], Value::Null);
+    a.call("/api/v1/next", json!({"after":after}));
+    assert!(a.app.practice.current.is_none());
 }
