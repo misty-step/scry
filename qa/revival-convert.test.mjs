@@ -209,8 +209,9 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     const readback = await exported.json();
     for (const section of ['questions', 'concepts', 'events', 'operations', 'revival_go', 'revival_schedule_origins'])
       assert.deepEqual(readback.app[section], app[section]);
-    // Retired capture cannot alter restored custody. Use a supported Settings
-    // write for the separate accepted-write/replay and next-backup contract.
+    // Retired capture and the earlier notebook's retired pace cannot alter
+    // restored custody. Creating an Owner token is the supported Settings write
+    // for the separate accepted-write/replay and next-backup contract.
     const html = await (await active.worker.fetch(origin + '/settings')).text();
     const fields = Object.fromEntries([...html.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)]
       .map(match => [match[1], match[2]]));
@@ -223,13 +224,23 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     assert.equal((await capture()).status, 410);
     assert.equal((await capture()).status, 410);
     assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), beforeRefusal);
-    const saveSettings = () => active.worker.fetch(origin + '/settings', {method: 'POST', redirect: 'manual',
+    const pace = () => active.worker.fetch(origin + '/settings', {method: 'POST', redirect: 'manual',
       headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({...fields, pace: 'light'})});
-    assert.equal((await saveSettings()).status, 303);
-    assert.equal((await saveSettings()).status, 303);
+      body: new URLSearchParams({...fields, operation_id: 'synthetic-retired-pace-after-go', pace: 'light'})});
+    assert.equal((await pace()).status, 410);
+    assert.equal((await pace()).status, 410);
+    assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), beforeRefusal);
+    const tokenName = 'Synthetic accepted write after Go projection';
+    const tokenNames = app => Object.values(app.owner_tokens ?? {}).map(token => token.name).sort();
+    const expectedTokens = [...tokenNames(readback.app), tokenName].sort();
+    const createToken = () => active.worker.fetch(origin + '/tokens/create', {method: 'POST', redirect: 'manual',
+      headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({...fields, name: tokenName})});
+    assert.equal((await createToken()).status, 200);
+    assert.equal((await createToken()).status, 303, 'An exact retry replays the saved receipt.');
     const accepted = await (await active.worker.fetch(origin + '/export')).json();
-    assert.equal(accepted.app.preferences.pace, 'light');
+    assert.equal(accepted.app.preferences.pace, readback.app.preferences.pace);
+    assert.deepEqual(tokenNames(accepted.app), expectedTokens);
     // Restore legitimately relocates each retained photo into the fresh
     // namespace. Compare subsequent writes with that exact restored baseline.
     assert.deepEqual(accepted.app.goals, readback.app.goals);
@@ -244,7 +255,8 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     const recovered = JSON.parse(independent);
     assert.equal(recovered.format, 'scry-rust-durable-sqlite-go-projection-v1');
     assert.deepEqual(recovered.app.goals, readback.app.goals);
-    assert.equal(recovered.app.preferences.pace, 'light');
+    assert.equal(recovered.app.preferences.pace, readback.app.preferences.pace);
+    assert.deepEqual(tokenNames(recovered.app), expectedTokens);
     assert.deepEqual(recovered.app.revival_schedule_origins, app.revival_schedule_origins);
     await restore(independent, async ({response}) => assert.equal(response.status, 200, await response.text()));
   });

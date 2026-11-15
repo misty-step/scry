@@ -41,20 +41,13 @@ await mkdir(join(output,'screens'),{recursive:true});await mkdir(join(output,'lo
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const metadata=process.env.SCRY_SOURCE_META?JSON.parse(readFileSync(process.env.SCRY_SOURCE_META)):null;
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
-const receipt={schema:'foundation-walk-receipt/1',check:'scry-story-walk',run:process.env.GITHUB_RUN_ID||`local-${Date.now()}`,head:metadata?.git_revision||git('rev-parse','HEAD'),tree:metadata?.git_tree||git('rev-parse','HEAD^{tree}'),base:process.env.WALK_BASE||null,source_state:metadata?.source_state||'worktree',source_sha256:metadata?.source_sha256||null,artifact_sha256:sha(readFileSync('build/index_bg.wasm')),started_at:new Date().toISOString(),finished_at:'',exit:1,stories:[],artifacts:[],limits:['Synthetic workerd/SQLite/local R2. CLI journeys retain command output; browser stories retain actual browser events.','US-001.1 runs a separate pinned retained-Go migration test; it is not Rust migration acceptance. Superseded US-005 remains historical.','Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery.']};
+const receipt={schema:'foundation-walk-receipt/1',check:'scry-story-walk',run:process.env.GITHUB_RUN_ID||`local-${Date.now()}`,head:metadata?.git_revision||git('rev-parse','HEAD'),tree:metadata?.git_tree||git('rev-parse','HEAD^{tree}'),base:process.env.WALK_BASE||null,source_state:metadata?.source_state||'worktree',source_sha256:metadata?.source_sha256||null,artifact_sha256:sha(readFileSync('build/index_bg.wasm')),started_at:new Date().toISOString(),finished_at:'',exit:1,stories:[],artifacts:[],limits:['Synthetic workerd/SQLite/local R2. CLI journeys retain command output; browser stories retain actual browser events.','Superseded US-005 remains historical.','Policy/test mechanics do not establish live generation/critic/holdout quality, S11 useful real material, real phone, production private ingress, or remote recovery.']};
 const register=async path=>{receipt.artifacts.push({path,sha256:sha(await readFile(join(output,path)))});};
 const native=execFileSync('cargo',['test','--locked','--all-targets'],{encoding:'utf8',env:process.env});await writeFile(join(output,'logs/rust-tests.txt'),native);await register('logs/rust-tests.txt');
 // Cargo's example test harness is not the executable used by historical setup.
 // Build it before opening a runtime, including standalone story-walk CI.
 execFileSync('cargo',['build','--locked','--example','qa-historical-fixture'],{stdio:'inherit',env:process.env});
 const policy=(...names)=>{for(const name of names)assert.ok(native.includes(`test ${name} ... ok`),`Native test did not pass: ${name}`);};
-let retainedGo;
-if(selected.includes('US-001')){
- execFileSync('python3',['qa/retained-go-migration.py',join(output,'logs')],{stdio:'inherit',env:process.env});
- retainedGo=JSON.parse(await readFile(join(output,'logs/retained-go-migration.json'),'utf8'));
- await register('logs/retained-go-migration.txt');await register('logs/retained-go-migration.json');
-}
-const retainedGoMigration=()=>{assert.equal(retainedGo?.status,'pass');assert.equal(retainedGo?.target,'retained-go-compatibility');};
 if(selected.some(id=>['US-014','US-015','US-016','US-017','US-018'].includes(id)))buildCli();
 let browser;
 try{
@@ -121,15 +114,14 @@ try{
   try{
    await page.goto(current.runtime.url+'/notebook');
    // `url('/')` is Earlier practice, as these journeys have always meant it; `at` is the path as given.
-   const c={page,url:path=>current.runtime.url+(path==='/'?'/notebook':path),at:path=>current.runtime.url+path,policy,retainedGoMigration,owner,
+   const c={page,url:path=>current.runtime.url+(path==='/'?'/notebook':path),at:path=>current.runtime.url+path,policy,owner,
     get state(){return current.state;},get app(){return storedApp(current.state);},rows:()=>current.rows(),
     open:async state=>{current=await space(state);await page.goto(current.runtime.url+'/notebook');return storedApp(state);}};
    for(let i=0;i<specs[id].length;i++){
-    const legacy=id==='US-001'&&i===0;
-    const criterion={n:i+1,status:'pass',target:legacy?'retained-go-compatibility':'rust-worker',source_revision:legacy?retainedGo.source_revision:receipt.head,evidence:legacy?['logs/retained-go-migration.txt','logs/retained-go-migration.json']:['logs/rust-tests.txt']};result.criteria.push(criterion);
+    const criterion={n:i+1,status:'pass',target:'rust-worker',source_revision:receipt.head,evidence:['logs/rust-tests.txt']};result.criteria.push(criterion);
     try{await specs[id][i](c);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'Horizontal overflow on390px');}
     catch(error){criterion.status='fail';result.status='fail';criterion.reason=error.message;console.error(`${id}.${i+1}: ${error.message}`);}
-    if(!legacy){const path=`screens/${id}-${i+1}${criterion.status==='fail'?'-failure':''}.png`;await page.screenshot({path:join(output,path),fullPage:true,...(id==='US-014'?{mask:[page.locator('textarea[aria-label="Owner token secret"]')]}:{})});await register(path);criterion.evidence.push(path);}
+    const path=`screens/${id}-${i+1}${criterion.status==='fail'?'-failure':''}.png`;await page.screenshot({path:join(output,path),fullPage:true,...(id==='US-014'?{mask:[page.locator('textarea[aria-label="Owner token secret"]')]}:{})});await register(path);criterion.evidence.push(path);
    }
    if(owner){const path='logs/US-014-cli.json';await writeFile(join(output,path),JSON.stringify(owner.transcript,null,2)+'\n');await register(path);for(const criterion of result.criteria)criterion.evidence.push(path);}
    assert.deepEqual(errors,[],'Browser console/page errors');

@@ -149,7 +149,7 @@ def snapshot(root, destination):
         "source_sha256": digest(encoded(files)), "files": files,
     }
     metadata["revision"] = revision(metadata)
-    retained = runpy.run_path(str(source / "qa/retained-go-migration.py"))
+    retained = runpy.run_path(str(source / "scripts/retained-go-source.py"))
     retained_source = retained["archive"](root)
     require(digest(retained_source) == retained["ARCHIVE_SHA256"], "retained Go source checksum mismatch")
     (destination / "retained-go.tar").write_bytes(retained_source)

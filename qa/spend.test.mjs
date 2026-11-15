@@ -7,6 +7,7 @@ import {join,resolve,relative} from 'node:path';
 import {createServer} from 'node:http';
 import {buildCli} from './owner-api.mjs';
 import {createRuntime,internalKey,Response} from './runtime-helper.mjs';
+import {seedEarlier} from './earlier-fixture.mjs';
 
 buildCli();
 test('US-019.7 / #321: spend CLI → built Worker → byte-identical SQLite',async()=>{
@@ -33,8 +34,9 @@ test('US-019.7 / #321: spend CLI → built Worker → byte-identical SQLite',asy
   await walk(persistence);return result.sort((a,b)=>a.path.localeCompare(b.path));
  };
  try {
-  const notebook=await(await runtime.worker.fetch(origin+'/notebook')).text();
-  assert.equal((await runtime.worker.fetch(origin+'/__fixture',{redirect:'manual',method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(form(notebook,'/__fixture'))})).status,303);
+  // The earlier concept notebook's prepared Goal and its job, as stored; the
+  // retired demo route can no longer seed one.
+  await seedEarlier(storage,'question-cold-choice',await runtime.mf.getR2Bucket('SCRY_ASSETS'));
   const html=await(await runtime.worker.fetch(origin+'/settings')).text();
   const issued=await runtime.worker.fetch(origin+'/tokens/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...form(html,'/tokens/create'),name:'synthetic unpaid spend reader'})});assert.equal(issued.status,200);
   secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await issued.text())?.[1];assert.ok(secret);

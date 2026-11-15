@@ -16,7 +16,8 @@ import {join} from 'node:path';
 import {repo,outDir,reporter,launch,settle} from './lib.mjs';
 
 process.chdir(repo);
-const {createSyntheticRuntime}=await import(join(repo,'qa/runtime-helper.mjs'));
+const {createSyntheticRuntime,syntheticSpace}=await import(join(repo,'qa/runtime-helper.mjs'));
+const {seedEarlier}=await import(join(repo,'qa/earlier-fixture.mjs'));
 const {feedbackArrival,assertFeedbackArrival}=await import(join(repo,'qa/feedback-arrival.mjs'));
 const width=Number(process.argv[process.argv.indexOf('--width')+1]||390)||390;
 const cliPath=join(repo,process.env.SCRY_STUDY_CLI||'target/debug/scry');
@@ -59,23 +60,28 @@ try{
   const h1=await page.getByRole('heading',{level:1}).innerText();
   if(h1!=='Earlier practice')throw Error(`empty notebook heading "${h1}"`);
   await page.getByText('Nothing is saved in the earlier concept notebook.',{exact:true}).waitFor();
-  log('notebook.empty','PASS',`fresh notebook /notebook → "${h1}", nothing saved, with the authored-demo action`,{evidence:await shot('notebook-empty')});
+  if(await page.locator('main form,main button').count())throw Error('Earlier practice offers an action');
+  log('notebook.empty','PASS',`fresh notebook /notebook → "${h1}", nothing saved, no action`,{evidence:await shot('notebook-empty')});
  });
  await step('notebook.concept',async()=>{
-  // The authored demo is an earlier concept notebook holding one question that
-  // was never answered. It is history: shown read-only, with nothing to answer.
-  await page.getByRole('button',{name:'Explore an authored demo'}).click();
-  await page.locator('[data-state="earlier-unanswered"]').waitFor();
-  await page.getByRole('heading',{name:'Not answered.',exact:true}).waitFor();
-  if(await page.locator('main form,main button,main textarea,.choice').count())throw Error('Earlier practice offers something to submit');
-  await page.reload();await page.locator('[data-state="earlier-unanswered"]').waitFor();
-  const held=await shot('notebook-unanswered');
-  await page.getByRole('link',{name:'Map',exact:true}).click();await page.locator('[data-state="map"]').waitFor();
-  await page.locator('a[href^="/goals/"]').first().click();await page.locator('[data-state="goal"]').waitFor();
-  await page.locator('main a[href^="/concepts/"]').first().click();
-  await page.locator('[data-state="concept"]').waitFor();
-  if(await page.getByRole('button',{name:/Practice this idea|Look it up/}).count())throw Error('a Concept page offers practice or a gate');
-  log('notebook.concept','PASS','demo notebook → held question shown as "Not answered." with no control, across reload → Map → goal → concept (reference, no gate, no practice)',{evidence:[held,await shot('notebook-concept')]});
+  // An earlier concept notebook holding one question that was never answered,
+  // loaded from tests/fixtures/earlier-notebook.json into its own space (no
+  // route can create one). It is history: shown read-only, nothing to submit.
+  const earlier=await createSyntheticRuntime({name:'verify-scry-local-earlier'});
+  try{
+   await seedEarlier(await earlier.mf.unsafeGetDurableObjectStorage('verify-scry-local-earlier','LearningSpace',{name:syntheticSpace}),'question-cold-choice',await earlier.mf.getR2Bucket('SCRY_ASSETS'));
+   const none=async where=>{if(await page.locator('main form,main button,main textarea,.choice').count())throw Error(`${where} offers something to submit`);};
+   await page.goto(earlier.url+'/notebook');
+   await page.locator('[data-state="earlier-unanswered"]').waitFor();
+   await page.getByRole('heading',{name:'Not answered.',exact:true}).waitFor();await none('Earlier practice');
+   await page.reload();await page.locator('[data-state="earlier-unanswered"]').waitFor();
+   const held=await shot('notebook-unanswered');
+   await page.getByRole('link',{name:'Map',exact:true}).click();await page.locator('[data-state="map"]').waitFor();await none('the Map');
+   await page.locator('a[href^="/goals/"]').first().click();await page.locator('[data-state="goal"]').waitFor();await none('a Goal');
+   await page.locator('main a[href^="/concepts/"]').first().click();
+   await page.locator('[data-state="concept"]').waitFor();await none('a Concept');
+   log('notebook.concept','PASS','stored earlier notebook → held question shown as "Not answered." with no control, across reload → Map → goal → concept (reference, no form anywhere)',{evidence:[held,await shot('notebook-concept')]});
+  }finally{await earlier.mf.dispose();}
  });
  await step('token.create',async()=>{
   await page.goto(origin+'/settings#owner-tokens');

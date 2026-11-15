@@ -30,6 +30,14 @@ For each notebook the fixture holds what that source produced: the archive
 archive, every stored row (`rows`), the practice response for each Attempt
 (`wire`) and the rendered `/recall`, `/history` and `/settings` pages.
 
+One later edit, by hand, and only of rendered pages: when the earlier concept
+notebook's pace was retired, the "New items per day" form (`action="/settings"`,
+class `pace-form`) was removed from each notebook's recorded `/settings` page,
+nine occurrences in all. Every other byte of every page, and every row,
+archive, hash, length and response, is still what source `701724c` produced.
+The stored pace itself is unchanged in `rows`. A rewrite on that source would
+bring the form back; remove it the same way.
+
 ## What the regression proves
 
 `off_is_byte_identical_to_the_source_before_paid_judgment` rebuilds every

@@ -10,7 +10,7 @@ import subprocess
 import tarfile
 
 root = Path(__file__).resolve().parent.parent
-retained = runpy.run_path(str(root / "qa/retained-go-migration.py"))
+retained = runpy.run_path(str(root / "scripts/retained-go-source.py"))
 metadata = os.environ.get("SCRY_SOURCE_META")
 data = ((Path(metadata).parent / "retained-go.tar").read_bytes() if metadata
         else retained["archive"](root))

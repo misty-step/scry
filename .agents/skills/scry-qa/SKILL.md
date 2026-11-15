@@ -54,8 +54,9 @@ do not revive the retired hosted-recovery deployment controller.
 `bun run dev` / `bun run rust-dev` run `scripts/rust-dev`: unused private run
 directory, synthetic loopback identity, local workerd SQLite/R2, and `env -i`
 with no inherited provider, remote backup, deployment, or operator authority.
-The script never loads repository private env files. The explicit authored-demo
-action works only in an empty synthetic notebook. Fixtures never prove real
+The script never loads repository private env files. The authored demo is
+retired; an earlier-notebook state comes only from `qa/earlier-fixture.mjs`
+loading `tests/fixtures/earlier-notebook.json` into an unused object. Fixtures never prove real
 provider quality, unaided recall, production ingress, or remote recovery.
 
 From a shell, use the [verify-scry](../verify-scry/SKILL.md) Playwright helpers

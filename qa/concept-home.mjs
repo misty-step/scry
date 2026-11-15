@@ -51,8 +51,9 @@ export async function conceptHomeWalk(browser,capture){
     assert.deepEqual(clipped,[],`${name}: clipped primary controls`);
    };
    const shot=async suffix=>row.evidence.push(await capture(page,`${name}-${suffix}.png`));
-   // Earlier practice and its references offer nothing to answer, dismiss or archive from.
-   const readOnly=async()=>{assert.equal(await page.locator('main form[action^="/review/"],main form[action$="/practice"],main [data-choice],main [data-poll]').count(),0);assert.equal(await page.getByRole('button',{name:/Next question|Check my answer|Practice this idea|Look it up/}).count(),0);};
+   // Earlier practice and its references offer nothing to answer, dismiss,
+   // archive, edit, flag, focus or pause: no form at all.
+   const readOnly=async()=>{assert.equal(await page.locator('main form,main button,main textarea,main [data-choice],main [data-poll]').count(),0);assert.equal(await page.getByRole('button',{name:/Next question|Check my answer|Practice this idea|Look it up|Archive|Focus|Pause/}).count(),0);};
    try{await run({page,url,rows,state,stable,activate,home,headerHome,earlier,layout,shot,readOnly});assert.deepEqual(errors,[],'Browser errors');}
    catch(error){row.status='fail';row.reason=`${label}: ${error.message}`;console.error(`${name} ${label}: ${error.message}`);await shot(`${label}-failure`);}
    finally{await context.close();await runtime.mf.dispose();}
@@ -123,7 +124,7 @@ export async function conceptHomeWalk(browser,capture){
    const dependent=concepts.find(c=>c.prerequisites.length);assert.ok(dependent,'The fixture retains its real prerequisite relation');
    const prerequisite=concepts.find(c=>c.id===dependent.prerequisites[0]);assert.ok(prerequisite);
    await page.goto(url+'/map');await page.locator('[data-state="map"]').waitFor();await activate(page.locator(`a[href="/concepts/${prerequisite.id}"]`).first());await page.locator('[data-state="concept"]').waitFor();await readOnly();
-   for(const heading of ['Study','Practice','Resources','Related','Used by'])await page.getByRole('heading',{name:heading,exact:true}).waitFor();
+   for(const heading of ['Notes','Recorded answers','Resources','Related','Used by'])await page.getByRole('heading',{name:heading,exact:true}).waitFor();
    assert.equal(await page.getByRole('link',{name:'Original material & preparation',exact:true}).getAttribute('href'),`/goals/${prerequisite.goal_id}`);
    const reverse=page.locator('.connected').getByRole('link',{name:dependent.name,exact:true});assert.equal(await reverse.getAttribute('href'),`/concepts/${dependent.id}`);
    await layout();await shot('concept-used-by');await page.evaluate(()=>document.documentElement.style.zoom='2');await layout();await shot('concept-used-by-200');
@@ -135,13 +136,15 @@ export async function conceptHomeWalk(browser,capture){
    await page.goto(url+'/notebook');await page.locator('[data-state="earlier-result"]').waitFor();
    // Reading references records nothing: every row is exactly as loaded.
    await stable(held);assert.deepEqual(await rows(),loaded,'Reading the earlier notebook writes nothing');
-   // Archiving a Goal is still an accepted write, through the real Worker
-   // command: the held result and every recorded answer stay as they were.
-   await page.goto(url+`/goals/${prerequisite.goal_id}`);await page.locator('[data-state="goal"]').waitFor();
-   await activate(page.getByRole('button',{name:'Archive this goal',exact:true}));await page.locator('[data-state="map"]').waitFor();
-   const archived=await state();assert.deepEqual(archived.occurrence,held.occurrence);assert.deepEqual(archived.practice,held.practice);
-   assert.deepEqual(archived.records.filter(r=>r.key.startsWith('events/')),held.records.filter(r=>r.key.startsWith('events/')));
-   assert.equal(await page.locator(`a[href="/goals/${prerequisite.goal_id}"]`).count(),0);
+   // Archiving a Goal is retired: its page offers no control, and the same
+   // POST through the real Worker answers 410 and changes no row.
+   await page.goto(url+`/goals/${prerequisite.goal_id}`);await page.locator('[data-state="goal"]').waitFor();await readOnly();
+   const csrf=JSON.parse(loaded.meta).csrf;
+   const refused=await page.request.post(url+`/goals/${prerequisite.goal_id}/archive`,{form:{csrf,operation_id:'concept-home-archive-'+Date.now()},headers:{Origin:url},maxRedirects:0});
+   assert.equal(refused.status(),410);assert.match(await refused.text(),/The earlier concept notebook is kept as history\./);
+   assert.deepEqual(await rows(),loaded,'A refused archive writes nothing');
+   await page.goto(url+'/map');await page.locator('[data-state="map"]').waitFor();
+   assert.ok(await page.locator(`a[href="/goals/${prerequisite.goal_id}"]`).count()>0,'The Goal is still on the Map');
   });
   // A held result whose Goal was archived afterwards keeps its references.
   await stage('archived','result-then-archived',async({page,url,rows,state,stable,activate,home,headerHome,shot,readOnly})=>{

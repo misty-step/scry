@@ -482,8 +482,8 @@ fn a_held_earlier_question_blocks_and_masks_nothing() {
             goal.contains(&web::escape(&app.goals[&question.goal_id].title)),
             "{name}: the Goal's title"
         );
-        let edit = page(&app, &format!("/questions/{}/edit", question.id), now);
-        assert!(edit.contains("data-state=\"edit\""), "{name}");
+        let saved = page(&app, &format!("/questions/{}/edit", question.id), now);
+        assert!(saved.contains("data-state=\"earlier-question\""), "{name}");
         let map = page(&app, "/map", now);
         assert!(!map.contains("Current study"), "{name}: a masked Goal");
     }
@@ -534,5 +534,199 @@ fn a_question_held_unanswered_or_ungraded_is_not_edited() {
         assert_eq!(refused.status, 409, "{name}: {}", refused.message);
         assert!(refused.message.contains("kept as stored"), "{name}");
         assert_eq!(app, before, "{name}: nothing is written");
+    }
+}
+
+/// The part of a page inside `<main>`: the shell around it is the same on
+/// every page and holds no form.
+fn main_of(html: &str) -> &str {
+    let start = html.find("<main").expect("a main element");
+    let end = html.find("</main>").expect("a closed main element");
+    &html[start..end]
+}
+
+/// Every route that once changed the earlier notebook, for this notebook's
+/// own Goals, Concepts and questions.
+fn retired_writes(app: &App) -> Vec<String> {
+    let mut paths = vec!["/settings".to_string(), "/__fixture".into()];
+    for id in app.goals.keys() {
+        for action in ["pause", "focus", "archive"] {
+            paths.push(format!("/goals/{id}/{action}"));
+        }
+    }
+    for id in app.concepts.keys() {
+        for action in ["archive", "feedback", "practice"] {
+            paths.push(format!("/concepts/{id}/{action}"));
+        }
+    }
+    for id in app.questions.keys() {
+        for action in ["edit", "archive", "dispute"] {
+            paths.push(format!("/questions/{id}/{action}"));
+        }
+    }
+    paths
+}
+
+/// Nothing on an earlier-notebook page is a form, and nothing claims it is
+/// scheduled or predicted. Stored focus and pause are shown as stored, and a
+/// saved question's page is its stored wording, choices, answer and
+/// explanation.
+#[test]
+fn no_earlier_page_offers_a_write_or_a_prediction() {
+    let mut flags = 0;
+    for (name, app, saved_ms) in stored() {
+        let now = saved_ms + 100 * SECOND;
+        let mut paths = vec!["/notebook".to_string(), "/map".into()];
+        paths.extend(app.goals.keys().map(|id| format!("/goals/{id}")));
+        paths.extend(app.concepts.keys().map(|id| format!("/concepts/{id}")));
+        paths.extend(
+            app.questions
+                .keys()
+                .map(|id| format!("/questions/{id}/edit")),
+        );
+        for path in &paths {
+            let html = page(&app, path, now);
+            let main = main_of(&html);
+            for control in ["<form", "<button", "<textarea", "<input", "name=\"csrf\""] {
+                assert!(!main.contains(control), "{name}: {control} on {path}");
+            }
+            for claim in [
+                "Estimated recall",
+                "recall estimate",
+                "scheduling estimate",
+                ">Solid<",
+                ">Fading<",
+                ">Learning<",
+                ">Introduced<",
+                "next practice",
+                "brightness-",
+                "<h2>Practice</h2>",
+                "Your practice record",
+                "Focus here",
+                "Remove focus",
+                "Archive this",
+                "Save feedback",
+                "Edit future wording",
+                "Explore an authored demo",
+            ] {
+                assert!(!html.contains(claim), "{name}: {claim} on {path}");
+            }
+        }
+        let map = page(&app, "/map", now);
+        for goal in app.goals.values().filter(|g| !g.archived) {
+            let meta = map
+                .split(&format!("<a href=\"/goals/{}\">", goal.id))
+                .nth(1)
+                .and_then(|rest| rest.split("</p>").next())
+                .unwrap();
+            assert_eq!(
+                meta.contains(" · In focus"),
+                goal.focused,
+                "{name}: {}",
+                goal.id
+            );
+            assert_eq!(
+                meta.contains(" · Paused"),
+                goal.paused,
+                "{name}: {}",
+                goal.id
+            );
+            flags += usize::from(goal.focused) + usize::from(goal.paused);
+        }
+        // Each Concept on the Map counts its recorded answers, and nothing more.
+        for c in app.concepts.values().filter(|c| !c.archived) {
+            let n = app.events.iter().filter(|e| e.concept_id == c.id).count();
+            let label = match n {
+                0 => "No answers".to_string(),
+                1 => "1 answer".into(),
+                n => format!("{n} answers"),
+            };
+            if app.goals.get(&c.goal_id).is_some_and(|g| !g.archived) {
+                assert!(
+                    map.contains(&format!("<span class=\"idea-status\">{label}</span>")),
+                    "{name}: {} shows {label}",
+                    c.id
+                );
+            }
+        }
+        for q in app.questions.values() {
+            let html = page(&app, &format!("/questions/{}/edit", q.id), now);
+            let content = q.content();
+            assert!(html.contains("data-state=\"earlier-question\""), "{name}");
+            assert!(html.contains(&format!(
+                "<h1 class=\"question\">{}</h1>",
+                web::escape(&content.prompt)
+            )));
+            for text in content
+                .choices
+                .iter()
+                .chain([&content.answer, &content.explanation])
+            {
+                assert!(
+                    html.contains(&web::escape(text)),
+                    "{name}: {} shows {text}",
+                    q.id
+                );
+            }
+            assert_eq!(html.contains(" · Archived"), q.archived, "{name}: {}", q.id);
+        }
+        let settings = page(&app, "/settings", now);
+        assert!(
+            !settings.contains("name=\"pace\""),
+            "{name}: a pace control"
+        );
+        assert!(
+            !settings.contains("action=\"/settings\""),
+            "{name}: a pace form"
+        );
+        assert!(!settings.contains("New items per day"), "{name}");
+        assert!(
+            settings.contains("action=\"/settings/backup\""),
+            "{name}: backup stays"
+        );
+    }
+    assert!(flags >= 2, "The fixture holds a focused and a paused Goal");
+}
+
+/// Every write the earlier notebook ever took is refused by the Worker's
+/// admission, with the same message, before anything is read or written; the
+/// refusal is shown on the page the write came from, which offers no form.
+#[test]
+fn every_earlier_write_is_refused_and_shown_where_it_was_asked() {
+    for (name, app, saved_ms) in stored() {
+        let now = saved_ms + 100 * SECOND;
+        for path in retired_writes(&app) {
+            let refusal = engine::admit_current_mutation(&path).unwrap_err();
+            assert_eq!(refusal.status, 410, "{name}: {path}");
+            assert_eq!(refusal.message, engine::EARLIER_NOTEBOOK_RETIRED, "{path}");
+            let shown = web::mutation_error_path(&app, &path);
+            let expected = match path.trim_matches('/').split('/').collect::<Vec<_>>()[..] {
+                ["settings"] => path.clone(),
+                ["questions", _, "edit"] => path.clone(),
+                ["goals" | "concepts", _, action] if action != "practice" => {
+                    path.rsplit_once('/').unwrap().0.to_string()
+                }
+                _ => "/notebook".to_string(),
+            };
+            assert_eq!(shown, expected, "{name}: {path}");
+            let html = web::render(
+                &app,
+                shown,
+                &BTreeMap::from([("__nonce".into(), "refused".into())]),
+                now,
+                Some(&refusal.message),
+            );
+            assert!(
+                html.contains(engine::EARLIER_NOTEBOOK_RETIRED),
+                "{name}: {path}"
+            );
+            if shown != "/settings" {
+                assert!(!main_of(&html).contains("<form"), "{name}: {path}");
+            }
+        }
+        // What stays: backup, resume and paid judgment under Settings.
+        for path in ["/settings/backup", "/settings/resume", "/settings/judgment"] {
+            engine::admit_current_mutation(path).unwrap();
+        }
     }
 }
