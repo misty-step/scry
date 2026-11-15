@@ -234,7 +234,16 @@ fn phase_archive_is_explicit_and_legacy_prompt_and_attempt_bytes_stay_compatible
             .all(|(id, a)| &o.app.practice.attempts[id] == a)
     );
     let legacy = serde_json::to_value(&o.app.practice.attempts).unwrap();
-    o.call("/practice/next", &[("after", o.p().prompt.id)], now);
+    // Within the answered Study: across Studies, Next would rotate to one
+    // whose next pair has never been studied.
+    o.call(
+        "/practice/next",
+        &[
+            ("after", o.p().prompt.id),
+            ("study_id", o.p().prompt.study_id),
+        ],
+        now,
+    );
     assert_eq!(o.p().phase, Some(StudyPhase::Quiz));
     assert!(!o.p().prompt.assisted);
     assert_eq!(

@@ -1,10 +1,13 @@
 //! Native Owner API transport shared by the CLI and stdio MCP adapter.
-//! Errors are fixed vocabulary: never reflect upstream bodies, URLs or credentials.
+//! Errors are fixed vocabulary, followed for a refusal by its own bounded
+//! plain-text reason. Never reflect other upstream bodies, URLs, requests or
+//! credentials.
 use crate::owner_token::token_id;
 use reqwest::{Url, blocking::Client, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
+    borrow::Cow,
     fs,
     io::Read,
     os::unix::fs::PermissionsExt,
@@ -76,10 +79,10 @@ pub fn client() -> Result<Client> {
         .map_err(|_| "HTTP client unavailable.")
 }
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ApiError {
     pub code: &'static str,
-    pub message: &'static str,
+    pub message: Cow<'static, str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<u16>,
     /// A mutation may already have committed. Reconcile the same ID and payload.
@@ -97,15 +100,67 @@ fn reflects_token(value: &Value, token: &str) -> bool {
     }
 }
 
+/// The longest refusal reason passed through, in characters.
+pub const REASON_CHARS: usize = 300;
+
+/// A refusal's own reason: the `error` string of a small JSON body, as plain
+/// text of at most `REASON_CHARS` characters. None when the body is anything
+/// else, or names the credential or any text the request carried.
+fn refusal_reason(
+    response: reqwest::blocking::Response,
+    token: &str,
+    payload: Option<&Value>,
+) -> Option<String> {
+    let mut bytes = Vec::new();
+    response.take(8193).read_to_end(&mut bytes).ok()?;
+    if bytes.len() > 8192 {
+        return None;
+    }
+    let value: Value = serde_json::from_slice(&bytes).ok()?;
+    let reason = value.get("error")?.as_str()?;
+    let reason = reason
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>();
+    let reason = reason.split_whitespace().collect::<Vec<_>>().join(" ");
+    if reason.is_empty()
+        || (!token.is_empty() && reason.contains(token))
+        || payload.is_some_and(|payload| echoes(payload, &reason))
+    {
+        return None;
+    }
+    Some(if reason.chars().count() > REASON_CHARS {
+        let mut cut = reason.chars().take(REASON_CHARS - 1).collect::<String>();
+        cut.push('…');
+        cut
+    } else {
+        reason
+    })
+}
+
+/// Whether a reason repeats a text value the request carried. Identifiers and
+/// other short values are too common to tell apart from ordinary words.
+fn echoes(value: &Value, reason: &str) -> bool {
+    match value {
+        Value::String(text) => {
+            let text = text.trim();
+            text.chars().count() >= 8 && reason.contains(text)
+        }
+        Value::Array(values) => values.iter().any(|value| echoes(value, reason)),
+        Value::Object(values) => values.values().any(|value| echoes(value, reason)),
+        _ => false,
+    }
+}
+
 pub fn request_detailed(
     client: &Client,
     login: &Login,
     path: &str,
     payload: Option<&Value>,
 ) -> std::result::Result<Value, ApiError> {
-    let uncertain = |code, message| ApiError {
+    let uncertain = |code, message: &'static str| ApiError {
         code,
-        message,
+        message: message.into(),
         status: None,
         outcome_unknown: payload.is_some(),
     };
@@ -122,13 +177,23 @@ pub fn request_detailed(
     })?;
     if !response.status().is_success() {
         let status = response.status().as_u16();
-        let (code, message) = match status {
+        let (code, fixed) = match status {
             401 => ("unauthorized", "Owner authorization required."),
             403 => ("forbidden", "Request refused."),
             409 => ("conflict", "Operation conflict."),
             422 => ("validation_failed", "API request failed."),
             300..=399 => ("redirect_refused", "API request failed."),
             _ => ("api_error", "API request failed."),
+        };
+        // A refusal adds its own reason to the fixed phrase, so an agent can
+        // tell why while the phrase still names the kind of failure.
+        let message = match (400..500)
+            .contains(&status)
+            .then(|| refusal_reason(response, &login.token, payload))
+            .flatten()
+        {
+            Some(reason) if reason != fixed => Cow::Owned(format!("{fixed} {reason}")),
+            _ => fixed.into(),
         };
         // A proxy failure is not evidence that the upstream mutation did not commit.
         return Err(ApiError {
@@ -158,12 +223,12 @@ pub fn request_detailed(
     Ok(value)
 }
 
-/// Preserve the CLI's existing JSON/error vocabulary while sharing all transport rules.
+/// Preserve the CLI's existing JSON/error shape while sharing all transport rules.
 pub fn request(
     client: &Client,
     login: &Login,
     path: &str,
     payload: Option<&Value>,
-) -> Result<Value> {
+) -> std::result::Result<Value, Cow<'static, str>> {
     request_detailed(client, login, path, payload).map_err(|error| error.message)
 }

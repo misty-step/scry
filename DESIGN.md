@@ -1,5 +1,20 @@
 # Scry: a recall instrument
 
+## Plain words where reassurance stood — 2026-11-15
+
+Pages state what is true and nothing soothing. The NATO welcome keeps one
+heading, "From Alfa to Zulu.", before and after practice has begun (once begun
+it read "A little, often."), and a NATO start while
+another Prompt is open is headed "Another Prompt is open." (it read "Your
+practice is waiting."). The error page reads "This conflicts with what is
+saved." for a conflict and "Scry could not complete this request." otherwise,
+under the tab title "Request not completed" (they read "Let's return to what is
+saved." and "A moment to pause."). Where paid judgment is on and Jev can be
+reached, a lesson's More line reads "Scry checks the typed wording, ignoring
+case and punctuation, and Jev checks an answer Scry cannot match. No
+pronunciation assessment."; otherwise, and for Spelling-strict content, it is
+unchanged. The Progress line's "seeing hints" is unchanged: a stored page pins it.
+
 ## Backup status, full storage and a paused restore — 2026-11-15
 
 Settings' Backup section leads with its state in one plain paragraph. A failed

@@ -183,7 +183,7 @@ export async function ownerJourney() {
       const identity=await cli(['whoami']);assert.equal(identity.code,0);assert.equal(identity.value.token.name,'builder');
       const beforeGrant=await rows();
       const deniedGrant=await cli(['token','create','forbidden paid cli child','--paid']);
-      assert.notEqual(deniedGrant.code,0);assert.deepEqual(deniedGrant.value,{error:'Request refused.'});
+      assert.notEqual(deniedGrant.code,0);assert.deepEqual(deniedGrant.value,{error:'Request refused. This Owner token has no paid permission.'});
       assert.deepEqual(await rows(),beforeGrant,'CLI shares the grant refusal without a write.');
       const op=randomUUID();const issued=await cli(['token','create','cli agent','--operation-id',op]);assert.equal(issued.code,0);assert.equal(issued.value.token.paid,false);
       const replay=await cli(['token','create','cli agent','--operation-id',op]);assert.equal(replay.code,0);assert.ok(!('secret' in replay.value));

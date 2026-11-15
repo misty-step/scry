@@ -140,7 +140,7 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_lesson_next",
-            "Advance an answered authored lesson. phrases cycles meaningful clauses; retry repeats the current individual text phrase with a visible cue and assisted evidence; join checks the current authored section; whole starts a cold complete-text challenge; middle practises a later phrase. Scry owns the grading and assistance evidence.",
+            "Advance an answered authored lesson. phrases cycles meaningful clauses; retry repeats the current individual text phrase with a visible cue and assisted evidence; join checks the current authored section; whole starts a complete-text Prompt from memory; middle practises a later phrase. Scry owns the grading and assistance evidence.",
             object(
                 json!({"operation_id":operation(),"after":id(),"mode":choices(&["phrases","retry","join","whole","middle"])}),
                 &["operation_id", "after"],
@@ -149,13 +149,13 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_due",
-            "Read due and upcoming Cards without presenting or consuming a Prompt.",
+            "Read the Cards, those due for review (answered before and due now) and the next due review time, without presenting or consuming a Prompt. A Card introduced but never answered is new learning, not due.",
             empty,
             true,
         ),
         (
             "scry_next",
-            "Present/resume the current Prompt or held result. Only after deliberately releases an answered Prompt. Reconcile every unknown answer/reveal response BEFORE Next.",
+            "Present or resume the held Prompt or result. With nothing named it chooses as scry_mix does: due reviews across every Study, least recently served first, then unfinished Studies, but it never starts a Work not yet started. study_id keeps to that Study: its due Cards by due time, then its next new Unit. card_id asks for one Card; recite with study_id asks for a whole-text or Section Recitation. Only after deliberately releases an answered Prompt. Reconcile every unknown answer/reveal response BEFORE Next.",
             object(
                 json!({"operation_id":operation(),"after":id(),"study_id":id(),"card_id":id(),"recite":choices(&["whole","section"]),"section_id":id()}),
                 &["operation_id"],
@@ -164,7 +164,7 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_mix",
-            "Study's mix: the next due review across every Study, least recently served first, then unfinished Studies and Works not yet started. Without after or leave it returns the held Prompt or result. after releases the answered Prompt; leave closes the identified unanswered Prompt without a grade. Never supply both. Retain operation_id.",
+            "Study's mix: the next due review of practised material across every Study, least recently served first, then unfinished Studies and Works not yet started, starting at most one. Without after or leave it returns the held Prompt or result. after releases the answered Prompt; leave closes the identified unanswered Prompt without a grade. Never supply both. Retain operation_id.",
             object(
                 json!({"operation_id":operation(),"after":id(),"leave":id()}),
                 &["operation_id"],
@@ -173,9 +173,9 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_answer",
-            "Submit the learner's raw answer; native Scry grades and schedules. Empty answer is a miss. No verdict, rating, correct flag or self-grade is accepted. Where the Owner has turned paid judgment on and the Owner token carries paid permission, a mismatch is saved with no Verdict and practice.judgment.state is checking: repeat the same operation later, or read history, for its outcome. Use scry_check to have a saved answer whose state is ungraded checked again.",
+            "Submit the Owner's raw answer; native Scry grades and schedules. Empty answer is a miss. No verdict, rating, correct flag or self-grade is accepted. Where the Owner has turned paid judgment on and the Owner token carries paid permission, a mismatch Scry does not decide itself is saved with no Verdict and practice.judgment.state is checking: repeat the same operation later, or read history, for its outcome. Use scry_check to have a saved answer whose state is ungraded checked again.",
             object(
-                json!({"operation_id":operation(),"prompt_id":id(),"answer":{"type":"string","maxLength":262144,"description":"At most 256 KiB UTF-8, unchanged raw learner answer."}}),
+                json!({"operation_id":operation(),"prompt_id":id(),"answer":{"type":"string","maxLength":262144,"description":"At most 256 KiB UTF-8, the unchanged raw answer."}}),
                 &["operation_id", "prompt_id", "answer"],
             ),
             false,
