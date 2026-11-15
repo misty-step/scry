@@ -692,6 +692,12 @@ impl View<'_> {
             escape(&item.work.title)
         );
         let reviewable = crate::study::reviewable(v).is_ok();
+        // A text's Units are its phrases.
+        let units = if v.kind == crate::library::Kind::Text {
+            "phrases"
+        } else {
+            "Units"
+        };
         if !reviewable && v.kind == crate::library::Kind::Text {
             let _ = write!(
                 out,
@@ -707,7 +713,10 @@ impl View<'_> {
             .find(|s| s.version_id == id)
         {
             out.push_str(&self.study_status(id));
-            out.push_str("<div class=\"actions\"><a class=\"button primary\" href=\"/recall\">Return to practice</a></div><details class=\"library-details\"><summary>Manage Study</summary><p class=\"fineprint\">Pause stops new Units; due practice remains. Drop stops this Study. Both keep its history.</p><div class=\"actions\">");
+            let _ = write!(
+                out,
+                "<div class=\"actions\"><a class=\"button primary\" href=\"/recall\">Return to practice</a></div><details class=\"library-details\"><summary>Manage Study</summary><p class=\"fineprint\">Pause stops new {units}; due practice remains. Drop stops this Study. Both keep its history.</p><div class=\"actions\">"
+            );
             let (action, label) = if study.status == crate::study::Status::Active {
                 ("pause", "Pause")
             } else {
@@ -754,14 +763,14 @@ impl View<'_> {
                 "",
                 "",
                 &format!(
-                    "{}<fieldset><legend>Pace · new Units each day</legend>{paces}</fieldset><button class=\"button quiet\">Set Pace</button>",
+                    "{}<fieldset><legend>Pace · new {units} each day</legend>{paces}</fieldset><button class=\"button quiet\">Set Pace</button>",
                     hidden("study_id", &study.id)
                 ),
             ));
             out.push_str("</details>");
         } else if reviewable {
             let body = format!(
-                "{}<details class=\"library-details\"><summary>Pace: 6 new Units a day</summary><fieldset><legend>New Units each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
+                "{}<details class=\"library-details\"><summary>Pace: 6 new {units} a day</summary><fieldset><legend>New {units} each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
                 hidden("version_id", id)
             );
             out.push_str(&self.form("/practice/study/start", "learn", "library-learn", "", &body));
@@ -1021,7 +1030,7 @@ impl View<'_> {
                     "<p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
                     escape(crate::study::visible_prompt_title(prompt))
                 );
-                out.push_str(&Self::exact_prompt_context(prompt));
+                out.push_str(&self.exact_prompt_context(prompt));
                 if prompt.context.is_none() {
                     out.push_str(&self.previous_phrase(p));
                 }
@@ -1096,13 +1105,16 @@ impl View<'_> {
                 );
             }
             out.push_str(&self.lesson_picker(false));
-        } else if self
-            .app
-            .practice
-            .studies
-            .values()
-            .any(|s| s.status != Status::Dropped)
+        } else if self.app.library.versions[&prompt.version_id].kind != crate::library::Kind::Text
+            && self
+                .app
+                .practice
+                .studies
+                .values()
+                .any(|s| s.status != Status::Dropped)
         {
+            // A text's stream leaves the earlier notebook to the Menu. Other
+            // streams keep this link: their pages are pinned byte for byte.
             out.push_str(
                 "<a class=\"text-link exact-notebook\" href=\"/notebook\">Concept practice →</a>",
             );
@@ -1128,8 +1140,14 @@ impl View<'_> {
         out.push_str("</section>");
         out
     }
-    fn exact_prompt_context(prompt: &crate::study::Prompt) -> String {
+    fn exact_prompt_context(&self, prompt: &crate::study::Prompt) -> String {
         use crate::study::Cue;
+        let text = self
+            .app
+            .library
+            .versions
+            .get(&prompt.version_id)
+            .is_some_and(|v| v.kind == crate::library::Kind::Text);
         let mut out = String::new();
         if let Some(context) = &prompt.context {
             let _ = write!(
@@ -1140,6 +1158,7 @@ impl View<'_> {
         }
         if !prompt.cue.is_empty() {
             let label = match prompt.cue_level {
+                Cue::Read if text => "Read the phrase",
                 Cue::Read => "Read the Unit",
                 Cue::FirstLetters => "First letters",
                 Cue::FirstLetter => "First letter",
@@ -1261,7 +1280,7 @@ impl View<'_> {
             out,
             "<details class=\"exact-full-answer\"><summary>Full answer</summary><h2>{}</h2>{}<div class=\"answer-pair\"><span>You answered</span><p>{}</p></div><h2>Expected text</h2>{}<h2>Word by word</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
             escape(&a.prompt.title),
-            Self::exact_prompt_context(&a.prompt),
+            self.exact_prompt_context(&a.prompt),
             escape(&a.raw_answer),
             self.exact_expected()
         );
@@ -1439,7 +1458,7 @@ impl View<'_> {
             format!(
                 "<details class=\"exact-full-answer\"><summary>{summary}</summary><h2>{}</h2>{}{answer}{}</details>",
                 escape(&a.prompt.title),
-                Self::exact_prompt_context(&a.prompt),
+                self.exact_prompt_context(&a.prompt),
                 self.judged_comparison(a, &self.exact_expected())
             )
         };
@@ -3138,8 +3157,150 @@ impl View<'_> {
                 escape(&g.id)
             );
         }
+        out.push_str(&self.generation_records(g));
         out.push_str(&self.feedback_history(id, None));
         out.push_str("</article>");
+        out
+    }
+    /// Every retired generation record of a Goal, read-only and as saved: its
+    /// jobs with their candidates, defect reasons, critic results, model
+    /// attribution and raw responses, and the usage recorded for each request.
+    /// Model and Owner text is escaped; long records stay in native details.
+    fn generation_records(&self, g: &Goal) -> String {
+        let mut jobs: Vec<_> = self
+            .app
+            .jobs
+            .values()
+            .filter(|j| j.goal_id == g.id)
+            .collect();
+        if jobs.is_empty() {
+            return String::new();
+        }
+        jobs.sort_by_key(|j| (j.created_ms, &j.id));
+        let raw = |summary: &str, text: &str| {
+            format!(
+                "<details class=\"question-record\"><summary>{summary}</summary><pre class=\"raw-record\">{}</pre></details>",
+                escape(text)
+            )
+        };
+        let mut out =
+            String::from("<section class=\"generation-records\"><h2>Generation records</h2>");
+        for j in jobs {
+            let usage: Vec<_> = self
+                .app
+                .spend
+                .iter()
+                .filter(|s| s.work_id == j.id)
+                .collect();
+            let _ = write!(
+                out,
+                "<article class=\"record-entry generation-record\" id=\"job-{}\"><p class=\"history-meta\"><span>{}</span> · {} · Attempt {}</p><p class=\"fineprint\">Recorded status: {}{}{}</p>",
+                escape(&j.id),
+                match j.kind.as_str() {
+                    "create" => "Preparation".to_string(),
+                    "fix" => "Fix draft".to_string(),
+                    "refine" => "Refinement".to_string(),
+                    other => escape(other),
+                },
+                date(j.created_ms),
+                j.attempt,
+                escape(&j.status),
+                attributed(&j.model)
+                    .map(|m| format!(" · Model {}", escape(m)))
+                    .unwrap_or_default(),
+                attributed(&j.critic_model)
+                    .map(|m| format!(" · Critic {}", escape(m)))
+                    .unwrap_or_default()
+            );
+            if let Some(q) = j
+                .question_id
+                .as_ref()
+                .filter(|q| self.app.questions.contains_key(*q))
+            {
+                let _ = write!(
+                    out,
+                    "<a class=\"text-link\" href=\"/questions/{}/edit\">The saved question ↗</a>",
+                    escape(q)
+                );
+            }
+            // An imported job's marker is bookkeeping, not an outcome.
+            if let Some(error) = j
+                .error
+                .as_ref()
+                .filter(|e| !e.starts_with(LEGACY_JOB_MARKER))
+            {
+                let _ = write!(out, "<p>{}</p>", escape(error));
+            }
+            if !j.rejected.is_empty() {
+                out.push_str("<h3>Defect reasons</h3><ul class=\"generation-defects\">");
+                for reason in &j.rejected {
+                    let _ = write!(out, "<li>{}</li>", escape(reason));
+                }
+                out.push_str("</ul>");
+            }
+            if let Some(text) = &j.candidate_json {
+                out.push_str(&raw("Generated candidates", text));
+            }
+            if let Some(text) = &j.critic_json {
+                out.push_str(&raw("Critic result", text));
+            }
+            if let Some(text) = &j.critic_cache_json {
+                out.push_str(&raw("Critic results kept for reuse", text));
+            }
+            // A job's last response is usually one request's own; show it once.
+            if let Some(text) = j
+                .raw_response
+                .as_ref()
+                .filter(|r| !usage.iter().any(|s| s.raw_response.as_ref() == Some(*r)))
+            {
+                out.push_str(&raw("Raw response", text));
+            }
+            if usage.is_empty() {
+                out.push_str("<p class=\"fineprint\">No usage was recorded.</p>");
+            }
+            for s in usage {
+                let _ = write!(
+                    out,
+                    "<div class=\"generation-usage\" id=\"usage-{}\"><p class=\"history-meta\"><span>{}</span> · {}{}</p><p class=\"fineprint\">{}{}{}</p>",
+                    escape(&s.id),
+                    match s.purpose.as_deref() {
+                        Some("generate.concepts") => "Generation".to_string(),
+                        Some("transcribe.photo") => "Photo transcription".to_string(),
+                        Some(p) if p.starts_with("critic") => "Critic".to_string(),
+                        Some(p) => escape(p),
+                        None => "Request".to_string(),
+                    },
+                    date(s.created_ms),
+                    attributed(&s.model)
+                        .map(|m| format!(" · {}", escape(m)))
+                        .unwrap_or_default(),
+                    match s.cost_micros.filter(|_| s.status == "known") {
+                        Some(cost) => format!("Cost {}", dollars(cost)),
+                        None => format!("Unknown cost · {} counted", dollars(s.reserved_micros)),
+                    },
+                    attributed(&s.response_model)
+                        .filter(|m| attributed(&s.model) != Some(*m))
+                        .map(|m| format!(" · Answered by {}", escape(m)))
+                        .unwrap_or_default(),
+                    s.response_outcome
+                        .as_ref()
+                        .map(|o| format!(" · Response {}", escape(o)))
+                        .unwrap_or_default()
+                );
+                if let Some(text) = &s.raw_response {
+                    out.push_str(&raw(
+                        &match s.response_bytes {
+                            Some(n) => format!("Raw response · {n} bytes"),
+                            None => "Raw response".into(),
+                        },
+                        text,
+                    ));
+                }
+                out.push_str("</div>");
+            }
+            out.push_str("</article>");
+        }
+        out.push_str("</section>");
         out
     }
     fn feedback_history(&self, goal_id: &str, concept_id: Option<&str>) -> String {
@@ -3184,12 +3345,11 @@ impl View<'_> {
             .map(|s| s.cost_micros.unwrap_or(s.reserved_micros))
             .sum::<u64>() as f64
             / 1_000_000.0;
+        // The recorded outcome itself is with the Goal's generation records.
         let detail = if self.goal_phase(g) == "imported-unfinished" {
-            "<p>This request didn't finish. It came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again.</p>".into()
+            "<p>This request didn't finish. It came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again.</p>"
         } else {
-            job.and_then(|j| j.error.as_ref()).map_or_else(String::new, |error| {
-                format!("<details><summary>Recorded preparation outcome</summary><p>{}</p></details>", escape(error))
-            })
+            ""
         };
         format!(
             "<section class=\"preparation-panel stopped\"><h2>Saved preparation history</h2><p>Native content generation is retired. This request, its outcome and any existing material are kept; no work will be sent again.</p>{detail}<p>Recorded status: {} · job {}</p><p class=\"fineprint\">${accounted:.2} used or reserved for this preparation. Uncertain outcomes remain accounted.</p><a class=\"text-link\" href=\"/\">Back to review</a></section>",
@@ -3437,7 +3597,7 @@ impl View<'_> {
             escape(&a.prompt.title),
             escape(version_name(version)),
             escape(&scope),
-            Self::exact_prompt_context(&a.prompt)
+            self.exact_prompt_context(&a.prompt)
         );
         let answer = if a.disclosure {
             "No answer submitted.".into()
@@ -4641,6 +4801,20 @@ fn authority_label(value: &str) -> &'static str {
         "reveal" => "Answer revealed",
         _ => "Recorded",
     }
+}
+/// A record's model attribution. An imported record's marker names the
+/// import, not a model, and is not shown.
+fn attributed(model: &Option<String>) -> Option<&str> {
+    model
+        .as_deref()
+        .filter(|m| !m.is_empty() && !m.starts_with("legacy-import"))
+}
+/// Whole micro-dollars as dollars, with cents always and no trailing zeros.
+fn dollars(micros: u64) -> String {
+    let text = format!("{}.{:06}", micros / 1_000_000, micros % 1_000_000);
+    let trimmed = text.trim_end_matches('0');
+    let cents = trimmed.find('.').unwrap() + 3;
+    format!("${}", &text[..cents.max(trimmed.len())])
 }
 fn date(ms: i64) -> String {
     chrono::DateTime::from_timestamp_millis(ms)

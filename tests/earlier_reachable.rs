@@ -3,8 +3,10 @@
 //! `tests/fixtures/earlier-notebook.json` this crawls the rendered pages from
 //! the Menu's links, following each `href`, and asserts that every stored
 //! Goal, Concept, note, prerequisite link, question version, choice, unapplied
-//! draft, recorded answer, Correction, reset, feedback entry, saved check and
-//! photo appears on a page it reached. Every recorded answer is reached on its
+//! draft, recorded answer, Correction, reset, feedback entry, saved check,
+//! photo and retired generation record (candidates, defect reasons, critic
+//! results, model attribution, raw responses and usage) appears on a page it
+//! reached. Every recorded answer is reached on its
 //! question's page: History's bytes are pinned by `tests/judgment_off.rs` and
 //! are unchanged here. `qa/earlier-notebook.test.mjs` runs the same crawl
 //! against the built Worker, and journey US-001 in a browser.
@@ -323,6 +325,85 @@ fn assert_reachable(name: &str, app: &App, now: i64) {
             f.id
         );
     }
+    generation_reachable(name, app, &site);
+}
+
+/// Every retired generation record is on its Goal's page: the job with its
+/// candidates, defect reasons, critic results, model attribution and raw
+/// response, and each recorded request with its usage, known or unknown.
+fn generation_reachable(name: &str, app: &App, site: &Crawl) {
+    for j in app.jobs.values() {
+        assert!(
+            app.goals.contains_key(&j.goal_id),
+            "{name}: job {} has a Goal",
+            j.id
+        );
+        let path = format!("/goals/{}", j.goal_id);
+        let entry = site.entry(&path, &format!("job-{}", j.id));
+        let what = format!("{name} {path} job {}", j.id);
+        assert!(
+            entry.contains(&format!("Recorded status: {}", web::escape(&j.status))),
+            "{what}: status"
+        );
+        for text in [&j.candidate_json, &j.critic_json, &j.critic_cache_json]
+            .into_iter()
+            .flatten()
+        {
+            assert!(
+                entry.contains(&format!(
+                    "<pre class=\"raw-record\">{}</pre>",
+                    web::escape(text)
+                )),
+                "{what}: a saved record, exactly"
+            );
+        }
+        for reason in &j.rejected {
+            assert!(
+                entry.contains(&format!("<li>{}</li>", web::escape(reason))),
+                "{what}: defect reason"
+            );
+        }
+        for model in [&j.model, &j.critic_model].into_iter().flatten() {
+            if !model.starts_with("legacy-import") {
+                has(entry, model, &format!("{what}: model"));
+            }
+        }
+        if let Some(raw) = &j.raw_response {
+            has(entry, raw, &format!("{what}: raw response"));
+        }
+        for s in app.spend.iter().filter(|s| s.work_id == j.id) {
+            let usage = &entry[entry
+                .find(&format!("id=\"usage-{}\"", s.id))
+                .unwrap_or_else(|| panic!("{what}: usage {}", s.id))..];
+            let usage = &usage[..usage.find("</div>").unwrap()];
+            let cost = match s.cost_micros.filter(|_| s.status == "known") {
+                Some(_) => "Cost $",
+                None => "Unknown cost · $",
+            };
+            assert!(usage.contains(cost), "{what}: usage {} cost", s.id);
+            let purpose = match s.purpose.as_deref() {
+                Some("generate.concepts") => "Generation",
+                Some("transcribe.photo") => "Photo transcription",
+                Some(p) if p.starts_with("critic") => "Critic",
+                Some(p) => p,
+                None => "Request",
+            };
+            assert!(
+                usage.contains(&format!("<span>{}</span>", web::escape(purpose))),
+                "{what}: purpose"
+            );
+            if let Some(raw) = &s.raw_response {
+                assert!(
+                    usage.contains(&format!(
+                        "<pre class=\"raw-record\">{}</pre>",
+                        web::escape(raw)
+                    )),
+                    "{what}: usage {} raw response",
+                    s.id
+                );
+            }
+        }
+    }
 }
 
 /// The richest notebook: archived Goal, Concept and question, a question with
@@ -391,6 +472,78 @@ fn a_concept_page_shows_every_note_in_order() {
     let notes: Vec<_> = main.split("class=\"concept-note\"").skip(1).collect();
     assert!(notes[0].contains("From your material") && notes[0].contains("<blockquote>"));
     assert!(notes[1].contains("General knowledge") && !notes[1].contains("<blockquote>"));
+}
+
+/// No stored state has a defect reason, a critic's own model, kept critic
+/// results or unknown usage for generation. A notebook that has them shows
+/// each inert, the long ones folded in closed native disclosures.
+#[test]
+fn every_kind_of_generation_record_is_shown_inert_and_folded() {
+    let (_, mut app, now) = stored()
+        .into_iter()
+        .find(|(name, _, _)| name == "history-rich")
+        .unwrap();
+    let goal = app
+        .goals
+        .values()
+        .find(|g| g.status == "ready" && !g.archived)
+        .unwrap()
+        .clone();
+    let job = app.jobs.get_mut(&goal.job_id).unwrap();
+    job.rejected = vec![
+        "Two tidal bulges: <script>alert(1)</script> quotes nothing".into(),
+        "Neap tides had no usable practice.".into(),
+    ];
+    job.critic_model = Some("synthetic-critic".into());
+    job.critic_json = Some(r#"{"status":"rejected","reasons":["<b>unsupported</b>"]}"#.into());
+    job.critic_cache_json = Some(r#"{"bulges":{"decision":"accept"}}"#.into());
+    job.error = Some("The critic rejected <i>two</i> ideas.".into());
+    let id = job.id.clone();
+    app.spend.push(Spend {
+        id: "synthetic-unknown-critic-spend".into(),
+        work_id: id.clone(),
+        created_ms: goal.created_ms + 1,
+        reserved_micros: 500_000,
+        cost_micros: None,
+        status: "unknown".into(),
+        model: Some("synthetic-critic".into()),
+        purpose: Some("critic.concepts".into()),
+        response_hash: None,
+        response_model: None,
+        raw_response: None,
+        response_bytes: None,
+        response_outcome: Some("interrupted".into()),
+    });
+    let site = crawl(&app, now);
+    let path = format!("/goals/{}", goal.id);
+    let entry = site.entry(&path, &format!("job-{id}"));
+    assert!(entry.contains("&lt;script&gt;alert(1)&lt;/script&gt;") && !entry.contains("<script>"));
+    assert!(entry.contains("<p>The critic rejected &lt;i&gt;two&lt;/i&gt; ideas.</p>"));
+    assert!(entry.contains("· Critic synthetic-critic"));
+    assert!(entry.contains("&lt;b&gt;unsupported&lt;/b&gt;") && !entry.contains("<b>"));
+    let unknown = &entry[entry
+        .find("id=\"usage-synthetic-unknown-critic-spend\"")
+        .unwrap()..];
+    assert!(unknown.contains("Unknown cost · $0.50 counted · Response interrupted"));
+    // Every raw record is folded, closed, and nothing on the page is a control.
+    let opened = entry.matches("<pre class=\"raw-record\">").count();
+    assert!(opened >= 4);
+    assert_eq!(
+        entry
+            .matches("<details class=\"question-record\"><summary>")
+            .count(),
+        opened
+    );
+    assert!(!entry.contains("<details open"));
+    generation_reachable("synthetic", &app, &site);
+    let main = main_of(site.page(&path));
+    for control in ["<form", "<input", "<button", "<textarea", "data-poll"] {
+        assert!(!main.contains(control), "{control}");
+    }
+    // Reading the page changed nothing.
+    let before = app.clone();
+    let _ = page(&app, &path, now);
+    assert_eq!(app, before);
 }
 
 /// No page of the earlier notebook a crawl reaches holds a form, input,

@@ -59,6 +59,14 @@ fit is not sent; the answer is saved and not graded, and it says why. Nothing
 is reserved for an answer graded locally, for a request without paid
 permission, or while paid judgment is off.
 
+Only production can spend. Outside production nothing is sent to a real
+provider whatever is bound: a preview's judge endpoint must be a host under
+`.invalid` (a test harness's controlled egress), and every other environment
+sends nothing. To enable paid judgment in production an operator binds the
+secret `JEV_API_KEY` and the variables `JEV_MODEL` and `JEV_URL` (an `https`
+endpoint with no credentials, query or fragment) on the production Worker; the
+Owner then turns it on in Settings.
+
 Spend GET/HEAD authenticates synchronously before reading records. It bypasses
 the ordinary load/save path: no table/store initialization, token last-use,
 revision, operation receipt, recovery, reservation, alarm or provider effect.

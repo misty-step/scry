@@ -73,6 +73,13 @@ notebook or create credentials as a shortcut. The [verification skill](../.agent
 describes the QA identity boundary. Report any unavailable live acceptance
 honestly; do not turn a missing observation into a claim of success.
 
+Unexpected failures reach the Owner's triage route as a fixed category and the
+deployment identity only; an unhealthy `/healthz` that names a stale backup,
+and ordinary denials, send nothing. Only production holds model authority: a
+preview reaches Jev only at a `.invalid` test host. The
+[runbook](runbook.md#failure-reports-and-model-authority--source-as-of-2026-11-15)
+lists the categories and the bindings paid judgment needs.
+
 Rollback is a deliberate deployment of compatible application code, never an
 automatic restore over current data. No cloud restore drill is part of normal
 shipping. Keep existing application backup/storage behavior; do not remove
