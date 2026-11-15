@@ -422,6 +422,11 @@ Phrase, joined-Section
 and whole-text Attempts retain their different scopes. Isolated phrase success
 does not establish complete-text recall.
 
+An `ordered_list` Version holds 1–128 items; a longer list is refused when it
+is added or learned. The whole sequence is one answer of at most 32 KiB and
+at most 256 lines, and one Attempt records feedback for every item, so the
+bound keeps answers, grading and stored Attempts bounded. An older archive
+with a longer unpractised list stays readable but cannot be learned.
 An `ordered_list` lesson presents the complete sequence. Submit one item per
 line; Scry checks item identity and order, not a caller-supplied rating. Optional
 `ordered_aliases` maps zero-based flattened Unit positions to explicitly
@@ -461,6 +466,19 @@ to the textarea’s LF representation; bare carriage returns remain invalid.
 Saving does not grade or advance. Only acknowledged text can be relied on as
 durable; a lost response may follow a commit. Typing or editing alone is not
 saved automatically.
+
+In the app, Save draft is also a native form: without JavaScript it posts the
+answer form with no `generation`, and the form's notebook `revision` stands in
+for it, so any write since the page was drawn is a conflict. A native discard
+may carry the field's text, which is ignored. With JavaScript the page also
+saves quietly; the notebook keeps operation receipts for only its newest 512
+automatic saves, dropping the oldest to make room. A replay of a dropped
+automatic save names an older generation and is refused as a conflict, never
+applied twice. Agent and manual saves keep their receipts.
+
+Pause, resume, drop and Pace accept only `study_id` (and Pace its `pace`)
+beside `operation_id`; any other field is refused with 422 and nothing is
+written.
 
 ```sh
 ./target/debug/scry learn VERSION --pace steady --json

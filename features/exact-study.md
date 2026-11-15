@@ -39,7 +39,7 @@ Preconditions:
 - **Phone journey.** Run `.agents/skills/verify-scry/scripts/local-journeys.mjs`.
   `study.phone` runs `scry learn` and opens `/recall` at 390px touch. It requires
   `[data-state="exact-prompt"]` with one textarea, fills "Your answer", and
-  chooses Check my answer. It captures `[data-state="exact-result"]` on arrival
+  chooses Check. It captures `[data-state="exact-result"]` on arrival
   before scrolling or reloading, then requires the same held result on reload. `[data-verdict]` and every
   `[data-diff-kind]` must equal `scry next --json`'s Attempt grade. Next then
   advances, with no horizontal overflow.
@@ -102,7 +102,7 @@ Preconditions:
 Externally authored mapping manifests enter through `scry mapping add --file`
 and the shared Library API. Learn the returned Version and open Text practice.
 A pair is first shown as its key with its value and Try from memory. The Quiz
-then shows only the key, with one typed answer and Check my answer.
+then shows only the key, with one typed answer and Check.
 Results show the canonical value and native exact-v2 Diff, held until Next.
 Mapping results have no self-rating or Owner Correction. Show me records durable
 assistance and leaves the schedule unchanged, including a later correct answer.

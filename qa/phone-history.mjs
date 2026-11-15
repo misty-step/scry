@@ -155,7 +155,7 @@ export async function phoneHistory({f,page,row,original,typography,record}) {
   await page.locator('[data-study-phase="study"]').waitFor();
   await enterMemoryPage(page);
   assert.equal(await page.getByLabel('Your answer',{exact:true}).inputValue(),'');
-  await activate(page,page.getByRole('button',{name:'Check my answer',exact:true}));
+  await activate(page,page.getByRole('button',{name:'Check',exact:true}));
   await page.locator('[data-state="exact-result"]').waitFor();
   const submitted=(await f.cli(['next'])).practice.attempt;
   assert.equal(submitted.raw_answer,''); assert.notEqual(submitted.disclosure,true); assert.equal(submitted.grade.verdict,'Again');
@@ -180,7 +180,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     catch(error) {row.status='fail'; row.reason=error.message;}
     finally {await shot(row.status); await context.close(); await f.close();}
   };
-  const answer=async(page,text)=>{await page.getByLabel('Your answer',{exact:true}).fill(text); await activate(page,page.getByRole('button',{name:'Check my answer',exact:true})); await page.locator('[data-state="exact-result"]').waitFor();};
+  const answer=async(page,text)=>{await page.getByLabel('Your answer',{exact:true}).fill(text); await activate(page,page.getByRole('button',{name:'Check',exact:true})); await page.locator('[data-state="exact-result"]').waitFor();};
 
   await check('History keeps frozen wording, mixed Unit effects and dropped Studies',{},async({f,page,row,shot})=>{
     await page.locator('details.overflow>summary').tap(); await page.getByRole('button',{name:'Show me',exact:true}).tap();

@@ -7,8 +7,8 @@ native feedback. [SPEC § Lessons](../SPEC.md#lessons) owns the target behavior.
 
 - The topic shelf groups NATO, Saint Michael editions and Rosary mystery sets.
 - Current-session return preserves the prompt and typed draft.
-- With JavaScript enabled, Save draft stores acknowledged text for the current unanswered prompt in the notebook. Anyone with access to that notebook can read it. Discard saved draft explicitly removes it after confirmation.
-- While editing in the foreground, quiet snapshots can save automatically; the page distinguishes saved text from newer unsaved edits. Automatic saving has a notebook-wide limit and pauses on a capacity refusal; Save draft remains available.
+- Save draft stores acknowledged text for the current unanswered prompt in the notebook, with or without JavaScript: without it, the button submits the answer form natively and a page drawn before any newer write is refused as stale, keeping the typed text. Anyone with access to that notebook can read it. Discard saved draft removes it (after confirmation with JavaScript).
+- While editing in the foreground, quiet snapshots can save automatically; the page distinguishes saved text from newer unsaved edits. Automatic saving has no lifetime limit: the notebook keeps receipts for only its newest 512 automatic saves. It pauses only when Scry refuses it for capacity; Save draft remains available.
 - With JavaScript enabled, an enhanced in-page switch away from a nonempty unsubmitted answer asks for confirmation. A confirmed switch keeps the answer read-only while its outcome is unresolved.
 - Prayer practice separates source study from hidden phrase, joined and whole-prayer quizzes.
 - A mistaken phrase shows expected wording and retries the same phrase.

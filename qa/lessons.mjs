@@ -93,7 +93,20 @@ export async function lessonWalk(browser,capture){
     assert.equal(await page.locator('#answer').inputValue(),'');assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft,null);
     assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,countBefore);
     await page.locator('#answer').fill('Annunciation\nNativity');
-   } else { assert.equal(await page.getByRole('button',{name:'Save draft',exact:true}).count(),0); }
+   } else {
+    // Without JavaScript, Save draft and its discard are ordinary form submissions.
+    const promptBefore=current(await f.rows()).prompt.id,countBefore=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
+    assert.equal(await page.getByRole('button',{name:'Discard saved draft',exact:true}).count(),0,'Discard appears only beside a saved draft.');
+    await page.locator('#answer').fill('\nAnnunciation\nNativity');await shot('draft-before-save');
+    await activate(page.getByRole('button',{name:'Save draft',exact:true}));await page.locator('#answer').waitFor();
+    assert.equal(await page.locator('#answer').inputValue(),'\nAnnunciation\nNativity');assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft.answer,'\nAnnunciation\nNativity');
+    assert.equal(current(await f.rows()).prompt.id,promptBefore);assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,countBefore,'Saving never grades.');
+    await shot('draft-saved');
+    await page.reload();assert.equal(await page.locator('#answer').inputValue(),'\nAnnunciation\nNativity');
+    await activate(page.getByRole('button',{name:'Discard saved draft',exact:true}));await page.locator('#answer').waitFor();
+    assert.equal(await page.locator('#answer').inputValue(),'');assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft,null);
+    await page.locator('#answer').fill('Annunciation\nNativity');
+   }
    const saved=current(await f.rows());await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('#answer').inputValue(),'Annunciation\nNativity');assert.deepEqual(current(await f.rows()),saved);await shot('sequence-draft');
    assert.equal(await page.locator('[data-current-lesson="rosary-joyful"]').count(),1);
    assert.equal(await page.locator('[data-picker-close]').isVisible(),!noJS,'The enhanced return control is hidden without JavaScript.');

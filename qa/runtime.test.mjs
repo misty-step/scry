@@ -165,7 +165,10 @@ try {
         {'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64),'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},
       ]) {
         const refused = await call(path,{method:'POST',headers,body:'x='.padEnd(5*1024*1024,'x')});
-        assert.ok([403,409].includes(refused.status)); assert.equal(refused.headers.get('X-Scry-Test-Body-Used'),'false');
+        // Save draft is a native form (SPEC § Experience): without the page header it is read like any
+        // form, but only up to the 128 KiB draft bound. A wrong scope is still refused before any read.
+        if (headers['X-Scry-Request']) { assert.equal(refused.status,409); assert.equal(refused.headers.get('X-Scry-Test-Body-Used'),'false'); }
+        else assert.equal(refused.status,413);
       }
       const missing = await call('/settings',{headers:{'X-Scry-Request':'poll'}});
       assert.equal(missing.status,409);

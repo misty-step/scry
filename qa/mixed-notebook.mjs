@@ -172,7 +172,7 @@ export async function mixedBrowserWalk(browser, capture) {
       row.stage='earlier practice is read-only';
       await earlierView().waitFor();
       assert.equal(await page.locator('main form, main button, main textarea, main [data-poll], main [data-choice]').count(),0,'Earlier practice offers nothing to submit');
-      assert.equal(await page.getByRole('button',{name:/Next question|Check my answer|I was right|Retry/}).count(),0);
+      assert.equal(await page.getByRole('button',{name:/Next question|Check my answer|^Check$|I was right|Retry/}).count(),0);
       if(state==='question-cold-choice'){await page.getByRole('heading',{name:'Not answered.',exact:true}).waitFor();assert.equal(await page.locator('main ol li').count(),3,'The choices that were presented are shown as text');}
       if(state==='result-corrected'){await page.getByText('Your Correction',{exact:true}).waitFor();await page.locator('.answer-pair').waitFor();}
       if(state==='self-check-unsure'){await page.getByRole('heading',{name:'Your answer is saved, not graded.',exact:true}).waitFor();await page.getByText('Check recorded: inconclusive.',{exact:true}).waitFor();}
@@ -190,7 +190,7 @@ export async function mixedBrowserWalk(browser, capture) {
       assert.ok(!(await page.content()).includes('Copper lanterns shelter quiet gardens.'));
       assert.equal((await f.sql.exec("SELECT key FROM records WHERE key LIKE 'practice_attempts/%'")).length,0);
       await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter quiet gardens.');
-      await page.getByRole('button',{name:'Check my answer',exact:true}).tap();await page.locator('[data-state="exact-result"]').waitFor();
+      await page.getByRole('button',{name:'Check',exact:true}).tap();await page.locator('[data-state="exact-result"]').waitFor();
       await homeRoundTrip('exact-held');
       await f.intact('after the walk');
       row.observed = {earlier_view:VIEW[state], earlier_practice_read_only:true, earlier_rows_as_loaded:true, exact_practice_unchanged:true, home_both_held_unchanged:true, home_exact_held_unchanged:true, earlier_practice_from_menu:true};

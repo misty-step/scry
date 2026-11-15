@@ -39,7 +39,7 @@ export async function mixedReviewJourney(){
   const seen=[];
   for(const sid of studies){
    const before=await f.rows(),p=current(before);assert.equal(p.prompt.study_id,sid);assert.equal(before.meta.practice.mixed_review,true);seen.push(sid);
-   const html=await f.get('/');assert.match(html,/All subjects/);assert.deepEqual(await f.rows(),before,'Held refresh neither selects nor advances');
+   const html=await f.get('/');assert.ok(html.includes(`data-prompt-id="${p.prompt.id}"`),'Study holds the same Prompt');assert.deepEqual(await f.rows(),before,'Held refresh neither selects nor advances');
    const fields={...nativeFields(html,'/practice/answer'),answer:expected(before,p)};
    const bad=await f.post('/practice/answer',{...fields,operation_id:randomUUID(),grade:'Good'});assert.equal(bad.status,422);assert.deepEqual(await f.rows(),before);
    await post(f,'/practice/answer',fields);const answered=await f.rows(),a=answered['practice_attempts/'+current(answered).attempt_id];
@@ -114,7 +114,7 @@ export async function continuousStudyJourney(){
   const counts=studies.map(s=>({kind:rows['library_versions/'+s.version_id].kind,count:Object.values(rows).filter(c=>c.study_id===s.id&&c.unit_index!==undefined).length}));
   assert.ok(counts.some(c=>c.kind==='keyed_mapping'&&c.count===6),'Continuous NATO respects six-card pace, not focused all-26 flag');
   assert.ok(counts.every(c=>c.kind==='ordered_list'||c.count<=6),'Non-sequence subjects cannot exceed daily introductions');
-  const exhausted=await f.get('/');const doneDOM=htmlStructure(exhausted);assert.equal(doneDOM.forms('/practice/review/start').length,0);assert.equal(doneDOM.classes('lesson-picker').length,1);assert.ok(!('open' in doneDOM.classes('lesson-picker')[0].attrs));assert.doesNotMatch(exhausted,/action="\/practice\/review\/start"/);assert.doesNotMatch(exhausted,/No reviews due/);assert.match(exhausted,/<h1>Rest for now<\/h1>/);assert.doesNotMatch(exhausted,/All learned|All done|All set|Next review in/,'Paced rest is not a claim that all Library material is learned, and shows no countdown');
+  const exhausted=await f.get('/');const doneDOM=htmlStructure(exhausted);assert.equal(doneDOM.forms('/practice/review/start').length,0);assert.equal(doneDOM.classes('lesson-picker').length,1);assert.ok(!('open' in doneDOM.classes('lesson-picker')[0].attrs));assert.doesNotMatch(exhausted,/action="\/practice\/review\/start"/);assert.doesNotMatch(exhausted,/No reviews due/);assert.match(exhausted,/<p class="study-context">Study<\/p><h1>Rest for now<\/h1>/,'Rest under Study names Study (SPEC § Open into study), not a subject list');assert.doesNotMatch(exhausted,/All learned|All done|All set|Next review in/,'Paced rest is not a claim that all Library material is learned, and shows no countdown');
   assert.equal(doneDOM.withAttr('data-next-review').length,1);assert.match(exhausted,/data-next-review>Next review [A-Z][a-z]{2} \d{1,2}, \d{4} · \d{2}:\d{2} UTC\.<\/p>/,'Rest states the next scheduled review as a static time');
   const restOf=html=>html.slice(html.indexOf('data-state="rest"'),html.indexOf('</summary>',html.indexOf('data-state="rest"')));
   assert.ok(restOf(exhausted).includes('<span>Browse</span>'));assert.equal(restOf(await f.get('/recall')),restOf(exhausted),'Opening practice shows the same rest state as Home');

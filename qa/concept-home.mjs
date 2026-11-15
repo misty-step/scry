@@ -53,7 +53,7 @@ export async function conceptHomeWalk(browser,capture){
    const shot=async suffix=>row.evidence.push(await capture(page,`${name}-${suffix}.png`));
    // Earlier practice and its references offer nothing to answer, dismiss,
    // archive, edit, flag, focus or pause: no form at all.
-   const readOnly=async()=>{assert.equal(await page.locator('main form,main button,main textarea,main [data-choice],main [data-poll]').count(),0);assert.equal(await page.getByRole('button',{name:/Next question|Check my answer|Practice this idea|Look it up|Archive|Focus|Pause/}).count(),0);};
+   const readOnly=async()=>{assert.equal(await page.locator('main form,main button,main textarea,main [data-choice],main [data-poll]').count(),0);assert.equal(await page.getByRole('button',{name:/Next question|Check my answer|^Check$|Practice this idea|Look it up|Archive|Focus|Pause/}).count(),0);};
    try{await run({page,url,rows,state,stable,activate,home,headerHome,earlier,layout,shot,readOnly});assert.deepEqual(errors,[],'Browser errors');}
    catch(error){row.status='fail';row.reason=`${label}: ${error.message}`;console.error(`${name} ${label}: ${error.message}`);await shot(`${label}-failure`);}
    finally{await context.close();await runtime.mf.dispose();}
