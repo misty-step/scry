@@ -157,9 +157,16 @@ test('Auth-free schema and native validation, not remote acceptance; strict auth
   // SPEC § Keyed mappings: practised in each direction its Version declares.
   assert.deepEqual(schemas.mapping.properties.direction.enum,['forward','both']);
   assert.equal(schemas.mapping.properties.pairs.items.properties.safety_bearing.type,'boolean');
-  assert.deepEqual(capabilities.mapping_direction,['forward','both']);
+  // The default direction keeps its earlier type; the declarable ones are listed apart.
+  assert.equal(capabilities.mapping_direction,'forward');
+  assert.deepEqual(capabilities.mapping_directions,['forward','both']);
   const reverseDuplicate={...mapping,direction:'both',pairs:[{key:'A',value:'Same'},{key:'B',value:'same'}]};
   assert.equal((await f.call('scry_validate',{format:'mapping',data:reverseDuplicate})).result.isError,true);
+  // A refused declaration names its own reason, for either manifest format.
+  const versionBoth={title:'Synthetic both',kind:'keyed_mapping',text:'A\tSame\nB\tsame\n',direction:'both'};
+  assert.match(error(await f.call('scry_validate',{format:'version',data:versionBoth})).message,/needs a different value for every pair/);
+  const versionSafety={title:'Synthetic both',kind:'keyed_mapping',text:'A hazard\tstep back\n',direction:'both',safety_bearing:[0]};
+  assert.match(error(await f.call('scry_validate',{format:'version',data:versionSafety})).message,/practised forward only/);
   const safetyBoth={...mapping,direction:'both',pairs:[{key:'A hazard',value:'step back',safety_bearing:true}]};
   assert.equal((await f.call('scry_validate',{format:'mapping',data:safetyBoth})).result.isError,true);
   assert.equal(data(await f.call('scry_validate',{format:'mapping',data:{...mapping,direction:'both'}})).valid,true);

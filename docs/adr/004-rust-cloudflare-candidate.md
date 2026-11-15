@@ -287,10 +287,17 @@ Version and says so. A `Card` gains the `reverse` direction and a `Cue` gains
 the same moment, so Pace and "introduced" count forward Cards, one per Unit.
 A `Prompt` stores `safety_bearing: true` only for a flagged pair.
 
-The year rule is a second mapping profile, not a change to `;mapping=1`: an
-Attempt it decided records grader version `1;unicode=17.0.0;mapping=1;year=1`
-and replay regrades each Attempt under the version it recorded, so earlier
-Attempts that the rule would now accept stay as they were decided.
+The year rule is a second mapping profile, not a change to `;mapping=1`. It
+is recorded only where it turns a miss into Good: that Attempt records grader
+version `1;unicode=17.0.0;mapping=1;year=1`. Any other Attempt, a year miss
+included, is stored exactly as `;mapping=1` stores it, so a notebook in which
+the rule never made a miss Good keeps its bytes and format name. The rule reads
+the answer as typed: digits and an optional AD or CE marker only, so a sign,
+dash or other character leaves it to the plain grader. Replay regrades each
+Attempt under the version it recorded; an Attempt under the year version must
+be one the rule made Good, and earlier Attempts the rule would now accept stay
+as they were decided. With `both`, values the rule calls the same year are the
+same value.
 
 Two kinds of answer never reach Jev, even with paid judgment on: a year answer
 to a year value, and an answer that is exactly another pair's value (or, in

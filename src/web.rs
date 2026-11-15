@@ -3658,7 +3658,7 @@ impl View<'_> {
         let allowance = DAILY_ALLOWANCE as f64 / 1_000_000.0;
         let on = self.app.preferences.paid_judgment;
         let explain = format!(
-            "<p>When this is on, an answer that is not an exact match is saved and then sent to Jev, a paid judgment service, to be judged. Your answer and the expected text leave Scry for that check. So does what names the question: the Work's title and the place in it, a mapping's key, and the accepted aliases of a list's items. Each check reserves ${reserve:.2} of the ${allowance:.2} daily allowance before it is sent. Spelling-strict content, empty answers and exact matches are never sent.</p>"
+            "<p>When this is on, an answer that is not an exact match is saved and then sent to Jev, a paid judgment service, to be judged. Your answer and the expected text leave Scry for that check. So does what names the question: the Work's title and the place in it, a mapping's key or, in reverse, its value, and the accepted aliases of a list's items. Each check reserves ${reserve:.2} of the ${allowance:.2} daily allowance before it is sent. Spelling-strict content, empty answers and exact matches are never sent.</p>"
         );
         let switch = |value: &str, label: &str, class: &str| {
             self.form(

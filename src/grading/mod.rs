@@ -312,6 +312,29 @@ fn year_index(tokens: &[unicode::Token]) -> Option<usize> {
         .then_some(i)
 }
 
+/// A year as typed, for the year rule: the text holds only its digits and
+/// an optional AD or CE marker, separated by spaces, the marker written with
+/// or without stops. A sign, dash, extra word, range or any other character
+/// means the text is not a year to the rule, so the plain grader decides.
+fn year_as_typed(text: &str) -> Option<(Vec<unicode::Token>, usize)> {
+    let tokens = unicode::mapping_tokens(text);
+    let i = year_index(&tokens)?;
+    let era = tokens.len() > 1;
+    let mut covered = vec![false; text.len()];
+    for token in &tokens {
+        covered[token.word.span.clone()].fill(true);
+    }
+    text.char_indices()
+        .all(|(at, c)| covered[at] || c.is_whitespace() || (era && c == '.'))
+        .then_some((tokens, i))
+}
+
+/// The year a mapping text is to the year rule, as its normalized digits:
+/// two texts with the same year are the same answer to it.
+pub fn mapping_year(text: &str) -> Option<String> {
+    year_as_typed(text).map(|(tokens, i)| tokens[i].normalized.clone())
+}
+
 /// Whether a mapping text names a year in any era: one to four digits, alone
 /// or with AD, CE, BC or BCE before or after. Such an answer to a year value is
 /// graded by Scry alone, as written or by the year rule, and never judged.
@@ -341,22 +364,11 @@ pub fn mapping_year_shaped(text: &str) -> bool {
     (before.is_empty() && (after.is_empty() || era(after))) || (after.is_empty() && era(before))
 }
 
-/// Whether an expected mapping answer and a typed one both name a year, and
-/// so are graded as exact numbers: the same digits, with or without AD or CE.
-pub fn mapping_years(expected: &str, answer: &str) -> Option<bool> {
-    let (e, t) = (
-        unicode::mapping_tokens(expected),
-        unicode::mapping_tokens(answer),
-    );
-    let (i, j) = (year_index(&e)?, year_index(&t)?);
-    Some(e[i].normalized == t[j].normalized)
-}
-
-/// `grade_mapping`, then the year rule: where a single expected value is a
-/// year and the answer names a year, they are compared as exact numbers, with
-/// or without AD or CE, and the Diff compares the numbers alone. Where that
-/// grade differs from `grade_mapping`'s it is recorded under
-/// `MAPPING_YEAR_GRADER_VERSION`; every other answer keeps its plain grade.
+/// `grade_mapping`, then the year rule: where a single expected value and the
+/// answer as typed are the same year, with or without AD or CE, a miss becomes
+/// Good under `MAPPING_YEAR_GRADER_VERSION`, its Diff comparing the numbers.
+/// Every other answer keeps the plain grade, byte for byte, so the rule is
+/// recorded only where it turned a miss into Good.
 pub fn grade_mapping_year(
     version: Version<'_>,
     units: Range<usize>,
@@ -366,45 +378,34 @@ pub fn grade_mapping_year(
     if plain.verdict == Verdict::Good || units.len() != 1 {
         return Ok(plain);
     }
-    let (e, t) = (
-        unicode::mapping_tokens(version.units[units.start]),
-        unicode::mapping_tokens(answer),
-    );
-    let (Some(i), Some(j)) = (year_index(&e), year_index(&t)) else {
+    let (Some((e, i)), Some((t, j))) = (
+        year_as_typed(version.units[units.start]),
+        year_as_typed(answer),
+    ) else {
         return Ok(plain);
     };
-    let (expected, typed) = (e[i].word.clone(), t[j].word.clone());
-    let (verdict, change) = if e[i].normalized == t[j].normalized {
-        (Verdict::Good, Change::Correct { expected, typed })
-    } else {
-        (
-            Verdict::Again,
-            Change::Wrong {
-                expected,
-                typed,
-                out_of_order: false,
-            },
-        )
-    };
-    let year = Grade {
+    if e[i].normalized != t[j].normalized {
+        return Ok(plain);
+    }
+    Ok(Grade {
         authority: Authority {
             name: AUTHORITY.into(),
             grader_version: MAPPING_YEAR_GRADER_VERSION.into(),
         },
-        verdict,
+        verdict: Verdict::Good,
         units: vec![UnitVerdict {
             unit_index: units.start,
-            verdict,
+            verdict: Verdict::Good,
         }],
         diff: vec![Diff {
             unit_index: units.start,
-            change,
+            change: Change::Correct {
+                expected: e[i].word.clone(),
+                typed: t[j].word.clone(),
+            },
         }],
         wrong_version_hint: None,
-    };
-    let same =
-        year.verdict == plain.verdict && year.units == plain.units && year.diff == plain.diff;
-    Ok(if same { plain } else { year })
+    })
 }
 
 /// One edit must change a letter, not a digit, apostrophe, symbol or diacritic.

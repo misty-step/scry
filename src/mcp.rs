@@ -164,11 +164,21 @@ struct Reveal {
 
 /// The same domain validator used by import, in a disposable empty Library.
 /// This deliberately proves no remote deduplication, authorization or capacity.
+/// A mapping declaration's own refusal, as the API gives it, where there is one.
+fn declared(error: &crate::model::AppError) -> Option<&'static str> {
+    [
+        crate::library::BOTH_NEEDS_UNIQUE_VALUES,
+        crate::library::SAFETY_FORWARD_ONLY,
+        crate::library::MAPPING_DECLARATIONS_ONLY,
+    ]
+    .into_iter()
+    .find(|reason| error.message == *reason)
+}
 fn validate(format: &str, data: Value) -> InputResult<Value> {
     let mut input = match format {
         "version" => parse::<VersionInput>(data)?,
         "mapping" => parse::<MappingInput>(data)?.into_version()
-            .map_err(|_| "Invalid mapping: use unique keys, direction forward or both (both needs unique values and no safety-bearing pair), and nonempty key/value pairs without control characters or surrounding whitespace.")?,
+            .map_err(|e| declared(&e).unwrap_or("Invalid mapping: use unique keys, direction forward or both (both needs unique values and no safety-bearing pair), and nonempty key/value pairs without control characters or surrounding whitespace."))?,
         _ => return Err("format must be version or mapping."),
     };
     // The Works a manifest relates to exist only in the remote Library.
@@ -178,7 +188,7 @@ fn validate(format: &str, data: Value) -> InputResult<Value> {
     let relations = std::mem::take(&mut input.relations).len();
     let mut library = Library::default();
     let id = library.add(input, "local-mcp-validation", None)
-        .map_err(|_| "Invalid Library draft: check metadata and byte/count limits; Sections must join to text exactly.")?;
+        .map_err(|e| declared(&e).unwrap_or("Invalid Library draft: check metadata and byte/count limits; Sections must join to text exactly."))?;
     let version = &library.versions[&id];
     Ok(
         json!({"valid":true,"scope":"local_structure_only","remote_admission_checked":false,
@@ -214,7 +224,8 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
             Ok(Call::Local(
                 json!({"adapter":"scry-mcp","protocol_version":PROTOCOL_VERSION,
                 "formats":["version","mapping"],"grading":"native_only","generation":false,
-                "self_grading":false,"multimedia":false,"mapping_direction":["forward","both"],
+                "self_grading":false,"multimedia":false,"mapping_direction":"forward",
+                "mapping_directions":["forward","both"],
                 "remote_capabilities_checked":false,"hosted_admission":"unverified",
                 "instructions":INSTRUCTIONS,"max_message_bytes":MAX_MESSAGE_BYTES,
                 "mutation_ids":"required; preserve across retries and restarts",
@@ -701,6 +712,65 @@ pub fn serve(config: PathBuf) -> owner_client::Result<()> {
             writeln!(output, "{response}")
                 .and_then(|_| output.flush())
                 .map_err(|_| "Cannot write MCP output.")?;
+        }
+    }
+}
+
+#[cfg(test)]
+mod mapping_tests {
+    use super::*;
+    #[test]
+    fn capabilities_keep_the_default_direction_and_list_every_declarable_one() {
+        let Call::Local(capabilities) = prepare("scry_capabilities", json!({})).unwrap() else {
+            panic!("local");
+        };
+        assert_eq!(capabilities["mapping_direction"], "forward");
+        assert_eq!(
+            capabilities["mapping_directions"],
+            json!(["forward", "both"])
+        );
+    }
+    #[test]
+    fn validation_gives_a_refused_declarations_own_reason() {
+        let pairs = |flag: bool| json!([{"key":"One","value":"Same","safety_bearing":flag},{"key":"Two","value":"same"}]);
+        let text = "One\tSame\nTwo\tsame\n";
+        for (format, data, reason) in [
+            (
+                "mapping",
+                json!({"title":"T","direction":"both","pairs":pairs(false)}),
+                "A mapping practised in both directions needs a different value for every pair: each value is also a question.",
+            ),
+            (
+                "mapping",
+                json!({"title":"T","direction":"both","pairs":[{"key":"Hazard","value":"step back","safety_bearing":true}]}),
+                "A safety-bearing pair keeps its safety condition in its question, so a mapping with one is practised forward only.",
+            ),
+            (
+                "version",
+                json!({"title":"T","kind":"keyed_mapping","text":text,"direction":"both"}),
+                "A mapping practised in both directions needs a different value for every pair: each value is also a question.",
+            ),
+            (
+                "version",
+                json!({"title":"T","kind":"keyed_mapping","text":"Hazard\tstep back\n","direction":"both","safety_bearing":[0]}),
+                "A safety-bearing pair keeps its safety condition in its question, so a mapping with one is practised forward only.",
+            ),
+            (
+                "version",
+                json!({"title":"T","kind":"text","text":"Words.\n","direction":"both"}),
+                "Directions and safety-bearing pairs belong to keyed mappings.",
+            ),
+            (
+                "version",
+                json!({"title":"T","kind":"keyed_mapping","text":"1066\tAD 1066\nBattle\t1066\n","direction":"both"}),
+                "A mapping practised in both directions needs a different value for every pair: each value is also a question.",
+            ),
+        ] {
+            assert_eq!(
+                validate(format, data.clone()).unwrap_err(),
+                reason,
+                "{data}"
+            );
         }
     }
 }

@@ -2296,7 +2296,7 @@ fn settings_says_what_leaves_scry_and_offers_the_switch_only_where_jev_is_reacha
     assert!(off.contains("Your answer and the expected text leave Scry"));
     // What names the question leaves too, and the page says so.
     assert!(off.contains(
-        "the Work's title and the place in it, a mapping's key, and the accepted aliases of a list's items"
+        "the Work's title and the place in it, a mapping's key or, in reverse, its value, and the accepted aliases of a list's items"
     ));
     assert!(off.contains("Each check reserves $0.50 of the $3.50 daily allowance"));
     assert!(off.contains("<form method=\"post\" action=\"/settings/judgment\""));

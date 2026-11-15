@@ -318,13 +318,20 @@ other local miss, and no Check, reservation or request.
 
 A value that is a year (one to four digits, alone or with AD or CE before or
 after, with or without stops) accepts the same digits with or without AD or CE.
-It is graded by Scry as an exact number, and a year before the common era
-(`44 BC`) is graded as written: `44` or `44 BCE` is a miss for it. A year answer
-(one to four digits with or without AD, CE, BC or BCE) to a year value is never
-sent to Jev, whether paid judgment is on or off. An Attempt the year rule decided records grader version
-`1;unicode=17.0.0;mapping=1;year=1`; every other mapping Attempt keeps
-`;mapping=1`, and replay regrades each under the version it recorded. A
-safety-bearing pair never uses the year rule. With paid judgment on, Jev judges
+The answer must be just that as typed: a sign, dash, extra word, range or other
+character leaves it to the ordinary comparison. It is graded by Scry as an
+exact number, and a year before the common era (`44 BC`) is graded as written:
+`44` or `44 BCE` is a miss for it. A year answer (one to four digits with or
+without AD, CE, BC or BCE) to a year value is never sent to Jev, whether paid
+judgment is on or off. The year rule is recorded only where it turns a miss
+into Good: that Attempt records grader version
+`1;unicode=17.0.0;mapping=1;year=1` with a Diff comparing the numbers. Every
+other mapping Attempt, a year miss included, is stored exactly as `;mapping=1`
+stores it, and replay regrades each under the version it recorded. Neither the
+year rule nor its never-sent guarantee applies to a safety-bearing pair: there
+`1990 AD` for `1990` is an ordinary mismatch, and with paid judgment on it is
+judged. With a Version declared `both`, values that are the same year (`1066`
+and `AD 1066`) count as the same value and are refused. With paid judgment on, Jev judges
 a safety-bearing pair against an objective that asks for the same safe
 practice and rejects a dangerous alternative, a negation, a reversal, an
 incomplete practice or added unsafe words.
@@ -616,12 +623,14 @@ signed-in Owner, or an Owner token created with `--paid`). Otherwise it is
 graded by the local comparison exactly as before and nothing is sent or
 reserved. An exact or alias match, an empty answer, any answer to
 Spelling-strict content and an answer too large to send (32 KiB with its
-expected content) are always graded locally.
+expected content) are always graded locally. So are an answer to a keyed
+mapping that is exactly another pair's value (or, in reverse, its key) and,
+except for a safety-bearing pair, a year answer to a year value.
 
 One check is one request to Jev. Besides the model name it carries, for that
 answer only: the answer as typed; the expected content of the Prompt's scope;
-what names the question (the Work's title and the place in it, or a mapping's
-key, or a Section's heading); the Learning objective; and, for an ordered
+what names the question (the Work's title and the place in it, a mapping's
+key or, for a reverse Card, its value, or a Section's heading); the Learning objective; and, for an ordered
 list, the authored aliases of its items. It carries no identifier, no other
 content of the Library, no token and nothing that identifies the Owner.
 Settings says the same before the Owner turns the switch on.

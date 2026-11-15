@@ -483,18 +483,12 @@ fn a_year_is_accepted_with_or_without_ad_or_ce_and_graded_as_an_exact_number() {
         let r = o.answer(answer);
         assert_eq!(verdict(&r), expected, "{answer}");
         let version = r["attempt"]["grade"]["authority"]["grader_version"].clone();
-        // Only an answer whose grade the year rule changed names it: the era
-        // is optional, so the Diff compares the numbers alone.
+        // The year rule is recorded only where it turned a miss into Good.
         assert_eq!(
             version == YEAR,
-            !matches!(answer, "1066" | "1067" | "1066 BC" | "10 66"),
+            expected == "Good" && answer != "1066",
             "{answer}"
         );
-        if answer == "1067 AD" {
-            let diff = &r["attempt"]["grade"]["diff"];
-            assert_eq!(diff.as_array().unwrap().len(), 1, "{diff}");
-            assert_eq!(diff[0]["kind"], "wrong");
-        }
     }
     o.next(&sid);
     assert_eq!(verdict(&o.answer("800")), "Good");
@@ -888,4 +882,180 @@ fn every_new_mutation_replays_its_committed_result_and_refuses_another_payload()
         409
     );
     assert_eq!(o.app.practice, committed.practice);
+}
+
+// --- Review: the year rule is recorded only where it turns a miss into Good ---
+
+fn plain_grade(value: &str, answer: &str, strict: bool) -> Value {
+    let units = [value];
+    let version = scry::grading::Version {
+        units: &units,
+        spelling_strict: strict,
+    };
+    serde_json::to_value(scry::grading::grade_mapping(version, 0..1, answer).unwrap()).unwrap()
+}
+
+/// A Diff's expected spans as stored: relative to the complete Unit.
+fn shifted(mut grade: Value, offset: usize) -> Value {
+    for d in grade["diff"].as_array_mut().unwrap() {
+        if let Some(span) = d.get_mut("expected").and_then(|e| e.get_mut("span")) {
+            for end in ["start", "end"] {
+                span[end] = json!(span[end].as_u64().unwrap() as usize + offset);
+            }
+        }
+    }
+    grade
+}
+
+#[test]
+fn a_year_miss_and_a_plain_answer_are_stored_exactly_as_the_plain_grader_stores_them() {
+    for (value, answers) in [
+        ("1969 CE", &["1968", "1969 CE", "1970 CE", "19 69"][..]),
+        ("AD 1953", &["0800", "AD 1953", "1953 BC"][..]),
+        ("1066 AD", &["8", "1066 AD", "1066 ad", "AD"][..]),
+    ] {
+        let mut o = Owner::new();
+        let key = "Synthetic event";
+        let vid = o
+            .add(json!({"title":"Synthetic era dates","direction":"forward","pairs":[{"key":key,"value":value}]}))
+            .unwrap();
+        let sid = o.learn(&vid, "intense");
+        o.next(&sid);
+        for (n, answer) in answers.iter().enumerate() {
+            if n > 0 {
+                o.again();
+            }
+            let r = o.answer(answer);
+            let mut stored = r["attempt"]["grade"].clone();
+            stored["wrong_version_hint"] = Value::Null;
+            assert_eq!(
+                stored,
+                shifted(plain_grade(value, answer, true), key.len() + 1),
+                "{value} {answer}"
+            );
+        }
+        let rows = persistence::rows(&o.app).unwrap();
+        assert!(!rows.contains_key(MARKER), "{value}");
+        assert_ne!(
+            persistence::Archive::new(o.app.clone(), vec![], o.now).format,
+            FORMAT,
+            "{value}"
+        );
+        // Validation agrees: an Attempt under the year version must be one the
+        // rule made Good, and a miss forged under it is refused.
+        let mut forged = o.app.clone();
+        let miss = forged
+            .practice
+            .attempts
+            .values_mut()
+            .find(|a| a.verdict() == Some(scry::grading::Verdict::Again))
+            .unwrap();
+        miss.grade.authority.grader_version = YEAR.into();
+        assert!(engine::validate_app(&forged).is_err(), "{value}");
+    }
+}
+
+#[test]
+fn a_year_turned_good_by_the_rule_cannot_be_replayed_as_a_plain_grade() {
+    let mut o = Owner::new();
+    let vid = o
+        .add(json!({"title":"Synthetic era dates","direction":"forward","pairs":[{"key":"Synthetic event","value":"1969 CE"}]}))
+        .unwrap();
+    let sid = o.learn(&vid, "intense");
+    o.next(&sid);
+    let r = o.answer("1969");
+    assert_eq!(verdict(&r), "Good");
+    assert_eq!(r["attempt"]["grade"]["authority"]["grader_version"], YEAR);
+    let mut forged = o.app.clone();
+    let good = forged.practice.attempts.values_mut().next().unwrap();
+    good.grade.authority.grader_version = "1;unicode=17.0.0;mapping=1".into();
+    assert!(engine::validate_app(&forged).is_err());
+}
+
+#[test]
+fn a_year_is_a_year_only_as_typed_and_the_rule_only_adds() {
+    let cases: [(&str, &[(&str, &str)]); 3] = [
+        (
+            "1969 CE",
+            &[
+                ("-1969", "Again"),
+                ("\u{2212}1969", "Again"),
+                ("1969 CE.", "Good"),
+                ("1969 c.e.", "Good"),
+                ("1969 c-e", "Again"),
+                ("in 1969", "Again"),
+                ("1969 to 1970", "Again"),
+                ("１９６９", "Good"),
+            ],
+        ),
+        (
+            "AD 1066",
+            &[("-1066", "Again"), ("1066", "Good"), ("1066!", "Again")],
+        ),
+        // The plain grader already took a dash before a bare value; it still does.
+        (
+            "1066",
+            &[
+                ("-1066", "Good"),
+                ("1066 AD", "Good"),
+                ("1066 -AD", "Again"),
+            ],
+        ),
+    ];
+    for (n, (value, answers)) in cases.iter().enumerate() {
+        let mut o = Owner::new();
+        let vid = o
+            .add(json!({"title":format!("Synthetic typed year {n}"),"direction":"forward","pairs":[{"key":"Synthetic event","value":value}]}))
+            .unwrap();
+        let sid = o.learn(&vid, "intense");
+        o.next(&sid);
+        for (i, (answer, expected)) in answers.iter().enumerate() {
+            if i > 0 {
+                o.again();
+            }
+            let r = o.answer(answer);
+            assert_eq!(verdict(&r), *expected, "{value} {answer}");
+            let plain = plain_grade(value, answer, true)["verdict"].clone();
+            let year = r["attempt"]["grade"]["authority"]["grader_version"] == YEAR;
+            assert_eq!(
+                year,
+                plain == "Again" && *expected == "Good",
+                "{value} {answer}"
+            );
+        }
+    }
+}
+
+#[test]
+fn values_that_are_the_same_year_are_the_same_value_both_ways_and_may_share_a_pair_forward() {
+    let mut o = Owner::new();
+    let both = json!({"title":"Synthetic both years","direction":"both","pairs":[
+        {"key":"Synthetic battle","value":"1066"},{"key":"Synthetic crossing","value":"AD 1066"}]});
+    let e = o.add(both).unwrap_err();
+    assert_eq!(e.status, 422);
+    assert!(
+        e.message.contains("needs a different value for every pair"),
+        "{}",
+        e.message
+    );
+    // Forward only, two pairs may share a value, year-equal or not, and a
+    // right answer for the asked pair is Good, never the wrong key.
+    let vid = o
+        .add(
+            json!({"title":"Synthetic shared values","direction":"forward","pairs":[
+                {"key":"Synthetic battle","value":"1066"},
+                {"key":"Synthetic crossing","value":"AD 1066"},
+                {"key":"First shelf colour","value":"grey"},
+                {"key":"Second shelf colour","value":"grey"}
+            ]}),
+        )
+        .unwrap();
+    let sid = o.learn(&vid, "intense");
+    for answer in ["1066", "1066", "grey", "grey"] {
+        o.next(&sid);
+        let r = o.answer(answer);
+        assert_eq!(verdict(&r), "Good", "{answer}");
+        assert_eq!(r["mapping_feedback"]["kind"], "correct", "{answer}");
+        assert!(r["mapping_feedback"].get("answered_key").is_none());
+    }
 }

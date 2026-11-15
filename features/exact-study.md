@@ -115,7 +115,8 @@ answered waits while anything else is eligible. An answer that is exactly
 another pair's value (or, in reverse, key) is Scry's own Again, named as the
 wrong key and never sent to Jev, with paid judgment on or off. A year value
 takes the year with or without AD or CE, as an exact number; a year before the
-common era is graded as written; a year answer is never sent to Jev. A pair flagged
+common era is graded as written; a year answer is never sent to Jev. Neither
+holds for a safety-bearing pair, which is graded as written. A pair flagged
 `safety_bearing` says **Safety practice: answer with the safe practice
 itself.** in study and Quiz, and may not be practised in reverse.
 

@@ -179,17 +179,16 @@ test('SPEC § Keyed mappings: directions, wrong key, years and safety-bearing pa
   const card=Object.values((await apiJson('/api/v1/history')).body.cards).find(c=>c.unit_id===prompt.unit_ids[0]);
   const again=(await ok(['next','--after',prompt.id,'--card',card.id])).practice;
   const miss=(await ok(['answer',again.prompt.id,'--text-stdin'],'1067 AD')).practice;
-  assert.equal(miss.attempt.grade.verdict,'Again');assert.equal(miss.attempt.grade.authority.grader_version,YEAR);
-  assert.deepEqual(miss.attempt.grade.diff.map(d=>d.kind),['wrong'],'AD is optional, so only the number is compared.');
+  assert.equal(miss.attempt.grade.verdict,'Again');assert.equal(miss.attempt.grade.authority.grader_version,'1;unicode=17.0.0;mapping=1');
+  // The year rule is recorded only where it turns a miss into Good: a miss keeps the plain grade.
+  assert.deepEqual(miss.attempt.grade.diff.map(d=>d.kind),['extra','wrong']);
   // Another pair's value, through the tool server, is the wrong key.
   const next=(await toolOk('scry_lesson_next',{operation_id:op('tool'),after:again.prompt.id})).practice;
   const quiz=next.phase==='study'?(await toolOk('scry_quiz',{operation_id:op('tool'),prompt_id:next.prompt.id})).practice:next;
   assert.equal(quiz.prompt.cue,'Synthetic coronation');
   const wrong=(await toolOk('scry_answer',{operation_id:op('tool'),prompt_id:quiz.prompt.id,answer:'1066'})).practice;
   assert.equal(wrong.attempt.grade.verdict,'Again');assert.equal(wrong.mapping_feedback.kind,'wrong_key');assert.equal(wrong.mapping_feedback.answered_key,'Synthetic battle');
-  const wrongPage=(await page('/recall')).html;
-  assert.match(wrongPage,/That answer belongs to key Synthetic battle\./);
-  assert.ok(!wrongPage.includes('>Missing<'),'An optional era is never a missing word.');
+  assert.match((await page('/recall')).html,/That answer belongs to key Synthetic battle\./);
   await shoot('wrong-key-result');
  });
 

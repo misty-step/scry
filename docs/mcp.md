@@ -45,7 +45,7 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 
 | Tool | Purpose |
 | --- | --- |
-| `scry_capabilities` | Adapter limits and supported subset; not a remote health check |
+| `scry_capabilities` | Adapter limits and supported subset; not a remote health check. `mapping_direction` is the default direction, the string `"forward"`; `mapping_directions` lists every direction a manifest may declare, `["forward","both"]` |
 | `scry_schema` | Machine-readable Version and mapping manifest schemas |
 | `scry_search` / `scry_show` | Existing private Library reads, with the native assistance fence |
 | `scry_validate` | Native structural validation in a disposable empty local Library |
@@ -71,7 +71,8 @@ reverse too, which needs unique values and no safety-bearing pair), and
 `pairs: [{"key":"A","value":"Alfa"}]`, where a pair may add
 `"safety_bearing": true`, plus the supported optional metadata. A year value
 accepts the year with or without AD or CE, as an exact number, and a year
-answer is never sent to Jev. Exactly another pair's value (or key in reverse)
+answer is never sent to Jev, except to a safety-bearing pair, where the year
+rule does not apply. Exactly another pair's value (or key in reverse)
 is the wrong key: Again at once, never sent. A reverse
 Prompt has `cue_level: "mapping_value"` and shows the value; see the Owner API
 guide for the result's `mapping_feedback`. Both reuse native Library validation.

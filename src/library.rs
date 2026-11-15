@@ -335,6 +335,10 @@ pub fn mapping_pair(text: &str) -> Option<(&str, &str)> {
 fn check_mapping_units<'a>(units: impl Iterator<Item = &'a str>) -> AppResult<()> {
     check_mapping(units, MappingDirection::Forward, &BTreeSet::new())
 }
+pub const BOTH_NEEDS_UNIQUE_VALUES: &str = "A mapping practised in both directions needs a different value for every pair: each value is also a question.";
+pub const SAFETY_FORWARD_ONLY: &str = "A safety-bearing pair keeps its safety condition in its question, so a mapping with one is practised forward only.";
+pub const MAPPING_DECLARATIONS_ONLY: &str =
+    "Directions and safety-bearing pairs belong to keyed mappings.";
 /// A mapping's pairs with what its Version declares about them. Keys are
 /// unique; in both directions every value is a question too, so values are
 /// unique as well. A safety-bearing pair keeps its safety condition in its
@@ -346,6 +350,7 @@ fn check_mapping<'a>(
 ) -> AppResult<()> {
     let mut keys = BTreeSet::new();
     let mut values = BTreeSet::new();
+    let mut years = BTreeSet::new();
     let mut units = units.peekable();
     while let Some(text) = units.next() {
         if units.peek().is_some() && !text.ends_with('\n') {
@@ -355,21 +360,19 @@ fn check_mapping<'a>(
         if !keys.insert(grading::mapping_words(key)) {
             return Err(mapping_invalid());
         }
-        if direction == MappingDirection::Both && !values.insert(grading::mapping_words(value)) {
-            return Err(AppError::new(
-                422,
-                "A mapping practised in both directions needs a different value for every pair: each value is also a question.",
-            ));
+        // Values the year rule calls the same year are the same value.
+        if direction == MappingDirection::Both
+            && (!values.insert(grading::mapping_words(value))
+                || grading::mapping_year(value).is_some_and(|year| !years.insert(year)))
+        {
+            return Err(AppError::new(422, BOTH_NEEDS_UNIQUE_VALUES));
         }
     }
     if keys.is_empty() || safety_bearing.iter().any(|&i| i >= keys.len()) {
         return Err(mapping_invalid());
     }
     if direction == MappingDirection::Both && !safety_bearing.is_empty() {
-        return Err(AppError::new(
-            422,
-            "A safety-bearing pair keeps its safety condition in its question, so a mapping with one is practised forward only.",
-        ));
+        return Err(AppError::new(422, SAFETY_FORWARD_ONLY));
     }
     Ok(())
 }
@@ -870,10 +873,7 @@ impl Library {
                 &input.safety_bearing,
             )?;
         } else if !input.direction.is_forward() || !input.safety_bearing.is_empty() {
-            return Err(AppError::new(
-                422,
-                "Directions and safety-bearing pairs belong to keyed mappings.",
-            ));
+            return Err(AppError::new(422, MAPPING_DECLARATIONS_ONLY));
         }
         check_relation_inputs(&input.relations)?;
         let mut proposed = Work {
