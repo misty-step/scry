@@ -113,8 +113,19 @@ func (s *Store) Snapshot(ctx context.Context, dir string, now time.Time) (string
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	dest := filepath.Join(dir, "scry-"+now.UTC().Format("20060102-150405")+".db")
+	// Unique empty files also make concurrent/manual backups safe within a
+	// single clock tick, and keep snapshot permissions private (0600).
+	f, err := os.CreateTemp(dir, "scry-"+now.UTC().Format("20060102-150405.000000000")+"-*.db")
+	if err != nil {
+		return "", err
+	}
+	dest := f.Name()
+	if err := f.Close(); err != nil {
+		os.Remove(dest)
+		return "", err
+	}
 	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, dest); err != nil {
+		os.Remove(dest)
 		return "", err
 	}
 	return dest, nil
