@@ -119,7 +119,7 @@ func (a *App) StartTrial(ctx context.Context, u store.User, cardToken string) er
 	if hadPlan && old.Status != "ended" {
 		return nil // already on a plan
 	}
-	p := billing.SubscribeParams{Email: u.Email, CardToken: cardToken, Key: fmt.Sprintf("sub-%d-%d", u.ID, now.Unix()/60)}
+	p := billing.SubscribeParams{Email: u.Email, CardToken: cardToken, Key: fmt.Sprintf("sub-%d-%d", u.ID, now.Unix()/60), Now: now}
 	if !hadPlan {
 		p.TrialEnd = now.AddDate(0, 0, a.Cfg.TrialDays)
 	}

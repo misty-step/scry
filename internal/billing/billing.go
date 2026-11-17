@@ -23,6 +23,7 @@ type SubscribeParams struct {
 	CardToken string    // the processor's token for the card
 	TrialEnd  time.Time // first charge then; zero means charge now
 	Key       string    // idempotency key
+	Now       time.Time // the app's clock, for an adapter with none of its own
 }
 
 // Subscribed is a plan the processor has opened.

@@ -180,6 +180,15 @@ func (a *App) SessionUser(ctx context.Context, token string) (store.User, store.
 	return u, se, err
 }
 
+// KeepSession extends a session that is past half its life. It reports
+// whether the cookie should be sent again with the new expiry.
+func (a *App) KeepSession(ctx context.Context, token string, se store.Session) bool {
+	if se.Expires.Sub(a.now()) > SessionTTL/2 {
+		return false
+	}
+	return a.Store.ExtendSession(ctx, hashToken(token), a.now().Add(SessionTTL)) == nil
+}
+
 // SignOut ends a browser session.
 func (a *App) SignOut(ctx context.Context, token string) error {
 	return a.Store.DeleteSession(ctx, hashToken(token))

@@ -14,7 +14,7 @@
   {{else}}
     <p class="meta">Step 2 of 2 · card</p>
     <h1 class="display">Add a card</h1>
-    <p class="lede trial-terms">{{.TrialDays}}-day trial. You won’t be charged until {{date .TrialEnd}}. Cancel any time before then in Billing.</p>
+    <p class="lede trial-terms">{{.TrialDays}}-day trial. You won't be charged until {{date .TrialEnd}}. Cancel any time before then in Billing.</p>
     <p class="meta">After the trial, Scry is {{money .Price}} a month.</p>
     <form method="post" action="/signup/card" class="form" novalidate data-card-form>
       <input type="hidden" name="csrf" value="{{.CSRF}}">

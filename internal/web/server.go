@@ -91,6 +91,8 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "User-agent: *\nAllow: /$\nAllow: /signup\nDisallow: /\n")
 	})
+	// The wordmark has no glyph for now, so there is no icon to serve.
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("POST /webhooks/stripe", s.webhook)
 	mux.HandleFunc("POST /api/v1/suggestions", s.apiSuggest)
 	mux.HandleFunc("POST /api/v1/items", s.apiAdd)
@@ -253,6 +255,9 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request) (*rc, bool) {
 		if u, se, err := s.App.SessionUser(r.Context(), ck.Value); err == nil {
 			c.user, c.sess, c.token, c.signedIn = u, se, ck.Value, true
 			c.us = s.App.Store.For(u.ID)
+			if s.App.KeepSession(r.Context(), ck.Value, se) {
+				s.setCookie(w, r, ck.Value, app.SessionTTL)
+			}
 			if info, ok := r.Context().Value(logKey{}).(*logInfo); ok {
 				info.user = u.ID
 			}

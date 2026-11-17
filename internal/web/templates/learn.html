@@ -4,7 +4,7 @@
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="sr" for="q">What do you want to know?</label>
     <input class="ask-input display" id="q" name="q" value="{{.Q}}" placeholder="What do you want to know?" autofocus autocomplete="off" maxlength="300" required aria-describedby="ask-hint">
-    <p class="meta" id="ask-hint">{{if .Error}}{{.Error}}{{else}}A topic, a question, or a book’s title{{end}}</p>
+    <p class="meta" id="ask-hint">{{if .Error}}{{.Error}}{{else}}A topic, a question, or a book's title{{end}}</p>
     <button class="btn btn-accent">Draft it</button>
   </form>
   <p class="hints micro">enter to draft</p>

@@ -25,6 +25,7 @@ var funcs = template.FuncMap{
 	"dateY":    func(t time.Time) string { return t.Format("January 2, 2006") },
 	"short":    func(t time.Time) string { return t.Format("Jan 2, 2006") },
 	"money":    money,
+	"amount":   func(cents int64) string { return fmt.Sprintf("$%d.%02d", cents/100, cents%100) },
 	"micros":   func(m int64) string { return money((m + 5000) / 10000) },
 	"plural":   plural,
 	"add":      func(a, b int) int { return a + b },

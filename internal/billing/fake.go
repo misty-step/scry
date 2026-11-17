@@ -123,7 +123,10 @@ func (Fake) Subscribe(_ context.Context, p SubscribeParams) (Subscribed, error) 
 	if err != nil {
 		return Subscribed{}, err
 	}
-	now := time.Now().UTC()
+	now := p.Now
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	out := Subscribed{CustomerRef: ref("cus_test_"), SubscriptionRef: ref("sub_test_"), PaymentRef: p.CardToken, Card: card, PeriodStart: now}
 	if p.TrialEnd.IsZero() {
 		if behavior == "chargefail" {

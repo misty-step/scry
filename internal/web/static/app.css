@@ -460,7 +460,7 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 /* The idea and its links: thin accent lines to hairline-boxed labels. */
 .links {
   display: grid; grid-template-columns: auto minmax(var(--s6), var(--s8)) minmax(0, max-content);
-  align-items: center; margin-top: var(--s5);
+  align-items: center; justify-content: start; margin-top: var(--s5);
 }
 .links-box {
   display: flex; align-items: center; height: 36px; padding: 0 var(--s3);

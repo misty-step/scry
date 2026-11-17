@@ -18,14 +18,14 @@
   </header>
 
   {{if eq .Draft.Status "allowance"}}
-    <p class="empty">You’ve reached this month’s allowance, so Scry can’t draft this yet.</p>
+    <p class="empty">You've reached this month's allowance, so Scry can't draft this yet.</p>
     <p>It resets on {{date .Reset}}. <a class="link" href="/billing">Top up or check your allowance in Billing</a></p>
   {{else if eq .Draft.Status "empty"}}
     <p class="empty">Nothing useful found.</p>
     <p>{{.Draft.Note}}</p>
     <p><a class="link" href="/learn?q={{.Retry}}">Try a narrower topic</a></p>
   {{else if eq .Draft.Status "failed"}}
-    <p class="empty">The draft didn’t finish.</p>
+    <p class="empty">The draft didn't finish.</p>
     <p>{{.Draft.Note}}</p>
     <p><a class="link" href="/learn?q={{.Retry}}">Ask again</a></p>
   {{else}}

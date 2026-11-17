@@ -103,6 +103,13 @@ func (s *Store) SessionByHash(ctx context.Context, tokenHash string, now time.Ti
 	return se, notFound(err)
 }
 
+// ExtendSession pushes a live session's expiry out, so a learner who
+// keeps coming back stays signed in.
+func (s *Store) ExtendSession(ctx context.Context, tokenHash string, expires time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET expires_at = ? WHERE token_hash = ?`, ts(expires), tokenHash)
+	return err
+}
+
 // DeleteSession signs a browser out.
 func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, tokenHash)
