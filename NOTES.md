@@ -158,3 +158,49 @@ implementation was consulted.
 
 - Added a tested host watchdog for plain Docker deployments: restart unhealthy
   containers only; preserve explicitly stopped containers and report unknown state.
+
+### Final verification (2026-11-17)
+
+- The first default-port attempt correctly failed because the first lane's
+  /tmp/scry-run/scry (PID 47785) still owned :8080. First proved a detached
+  SCRY_DB=/tmp/scry-verification/demo.db make run PORT=18080 on fresh storage:
+  /healthz, /signup, /signin, authenticated /study, /library, /inbox, /billing,
+  /settings and /shelf all returned 200. The demo account was seeded successfully.
+- Identified and terminated only that stale first-lane server; then detached
+  make run on the default :8080. /healthz returned 200 with database=ok,
+  mode=test, status=ok; sign-up rendered 200; demo sign-in redirected to study,
+  which rendered 200 with the current study form. Logs identify every adapter
+  as test. The default-port process remains available in the sandbox.
+- README audit: exactly 10 story rows and 4 business-rule rows; every named
+  test exists (15 names in the table, plus the watchdog test in deployment docs).
+- Final isolation review traced HTTP usage to the inactive auth, AI, billing,
+  speech and webhook adapters. Test wiring chooses local/fake adapters only;
+  ALERT_WEBHOOK_URL is ignored and regression-tested. Stripe's fake exposes no
+  publishable key, so its external script is not emitted. Browser speech posts
+  only to this service. No real credentials or outside service calls were used.
+- Docker is available. make docker builds the static scratch image successfully.
+  Runtime checks used PORT=18082, UID/GID 65532, /data and /backups volumes:
+  healthcheck exited zero, HTTP health returned 200/test, demo login/study
+  rendered, and a restart preserved the account and library. Automatic and
+  manual snapshots were exercised. Host watchdog behavior is covered for
+  healthy, starting, stopped, unhealthy and unknown states with a fake Docker CLI.
+- This smoke test exposed a same-second manual/startup snapshot collision.
+  Fixed it with unique snapshot filenames and private 0600 files; the new
+  TestRule_Durability_BackupsInSameClockTickDoNotCollide passes. Failed partial
+  snapshots are removed. Filenames now include subsecond time plus a unique
+  suffix; pruning still uses the scry-*.db pattern.
+- No new visual screenshot pass was required; the user's first-lane screenshot
+  review is retained, and continuation design changes have regression tests.
+- No product sources were fetched or browsed. Only the supplied contract,
+  handoff, and local code were used; Docker fetched standard build images and
+  Go module dependencies. No existing Scry repository was consulted.
+- After the snapshot fix, reran go build ./..., go vet ./..., and fresh
+  go test -count=1 ./...: all green. Rebuilt with make docker: successful.
+  Recreated the container from the final image, manually backed up and restarted
+  immediately: both snapshots succeeded, health remained 200/test, and logs had
+  no ERROR events. Temporary verification container and anonymous volumes were
+  removed after the checks. Runtime filesystem is approximately 35 MB.
+- All original Left items are complete. README and this note document the
+  operational limits honestly: external-model quality and real provider uptime
+  are not tested; actual unattended host recovery requires installing the
+  provided watchdog or configuring platform liveness and monitoring.
