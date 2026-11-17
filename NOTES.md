@@ -112,7 +112,8 @@ implementation was consulted.
   Removed ideas have a 30-day undo; JSON export is not a database backup.
 - Reliability means integrity checks, write-probing health, JSON logs, alerting,
   process restart and platform liveness supervision. Docker HEALTHCHECK alone
-  cannot restart a hung container; README specifies the required platform
+  cannot restart a hung container; deploy/watchdog.sh supplies tested host-side
+  recovery for unhealthy containers, and README specifies the required platform
   liveness policy and external monitoring. Arbitrary bugs/disk failures cannot
   be promised self-repair. Test mode logs alerts without contacting operators.
 
@@ -154,3 +155,6 @@ implementation was consulted.
   scrollback, and non-keyboard micro text, with regression tests.
 - Rejected conflicting identities during selective recovery, with a regression
   test proving another learner remains unchanged.
+
+- Added a tested host watchdog for plain Docker deployments: restart unhealthy
+  containers only; preserve explicitly stopped containers and report unknown state.
