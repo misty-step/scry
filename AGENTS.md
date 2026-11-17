@@ -1,0 +1,20 @@
+# AGENTS.md
+
+You are building Scry from scratch. PRODUCT.md is what it does. DESIGN.md is how it looks and feels. Those two files are the whole contract. You have no other source: do not look for the old app, and do not fetch it from the network.
+
+## Rules
+- Language: Go (current stable), one deployable service. Server-rendered HTML with light progressive enhancement; keyboard first. SQLite for data unless you have a stronger reason.
+- Every PRODUCT.md user story and business rule must be implemented and have an automated test that names it. Every DESIGN.md token, layout and state must be implemented.
+- External services (email/password auth provider, Stripe billing, the AI model provider, speech) sit behind small interfaces with a test-mode adapter that runs with no keys. Real adapters read credentials from environment variables and are never committed. Stripe stays in test mode.
+- Judging an answer must use a model with a one-line reason. No keyword, fuzzy or heuristic matcher decides correctness, except texts marked exact, which are judged word for word.
+- Data durability: your design must make per-user data private and recoverable. Document backup in README.md.
+- Reliability: expose /healthz and structured logs so outages are noticed.
+
+## Run and test
+- `go build ./...`, `go test ./...`, `go vet ./...` must pass.
+- `make run` starts the app on PORT (default 8080) in test mode with seeded demo data. `make test` runs all tests.
+- Provide a Dockerfile that builds a small static image and runs the app.
+- Write README.md covering run, test, env vars, the adapters, and a story-by-story table mapping each PRODUCT.md story and rule to its test.
+
+## Deliver
+Work in this directory. Commit as you go with git. Finish with everything building and tests green, and write NOTES.md listing every place PRODUCT.md or DESIGN.md was ambiguous or silent and the choice you made.
