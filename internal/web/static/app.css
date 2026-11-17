@@ -463,7 +463,7 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
   align-items: center; justify-content: start; margin-top: var(--s5);
 }
 .links-box {
-  display: flex; align-items: center; height: 36px; padding: 0 var(--s3);
+  display: flex; align-items: center; min-height: var(--touch); padding: 0 var(--s3);
   border: 1px solid var(--line); background: var(--page);
   font: 400 var(--meta)/1 var(--mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   text-decoration: none; max-width: 100%;
@@ -490,7 +490,7 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
 .list-action { margin-left: auto; }
 .sug { position: relative; align-items: flex-start; gap: var(--s4); padding: var(--s3); outline-offset: -2px; }
 .sug:hover, .sug:focus-within, .sug:focus { background: var(--raised); }
-.sug:focus, .sug:focus-within { background: var(--sunken); }
+.sug:focus, .sug:focus-within { background: var(--raised); }
 .sug-text { flex: 1; min-width: 0; display: grid; gap: var(--s1); }
 .sug-q { color: var(--ink); }
 .sug-a { color: var(--ink-muted); }
@@ -604,3 +604,6 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
     scroll-behavior: auto !important;
   }
 }
+
+/* All actionable links retain a full touch target, including item rows. */
+a.row-main { min-height: var(--touch); }

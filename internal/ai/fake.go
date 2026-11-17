@@ -13,11 +13,11 @@ import (
 
 // Fake is the test-mode model. It needs no keys and is deterministic.
 //
-// It is a stand-in for the model, not a judge anyone should trust: it
-// compares words, which is exactly what the real product must never do.
-// It exists so the app, its demo and its tests run with no provider, and
-// the app refuses to start with it outside test mode.
+// It returns a scripted fixture, never a keyword or fuzzy judgment.
+// Only the real model adapter evaluates meaning; this adapter exercises UI
+// and scheduling without making any claim about answer correctness.
 type Fake struct {
+	Judgment *Judgment // optional scripted result; default is a labelled right fixture
 	// Delay is the pause before each drafted idea, so the "drafting" state
 	// can be seen in the demo. Tests leave it zero.
 	Delay time.Duration
@@ -28,75 +28,15 @@ type Fake struct {
 
 func (f *Fake) Name() string { return "test" }
 
-var stop = map[string]bool{"a": true, "an": true, "the": true, "of": true, "and": true, "to": true, "in": true, "is": true,
-	"it": true, "about": true, "roughly": true, "which": true, "that": true, "by": true, "for": true, "or": true, "at": true, "on": true}
-
-func fold(s string) []string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return unicode.ToLower(r)
-		}
-		return ' '
-	}, s)
-	return strings.Fields(s)
-}
-
-func keyWords(s string) []string {
-	// Parentheticals are extra detail, not the core of an answer.
-	for {
-		i := strings.Index(s, "(")
-		j := strings.Index(s, ")")
-		if i < 0 || j < i {
-			break
-		}
-		s = s[:i] + " " + s[j+1:]
-	}
-	var out []string
-	for _, w := range fold(s) {
-		if !stop[w] {
-			out = append(out, w)
-		}
-	}
-	return out
-}
-
 func (f *Fake) Judge(_ context.Context, in JudgeInput) (Judgment, Usage, error) {
 	use := Usage{Model: "test-judge", InputTokens: int64(60 + len(in.Question+in.Expected+in.Answer)/4), OutputTokens: 40}
 	if f.Err != nil {
 		return Judgment{}, Usage{}, f.Err
 	}
-	want, got := keyWords(in.Expected), fold(in.Answer)
-	have := map[string]bool{}
-	for _, w := range got {
-		have[w] = true
+	if f.Judgment != nil {
+		return *f.Judgment, use, nil
 	}
-	wanted := map[string]bool{}
-	var missing []string
-	for _, w := range want {
-		wanted[w] = true
-		if !have[w] {
-			missing = append(missing, w)
-		}
-	}
-	for _, w := range fold(in.Expected) {
-		wanted[w] = true
-	}
-	var off []string
-	for _, w := range strings.Fields(in.Answer) {
-		k := strings.Join(fold(w), "")
-		if k != "" && !wanted[k] && !stop[k] {
-			off = append(off, w)
-		}
-	}
-	switch {
-	case len(want) > 0 && len(missing) == 0:
-		return Judgment{Verdict: srs.Right, Reason: "That matches the answer."}, use, nil
-	case len(missing) < len(want) || (len(want) == 0 && len(got) > 0):
-		reason := fmt.Sprintf("Part of it is there; the answer is “%s”.", in.Expected)
-		return Judgment{Verdict: srs.Close, Reason: reason, Close: off}, use, nil
-	default:
-		return Judgment{Verdict: srs.Missed, Reason: fmt.Sprintf("The answer is “%s”.", in.Expected)}, use, nil
-	}
+	return Judgment{Verdict: srs.Right, Reason: "Test fixture: right (not an assessment of your answer)."}, use, nil
 }
 
 // books is the small shelf the test model can turn into core ideas.

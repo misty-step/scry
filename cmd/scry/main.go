@@ -100,7 +100,7 @@ func build(log *slog.Logger) (*app.App, error) {
 
 	// Alerts: a webhook if one is configured, the log otherwise.
 	var notifier alert.Notifier = alert.Log{Logger: log}
-	if url := env("ALERT_WEBHOOK_URL", ""); url != "" {
+	if url := env("ALERT_WEBHOOK_URL", ""); url != "" && !test {
 		notifier = alert.Webhook{URL: url, Logger: log}
 	} else if !test {
 		log.Warn("ALERT_WEBHOOK_URL is not set: alerts go to the log only")
@@ -194,8 +194,8 @@ func serve(log *slog.Logger) error {
 }
 
 // healthcheck asks the running server how it is. The container's
-// HEALTHCHECK runs it, so an unhealthy Scry is restarted without anyone
-// being asked.
+// HEALTHCHECK runs it. The deployment supervisor must restart unhealthy
+// containers; Docker restart policies alone only restart exited processes.
 func healthcheck() error {
 	client := &http.Client{Timeout: 4 * time.Second}
 	resp, err := client.Get("http://127.0.0.1:" + env("PORT", "8080") + "/healthz")

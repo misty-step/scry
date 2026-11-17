@@ -440,6 +440,9 @@ func TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinu
 	end := b.finish(func(it store.Item) string {
 		n++
 		if n == 3 || n == 5 {
+			w.model.mu.Lock()
+			w.model.script = append(w.model.script, ai.Judgment{Verdict: srs.Missed, Reason: "Scripted miss: revisit tomorrow."})
+			w.model.mu.Unlock()
 			return "no idea"
 		}
 		return it.Answer
