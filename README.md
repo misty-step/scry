@@ -1,10 +1,12 @@
 # Scry
 
+> **Product contract (2026-11-17):** [PRODUCT.md](PRODUCT.md) is the product contract and [DESIGN.md](DESIGN.md) the visual one; the Go recompile reads only those two. `SPEC.md` and `VISION.md` are retired history under [docs/history/2026-11-17-retired](docs/history/2026-11-17-retired/README.md); they describe the current Rust code and matter only when maintaining it.
+
 Scry helps its owner memorize externally authored knowledge. Home leads to
 native review or the supplied NATO starter; Library is secondary. External
 agents supply content, while Scry grades answers and schedules recall. Native
 content generation is retired. Existing exact-text and concept-notebook
-material, interrupted practice and history remain preserved. [SPEC](SPEC.md)
+material, interrupted practice and history remain preserved. [SPEC](docs/history/2026-11-17-retired/SPEC.md)
 is the present-tense target state.
 
 The application in this checkout is a ground-up **Rust + Cloudflare Workers**
@@ -26,7 +28,7 @@ For the current origin and remaining proof, read the runbook's
 [dated promotion observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
 and the [current deployment procedure](docs/rust-cloudflare.md#reviewable-release-procedure).
 
-[Product intent](VISION.md) · [Specification](SPEC.md) ·
+[Product intent](docs/history/2026-11-17-retired/VISION.md) · [Specification](docs/history/2026-11-17-retired/SPEC.md) ·
 [Design](DESIGN.md) · [Features](features/README.md) ·
 [Verification](docs/qa/system.md) · [Current production operations](docs/runbook.md)
 
@@ -41,7 +43,7 @@ state: initiative [#273](https://github.com/misty-step/scry/issues/273) tracks i
 child issues. Legacy MIS, Linear, Powder and Glass identities are provenance. Link accepted
 scope, exact source, tests, and remaining evidence from the session/PR.
 
-[DESIGN](DESIGN.md) governs visual decisions; [SPEC](SPEC.md) alone governs
+[DESIGN](DESIGN.md) governs visual decisions; [SPEC](docs/history/2026-11-17-retired/SPEC.md) alone governs
 behavior. Do not synchronize requirements into work instructions or feature maps.
 
 ## Develop
@@ -115,7 +117,7 @@ source endpoints alone do not establish deployed recovery support.
 ## Durable boundaries
 
 [ADR 004](docs/adr/004-rust-cloudflare-candidate.md) owns architecture and module
-boundaries. [SPEC](SPEC.md#invariants) owns learning, privacy,
+boundaries. [SPEC](docs/history/2026-11-17-retired/SPEC.md#invariants) owns learning, privacy,
 spend and recovery policies; this entrypoint is not another copy.
 
 ## Deployment
