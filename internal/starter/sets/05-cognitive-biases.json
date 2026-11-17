@@ -1,0 +1,73 @@
+{
+  "slug": "cognitive-biases",
+  "title": "Cognitive biases",
+  "description": "Name the common errors of judgment and spot them in everyday decisions.",
+  "ideas": [
+    {
+      "title": "Two systems and heuristics",
+      "summary": "Fast intuitive thinking runs on shortcuts that usually work and sometimes fail in predictable ways.",
+      "links": ["Anchoring and framing", "Availability and base rates"],
+      "items": [
+        {"q": "In Daniel Kahneman's \"Thinking, Fast and Slow\", what is System 1?", "a": "Fast, automatic, intuitive thinking"},
+        {"q": "In Daniel Kahneman's \"Thinking, Fast and Slow\", what is System 2?", "a": "Slow, effortful, deliberate thinking"},
+        {"q": "In the psychology of judgment, what is a heuristic?", "a": "A mental shortcut that gives a quick answer that is usually good enough"},
+        {"q": "Which two psychologists launched the study of heuristics and biases in the 1970s?", "a": "Daniel Kahneman and Amos Tversky"}
+      ]
+    },
+    {
+      "title": "Anchoring and framing",
+      "summary": "The first number we hear and the way a choice is worded shift our judgment more than they should.",
+      "links": ["Two systems and heuristics", "Loss aversion and sunk costs"],
+      "items": [
+        {"q": "What is the anchoring effect?", "a": "Estimates are pulled toward the first number we encounter, even an irrelevant one"},
+        {"q": "A shop lists a $900 jacket first so the $300 one feels cheap. Which bias is it relying on?", "a": "Anchoring"},
+        {"q": "What is the framing effect?", "a": "The same facts lead to different choices depending on how they are presented"},
+        {"q": "Shoppers rate beef labeled \"75% lean\" more highly than the same beef labeled \"25% fat\". Which effect is this?", "a": "The framing effect"}
+      ]
+    },
+    {
+      "title": "Availability and base rates",
+      "summary": "We judge likelihood by the examples that come to mind, and overlook how common a thing really is and what we never see.",
+      "links": ["Two systems and heuristics", "mental-models:Odds, payoffs and base rates"],
+      "items": [
+        {"q": "What is the availability heuristic?", "a": "Judging how likely something is by how easily examples come to mind"},
+        {"q": "After news of a plane crash, people overestimate the danger of flying. Which heuristic explains this?", "a": "The availability heuristic"},
+        {"q": "What is base rate neglect?", "a": "Ignoring how common something is in general and judging only from the details of the case"},
+        {"q": "What is the gambler's fallacy?", "a": "Believing that a run of one outcome makes the opposite due, when each event is independent"},
+        {"q": "Studying bombers that returned from wartime missions, Abraham Wald advised armoring the places with no bullet holes. Which bias was he avoiding?", "a": "Survivorship bias"}
+      ]
+    },
+    {
+      "title": "Confirmation and overconfidence",
+      "summary": "We look for evidence that we are right, feel afterwards that we knew it all along, and trust our forecasts too much.",
+      "links": ["Availability and base rates", "psychology:Social influence"],
+      "items": [
+        {"q": "What is confirmation bias?", "a": "The tendency to seek, notice and remember evidence that supports what we already believe"},
+        {"q": "After his team loses, a fan who predicted a win says the defeat was obvious all along. Which bias is this?", "a": "Hindsight bias"},
+        {"q": "Which fallacy, named by Kahneman and Tversky, is underestimating how long your own project will take?", "a": "The planning fallacy"},
+        {"q": "What does it mean for a person's judgments to be well calibrated?", "a": "Their confidence matches their accuracy: of the things they call 80% likely, about 80% happen"}
+      ]
+    },
+    {
+      "title": "Loss aversion and sunk costs",
+      "summary": "Losses hurt more than equal gains please, so we cling to what we have and to what we have already spent.",
+      "links": ["Anchoring and framing", "economics:Scarcity and opportunity cost"],
+      "items": [
+        {"q": "What is loss aversion?", "a": "Losing something hurts more than gaining the same thing pleases, often put at about twice as much"},
+        {"q": "What is the sunk cost fallacy?", "a": "Carrying on with something because of what you have already spent, though that cost cannot be recovered"},
+        {"q": "What is the endowment effect?", "a": "Valuing something more highly simply because you own it"},
+        {"q": "You sit through a film you dislike because you paid for the ticket. Which fallacy is this?", "a": "The sunk cost fallacy"}
+      ]
+    },
+    {
+      "title": "Judging other people",
+      "summary": "We explain other people's behavior by their character rather than their situation, and let one trait color the rest.",
+      "links": ["Confirmation and overconfidence", "psychology:Social influence"],
+      "items": [
+        {"q": "What is the fundamental attribution error?", "a": "Explaining other people's behavior by their character while underrating the situation they are in"},
+        {"q": "What is the halo effect?", "a": "One good trait, such as attractiveness, colors our judgment of a person's other qualities"},
+        {"q": "A driver cuts in front of you and you think \"what a selfish person\", not \"perhaps there is an emergency\". Which error is this?", "a": "The fundamental attribution error"}
+      ]
+    }
+  ]
+}

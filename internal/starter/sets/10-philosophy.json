@@ -1,0 +1,66 @@
+{
+  "slug": "philosophy",
+  "title": "Core ideas in philosophy",
+  "description": "The big questions of knowledge, ethics, mind and justice, and who said what about them.",
+  "ideas": [
+    {
+      "title": "Knowledge and doubt",
+      "summary": "Epistemology asks what we can know and how: by reason, by experience, or by some blend of the two.",
+      "links": ["Mind, self and freedom", "logic-and-fallacies:Arguments and their parts"],
+      "items": [
+        {"q": "What is the traditional three-part analysis of knowledge in philosophy?", "a": "Justified true belief"},
+        {"q": "Which philosopher wrote \"cogito, ergo sum\" (\"I think, therefore I am\")?", "a": "René Descartes"},
+        {"q": "In the theory of knowledge, what is the difference between rationalism and empiricism?", "a": "Rationalists ground knowledge in reason; empiricists ground it in sense experience"},
+        {"q": "In philosophy, what is a priori knowledge?", "a": "Knowledge that does not depend on experience, such as mathematics and logic"},
+        {"q": "Which Scottish philosopher posed the problem of induction: that past experience cannot prove the future will resemble the past?", "a": "David Hume"}
+      ]
+    },
+    {
+      "title": "Three theories of right action",
+      "summary": "Ethical theories differ on what makes an act right: its results, its conformity to duty, or the character it expresses.",
+      "links": ["The ancient schools", "Justice and the social contract"],
+      "items": [
+        {"q": "According to utilitarianism, what makes an action right?", "a": "It produces the greatest happiness, or well-being, for the greatest number"},
+        {"q": "Which two English philosophers are the classic founders of utilitarianism?", "a": "Jeremy Bentham and John Stuart Mill"},
+        {"q": "What does Kant's categorical imperative command, in its universal-law form?", "a": "Act only on a maxim that you could will to become a universal law"},
+        {"q": "What does virtue ethics, the approach associated with Aristotle, treat as the central question of ethics?", "a": "What kind of person to be: good character, rather than rules or outcomes"},
+        {"q": "In Aristotle's ethics, what is the doctrine of the mean?", "a": "Each virtue lies between two vices, one of excess and one of deficiency, as courage lies between rashness and cowardice"}
+      ]
+    },
+    {
+      "title": "The ancient schools",
+      "summary": "Socrates and Plato set the questions, and the Stoics and Epicureans turned philosophy into a way of living.",
+      "links": ["Three theories of right action", "rhetoric-and-writing:The three appeals"],
+      "items": [
+        {"q": "What is the Socratic method?", "a": "Testing a belief with a series of probing questions that expose its contradictions"},
+        {"q": "What does Plato's allegory of the cave illustrate?", "a": "That what we ordinarily perceive is like shadows of a truer reality, which philosophy helps us to see"},
+        {"q": "What did the Stoics teach about things that lie outside our control?", "a": "Accept them calmly; only our own judgments and actions are up to us"},
+        {"q": "Which Roman emperor wrote the Stoic notebook known as the \"Meditations\"?", "a": "Marcus Aurelius"},
+        {"q": "What did Epicurus hold to be the goal of life?", "a": "Pleasure, understood as tranquility and freedom from pain and fear"}
+      ]
+    },
+    {
+      "title": "Mind, self and freedom",
+      "summary": "Philosophy of mind asks how thought relates to the body, what makes a thing the same over time, and whether choice is free.",
+      "links": ["Knowledge and doubt"],
+      "items": [
+        {"q": "What is mind-body dualism, the view defended by Descartes?", "a": "Mind and body are two distinct kinds of substance"},
+        {"q": "In the debate about free will, what is compatibilism?", "a": "The view that free will and determinism can both be true"},
+        {"q": "What is the \"hard problem of consciousness\", as named by David Chalmers?", "a": "Explaining why physical processes in the brain are accompanied by subjective experience"},
+        {"q": "Which ancient puzzle asks whether a ship is still the same ship after every one of its planks has been replaced?", "a": "The Ship of Theseus"}
+      ]
+    },
+    {
+      "title": "Justice and the social contract",
+      "summary": "Political philosophy asks what makes authority legitimate and what a just society owes its members.",
+      "links": ["Three theories of right action"],
+      "items": [
+        {"q": "In political philosophy, what is the social contract?", "a": "The idea that government's authority rests on an agreement, actual or implied, among the governed"},
+        {"q": "Which philosopher, in \"Leviathan\" (1651), called life without government \"solitary, poor, nasty, brutish, and short\"?", "a": "Thomas Hobbes"},
+        {"q": "Which three natural rights did John Locke say government exists to protect?", "a": "Life, liberty and property"},
+        {"q": "In John Rawls's \"A Theory of Justice\", what is the veil of ignorance?", "a": "Choosing the rules of society without knowing what place you will hold in it"},
+        {"q": "What is John Stuart Mill's harm principle?", "a": "Power may rightly be used over a person against their will only to prevent harm to others"}
+      ]
+    }
+  ]
+}

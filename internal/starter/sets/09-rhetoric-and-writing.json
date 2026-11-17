@@ -1,0 +1,55 @@
+{
+  "slug": "rhetoric-and-writing",
+  "title": "Rhetoric and clear writing",
+  "description": "The classical tools of persuasion and the plain rules that make prose easy to read.",
+  "ideas": [
+    {
+      "title": "The three appeals",
+      "summary": "Aristotle held that we persuade through character, emotion and reasoning: ethos, pathos and logos.",
+      "links": ["Figures of speech", "logic-and-fallacies:Fallacies of relevance", "latin-and-greek-roots:Greek roots for words and knowing"],
+      "items": [
+        {"q": "In Aristotle's account of rhetoric, what is ethos?", "a": "Persuasion through the speaker's character and credibility"},
+        {"q": "In Aristotle's account of rhetoric, what is pathos?", "a": "Persuasion by appeal to the audience's emotions"},
+        {"q": "In Aristotle's account of rhetoric, what is logos?", "a": "Persuasion through reasoning and evidence"},
+        {"q": "A speaker mentions her twenty years as a surgeon before giving medical advice. Which of Aristotle's three appeals is she using?", "a": "Ethos"},
+        {"q": "In classical rhetoric, what is kairos?", "a": "The right or opportune moment to say something"}
+      ]
+    },
+    {
+      "title": "Figures of speech",
+      "summary": "Named patterns of repetition, contrast and comparison are what make a sentence stay in the mind.",
+      "links": ["The three appeals", "Plain style"],
+      "items": [
+        {"q": "Churchill's \"we shall fight on the beaches, we shall fight on the landing grounds\" uses which figure of repetition?", "a": "Anaphora: repeating the same words at the start of successive clauses"},
+        {"q": "\"Ask not what your country can do for you; ask what you can do for your country.\" Which figure reverses its terms like this?", "a": "Chiasmus (strictly, antimetabole)"},
+        {"q": "What is the difference between a simile and a metaphor?", "a": "A simile compares using \"like\" or \"as\"; a metaphor says one thing is another"},
+        {"q": "What is litotes?", "a": "Understatement that affirms something by denying its opposite, as in \"not bad\""},
+        {"q": "In rhetoric, what is a tricolon?", "a": "A series of three parallel words, phrases or clauses, as in \"veni, vidi, vici\""},
+        {"q": "What is metonymy?", "a": "Naming something by a thing closely associated with it, as \"the crown\" for the monarchy"}
+      ]
+    },
+    {
+      "title": "Plain style",
+      "summary": "Clear prose prefers short words, active verbs and concrete nouns, and cuts whatever does no work.",
+      "links": ["Structure and the reader", "words-worth-owning:Words for how people speak"],
+      "items": [
+        {"q": "Which short style guide by Strunk and White contains the rule \"omit needless words\"?", "a": "The Elements of Style"},
+        {"q": "Which 1946 essay by George Orwell argues that stale, vague prose corrupts thought?", "a": "Politics and the English Language"},
+        {"q": "In grammar, what is the difference between the active and the passive voice?", "a": "In the active the subject does the action; in the passive the subject receives it"},
+        {"q": "Put this sentence into the active voice: \"Mistakes were made by the committee.\"", "a": "The committee made mistakes."},
+        {"q": "In writing advice, what is a nominalization?", "a": "A verb or adjective turned into an abstract noun, such as \"implementation\" for \"implement\""}
+      ]
+    },
+    {
+      "title": "Structure and the reader",
+      "summary": "Good writing is arranged for the reader: the point comes early and each paragraph does one job.",
+      "links": ["Plain style", "cognitive-biases:Confirmation and overconfidence"],
+      "items": [
+        {"q": "In a paragraph, what is a topic sentence?", "a": "The sentence, usually the first, that states the paragraph's main point"},
+        {"q": "What does the journalists' warning \"don't bury the lede\" mean?", "a": "Put the most important point at the start, not deep inside the piece"},
+        {"q": "What is the curse of knowledge, which Steven Pinker blames for much unclear writing?", "a": "The difficulty of imagining what it is like not to know something that you know"},
+        {"q": "In writing, what is parallel structure?", "a": "Giving the items in a list or pair the same grammatical form"}
+      ]
+    }
+  ]
+}

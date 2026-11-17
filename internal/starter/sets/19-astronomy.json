@@ -1,0 +1,73 @@
+{
+  "slug": "astronomy",
+  "title": "Core ideas in astronomy",
+  "description": "The scale and story of the universe, from the solar system to the Big Bang.",
+  "ideas": [
+    {
+      "title": "The solar system",
+      "summary": "Eight planets orbit the Sun, held by its gravity, in a system about 4.6 billion years old.",
+      "links": ["Earth, Moon and sky", "physics:Gravity", "earth-and-climate:Earth's layers and age"],
+      "items": [
+        {"q": "About how old is the solar system?", "a": "About 4.6 billion years"},
+        {"q": "In astronomy, what is an astronomical unit (AU)?", "a": "The average distance from Earth to the Sun, about 150 million km"},
+        {"q": "About how long does light from the Sun take to reach Earth?", "a": "About 8 minutes"},
+        {"q": "According to Kepler's first law, what shape is a planet's orbit around the Sun?", "a": "An ellipse, with the Sun at one focus"}
+      ]
+    },
+    {
+      "title": "Earth, Moon and sky",
+      "summary": "Seasons, phases and eclipses all follow from how the Earth and Moon move and tilt in the light of the Sun.",
+      "links": ["The solar system", "earth-and-climate:Atmosphere and oceans"],
+      "items": [
+        {"q": "What causes the seasons on Earth?", "a": "The tilt of Earth's axis, about 23.5 degrees, and not its distance from the Sun"},
+        {"q": "What causes the phases of the Moon?", "a": "As the Moon orbits Earth, we see different amounts of its sunlit half"},
+        {"q": "How are the Sun, Moon and Earth arranged during a solar eclipse?", "a": "The Moon passes directly between the Sun and Earth"},
+        {"q": "Which astronomer published, in 1543, the model in which Earth and the other planets orbit the Sun?", "a": "Nicolaus Copernicus"}
+      ]
+    },
+    {
+      "title": "Stars",
+      "summary": "A star is a ball of hot gas that shines by nuclear fusion, and its mass decides how it lives and how it ends.",
+      "links": ["Light and distance", "chemistry:Atoms and elements", "physics:Relativity and the quantum"],
+      "items": [
+        {"q": "What process powers the Sun and other stars like it?", "a": "Nuclear fusion of hydrogen into helium in the core"},
+        {"q": "What kind of dense remnant will the Sun leave behind after its red giant phase?", "a": "A white dwarf"},
+        {"q": "What is the explosion that ends the life of a very massive star called?", "a": "A supernova"},
+        {"q": "Where were elements such as carbon and oxygen originally made?", "a": "Inside stars, by nuclear fusion"}
+      ]
+    },
+    {
+      "title": "Light and distance",
+      "summary": "Nearly all we know of the sky comes from its light, and to look far away is to look back in time.",
+      "links": ["Stars", "Galaxies and the expanding universe", "physics:Electromagnetism and light"],
+      "items": [
+        {"q": "In astronomy, what is a light-year?", "a": "The distance light travels in one year, about 9.5 trillion km"},
+        {"q": "Which star is nearest to the Sun, and about how far away is it?", "a": "Proxima Centauri, about 4.2 light-years away"},
+        {"q": "Which technique spreads starlight into its colors to show what a star is made of?", "a": "Spectroscopy"},
+        {"q": "In astronomy, what is redshift?", "a": "The stretching of light to longer wavelengths, as when its source is moving away from us"}
+      ]
+    },
+    {
+      "title": "Galaxies and the expanding universe",
+      "summary": "Stars gather in galaxies by the hundreds of billions, and the galaxies are moving apart as space expands.",
+      "links": ["Light and distance", "The Big Bang"],
+      "items": [
+        {"q": "What is the name of the galaxy that contains the Sun?", "a": "The Milky Way"},
+        {"q": "Roughly how many stars does the Milky Way galaxy contain?", "a": "A few hundred billion (estimates run from 100 to 400 billion)"},
+        {"q": "Which is the nearest large galaxy to the Milky Way, and about how far away is it?", "a": "The Andromeda galaxy, about 2.5 million light-years away"},
+        {"q": "What did Edwin Hubble's observations of distant galaxies show in 1929?", "a": "The farther away a galaxy is, the faster it recedes from us, so the universe is expanding"}
+      ]
+    },
+    {
+      "title": "The Big Bang",
+      "summary": "The universe began hot and dense about 13.8 billion years ago and has been expanding and cooling ever since.",
+      "links": ["Galaxies and the expanding universe", "Stars"],
+      "items": [
+        {"q": "About how old is the universe?", "a": "About 13.8 billion years"},
+        {"q": "What is the cosmic microwave background?", "a": "The faint afterglow of the hot early universe, released about 380,000 years after the Big Bang"},
+        {"q": "What are the two most abundant elements in the universe?", "a": "Hydrogen and helium"},
+        {"q": "What name is given to the unseen matter that astronomers infer from its gravitational pull on galaxies?", "a": "Dark matter"}
+      ]
+    }
+  ]
+}

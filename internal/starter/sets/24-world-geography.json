@@ -1,0 +1,66 @@
+{
+  "slug": "world-geography",
+  "title": "World geography",
+  "description": "The continents, oceans, great rivers and capitals you need to picture the world map.",
+  "ideas": [
+    {
+      "title": "Continents and oceans",
+      "summary": "The land is conventionally divided into seven continents and the sea into five oceans.",
+      "links": ["Lines on the globe", "Countries and capitals"],
+      "items": [
+        {"q": "Which continent is the largest in both area and population?", "a": "Asia"},
+        {"q": "Which is the largest and deepest of the world's oceans?", "a": "The Pacific Ocean"},
+        {"q": "Which continent is the smallest by land area?", "a": "Australia (Oceania)"},
+        {"q": "Which continent has the most countries?", "a": "Africa, with 54"},
+        {"q": "Which ocean lies between Africa and Australia?", "a": "The Indian Ocean"}
+      ]
+    },
+    {
+      "title": "Lines on the globe",
+      "summary": "Latitude measures north and south of the equator; longitude measures east and west of the prime meridian.",
+      "links": ["Continents and oceans"],
+      "items": [
+        {"q": "What do lines of latitude measure on a globe?", "a": "Distance north or south of the equator, in degrees"},
+        {"q": "Through which district of London does the prime meridian, 0 degrees longitude, pass?", "a": "Greenwich"},
+        {"q": "At about what latitude do the Tropic of Cancer and the Tropic of Capricorn lie?", "a": "About 23.5 degrees north and 23.5 degrees south"},
+        {"q": "Which line of longitude does the International Date Line roughly follow?", "a": "The 180th meridian (180 degrees)"}
+      ]
+    },
+    {
+      "title": "Mountains, rivers and deserts",
+      "summary": "A few great features anchor the physical map: the Himalayas and Andes, the Nile and Amazon, the Sahara.",
+      "links": ["Continents and oceans", "world-history:Farming and the first cities"],
+      "items": [
+        {"q": "What is the highest mountain on Earth above sea level, and in which range does it stand?", "a": "Mount Everest, in the Himalayas"},
+        {"q": "Which river carries more water than any other on Earth?", "a": "The Amazon"},
+        {"q": "Which river, flowing north through Egypt to the Mediterranean, is the longest in Africa?", "a": "The Nile"},
+        {"q": "What is the longest mountain range on land, running down the western edge of South America?", "a": "The Andes"},
+        {"q": "What is the largest hot desert in the world?", "a": "The Sahara, in North Africa"}
+      ]
+    },
+    {
+      "title": "Countries and capitals",
+      "summary": "Some capitals and superlatives are worth knowing cold, especially the ones people often get wrong.",
+      "links": ["Continents and oceans"],
+      "items": [
+        {"q": "Which country is the largest in the world by area?", "a": "Russia"},
+        {"q": "Which two countries are by far the most populous in the world?", "a": "India and China"},
+        {"q": "What is the capital of Australia?", "a": "Canberra"},
+        {"q": "What is the capital of Canada?", "a": "Ottawa"},
+        {"q": "What is the capital of Brazil?", "a": "Brasília"},
+        {"q": "What is the capital of Turkey?", "a": "Ankara"}
+      ]
+    },
+    {
+      "title": "Straits and canals",
+      "summary": "Narrow passages, natural and dug, join the seas and carry much of the world's shipping.",
+      "links": ["Continents and oceans", "Mountains, rivers and deserts"],
+      "items": [
+        {"q": "Which canal, opened in 1869, links the Mediterranean Sea to the Red Sea?", "a": "The Suez Canal"},
+        {"q": "Which canal, opened in 1914, links the Atlantic and Pacific Oceans across Central America?", "a": "The Panama Canal"},
+        {"q": "Which strait separates Spain from Morocco and joins the Atlantic Ocean to the Mediterranean Sea?", "a": "The Strait of Gibraltar"},
+        {"q": "Which strait separates Russia from Alaska, and so Asia from North America?", "a": "The Bering Strait"}
+      ]
+    }
+  ]
+}

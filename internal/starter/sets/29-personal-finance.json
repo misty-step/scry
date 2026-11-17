@@ -1,0 +1,73 @@
+{
+  "slug": "personal-finance",
+  "title": "Personal finance",
+  "description": "The few principles that do most of the work in saving, borrowing and investing.",
+  "ideas": [
+    {
+      "title": "Compound interest",
+      "summary": "Money that earns interest on its interest grows faster each year, so starting early matters a great deal.",
+      "links": ["APR and APY", "Debt", "Inflation and real return"],
+      "items": [
+        {"q": "What is compound interest?", "a": "Interest earned on both the original amount and the interest already added to it"},
+        {"q": "What is the rule of 72?", "a": "Divide 72 by the annual interest rate to estimate the years it takes money to double"},
+        {"q": "By the rule of 72, about how long does money take to double at 6% a year?", "a": "About 12 years"},
+        {"q": "By the rule of 72, what annual return doubles your money in about 9 years?", "a": "About 8%"},
+        {"q": "Why does starting to save ten years earlier make such a large difference to the final sum?", "a": "The early money compounds for longer, and most compound growth comes in the later years"}
+      ]
+    },
+    {
+      "title": "APR and APY",
+      "summary": "APR states a yearly rate without compounding; APY includes compounding and shows what you really earn or pay.",
+      "links": ["Compound interest", "Debt"],
+      "items": [
+        {"q": "What does APR stand for?", "a": "Annual percentage rate"},
+        {"q": "What does APY stand for, and what does it include that APR does not?", "a": "Annual percentage yield; it includes the effect of compounding"},
+        {"q": "A credit card charges 24% APR. Roughly what rate is that per month?", "a": "About 2% per month"},
+        {"q": "Which figure should you compare when choosing between savings accounts, and why?", "a": "The APY, because it includes compounding and shows what you will actually earn"}
+      ]
+    },
+    {
+      "title": "The emergency fund",
+      "summary": "A cash reserve of a few months' expenses lets you absorb a shock without borrowing or selling investments.",
+      "links": ["Debt", "Index funds and diversification"],
+      "items": [
+        {"q": "How many months of essential expenses is an emergency fund commonly meant to cover?", "a": "Three to six months"},
+        {"q": "Where is an emergency fund best kept?", "a": "Somewhere safe and easy to reach, such as a savings account, not in stocks"},
+        {"q": "What is an emergency fund for?", "a": "Unexpected, necessary costs such as a lost job, a medical bill or an urgent repair"},
+        {"q": "In finance, what does liquidity mean?", "a": "How quickly and cheaply something can be turned into cash"}
+      ]
+    },
+    {
+      "title": "Index funds and diversification",
+      "summary": "An index fund buys a whole market cheaply, spreading risk across many holdings instead of betting on a few.",
+      "links": ["Compound interest", "Inflation and real return"],
+      "items": [
+        {"q": "What is an index fund?", "a": "A fund that holds the securities in a market index, aiming to match its return, not beat it"},
+        {"q": "In investing, what is diversification?", "a": "Spreading money across many investments so that no single loss does serious harm"},
+        {"q": "What is a fund's expense ratio?", "a": "The yearly fee, as a percentage of the money you have invested in the fund"},
+        {"q": "What is the difference between a stock and a bond?", "a": "A stock is a share of ownership in a company; a bond is a loan to a company or government"},
+        {"q": "What is dollar-cost averaging?", "a": "Investing a fixed amount at regular intervals, whatever the price"}
+      ]
+    },
+    {
+      "title": "Debt",
+      "summary": "Interest on debt compounds against you, so high-rate debt is usually the first thing to clear.",
+      "links": ["Compound interest", "APR and APY", "The emergency fund"],
+      "items": [
+        {"q": "To pay the least interest overall, which of several debts should you pay off first?", "a": "The one with the highest interest rate (the avalanche method)"},
+        {"q": "What is the debt snowball method?", "a": "Paying off the smallest balance first, to build momentum, while paying the minimum on the rest"},
+        {"q": "Why is paying only the minimum on a credit card costly?", "a": "Most of each payment goes to interest, so the balance shrinks slowly and the total interest is large"}
+      ]
+    },
+    {
+      "title": "Inflation and real return",
+      "summary": "Inflation erodes what money buys, so what counts is the return you earn above it.",
+      "links": ["Compound interest", "Index funds and diversification"],
+      "items": [
+        {"q": "What is inflation?", "a": "A general rise in prices over time, which reduces what each unit of money can buy"},
+        {"q": "What is the real return on an investment?", "a": "The return left after subtracting inflation"},
+        {"q": "If an investment returns 7% in a year when inflation is 3%, roughly what is the real return?", "a": "About 4%"}
+      ]
+    }
+  ]
+}

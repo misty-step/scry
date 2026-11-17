@@ -1,0 +1,66 @@
+{
+  "slug": "psychology",
+  "title": "Core ideas in psychology",
+  "description": "How people learn, remember, grow up and sway one another, and who found it out.",
+  "ideas": [
+    {
+      "title": "Learning by association and consequence",
+      "summary": "Behavior is shaped by pairing signals with events (classical conditioning) and by what follows an action (operant).",
+      "links": ["How memory works", "Personality and motivation"],
+      "items": [
+        {"q": "Which Russian physiologist discovered classical conditioning while studying digestion in dogs?", "a": "Ivan Pavlov"},
+        {"q": "What is classical conditioning?", "a": "Learning to respond to a neutral signal because it has been paired with something that naturally triggers the response"},
+        {"q": "What is operant conditioning, the kind of learning studied by B. F. Skinner?", "a": "Learning in which a behavior is strengthened or weakened by its consequences"},
+        {"q": "In operant conditioning, what is negative reinforcement?", "a": "Strengthening a behavior by taking away something unpleasant; it is not punishment"},
+        {"q": "A dog gets a treat each time it sits on command, and soon sits more often. Which kind of conditioning is this?", "a": "Operant conditioning (positive reinforcement)"},
+        {"q": "Which schedule of reinforcement, the one slot machines use, makes a behavior hardest to extinguish?", "a": "A variable-ratio schedule: reward after an unpredictable number of responses"}
+      ]
+    },
+    {
+      "title": "How memory works",
+      "summary": "Memory is encoded, stored and retrieved; it fades along a curve, and it is rebuilt rather than replayed when we recall.",
+      "links": ["Learning by association and consequence"],
+      "items": [
+        {"q": "What are the three stages of memory processing, in order?", "a": "Encoding, storage, retrieval"},
+        {"q": "Which German psychologist first measured the forgetting curve, in the 1880s?", "a": "Hermann Ebbinghaus"},
+        {"q": "In the psychology of memory, what is the spacing effect?", "a": "Material is remembered better when study is spread out over time than when it is crammed"},
+        {"q": "What is the testing effect, also called retrieval practice?", "a": "Recalling something from memory strengthens it more than rereading it does"},
+        {"q": "What did George Miller's 1956 paper give as the capacity of short-term memory?", "a": "About seven items, plus or minus two"},
+        {"q": "What did Elizabeth Loftus's misinformation experiments show about eyewitness memory?", "a": "Memories can be altered by leading questions and by information received after the event"}
+      ]
+    },
+    {
+      "title": "How children develop",
+      "summary": "Children's thinking and attachments develop in recognizable steps, charted by Piaget, Vygotsky and Bowlby.",
+      "links": ["Learning by association and consequence", "Personality and motivation"],
+      "items": [
+        {"q": "Which Swiss psychologist proposed that children's thinking develops through four stages, from sensorimotor to formal operational?", "a": "Jean Piaget"},
+        {"q": "In Piaget's theory of child development, what is object permanence?", "a": "Understanding that things continue to exist when they are out of sight"},
+        {"q": "What is Vygotsky's zone of proximal development?", "a": "The range of tasks a learner can do with help but cannot yet do alone"},
+        {"q": "What does attachment theory, developed by John Bowlby, claim?", "a": "An infant's early bond with a caregiver shapes later emotional and social development"}
+      ]
+    },
+    {
+      "title": "Social influence",
+      "summary": "Ordinary people conform, obey and stand by far more than they expect to, as classic experiments showed.",
+      "links": ["Personality and motivation", "cognitive-biases:Judging other people"],
+      "items": [
+        {"q": "What did Solomon Asch's line-judging experiments of the 1950s demonstrate?", "a": "Conformity: people often go along with a group's plainly wrong answer"},
+        {"q": "What did Stanley Milgram's shock experiments of the early 1960s show about obedience?", "a": "Many ordinary people will obey an authority even when told to give seemingly painful electric shocks"},
+        {"q": "In social psychology, what is the bystander effect?", "a": "The more people are present, the less likely any one of them is to help"},
+        {"q": "What is cognitive dissonance, the theory proposed by Leon Festinger?", "a": "The discomfort of holding conflicting beliefs, or acting against a belief, which we ease by changing one of them"}
+      ]
+    },
+    {
+      "title": "Personality and motivation",
+      "summary": "Trait psychology describes personality along five broad dimensions, and theories of motivation ask what moves us to act.",
+      "links": ["Learning by association and consequence", "Social influence"],
+      "items": [
+        {"q": "In the Big Five model of personality, which trait is the tendency to feel negative emotions such as anxiety?", "a": "Neuroticism"},
+        {"q": "Which Big Five personality trait describes being organized, dependable and self-disciplined?", "a": "Conscientiousness"},
+        {"q": "In Maslow's classic hierarchy of needs, which need sits at the top?", "a": "Self-actualization"},
+        {"q": "What is the difference between intrinsic and extrinsic motivation?", "a": "Intrinsic: doing something for its own sake; extrinsic: doing it for an outside reward or to avoid a penalty"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "slug": "music",
+  "title": "Core ideas in music",
+  "description": "The building blocks of music: intervals, scales, keys, chords, rhythm and form.",
+  "ideas": [
+    {
+      "title": "Intervals",
+      "summary": "An interval is the distance between two pitches, counted in semitones and named by its size and quality.",
+      "links": ["Scales", "Chords"],
+      "items": [
+        {"q": "In music, what is an interval?", "a": "The distance in pitch between two notes"},
+        {"q": "How many semitones are in an octave?", "a": "12"},
+        {"q": "How many semitones are in a perfect fifth?", "a": "7"},
+        {"q": "Which musical interval spans four semitones, such as C up to E?", "a": "A major third"}
+      ]
+    },
+    {
+      "title": "Scales",
+      "summary": "A scale is a ladder of notes within an octave; the major scale follows a fixed pattern of whole and half steps.",
+      "links": ["Intervals", "Keys and the circle of fifths"],
+      "items": [
+        {"q": "What is the pattern of whole and half steps in a major scale?", "a": "Whole, whole, half, whole, whole, whole, half"},
+        {"q": "Which major scale uses only the white keys of the piano?", "a": "C major"},
+        {"q": "How many different notes does a major scale have before the octave repeats?", "a": "Seven"},
+        {"q": "What is a scale with five notes to the octave called?", "a": "A pentatonic scale"}
+      ]
+    },
+    {
+      "title": "Keys and the circle of fifths",
+      "summary": "A key is a home note and its scale; moving up a fifth to the next key adds one sharp to the signature.",
+      "links": ["Scales", "Chords"],
+      "items": [
+        {"q": "In music, what is the tonic of a key?", "a": "The first note of its scale, the home note the music comes to rest on"},
+        {"q": "What is the relative minor of C major?", "a": "A minor"},
+        {"q": "How many sharps are in the key signature of G major, and on which note?", "a": "One sharp, F sharp"},
+        {"q": "On the circle of fifths, what happens to the key signature with each step clockwise?", "a": "It gains one sharp (or loses one flat)"}
+      ]
+    },
+    {
+      "title": "Chords",
+      "summary": "A chord is several notes sounded together; a triad stacks two thirds, and the chords on I, IV and V anchor a key.",
+      "links": ["Intervals", "Keys and the circle of fifths", "Form"],
+      "items": [
+        {"q": "Which notes make up a C major triad?", "a": "C, E and G"},
+        {"q": "What makes a triad major rather than minor?", "a": "Its third: a major third above the root, where a minor triad has a minor third"},
+        {"q": "What is the chord built on the fifth degree of a scale called?", "a": "The dominant"},
+        {"q": "In the key of C major, which chords are I, IV and V?", "a": "C major, F major and G major"}
+      ]
+    },
+    {
+      "title": "Rhythm and meter",
+      "summary": "Meter groups steady beats into measures; a time signature says how many beats and which note gets one.",
+      "links": ["Form"],
+      "items": [
+        {"q": "In 4/4 time, how many beats are in a measure, and which note gets one beat?", "a": "Four beats; the quarter note gets one"},
+        {"q": "In written music, what does a dot placed after a note do to its length?", "a": "It adds half the note's value"},
+        {"q": "In which time signature is a waltz written?", "a": "3/4"},
+        {"q": "In music, what is tempo, and in what unit is it measured?", "a": "The speed of the beat, in beats per minute"}
+      ]
+    },
+    {
+      "title": "Form",
+      "summary": "Form is the plan of a piece: which sections repeat, which contrast, and in what order.",
+      "links": ["Chords", "Rhythm and meter"],
+      "items": [
+        {"q": "What are the three main sections of sonata form?", "a": "Exposition, development and recapitulation"},
+        {"q": "Which musical form is described by the letters ABA?", "a": "Ternary form"},
+        {"q": "In music, what is a rondo?", "a": "A form in which a main theme keeps returning between contrasting sections, as in ABACA"},
+        {"q": "Which three chords does a standard twelve-bar blues use?", "a": "I, IV and V (the tonic, subdominant and dominant)"}
+      ]
+    }
+  ]
+}

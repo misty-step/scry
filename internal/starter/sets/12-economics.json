@@ -1,0 +1,66 @@
+{
+  "slug": "economics",
+  "title": "Core ideas in economics",
+  "description": "The handful of ideas economists use to explain prices, trade, incentives and growth.",
+  "ideas": [
+    {
+      "title": "Scarcity and opportunity cost",
+      "summary": "Because resources are limited, every choice has a cost: the best alternative you gave up.",
+      "links": ["Supply, demand and price", "Trade and specialization", "cognitive-biases:Loss aversion and sunk costs"],
+      "items": [
+        {"q": "In economics, what is opportunity cost?", "a": "The value of the best alternative you give up when you make a choice"},
+        {"q": "You skip a work shift that pays $80 to go to a free concert. In money terms, what is the concert's opportunity cost?", "a": "$80, the pay you gave up"},
+        {"q": "What does it mean to \"think at the margin\" in economics?", "a": "To weigh the extra benefit of one more unit against its extra cost"},
+        {"q": "What is the law of diminishing marginal utility?", "a": "Each additional unit of a good gives less extra satisfaction than the one before"},
+        {"q": "In economics, what is a sunk cost, and how should it affect a decision?", "a": "A cost already paid that cannot be recovered; it should be ignored when deciding what to do next"}
+      ]
+    },
+    {
+      "title": "Supply, demand and price",
+      "summary": "Prices move to balance what buyers want with what sellers offer, and they carry information to both.",
+      "links": ["Scarcity and opportunity cost", "When markets fail"],
+      "items": [
+        {"q": "What does the law of demand say?", "a": "Other things equal, when the price of a good rises, the quantity demanded falls"},
+        {"q": "In a market, what is the equilibrium price?", "a": "The price at which the quantity supplied equals the quantity demanded"},
+        {"q": "What results when a price ceiling, such as rent control, is set below the equilibrium price?", "a": "A shortage: the quantity demanded exceeds the quantity supplied"},
+        {"q": "A frost destroys much of the orange crop. What happens to the price of oranges, and why?", "a": "It rises, because supply has fallen while demand is unchanged"},
+        {"q": "Which Scottish economist described the \"invisible hand\" in \"The Wealth of Nations\" (1776)?", "a": "Adam Smith"}
+      ]
+    },
+    {
+      "title": "Trade and specialization",
+      "summary": "People and countries gain by specializing in what they give up least to produce, and trading for the rest.",
+      "links": ["Scarcity and opportunity cost"],
+      "items": [
+        {"q": "In economics, what is comparative advantage?", "a": "The ability to produce something at a lower opportunity cost than others can"},
+        {"q": "Which British economist set out the theory of comparative advantage in 1817?", "a": "David Ricardo"},
+        {"q": "What is the difference between absolute advantage and comparative advantage?", "a": "Absolute: producing more with the same resources; comparative: producing at a lower opportunity cost"},
+        {"q": "In Adam Smith's example of the pin factory, what makes the workers so much more productive?", "a": "The division of labor: each worker specializes in one step"}
+      ]
+    },
+    {
+      "title": "When markets fail",
+      "summary": "Markets misfire when costs fall on bystanders, when a resource is shared by all, or when someone else bears the risk.",
+      "links": ["Supply, demand and price", "mental-models:Second-order thinking"],
+      "items": [
+        {"q": "In economics, what is an externality?", "a": "A cost or benefit of an activity that falls on people who are not party to it"},
+        {"q": "A factory's smoke dirties its neighbors' laundry, and the factory pays nothing for it. What do economists call this cost?", "a": "A negative externality"},
+        {"q": "What is the tragedy of the commons?", "a": "A shared resource is overused because each user takes the full benefit while everyone shares the cost"},
+        {"q": "Which two properties define a public good?", "a": "Non-excludable and non-rival: no one can be shut out, and one person's use leaves no less for others"},
+        {"q": "In economics, what is moral hazard?", "a": "Taking more risk because someone else bears the cost, as people may when insured"}
+      ]
+    },
+    {
+      "title": "Money, growth and the whole economy",
+      "summary": "Macroeconomics tracks total output and the price level, and the tools governments and central banks use to steady them.",
+      "links": ["Supply, demand and price"],
+      "items": [
+        {"q": "What does gross domestic product (GDP) measure?", "a": "The market value of all final goods and services produced in a country in a given period"},
+        {"q": "In economics, what is inflation?", "a": "A sustained rise in the general level of prices"},
+        {"q": "What is the difference between fiscal policy and monetary policy?", "a": "Fiscal: government taxing and spending; monetary: the central bank's control of money and interest rates"},
+        {"q": "In economics, what is the difference between nominal and real values?", "a": "Real values are adjusted for inflation; nominal values are not"},
+        {"q": "By the rule of 72, roughly how long does an amount growing at 6% a year take to double?", "a": "About 12 years (72 divided by 6)"}
+      ]
+    }
+  ]
+}

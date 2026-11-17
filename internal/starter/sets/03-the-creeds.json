@@ -1,0 +1,74 @@
+{
+  "slug": "the-creeds",
+  "title": "The Creeds",
+  "description": "The Apostles' and Nicene Creeds, word for word, and where they came from.",
+  "ideas": [
+    {
+      "title": "Apostles' Creed",
+      "summary": "The short baptismal creed of the Western church, in its traditional English.",
+      "links": ["Nicene Creed", "Where the Creeds come from"],
+      "exact": {
+        "title": "Apostles' Creed",
+        "lines": [
+          "I believe in God the Father Almighty, Maker of heaven and earth:",
+          "And in Jesus Christ his only Son our Lord,",
+          "Who was conceived by the Holy Ghost, Born of the Virgin Mary,",
+          "Suffered under Pontius Pilate, Was crucified, dead, and buried:",
+          "He descended into hell;",
+          "The third day he rose again from the dead;",
+          "He ascended into heaven, And sitteth on the right hand of God the Father Almighty;",
+          "From thence he shall come to judge the quick and the dead.",
+          "I believe in the Holy Ghost;",
+          "The holy Catholic Church; The Communion of Saints;",
+          "The Forgiveness of sins;",
+          "The Resurrection of the body, And the Life everlasting. Amen."
+        ]
+      }
+    },
+    {
+      "title": "Nicene Creed",
+      "summary": "The creed of the councils of Nicaea and Constantinople, in the English of the 1662 prayer book.",
+      "links": ["Apostles' Creed", "Where the Creeds come from"],
+      "exact": {
+        "title": "Nicene Creed",
+        "lines": [
+          "I believe in one God the Father Almighty,",
+          "Maker of heaven and earth, And of all things visible and invisible:",
+          "And in one Lord Jesus Christ, the only-begotten Son of God,",
+          "Begotten of his Father before all worlds,",
+          "God of God, Light of Light, Very God of very God,",
+          "Begotten, not made, Being of one substance with the Father,",
+          "By whom all things were made:",
+          "Who for us men, and for our salvation came down from heaven,",
+          "And was incarnate by the Holy Ghost of the Virgin Mary, And was made man,",
+          "And was crucified also for us under Pontius Pilate.",
+          "He suffered and was buried,",
+          "And the third day he rose again according to the Scriptures,",
+          "And ascended into heaven, And sitteth on the right hand of the Father.",
+          "And he shall come again with glory to judge both the quick and the dead:",
+          "Whose kingdom shall have no end.",
+          "And I believe in the Holy Ghost, The Lord and giver of life,",
+          "Who proceedeth from the Father and the Son,",
+          "Who with the Father and the Son together is worshipped and glorified,",
+          "Who spake by the Prophets.",
+          "And I believe one Catholic and Apostolic Church.",
+          "I acknowledge one Baptism for the remission of sins.",
+          "And I look for the Resurrection of the dead,",
+          "And the life of the world to come. Amen."
+        ]
+      }
+    },
+    {
+      "title": "Where the Creeds come from",
+      "summary": "Two councils, one long argument about who Christ is, and a baptismal formula from Rome.",
+      "links": ["Nicene Creed"],
+      "items": [
+        {"q": "Which council first issued the Nicene Creed, and in what year?", "a": "The First Council of Nicaea, in 325"},
+        {"q": "Which council expanded the Nicene Creed into the form recited today, and in what year?", "a": "The First Council of Constantinople, in 381"},
+        {"q": "Which teaching, named for an Alexandrian priest, was the Nicene Creed written against?", "a": "Arianism, the teaching of Arius that the Son was created and not eternal"},
+        {"q": "What Greek word, rendered \"of one substance with the Father\", was the crux of the Nicene Creed?", "a": "Homoousios"},
+        {"q": "What is the filioque, the phrase that divides Eastern and Western versions of the Nicene Creed?", "a": "\"And the Son\": the West says the Spirit proceeds from the Father and the Son"}
+      ]
+    }
+  ]
+}

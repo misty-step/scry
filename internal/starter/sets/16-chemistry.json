@@ -1,0 +1,73 @@
+{
+  "slug": "chemistry",
+  "title": "Core ideas in chemistry",
+  "description": "How atoms, bonds and reactions work, and how to read the periodic table.",
+  "ideas": [
+    {
+      "title": "Atoms and elements",
+      "summary": "An atom is a nucleus of protons and neutrons with electrons around it, and the proton count sets the element.",
+      "links": ["The periodic table", "Chemical bonds", "astronomy:Stars"],
+      "items": [
+        {"q": "What does the atomic number of an element count?", "a": "The number of protons in the nucleus of each of its atoms"},
+        {"q": "In chemistry, what are isotopes?", "a": "Atoms of the same element with different numbers of neutrons"},
+        {"q": "In chemistry, what is an ion?", "a": "An atom or molecule with a net electric charge, from gaining or losing electrons"},
+        {"q": "Which element has atomic number 6?", "a": "Carbon"}
+      ]
+    },
+    {
+      "title": "The periodic table",
+      "summary": "Set out in order of atomic number, the elements fall into columns whose members behave alike.",
+      "links": ["Atoms and elements", "Chemical bonds"],
+      "items": [
+        {"q": "Which Russian chemist published his periodic table of the elements in 1869?", "a": "Dmitri Mendeleev"},
+        {"q": "What are the vertical columns of the periodic table called?", "a": "Groups"},
+        {"q": "What name is given to group 18 of the periodic table, the unreactive gases such as helium, neon and argon?", "a": "The noble gases"},
+        {"q": "Why do elements in the same group of the periodic table tend to react in similar ways?", "a": "They have the same number of outer (valence) electrons"}
+      ]
+    },
+    {
+      "title": "Chemical bonds",
+      "summary": "Atoms join by sharing or handing over electrons, and the kind of bond shapes how the substance behaves.",
+      "links": ["Atoms and elements", "The mole and reactions", "biology:DNA and the genetic code"],
+      "items": [
+        {"q": "What kind of chemical bond forms when two atoms share a pair of electrons?", "a": "A covalent bond"},
+        {"q": "What kind of chemical bond forms when one atom hands electrons to another, as in table salt?", "a": "An ionic bond"},
+        {"q": "What is the chemical formula of table salt?", "a": "NaCl (sodium chloride)"},
+        {"q": "Which attraction between water molecules gives water its unusually high boiling point?", "a": "Hydrogen bonding"}
+      ]
+    },
+    {
+      "title": "The mole and reactions",
+      "summary": "A reaction rearranges atoms without making or destroying any, and the mole is how chemists count them.",
+      "links": ["Chemical bonds", "Energy, rate and equilibrium"],
+      "items": [
+        {"q": "What is Avogadro's number, the number of particles in one mole?", "a": "About 6.022 x 10^23"},
+        {"q": "What does the law of conservation of mass say about a chemical reaction?", "a": "The total mass of the products equals the total mass of the reactants"},
+        {"q": "What is the balanced equation for hydrogen gas burning in oxygen to make water?", "a": "2 H2 + O2 -> 2 H2O"},
+        {"q": "What is the approximate molar mass of water, H2O?", "a": "About 18 grams per mole"}
+      ]
+    },
+    {
+      "title": "Energy, rate and equilibrium",
+      "summary": "A reaction gives out or takes in energy, runs at some rate, and may settle into a balance of both directions.",
+      "links": ["The mole and reactions", "Acids and bases", "physics:Heat and entropy"],
+      "items": [
+        {"q": "What is a chemical reaction called that releases heat to its surroundings?", "a": "Exothermic"},
+        {"q": "What does a catalyst do to a chemical reaction?", "a": "It speeds the reaction up by lowering the activation energy, without being used up"},
+        {"q": "In chemistry, what is dynamic equilibrium?", "a": "Forward and reverse reactions run at equal rates, so the concentrations stay constant"},
+        {"q": "What does Le Chatelier's principle say about a chemical system at equilibrium?", "a": "If a change is imposed on it, the system shifts in the direction that counteracts the change"}
+      ]
+    },
+    {
+      "title": "Acids and bases",
+      "summary": "Acids give up hydrogen ions and bases accept them, and pH measures the balance on a logarithmic scale.",
+      "links": ["Energy, rate and equilibrium", "mathematics:Exponentials and logarithms"],
+      "items": [
+        {"q": "What is the pH of pure water at 25 °C?", "a": "7"},
+        {"q": "On the pH scale, which values mark a solution as acidic?", "a": "Values below 7"},
+        {"q": "How does the hydrogen ion concentration of a solution change when its pH drops by one unit?", "a": "It becomes ten times greater"},
+        {"q": "In the Bronsted-Lowry definition, what is an acid?", "a": "A proton donor: a substance that gives up a hydrogen ion"}
+      ]
+    }
+  ]
+}

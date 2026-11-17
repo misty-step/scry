@@ -1,0 +1,66 @@
+{
+  "slug": "latin-and-greek-roots",
+  "title": "Latin and Greek roots",
+  "description": "Common roots and prefixes that let you work out words you have never seen.",
+  "ideas": [
+    {
+      "title": "Greek roots for words and knowing",
+      "summary": "Greek gave English its roots for word, writing, sound, time and study.",
+      "links": ["Greek roots for life and mind", "rhetoric-and-writing:The three appeals"],
+      "items": [
+        {"q": "What does the Greek root \"graph\" mean, as in \"biography\" and \"telegraph\"?", "a": "To write"},
+        {"q": "What does the ending \"-logy\" mean, as in \"geology\" and \"theology\"?", "a": "The study of (from Greek logos, word or reason)"},
+        {"q": "The Greek roots \"tele\" and \"phon\" make the word \"telephone\". What does each mean?", "a": "Tele means far; phon means sound"},
+        {"q": "What does the Greek root \"chron\" mean, as in \"chronic\" and \"synchronize\"?", "a": "Time"},
+        {"q": "From its Greek roots, what does the word \"philosophy\" literally mean?", "a": "Love of wisdom (philo, loving + sophia, wisdom)"}
+      ]
+    },
+    {
+      "title": "Greek roots for life and mind",
+      "summary": "A few Greek roots name human beings, the mind and feeling, and they combine freely with one another.",
+      "links": ["Greek roots for words and knowing", "Prefixes of good, bad and not"],
+      "items": [
+        {"q": "What does the Greek root \"anthrop\" mean, as in \"anthropology\" and \"philanthropy\"?", "a": "Human being"},
+        {"q": "What does the Greek root \"path\" mean, as in \"sympathy\" and \"pathology\"?", "a": "Feeling or suffering"},
+        {"q": "Which Greek root, meaning mind or soul, begins the words \"psychology\" and \"psychiatry\"?", "a": "Psych (from psyche)"},
+        {"q": "From its Greek roots, what does the word \"misanthrope\" literally mean?", "a": "A hater of humankind (misein, to hate + anthropos, human being)"}
+      ]
+    },
+    {
+      "title": "Latin roots for common actions",
+      "summary": "Latin verbs for say, look, carry, believe and lead sit inside hundreds of English words.",
+      "links": ["Prefixes of place and direction", "words-worth-owning:Words for thinking and judging"],
+      "items": [
+        {"q": "What does the Latin root \"dict\" mean, as in \"predict\" and \"dictate\"?", "a": "To say"},
+        {"q": "What does the Latin root \"spec\" or \"spect\" mean, as in \"inspect\" and \"spectator\"?", "a": "To look"},
+        {"q": "Which Latin root, meaning \"to carry\", is shared by \"transport\", \"portable\" and \"import\"?", "a": "Port (from portare)"},
+        {"q": "What does the Latin root \"cred\" mean, as in \"credible\" and \"creed\"?", "a": "To believe"},
+        {"q": "What does the Latin root \"duc\" or \"duct\" mean, as in \"conduct\" and \"aqueduct\"?", "a": "To lead"}
+      ]
+    },
+    {
+      "title": "Prefixes of place and direction",
+      "summary": "Prefixes such as sub-, super-, inter- and circum- say where something is or which way it goes.",
+      "links": ["Latin roots for common actions", "Prefixes of good, bad and not"],
+      "items": [
+        {"q": "What is the difference between the prefixes \"inter-\" and \"intra-\"?", "a": "Inter- means between; intra- means within"},
+        {"q": "What do the Greek prefixes \"hyper-\" and \"hypo-\" mean?", "a": "Hyper- means over or above; hypo- means under or below"},
+        {"q": "What do the Latin prefixes \"sub-\" and \"super-\" mean?", "a": "Sub- means under; super- means above or over"},
+        {"q": "What is the difference between the prefixes \"ante-\" and \"anti-\"?", "a": "Ante- means before; anti- means against"},
+        {"q": "From its Latin parts, what does the word \"circumspect\" literally mean?", "a": "Looking around (circum, around + spect, look)"}
+      ]
+    },
+    {
+      "title": "Prefixes of good, bad and not",
+      "summary": "Bene- and eu- mark the good, mal- and dys- the bad, and a- or an- the absent.",
+      "links": ["Prefixes of place and direction", "Greek roots for life and mind"],
+      "items": [
+        {"q": "What do the prefixes \"bene-\" (Latin) and \"eu-\" (Greek) both mean?", "a": "Good or well"},
+        {"q": "What do the prefixes \"mal-\" (Latin) and \"dys-\" (Greek) both mean?", "a": "Bad or badly"},
+        {"q": "What does the Greek prefix \"a-\" or \"an-\" mean, as in \"atypical\" and \"anonymous\"?", "a": "Not or without"},
+        {"q": "From its Greek parts, what does the word \"euphemism\" literally mean?", "a": "Good speech (eu, good + pheme, speaking)"},
+        {"q": "From its Greek parts, what does the word \"apathy\" literally mean?", "a": "Without feeling (a-, without + pathos, feeling)"}
+      ]
+    }
+  ]
+}

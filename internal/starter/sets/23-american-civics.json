@@ -1,0 +1,73 @@
+{
+  "slug": "american-civics",
+  "title": "American civics",
+  "description": "How the United States government is built, and how the Constitution limits it.",
+  "ideas": [
+    {
+      "title": "The Constitution",
+      "summary": "Written in 1787, the Constitution is the supreme law; it divides power among branches and between nation and states.",
+      "links": ["Three branches", "The Bill of Rights", "passages-worth-keeping:The Preamble"],
+      "items": [
+        {"q": "In what year was the United States Constitution written, at the convention in Philadelphia?", "a": "1787"},
+        {"q": "What are the first three words of the United States Constitution?", "a": "\"We the People\""},
+        {"q": "What is the term for the division of power between the national government and the states in the United States?", "a": "Federalism"},
+        {"q": "Which clause of the US Constitution makes it, and federal law, the \"supreme Law of the Land\"?", "a": "The Supremacy Clause, in Article VI"}
+      ]
+    },
+    {
+      "title": "Three branches",
+      "summary": "Congress makes the laws, the president carries them out, the courts interpret them, and each checks the others.",
+      "links": ["The Constitution", "Congress", "great-books:Power and the state"],
+      "items": [
+        {"q": "What are the three branches of the United States federal government?", "a": "Legislative, executive and judicial"},
+        {"q": "What is the name for the system in which each branch of the US government can limit the power of the others?", "a": "Checks and balances"},
+        {"q": "Which 1803 Supreme Court case established judicial review, the power to strike down laws as unconstitutional?", "a": "Marbury v. Madison"},
+        {"q": "How many justices sit on the United States Supreme Court?", "a": "Nine"}
+      ]
+    },
+    {
+      "title": "Congress",
+      "summary": "Congress has two chambers: a House sized by population and a Senate with two members for every state.",
+      "links": ["Three branches", "How a bill becomes law"],
+      "items": [
+        {"q": "How many voting members does the US House of Representatives have?", "a": "435"},
+        {"q": "How many senators does the United States have, and how many come from each state?", "a": "100, two from each state"},
+        {"q": "How long are the terms of a US representative and a US senator?", "a": "Two years for a representative, six years for a senator"},
+        {"q": "Which chamber of Congress confirms presidential appointments and approves treaties?", "a": "The Senate"}
+      ]
+    },
+    {
+      "title": "How a bill becomes law",
+      "summary": "A bill must pass the House and the Senate in identical form, then be signed by the president or survive a veto.",
+      "links": ["Congress", "Three branches"],
+      "items": [
+        {"q": "In which chamber of Congress must bills for raising revenue begin?", "a": "The House of Representatives"},
+        {"q": "What must happen to a bill in Congress before it can be sent to the president?", "a": "Both the House and the Senate must pass it in identical form"},
+        {"q": "What vote does Congress need to override a presidential veto?", "a": "Two-thirds of both the House and the Senate"},
+        {"q": "What is a pocket veto?", "a": "An unsigned bill dies because Congress adjourned during the president's ten days to act on it"}
+      ]
+    },
+    {
+      "title": "The Bill of Rights",
+      "summary": "The first ten amendments, ratified in 1791, protect individual liberties from the power of government.",
+      "links": ["The Constitution", "Later amendments"],
+      "items": [
+        {"q": "What name is given to the first ten amendments to the US Constitution, and in what year were they ratified?", "a": "The Bill of Rights, ratified in 1791"},
+        {"q": "Which amendment to the US Constitution protects freedom of religion, speech, the press, assembly and petition?", "a": "The First Amendment"},
+        {"q": "Which amendment to the US Constitution protects against unreasonable searches and seizures?", "a": "The Fourth Amendment"},
+        {"q": "Which amendment to the US Constitution protects a person from being forced to testify against themselves?", "a": "The Fifth Amendment"}
+      ]
+    },
+    {
+      "title": "Later amendments",
+      "summary": "Amendments after the Civil War ended slavery, promised equal protection and steadily widened the right to vote.",
+      "links": ["The Bill of Rights", "passages-worth-keeping:Gettysburg Address, opening"],
+      "items": [
+        {"q": "What did the Thirteenth Amendment to the US Constitution do, in 1865?", "a": "It abolished slavery"},
+        {"q": "Which amendment to the US Constitution, ratified in 1868, defines citizenship and guarantees equal protection of the laws?", "a": "The Fourteenth Amendment"},
+        {"q": "Which amendment to the US Constitution guaranteed women the right to vote, and in what year was it ratified?", "a": "The Nineteenth Amendment, in 1920"},
+        {"q": "What fraction of the states must ratify an amendment to the US Constitution?", "a": "Three-fourths (38 of the 50 states)"}
+      ]
+    }
+  ]
+}

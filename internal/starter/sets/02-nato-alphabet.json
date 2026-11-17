@@ -1,0 +1,139 @@
+{
+  "slug": "nato-alphabet",
+  "title": "The NATO alphabet",
+  "description": "Spell anything aloud, over any line, without being misheard.",
+  "ideas": [
+    {
+      "title": "Alfa to India",
+      "summary": "The first nine code words of the spelling alphabet.",
+      "links": [
+        "Juliett to Romeo"
+      ],
+      "items": [
+        {
+          "q": "NATO alphabet: A",
+          "a": "Alfa"
+        },
+        {
+          "q": "NATO alphabet: B",
+          "a": "Bravo"
+        },
+        {
+          "q": "NATO alphabet: C",
+          "a": "Charlie"
+        },
+        {
+          "q": "NATO alphabet: D",
+          "a": "Delta"
+        },
+        {
+          "q": "NATO alphabet: E",
+          "a": "Echo"
+        },
+        {
+          "q": "NATO alphabet: F",
+          "a": "Foxtrot"
+        },
+        {
+          "q": "NATO alphabet: G",
+          "a": "Golf"
+        },
+        {
+          "q": "NATO alphabet: H",
+          "a": "Hotel"
+        },
+        {
+          "q": "NATO alphabet: I",
+          "a": "India"
+        }
+      ]
+    },
+    {
+      "title": "Juliett to Romeo",
+      "summary": "The middle nine code words.",
+      "links": [
+        "Alfa to India",
+        "Sierra to Zulu"
+      ],
+      "items": [
+        {
+          "q": "NATO alphabet: J",
+          "a": "Juliett"
+        },
+        {
+          "q": "NATO alphabet: K",
+          "a": "Kilo"
+        },
+        {
+          "q": "NATO alphabet: L",
+          "a": "Lima"
+        },
+        {
+          "q": "NATO alphabet: M",
+          "a": "Mike"
+        },
+        {
+          "q": "NATO alphabet: N",
+          "a": "November"
+        },
+        {
+          "q": "NATO alphabet: O",
+          "a": "Oscar"
+        },
+        {
+          "q": "NATO alphabet: P",
+          "a": "Papa"
+        },
+        {
+          "q": "NATO alphabet: Q",
+          "a": "Quebec"
+        },
+        {
+          "q": "NATO alphabet: R",
+          "a": "Romeo"
+        }
+      ]
+    },
+    {
+      "title": "Sierra to Zulu",
+      "summary": "The last eight code words.",
+      "links": [
+        "Juliett to Romeo"
+      ],
+      "items": [
+        {
+          "q": "NATO alphabet: S",
+          "a": "Sierra"
+        },
+        {
+          "q": "NATO alphabet: T",
+          "a": "Tango"
+        },
+        {
+          "q": "NATO alphabet: U",
+          "a": "Uniform"
+        },
+        {
+          "q": "NATO alphabet: V",
+          "a": "Victor"
+        },
+        {
+          "q": "NATO alphabet: W",
+          "a": "Whiskey"
+        },
+        {
+          "q": "NATO alphabet: X",
+          "a": "X-ray"
+        },
+        {
+          "q": "NATO alphabet: Y",
+          "a": "Yankee"
+        },
+        {
+          "q": "NATO alphabet: Z",
+          "a": "Zulu"
+        }
+      ]
+    }
+  ]
+}

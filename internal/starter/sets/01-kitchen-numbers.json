@@ -1,0 +1,57 @@
+{
+  "slug": "kitchen-numbers",
+  "title": "Kitchen numbers",
+  "description": "The conversions and temperatures that let you cook without looking anything up.",
+  "ideas": [
+    {
+      "title": "Spoons and cups",
+      "summary": "American volume measures nest in threes, sixteens and twos.",
+      "links": ["Weight and metric"],
+      "items": [
+        {"q": "How many teaspoons are in a tablespoon?", "a": "3"},
+        {"q": "How many tablespoons are in a cup?", "a": "16"},
+        {"q": "How many tablespoons are in a quarter cup?", "a": "4"},
+        {"q": "How many fluid ounces are in a US cup?", "a": "8"},
+        {"q": "How many cups are in a US quart?", "a": "4"},
+        {"q": "How many quarts are in a US gallon?", "a": "4"}
+      ]
+    },
+    {
+      "title": "Weight and metric",
+      "summary": "A few anchors convert almost any recipe between ounces, grams and milliliters.",
+      "links": ["Spoons and cups", "Ratios worth knowing"],
+      "items": [
+        {"q": "About how many grams are in an ounce?", "a": "28 grams"},
+        {"q": "How many ounces are in a pound?", "a": "16"},
+        {"q": "About how many grams are in a pound?", "a": "About 454 grams"},
+        {"q": "About how many milliliters does a US cup hold?", "a": "About 240 milliliters"},
+        {"q": "How much does a US stick of butter weigh, and how many tablespoons is it?", "a": "About 113 grams (4 ounces), which is 8 tablespoons"},
+        {"q": "About how much does a cup of all-purpose flour weigh?", "a": "About 120 to 125 grams"}
+      ]
+    },
+    {
+      "title": "Safe temperatures",
+      "summary": "Internal temperatures at which food is safe to eat, and the oven marks cooks use most.",
+      "links": ["Ratios worth knowing"],
+      "items": [
+        {"q": "What internal temperature makes poultry safe to eat, in Fahrenheit?", "a": "165 °F (74 °C)"},
+        {"q": "What internal temperature makes ground beef safe to eat, in Fahrenheit?", "a": "160 °F (71 °C)"},
+        {"q": "What is the safe minimum internal temperature for whole cuts of beef, pork and lamb, before resting?", "a": "145 °F (63 °C), then a 3 minute rest"},
+        {"q": "Between which temperatures do bacteria grow fastest in food, the so-called danger zone?", "a": "40 °F to 140 °F (4 °C to 60 °C)"},
+        {"q": "What is 350 °F in Celsius, roughly?", "a": "About 175 to 180 °C"},
+        {"q": "At what temperature does water boil at sea level, in both scales?", "a": "212 °F, 100 °C"}
+      ]
+    },
+    {
+      "title": "Ratios worth knowing",
+      "summary": "A handful of ratios replace a shelf of recipes.",
+      "links": ["Weight and metric"],
+      "items": [
+        {"q": "What is the classic ratio of oil to vinegar in a vinaigrette?", "a": "3 parts oil to 1 part vinegar"},
+        {"q": "What is the usual ratio of water to long-grain white rice, by volume?", "a": "2 parts water to 1 part rice"},
+        {"q": "By weight, what is the baker's ratio of flour to water to salt in a basic lean bread?", "a": "100 flour to about 65 water to 2 salt"},
+        {"q": "How much salt per liter makes pasta water properly seasoned, roughly?", "a": "About 10 grams per liter (about 1%)"}
+      ]
+    }
+  ]
+}

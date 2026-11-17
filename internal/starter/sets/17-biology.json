@@ -1,0 +1,73 @@
+{
+  "slug": "biology",
+  "title": "Core ideas in biology",
+  "description": "How life works, from cells and DNA to evolution and the flow of energy.",
+  "ideas": [
+    {
+      "title": "Cells",
+      "summary": "Every living thing is made of cells, and every cell comes from an earlier cell.",
+      "links": ["DNA and the genetic code", "Energy in living things"],
+      "items": [
+        {"q": "What is the main difference between a prokaryotic cell and a eukaryotic cell?", "a": "A eukaryotic cell has a nucleus and membrane-bound organelles; a prokaryotic cell has neither"},
+        {"q": "Which organelle produces most of the ATP in a eukaryotic cell?", "a": "The mitochondrion"},
+        {"q": "Which structure in a cell builds proteins?", "a": "The ribosome"},
+        {"q": "What is a cell's outer membrane mainly made of?", "a": "A phospholipid bilayer with proteins embedded in it"}
+      ]
+    },
+    {
+      "title": "DNA and the genetic code",
+      "summary": "DNA stores instructions in a four-letter code, which cells copy into RNA and then read out as protein.",
+      "links": ["Cells", "Inheritance", "chemistry:Chemical bonds"],
+      "items": [
+        {"q": "In DNA, which base pairs with adenine?", "a": "Thymine"},
+        {"q": "What does the central dogma of molecular biology describe?", "a": "Information flows from DNA to RNA to protein"},
+        {"q": "What is the process called in which a cell copies a gene's DNA into messenger RNA?", "a": "Transcription"},
+        {"q": "In the genetic code, how many bases make up one codon, the unit that specifies an amino acid?", "a": "Three"},
+        {"q": "Which two scientists proposed the double helix structure of DNA in 1953?", "a": "James Watson and Francis Crick, drawing on Rosalind Franklin's X-ray images"}
+      ]
+    },
+    {
+      "title": "Inheritance",
+      "summary": "Genes come in pairs, one copy from each parent, and are dealt out afresh to each new generation.",
+      "links": ["DNA and the genetic code", "Evolution by natural selection"],
+      "items": [
+        {"q": "Which friar's experiments with pea plants, published in 1866, founded the science of genetics?", "a": "Gregor Mendel"},
+        {"q": "How many chromosomes does a typical human body cell contain?", "a": "46, in 23 pairs"},
+        {"q": "In genetics, what is an allele?", "a": "One of the alternative versions of a gene"},
+        {"q": "Which type of cell division halves the number of chromosomes to make eggs and sperm?", "a": "Meiosis"}
+      ]
+    },
+    {
+      "title": "Evolution by natural selection",
+      "summary": "When heritable traits affect survival and reproduction, populations change over the generations.",
+      "links": ["Inheritance", "Ecosystems"],
+      "items": [
+        {"q": "Who wrote On the Origin of Species, and in what year was it published?", "a": "Charles Darwin, in 1859"},
+        {"q": "Which naturalist arrived at the idea of natural selection independently of Charles Darwin?", "a": "Alfred Russel Wallace"},
+        {"q": "In biology, what is natural selection?", "a": "Heritable traits that help survival and reproduction become more common over generations"},
+        {"q": "In evolution, what is the ultimate source of new genetic variation?", "a": "Mutation"}
+      ]
+    },
+    {
+      "title": "Energy in living things",
+      "summary": "Photosynthesis stores the energy of sunlight in sugar, and respiration releases it for cells to use as ATP.",
+      "links": ["Cells", "Ecosystems", "human-body:Breathing and gas exchange"],
+      "items": [
+        {"q": "What does photosynthesis take in, and what does it produce?", "a": "It takes in carbon dioxide, water and light, and produces glucose and oxygen"},
+        {"q": "Which molecule is the main energy currency of the cell?", "a": "ATP (adenosine triphosphate)"},
+        {"q": "In which organelle of a plant cell does photosynthesis take place?", "a": "The chloroplast"},
+        {"q": "What does aerobic cellular respiration do?", "a": "It breaks down glucose with oxygen to make ATP, giving off carbon dioxide and water"}
+      ]
+    },
+    {
+      "title": "Ecosystems",
+      "summary": "Energy flows one way through a food chain and is mostly lost at each step, while matter is recycled.",
+      "links": ["Energy in living things", "Evolution by natural selection", "earth-and-climate:Carbon and climate"],
+      "items": [
+        {"q": "In an ecosystem, what are organisms called that make their own food from sunlight or chemicals?", "a": "Producers, also called autotrophs"},
+        {"q": "In a food chain, roughly what share of the energy at one trophic level passes on to the next?", "a": "About 10%"},
+        {"q": "In ecology, what is the carrying capacity of an environment?", "a": "The largest population of a species that it can support over the long term"}
+      ]
+    }
+  ]
+}

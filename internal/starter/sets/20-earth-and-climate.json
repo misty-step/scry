@@ -1,0 +1,66 @@
+{
+  "slug": "earth-and-climate",
+  "title": "Core ideas in earth science",
+  "description": "How the planet works: its layers, moving plates, rocks, air, oceans and climate.",
+  "ideas": [
+    {
+      "title": "Earth's layers and age",
+      "summary": "Earth is a layered planet about 4.5 billion years old, with a thin crust, a rocky mantle and an iron core.",
+      "links": ["Plate tectonics", "astronomy:The solar system"],
+      "items": [
+        {"q": "About how old is the Earth?", "a": "About 4.5 billion years"},
+        {"q": "Which layer of the Earth lies between the crust and the core?", "a": "The mantle"},
+        {"q": "Which layer of the Earth is liquid metal and generates the planet's magnetic field?", "a": "The outer core"},
+        {"q": "What is the approximate radius of the Earth?", "a": "About 6,400 km"}
+      ]
+    },
+    {
+      "title": "Plate tectonics",
+      "summary": "Earth's rigid outer shell is broken into plates that creep past, under and away from one another.",
+      "links": ["Earth's layers and age", "The rock cycle"],
+      "items": [
+        {"q": "Which scientist proposed the theory of continental drift in 1912?", "a": "Alfred Wegener"},
+        {"q": "What was the supercontinent called that began to break apart about 200 million years ago?", "a": "Pangaea"},
+        {"q": "About how fast do Earth's tectonic plates move?", "a": "A few centimeters a year, about as fast as fingernails grow"},
+        {"q": "In plate tectonics, what happens at a subduction zone?", "a": "One plate sinks beneath another and down into the mantle"},
+        {"q": "At which kind of plate boundary is new ocean crust made, as along the Mid-Atlantic Ridge?", "a": "A divergent boundary, where two plates move apart"}
+      ]
+    },
+    {
+      "title": "The rock cycle",
+      "summary": "Rock is made, worn down and remade, passing between igneous, sedimentary and metamorphic forms.",
+      "links": ["Plate tectonics"],
+      "items": [
+        {"q": "Which type of rock forms when molten rock cools and hardens?", "a": "Igneous rock"},
+        {"q": "In which of the three main types of rock are fossils usually found?", "a": "Sedimentary rock"},
+        {"q": "What turns an existing rock into metamorphic rock?", "a": "Heat and pressure that change it without melting it"}
+      ]
+    },
+    {
+      "title": "Atmosphere and oceans",
+      "summary": "A thin layer of air and a deep layer of water move heat around the planet and make its weather.",
+      "links": ["Carbon and climate", "astronomy:Earth, Moon and sky"],
+      "items": [
+        {"q": "Which gas makes up about 78% of Earth's atmosphere?", "a": "Nitrogen"},
+        {"q": "About what share of Earth's atmosphere is oxygen?", "a": "About 21%"},
+        {"q": "In which layer of Earth's atmosphere does nearly all weather take place?", "a": "The troposphere, the lowest layer"},
+        {"q": "Which gas in the stratosphere absorbs most of the Sun's harmful ultraviolet light?", "a": "Ozone"},
+        {"q": "About what share of Earth's surface is covered by ocean?", "a": "About 71%"},
+        {"q": "What is the difference between weather and climate?", "a": "Weather is the state of the atmosphere at a given time; climate is its average over decades"}
+      ]
+    },
+    {
+      "title": "Carbon and climate",
+      "summary": "Greenhouse gases hold heat near the surface, and the carbon dioxide people add is warming the planet.",
+      "links": ["Atmosphere and oceans", "biology:Energy in living things"],
+      "items": [
+        {"q": "What is the greenhouse effect?", "a": "Gases in the atmosphere absorb heat radiated by Earth's surface, keeping the planet warmer"},
+        {"q": "Which greenhouse gas, released by burning fossil fuels, is the main cause of present-day global warming?", "a": "Carbon dioxide (CO2)"},
+        {"q": "What was the concentration of carbon dioxide in Earth's atmosphere before the industrial era?", "a": "About 280 parts per million"},
+        {"q": "By roughly how much has Earth's average surface temperature risen since the late 1800s?", "a": "A little more than 1 °C"},
+        {"q": "Which process takes carbon dioxide out of the air and stores its carbon in plants?", "a": "Photosynthesis"},
+        {"q": "What are the slow cycles in Earth's orbit and tilt called that set the rhythm of the ice ages?", "a": "Milankovitch cycles"}
+      ]
+    }
+  ]
+}
