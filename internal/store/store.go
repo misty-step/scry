@@ -189,6 +189,17 @@ func (s *Store) RestoreUser(ctx context.Context, snapshot, email string) (int64,
 		return 0, err
 	}
 	defer tx.Rollback()
+	// A snapshot from a different database may reuse an ID for someone else.
+	// Refuse before deleting anything, even if their owned tables are empty.
+	var conflicts int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM users
+ WHERE (id = ? AND (email != ? OR auth_subject != (SELECT auth_subject FROM snap.users WHERE id = ?)))
+ OR (email = ? AND id != ?)`, uid, email, uid, email, uid).Scan(&conflicts); err != nil {
+		return 0, err
+	}
+	if conflicts != 0 {
+		return 0, fmt.Errorf("snapshot account identity conflicts with destination")
+	}
 	if _, err := tx.ExecContext(ctx, `PRAGMA defer_foreign_keys = 1`); err != nil {
 		return 0, err
 	}
