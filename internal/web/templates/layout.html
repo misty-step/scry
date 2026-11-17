@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"{{if ne .Theme "system"}} data-theme="{{.Theme}}"{{end}}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Scry gets what's worth knowing into your head and keeps it there, for the fewest minutes a day.">
+<title>{{if .Title}}{{.Title}} · {{end}}scry</title>
+<link rel="preload" href="/static/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/GeistMono-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+{{block "head" .}}{{end}}
+</head>
+<body{{if .Session}} class="in-session"{{end}}>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top frame">
+  <a class="wordmark" href="/" aria-label="scry, home">scry</a>
+  {{if and .User (not .Bare)}}
+  <nav class="nav" aria-label="Main">
+    <a href="/study"{{if eq .Nav "study"}} aria-current="page"{{end}}>Study</a>
+    <a href="/library"{{if eq .Nav "library"}} aria-current="page"{{end}}>Library</a>
+    <a href="/inbox"{{if eq .Nav "inbox"}} aria-current="page"{{end}}>Inbox{{if .InboxCount}} <span class="count">{{.InboxCount}}</span>{{end}}</a>
+    <a href="/learn"{{if eq .Nav "learn"}} aria-current="page"{{end}}>Learn</a>
+    <a href="/billing"{{if eq .Nav "billing"}} aria-current="page"{{end}}>Billing</a>
+    <a href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>Settings</a>
+  </nav>
+  {{else if not .User}}
+  <nav class="nav" aria-label="Account"><a href="/signin">Sign in</a></nav>
+  {{end}}
+</header>
+<main id="main" class="frame" tabindex="-1">
+{{template "main" .}}
+</main>
+<footer class="foot frame">
+  {{if and .User (not .Bare)}}<p class="micro keys" data-keys>g s study · g l library · g i inbox · g n learn · g b billing</p>{{end}}
+  {{if .TestMode}}<p class="micro">test mode · no real charges, model or microphone</p>{{end}}
+</footer>
+</body>
+</html>

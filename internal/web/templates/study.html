@@ -1,0 +1,90 @@
+{{define "main"}}
+<section class="session" data-session>
+  <aside class="session-margin meta" aria-label="Where you are">
+    {{if .Item}}<span class="margin-idea">{{.Item.IdeaTitle}}</span>
+    <span class="margin-count">{{.Position}} / {{.Total}}</span>{{end}}
+  </aside>
+
+  <div class="session-flow">
+    {{if .Answered}}
+    <ol class="scrollback" aria-label="Answered">
+      {{range .Answered}}
+      <li class="answered">
+        <span class="answered-q">{{.Prompt}}</span>
+        <span class="tag tag-{{.Verdict}}">{{.Verdict}}</span>
+        {{if .Why}}<p class="answered-why">{{.Why}}</p>{{end}}
+      </li>
+      {{end}}
+    </ol>
+    {{end}}
+
+    {{if .Judged}}
+    <div class="current judged judged-{{.Judged.Kind}}" data-judged>
+      {{if eq .Judged.Kind "exact"}}
+        <p class="meta exact-label">{{.ExactLabel}}</p>
+        <h1 class="prompt prompt-receded">{{.Item.Prompt}}</h1>
+        <p class="exact-line display">{{range .Judged.Ops}}{{if eq .Kind "same"}}<span class="x-same">{{.Word}}</span> {{else if eq .Kind "missing"}}<ins class="x-missing"><span class="sr">missing: </span>{{.Word}}</ins> {{else if eq .Kind "wrong"}}<del class="x-wrong"><span class="sr">you wrote: </span>{{.Word}}</del> <span class="x-fix"><span class="sr">the text has: </span>{{.Fix}}</span> {{else}}<del class="x-wrong"><span class="sr">not in the text: </span>{{.Word}}</del> {{end}}{{end}}</p>
+        <p class="verdict"><span class="tag tag-{{.Judged.Verdict}}">{{.Judged.Verdict}}</span> <span class="why">{{.Judged.Why}}</span></p>
+        <form method="post" action="/study/next" class="judged-actions" data-next-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button class="link" name="again" value="1" data-again>Again</button>
+          <button class="btn btn-accent" autofocus data-next>Next</button>
+        </form>
+        <p class="hints micro">a again · enter for next</p>
+      {{else if eq .Judged.Kind "missed"}}
+        <h1 class="prompt prompt-receded">{{.Item.Prompt}}</h1>
+        <div class="judgment-pair">
+          {{if .Judged.Answer}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text">{{.Judged.Answer}}</span><span class="struck-line" aria-hidden="true">{{.Judged.Answer}}</span></span></p>{{end}}
+          <p class="judgment judgment-right"><span class="sr">The answer: </span>{{.Judged.Expected}}</p>
+        </div>
+        <p class="verdict"><span class="tag tag-missed">missed</span> <span class="why">{{.Judged.Why}}</span></p>
+        <form method="post" action="/study/next" class="judged-actions" data-next-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button class="btn btn-accent" autofocus data-next>Next</button>
+        </form>
+        <p class="hints micro">enter for next</p>
+      {{else}}
+        <h1 class="prompt display">{{.Item.Prompt}}</h1>
+        <p class="answer-given display"><span class="sr">Your answer: </span>{{.Judged.Marked}}</p>
+        <p class="verdict"><span class="tag tag-close">close</span> <span class="why">{{.Judged.Why}}</span></p>
+        <p class="expected"><span class="meta">answer</span> {{.Judged.Expected}}</p>
+        <form method="post" action="/study/next" class="judged-actions" data-next-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <button class="btn btn-accent" autofocus data-next>Next</button>
+        </form>
+        <p class="hints micro">enter for next</p>
+      {{end}}
+    </div>
+    {{else if .Item}}
+    <div class="current asking">
+      {{if .ExactLabel}}<p class="meta exact-label">{{.ExactLabel}}{{if .Retry}} · again{{end}}</p>{{end}}
+      <h1 class="prompt display" id="prompt">{{.Item.Prompt}}</h1>
+      <form method="post" action="/study/answer" class="answer" data-answer-form autocomplete="off">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="item_id" value="{{.Item.ID}}">
+        <input type="hidden" name="via" value="typed" data-via>
+        <div class="answer-line" data-answer-line>
+          <label class="sr" for="answer">Your answer</label>
+          <input class="answer-input display" id="answer" name="answer" value="{{.Draft}}" autofocus autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-describedby="status">
+          <span class="caret" aria-hidden="true" data-caret></span>
+        </div>
+        <p class="status meta" id="status" role="status" data-status>{{if .Message}}{{.Message}} {{if .MessageLink}}<a class="link" href="/billing">{{.MessageLink}}</a>{{end}}{{end}}</p>
+        <div class="answer-actions">
+          <button type="button" class="mic" data-mic aria-label="Speak your answer" aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+          </button>
+          <button class="btn btn-accent check" data-check>Check</button>
+        </div>
+      </form>
+      <p class="hints micro">enter to check · space to speak</p>
+    </div>
+    {{end}}
+
+    {{if .Upcoming}}
+    <ol class="upcoming" aria-label="Coming up">
+      {{range .Upcoming}}<li>{{.}}</li>{{end}}
+    </ol>
+    {{end}}
+  </div>
+</section>
+{{end}}

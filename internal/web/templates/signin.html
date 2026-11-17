@@ -1,0 +1,20 @@
+{{define "main"}}
+<section class="column">
+  <h1 class="display">Sign in</h1>
+  <form method="post" action="/signin" class="form" novalidate>
+    <input type="hidden" name="next" value="{{.Next}}">
+    <div class="field">
+      <label class="label" for="email">Email</label>
+      <input class="input" id="email" name="email" type="email" autocomplete="email" value="{{.Email}}" required autofocus>
+    </div>
+    <div class="field{{if .Error}} has-error{{end}}">
+      <label class="label" for="password">Password</label>
+      <input class="input" id="password" name="password" type="password" autocomplete="current-password" required {{if .Error}}aria-invalid="true" aria-describedby="signin-error"{{end}}>
+      {{if .Error}}<p class="field-error" id="signin-error" role="alert">{{.Error}}</p>{{end}}
+    </div>
+    <button class="btn btn-accent wide">Sign in</button>
+  </form>
+  <p class="meta">New here? <a class="link" href="/signup">Start a trial</a></p>
+  {{if .Demo}}<p class="meta hint">Test mode demo account: {{.Demo.Email}} · {{.Demo.Password}}</p>{{end}}
+</section>
+{{end}}

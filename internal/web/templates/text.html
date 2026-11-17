@@ -1,0 +1,26 @@
+{{define "main"}}
+<section class="reading">
+  <h1 class="display">Add an exact text</h1>
+  <p class="lede">A poem, a creed, a speech: anything you want word for word. Each line becomes one item, and your answers are compared with it word by word.</p>
+  <form method="post" action="/library/texts" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="field">
+      <label class="label" for="title">Name of the text</label>
+      <input class="input" id="title" name="title" value="{{.TextTitle}}" required autofocus>
+    </div>
+    <div class="field{{if .Error}} has-error{{end}}">
+      <label class="label" for="text">The text, one line per line</label>
+      <textarea class="input" id="text" name="text" rows="10" required>{{.Text}}</textarea>
+      {{if .Error}}<p class="field-error" role="alert">{{.Error}}</p>{{end}}
+    </div>
+    <div class="field">
+      <label class="label" for="parent">File it under</label>
+      <select class="input" id="parent" name="parent">
+        <option value="0">Its own place in the outline</option>
+        {{range .Parents}}<option value="{{.ID}}"{{if eq $.Parent .ID}} selected{{end}}>{{.Title}}</option>{{end}}
+      </select>
+    </div>
+    <button class="btn btn-accent">Add text</button>
+  </form>
+</section>
+{{end}}

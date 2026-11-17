@@ -1,0 +1,51 @@
+{{define "flash"}}{{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}{{end}}
+
+{{define "cardfields"}}
+{{if .PublishableKey}}
+  <div class="field">
+    <label class="label" for="card-element">Card</label>
+    <div id="card-element" class="input stripe-card" data-key="{{.PublishableKey}}"></div>
+    <input type="hidden" name="payment_method" id="payment_method">
+    <p class="field-error" id="card-error" role="alert">{{.Error}}</p>
+  </div>
+{{else}}
+  <div class="field{{if .Error}} has-error{{end}}">
+    <label class="label" for="number">Card number</label>
+    <input class="input mono" id="number" name="number" inputmode="numeric" autocomplete="cc-number" placeholder="4242 4242 4242 4242" required autofocus {{if .Error}}aria-invalid="true" aria-describedby="card-error"{{end}}>
+    {{if .Error}}<p class="field-error" id="card-error" role="alert">{{.Error}}</p>{{end}}
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label class="label" for="expiry">Expires</label>
+      <input class="input mono" id="expiry" name="expiry" inputmode="numeric" autocomplete="cc-exp" placeholder="MM / YY" required>
+    </div>
+    <div class="field">
+      <label class="label" for="cvc">Security code</label>
+      <input class="input mono" id="cvc" name="cvc" inputmode="numeric" autocomplete="cc-csc" placeholder="CVC" required>
+    </div>
+  </div>
+  <p class="meta hint">Test mode. Use 4242 4242 4242 4242, any future date and any code. No card is charged.</p>
+{{end}}
+{{end}}
+
+{{define "suggestion"}}
+<li class="row sug" tabindex="0" data-row>
+  <div class="sug-text">
+    <p class="sug-q">{{.S.Prompt}}</p>
+    <p class="sug-a">{{.S.Answer}}</p>
+    <p class="meta">{{if .S.SourceLine}}{{.S.SourceLine}}{{else}}drafted by Scry{{end}}{{if .S.Exact}} · exact{{end}}</p>
+  </div>
+  <p class="sug-idea meta">{{if .S.Joins}}joins{{else}}new idea{{end}} <span class="sug-idea-name">{{.S.IdeaTitle}}</span></p>
+  <div class="sug-actions">
+    <form method="post" action="/suggestions/{{.S.ID}}/approve" data-approve>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="btn-approve" aria-label="Approve: {{.S.Prompt}}">Approve</button>
+    </form>
+    <form method="post" action="/suggestions/{{.S.ID}}/dismiss" data-dismiss>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="link quiet" aria-label="Dismiss: {{.S.Prompt}}">Dismiss</button>
+    </form>
+  </div>
+  <p class="micro row-keys" aria-hidden="true">A approve · D dismiss</p>
+</li>
+{{end}}

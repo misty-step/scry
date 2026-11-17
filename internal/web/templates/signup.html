@@ -1,0 +1,21 @@
+{{define "main"}}
+<section class="column">
+  <p class="meta">Step 1 of 2 · account</p>
+  <h1 class="display">Start your trial</h1>
+  <form method="post" action="/signup" class="form" novalidate data-tz-form>
+    <input type="hidden" name="tz" value="">
+    <div class="field{{if eq .Field "email"}} has-error{{end}}">
+      <label class="label" for="email">Email</label>
+      <input class="input" id="email" name="email" type="email" autocomplete="email" value="{{.Email}}" required autofocus {{if eq .Field "email"}}aria-invalid="true" aria-describedby="email-error"{{end}}>
+      {{if eq .Field "email"}}<p class="field-error" id="email-error" role="alert">{{.Error}}</p>{{end}}
+    </div>
+    <div class="field{{if eq .Field "password"}} has-error{{end}}">
+      <label class="label" for="password">Password</label>
+      <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="8" required {{if eq .Field "password"}}aria-invalid="true" aria-describedby="password-error"{{end}}>
+      {{if eq .Field "password"}}<p class="field-error" id="password-error" role="alert">{{.Error}}</p>{{else}}<p class="meta hint">At least 8 characters.</p>{{end}}
+    </div>
+    <button class="btn btn-accent wide">Continue</button>
+  </form>
+  <p class="meta">Next: a card for the {{.TrialDays}}-day trial. <a class="link" href="/signin">Already have an account? Sign in</a></p>
+</section>
+{{end}}

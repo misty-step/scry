@@ -1,0 +1,62 @@
+{{define "main"}}
+<section class="ledger">
+  <h1 class="display">Billing</h1>
+  {{template "flash" .}}
+  <p class="ledger-plan">{{.B.Plan}}</p>
+
+  {{if eq .B.State "card-failed"}}
+  <p class="ledger-alert" role="alert"><strong>Card failed.</strong> {{.B.CardFailed}} <a class="btn btn-accent" href="/billing/card">Update card</a></p>
+  {{end}}
+  {{if eq .B.State "ended"}}
+  <p><a class="btn btn-accent" href="/billing/card">Start again · {{money .Price}} a month</a></p>
+  {{end}}
+
+  {{if .B.Allowance}}
+  <section class="allowance" aria-label="Allowance">
+    <p class="allowance-line">{{.B.Allowance}}</p>
+    <svg class="meter" role="img" aria-label="{{.B.Percent}}% of this month's allowance used" width="100%" height="2" preserveAspectRatio="none"><rect class="meter-track" width="100%" height="2"></rect><rect class="meter-fill" width="{{.B.Percent}}%" height="2"></rect></svg>
+    {{if .B.Topup}}<p class="meta">{{.B.Topup}}</p>{{end}}
+    {{if .B.CanTopUp}}
+    <form method="post" action="/billing/topup" class="topup">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="btn{{if and (ne .B.State "card-failed") (ne .B.State "ended")}} btn-accent{{end}}">Top up · {{money .TopupPrice}}</button>
+      {{if .TopupError}}<p class="field-error" role="alert">{{.TopupError}} <a class="link" href="/billing/card">Update card</a></p>{{end}}
+    </form>
+    {{end}}
+  </section>
+  {{end}}
+
+  <p class="covers">{{.B.Covers}}</p>
+
+  <h2 class="section-label meta">History</h2>
+  {{if .B.Ledger}}
+  <table class="history">
+    <thead class="sr"><tr><th>Date</th><th>What</th><th>Amount</th></tr></thead>
+    <tbody>
+      {{range .B.Ledger}}
+      <tr><td class="meta">{{short .At}}</td><td>{{.Description}}</td><td class="amount">{{if eq .Status "none"}}{{amount 0}}{{else}}{{amount .AmountCents}}{{end}}{{if eq .Status "failed"}} <span class="meta">not charged</span>{{end}}</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}<p class="lede">No charges yet.</p>{{end}}
+
+  <section class="plan-actions">
+    {{if .B.Sub.CardLast4}}<p class="meta">Card on file: {{.B.Sub.CardBrand}} ending {{.B.Sub.CardLast4}} · <a class="link quiet" href="/billing/card">Update card</a></p>{{end}}
+    {{if eq .B.State "cancelling"}}
+    <form method="post" action="/billing/resume" class="inline-form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="link">Keep my plan</button>
+    </form>
+    {{else if or (eq .B.State "trial") (eq .B.State "active") (eq .B.State "card-failed")}}
+    <details class="cancel">
+      <summary class="link quiet">Cancel plan</summary>
+      <p>Your plan will end on {{date .B.Sub.PeriodEnd}}. You keep full access until then, and nothing more is charged. Your library stays yours.</p>
+      <form method="post" action="/billing/cancel">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button class="btn">End my plan on {{date .B.Sub.PeriodEnd}}</button>
+      </form>
+    </details>
+    {{end}}
+  </section>
+</section>
+{{end}}
