@@ -1,5 +1,7 @@
 # Scry
 
+> **Product contract (2026-11-17):** [PRODUCT.md](PRODUCT.md) is the product contract and [DESIGN.md](DESIGN.md) the visual one; the Go recompile reads only those two. `SPEC.md` and `VISION.md` are retired history under [docs/history/2026-11-17-retired](docs/history/2026-11-17-retired/README.md); they describe the current Rust code and matter only when maintaining it.
+
 For each change load [verify-scry](.agents/skills/verify-scry/SKILL.md), use the
 existing `features/` navigation map and retain actual journey proof in the card
 and PR. New Hermes profiles review the checkout, then use native
@@ -7,11 +9,11 @@ and PR. New Hermes profiles review the checkout, then use native
 
 Shared standard: [Constitution](https://foundations.mistystep.io/) and [Way of working](https://foundations.mistystep.io/way-of-working).
 
-Read [SPEC.md](SPEC.md) before scoping or verifying behavior. It is the
+Read [SPEC.md](docs/history/2026-11-17-retired/SPEC.md) before scoping or verifying behavior. It is the
 present-tense target state and the only behavior authority; its
-[Terms](SPEC.md#terms) own the words. Change it and close drift through the
+[Terms](docs/history/2026-11-17-retired/SPEC.md#terms) own the words. Change it and close drift through the
 [spec skill](https://github.com/misty-step/mistystack/blob/master/skills/spec/SKILL.md),
-never through a ticket backlog. [VISION](VISION.md) explains
+never through a ticket backlog. [VISION](docs/history/2026-11-17-retired/VISION.md) explains
 intent; [DESIGN](DESIGN.md) owns visuals; [ADRs](docs/adr/README.md) own technical
 decisions. Do not restate their contracts here.
 
@@ -80,7 +82,7 @@ Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 ### Domain docs
 
-Single-context: [SPEC § Terms](SPEC.md#terms) and `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: [SPEC § Terms](docs/history/2026-11-17-retired/SPEC.md#terms) and `docs/adr/`. See `docs/agents/domain.md`.
 
 <!-- mistystack:core -->
 # Misty Step core

@@ -20,7 +20,7 @@ import {releaseWalk} from './browser-release.mjs';
 import {phoneWalk,phoneRecovery} from './phone-stream.mjs';
 import {phoneLibraryWalk,phoneLibraryRecovery} from './phone-library.mjs';
 const repo=resolve(import.meta.dirname,'..');process.chdir(repo);
-const source=readFileSync('SPEC.md','utf8');
+const source=readFileSync('docs/history/2026-11-17-retired/SPEC.md','utf8');
 // Journey IDs are this harness's own names, kept stable for receipts. Each
 // journey proves one SPEC capability, bound here by that capability's heading.
 const live=Object.keys(specs);

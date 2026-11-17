@@ -8,7 +8,7 @@ import {test} from 'node:test';
 import {specs,capabilities} from './walk-specs.mjs';
 
 const repo=resolve(import.meta.dirname,'..');
-const source=readFileSync(join(repo,'SPEC.md'),'utf8');
+const source=readFileSync(join(repo,'docs/history/2026-11-17-retired/SPEC.md'),'utf8');
 const require=createRequire(import.meta.url);
 const modules=require.resolve.paths('miniflare').find(path=>existsSync(join(path,'miniflare')));
 const usage='usage: qa/walk --all | --stories "US-002 US-003"';
@@ -20,7 +20,7 @@ function probe(argv,spec=source,{accepted=false,ownedOutput=false,expectedError=
  try{
   cpSync(join(repo,'qa'),join(fixture,'qa'),{recursive:true});
   symlinkSync(modules,join(fixture,'node_modules'),'dir');
-  writeFileSync(join(fixture,'SPEC.md'),spec);
+  mkdirSync(join(fixture,'docs/history/2026-11-17-retired'),{recursive:true});writeFileSync(join(fixture,'docs/history/2026-11-17-retired/SPEC.md'),spec);
   mkdirSync(join(fixture,'tools'));
   writeFileSync(join(fixture,'tools/worker-build'),'#!/bin/sh\nprintf invoked > build-invoked\nexit 91\n',{mode:0o755});
   if(ownedOutput){mkdirSync(join(fixture,'target/walk'),{recursive:true});writeFileSync(join(fixture,'target/walk/.scry-walk-owned'),'existing proof\n');}
@@ -45,7 +45,7 @@ test('standalone story walk builds the historical executable before starting a j
  try{
   cpSync(join(repo,'qa'),join(fixture,'qa'),{recursive:true});
   symlinkSync(modules,join(fixture,'node_modules'),'dir');
-  writeFileSync(join(fixture,'SPEC.md'),source);
+  mkdirSync(join(fixture,'docs/history/2026-11-17-retired'),{recursive:true});writeFileSync(join(fixture,'docs/history/2026-11-17-retired/SPEC.md'),source);
   mkdirSync(join(fixture,'build'));writeFileSync(join(fixture,'build/index_bg.wasm'),'synthetic artifact; never executed');
   writeFileSync(join(fixture,'source.json'),JSON.stringify({git_revision:'a'.repeat(40),git_tree:'b'.repeat(40),source_state:'worktree'}));
   mkdirSync(join(fixture,'tools'));
