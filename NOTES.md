@@ -11,7 +11,25 @@ The first build lane (Claude Code, Fable 5.2) stopped on a usage limit at commit
 - `go build ./...`, `go vet ./...` and a fresh `go test -count=1 ./...` all pass at handoff.
 - A `Makefile` with `run`, `test`, `build`, `vet` and `docker` targets.
 
-### Left
+### First-lane decisions (trace handoff supplied by the user)
+
+- Go 1.27 with toolchain go1.27.4: the original box had 1.23.4, so GOTOOLCHAIN=auto installs the selected toolchain. Pure-Go modernc SQLite keeps the binary static, without cgo.
+- The model adapter uses Anthropic Go SDK v2: structured JSON judgments, streaming drafts, server-side fallback model. The continuation replaced the fake's keyword matcher with scripted fixtures; exact texts alone use the word diff.
+- Geist Sans and Geist Mono variable fonts were obtained from the npm geist package and are self-hosted with their OFL license.
+- The 30 starter JSON sets (742 items, about 24 per set) were completed by three first-lane helpers. Set 30 is passages, learned line by line. Validation limits questions to 170 characters, answers to 140, and requires valid cross-links. They are complete and were not rewritten.
+- SeedDemo is idempotent: an ordinary demo account with over 100 items, at least 10 due, seven suggestions, 62% allowance used and an established trial/plan history. TestRule_SeededDemoData pins the fixture.
+- Story/rule tests use the real HTTP handlers through a browser-like harness and test clock.
+- Sessions slide on use. Billing has a fake and a Stripe adapter; Stripe remains test-only.
+
+### First-lane dead ends (do not repeat)
+
+- Cross-links to passages-worth-keeping failed before set 30 existed; they now validate.
+- Missing template FuncMap helpers panic at startup (billing used amount); register helpers before adding templates.
+- A restart left a stale server on :8080; one prior restart exited 144. Identify and stop the old process before reusing the port.
+- The first lane used puppeteer-core for state screenshots under /tmp/shots. Its visual correction was start-alignment of the idea diagram; rerunning all screenshots is optional.
+- rules_test.go was written at the usage-limit stall, subsequently committed as 4826372, and is now green.
+
+### Left (original checklist; completed below)
 
 1. A `Dockerfile` for one small image that serves on `PORT`, with a non-root user and the SQLite file on a volume. `make docker` must build it.
 2. `README.md`: how to run, test and deploy it, how durability and backup work, and a story-to-test table with one row per PRODUCT.md story and business rule naming the test that proves it.
@@ -30,3 +48,109 @@ make docker
 ```
 
 Done means all of these pass, the README table covers every story and rule, and this note records the results.
+
+
+## Ambiguities
+
+These are the implementation choices made where the contract left behavior,
+numbers, operations, or conflicting design details open. No external Scry
+implementation was consulted.
+
+### Product, learning and content
+- “About 30” means exactly 30 starter sets; scope and wording are the existing
+  curated JSON shelf (742 items), including line-by-line passages. They are
+  general educational prompts, not personalized professional advice.
+- “About five minutes” is a session budget, not a timer: 20 seconds per ordinary
+  item, 30 per exact line; additional due items wait for another session.
+- Scheduling uses the existing FSRS-4.5-style implementation, 90% retention,
+  right/close/missed grades, minimum one day and maximum ten years. Misses
+  return tomorrow; exact “Again” is practice, not another scheduled review.
+  Due-today uses the learner's timezone (browser-detected, otherwise UTC).
+- Exact means ordered words, ignoring case, surrounding punctuation and curly
+  apostrophe spelling; missing/swapped/extra words are counted. Close is at
+  most two differing words or 10% of the text; otherwise missed.
+- General answers are judged only through the model interface. With providers
+  deliberately disabled, test mode returns an explicit scripted fixture
+  independent of the answer; it cannot assess actual correctness. Tests inject
+  close/missed fixtures. Model failures preserve the answer rather than guessing.
+- Topic/book generation uses a draft outline, with each item or all approvable;
+  no unapproved draft enters the library. Personalization uses the learner's
+  About text and known ideas. In test mode book/topic fixtures and clearly
+  labelled placeholders exercise the workflow, not arbitrary knowledge quality.
+- Agent integration is a private bearer-token JSON API, not conversation
+  scraping. Suggestions are default; direct add requires explicit token scope.
+  Sources are learner/agent-supplied text; no link/image/video ingestion.
+- Phaedrus is the first seeded ordinary customer, with no privileged role.
+  Repeated seeding leaves existing data untouched.
+
+### Accounts, money and operations
+- Password minimum is eight characters; browser sessions last 30 days and renew
+  after half their lifetime. Test authentication uses bcrypt locally; provider
+  adapters are inactive. No password-reset or email-verification UX was specified.
+- Prices are provisional USD defaults: $5/month includes $3 model cost, seven-day
+  trial includes $1, $5 top-up adds $4 cost allowance. These values reserve room
+  for hosting/payment overhead; “small margin” has no numerical contract.
+  They are not a verified commercial cost model. Allowance is cost-based, not a
+  fixed question count; metering reserves usage before provider calls.
+- Billing renews on the subscription period, not necessarily the first of a
+  calendar month. Top-ups carry forward; cancellation ends access at the stated
+  trial/period end. Failed cards have a seven-day grace/retry window. No free tier.
+- Outside services remain behind interfaces and test adapters for all execution
+  here. Configuring ALERT_WEBHOOK_URL no longer bypasses test mode. Stripe JS is
+  emitted only for a nonempty provider key, which the fake never exposes.
+- Deployment is one static Go process, one local SQLite database, non-root
+  scratch image, persistent /data and /backups, PORT configurable. The default
+  container is test-only without demo seeding; make run seeds a demo.
+- Privacy is application isolation and restricted storage, not end-to-end
+  encryption against the operator. Tokens are hashed, mutations use CSRF.
+  Whole snapshots contain sensitive account data and must be encrypted off-host.
+- Automatic backup is optional on bare-metal (BACKUP_DIR), on by default in the
+  image: every six hours, 14 retained. Whole recovery restores all accounts;
+  selective recovery replaces owned data only within the same database lineage
+  and now rejects identity collisions before deleting data. It does not restore
+  passwords/profile/sessions; billing and token rollback require reconciliation.
+  Removed ideas have a 30-day undo; JSON export is not a database backup.
+- Reliability means integrity checks, write-probing health, JSON logs, alerting,
+  process restart and platform liveness supervision. Docker HEALTHCHECK alone
+  cannot restart a hung container; README specifies the required platform
+  liveness policy and external monitoring. Arbitrary bugs/disk failures cannot
+  be promised self-repair. Test mode logs alerts without contacting operators.
+
+### Design and interaction
+- Geist/Geist Mono are embedded and self-hosted. Fluid type, exact color tokens,
+  square surfaces, 4px controls, 1120px frame and phone stacks follow DESIGN.
+  System theme is default; explicit theme persists per learner.
+- The single round mic is the explicit exception to the no-pill/square rules.
+  Inbox approval uses accent outlines, not many filled primary buttons.
+  Focused inbox rows use raised; diagram links and item-row links now have
+  44px minimum targets. Tab/Enter provide keys for actions without shortcuts.
+- The global phone layout breakpoint is 760px; phone type/section tokens switch
+  at 640px. Decorative upcoming text is ghost; required reading uses body/meta.
+  Non-keyboard test-mode notice uses meta, not micro.
+- Scrollback shows at most five desktop/two phone entries on one visible line;
+  reasons remain accessible but visually hidden. Up next is capped at three/one.
+- Space starts voice only from an empty answer (or stops a recording), preserving
+  normal spaces in typed answers. Live transcription is chunked about every
+  1.2 seconds with a 20-second recording cap; no looping visual animation.
+- Draft streaming is progressively revealed by short polling; without JS,
+  server-rendered forms still work but voice/automatic polling do not.
+  Checking appears after 400ms, not a spinner. Motion is 150–250ms and reduced
+  motion suppresses transitions. Exact judgments remain in-place rather than
+  using the large generic-miss treatment.
+- One primary action is contextual: starter shelf changes after first add,
+  approval/cancellation have plain-word feedback, and session end has no charts
+  or game mechanics. Unspecified error states use plain-language inline messages.
+
+## Continuation changes
+
+- Added static multi-stage Dockerfile, non-root volumes, healthcheck and minimal
+  build context; added README run/deploy/env/backup instructions and all 14
+  story/business-rule rows with existing test names.
+- Removed heuristic judging even from the fake; tests now explicitly script
+  misses. Added regression proving fixtures are answer-independent.
+- Isolated test-mode alerts from webhook configuration and corrected the
+  healthcheck comment (Docker does not automatically restart unhealthy tasks).
+- Corrected short touch targets, focused inbox surface, visible multi-line
+  scrollback, and non-keyboard micro text, with regression tests.
+- Rejected conflicting identities during selective recovery, with a regression
+  test proving another learner remains unchanged.
