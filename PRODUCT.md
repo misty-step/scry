@@ -24,7 +24,7 @@ Scry gets what's worth knowing into your head and keeps it there, for the fewest
 
 ## Feel
 
-Calm and typographic, like a beautiful book. No game mechanics. Dark and light modes. The details live in DESIGN.md.
+Calm, precise and warm, in the style of Warp and Supermemory. No game mechanics. Dark and light modes. The details live in DESIGN.md.
 
 ## Not now
 
