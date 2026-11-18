@@ -54,7 +54,7 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	start := time.Now()
 	requested, base, path := "jev-latest", "https://api.typesafe.ai", "/v1/systemone"
 	if j.OpenRouter {
-		requested, base, path = "~typesafe/jev-latest", "https://openrouter.ai", "/api/alpha/decisions"
+		requested, base, path = "openai/gpt-6-luna-decisions", "https://openrouter.ai", "/api/alpha/decisions"
 	}
 	if j.Model != "" {
 		requested = j.Model
