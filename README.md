@@ -210,7 +210,8 @@ strikes. All provider-contract tests use local stand-ins, never real keys.
 
 The default route is OpenRouter POST https://openrouter.ai/api/alpha/decisions
 when OPENROUTER_API_KEY is set. SCRY_JUDGE_MODEL defaults to
-~typesafe/jev-latest on this route. Set that one variable to any Decisions model
+openai/gpt-6-luna-decisions on this route. Selected from the supplied 60-sample
+evaluation by accuracy first, then cost (see NOTES.md). Set that one variable to any Decisions model
 slug; the adapter has no provider/model-specific parser. Examples include
 openai/gpt-6-luna-decisions, cloudflare/clef, cloudflare/clef-flash, liquid/d1.2,
 inception/mercury-decide, perplexity/pplx-decider-v1.2, upstage/solar-decide and
@@ -243,7 +244,8 @@ probabilities are accepted when absent (the Decisions schema does not require
 them for every model); if supplied they must be valid and meet the existing
 abstention gates: confidence >= 0.5, winner >= 0.8 and margin >= 0.2.
 
-Every response reads usage.cost, preserved as dollars for logs/evaluation and
+Every response reads usage.cost, logged as its numeric dollar value (or the
+explicit string unknown when absent), preserved as dollars for evaluation and
 rounded upward to micro-dollars for existing metering. Missing cost is unknown,
 not zero: the app fails closed and retains the reservation. There is no direct
 TypeSafe price estimate anymore; a direct response without cost cannot settle.
@@ -254,7 +256,7 @@ transitive dependencies were removed. It does not judge or explain answers.
 
 ### Model comparison harness (not run live)
 
-    go run ./cmd/judge-eval -models '~typesafe/jev-latest,cloudflare/clef,liquid/d1.2'
+    go run ./cmd/judge-eval -models 'openai/gpt-6-luna-decisions,~typesafe/jev-latest,cloudflare/clef'
 
 Requires OPENROUTER_API_KEY. This command sends the sample and incurs provider
 costs: run it intentionally. -data selects another JSONL file; model slugs can

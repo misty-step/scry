@@ -513,3 +513,50 @@ microphone recording. go mod tidy -diff is clean; go.mod/go.sum contain no
 Anthropic SDK. testdata/judge-eval.jsonl has exactly 60 rows. Logs are
 /tmp/correction-race.log and /tmp/correction-browser.log. No comparison was run
 against any network provider; no live model accuracy or robustness is claimed.
+
+
+## Supplied live judge evaluation and default update
+
+**Evaluation date:** 2026-11-17 PT. **Dataset:** testdata/judge-eval.jsonl,
+**60 samples per evaluated model**. Results were supplied by the owner in
+/home/user/judge-eval-results.json; this follow-up did not run live requests.
+The JSON reports requested slugs; resolved identifiers below are from the
+owner's accompanying report, not inferred from aliases.
+
+| Requested model | Accuracy | Total usage.cost / 60 (USD) | p50 ms | p95 ms | Notes |
+| --- | ---: | ---: | ---: | ---: | --- |
+| ~typesafe/jev-latest | 0.833 | 0.001305444 | 228.701 | 278.190 | Resolved typesafe/jev-1.14-20261014 |
+| openai/gpt-6-luna-decisions | 0.900 | 0.001744800 | 192.322 | 380.339 | Resolved version suffix -20261006, as supplied |
+| cloudflare/clef | 0.750 | 0.004296096 | 291.863 | 768.259 | |
+| cloudflare/clef-flash | 0.100 | 0.000508003 | 310.815 | 895.439 | Mostly not_answered (54/60) |
+| liquid/d1.2 | 0.700 | 0.000273900 | 310.888 | 667.579 | All 15 close samples were not_answered |
+| inception/mercury-decide | — | — | — | — | Not listed among OpenRouter Decisions models; not run |
+
+The selection rule is **accuracy first, then cost**. Luna achieved the highest
+sample accuracy (54/60), so openai/gpt-6-luna-decisions is now the default for the
+OpenRouter route. It is not the cheapest model and has higher p95 latency than
+Jev; the decision follows the requested priority, not a universal performance
+claim. This small labeled sample does not establish general production accuracy.
+
+SCRY_JUDGE_MODEL remains the sole override. The optional TypeSafe direct route
+still defaults to jev-latest. The explanation policy, exact folding and all
+other open spec questions are unchanged.
+
+Fixed the judge decision log's usage_cost field: dereference a known cost to a
+numeric scalar; use the string unknown when nil. This avoids pointer addresses
+with slog's text handler and makes absence explicit in both text and JSON.
+No key/state logging was added.
+
+Regression-first proof:
+- Updated TestJev_RoutesAndUntrustedInjection to expect the new OpenRouter
+  default, observed it fail against the previous default, then changed routing.
+  Direct-route and explicit-model-override tests still pass.
+- TestDecisionUsageCostLogsValueOrUnknown reproduced the pointer address and
+  nil representations before the fix; now verifies numeric/unknown values for
+  both text and JSON handlers, also checking logs contain no key.
+
+Verification for this follow-up: go build ./..., go vet ./..., and
+fresh go test -race -count=1 ./... all PASS. Output is in
+/tmp/judge-default-final-tests.log; initial regressions are recorded in
+/tmp/default-change-red.log and /tmp/cost-log-red.log. No live evaluation was
+rerun. The optional Chromium smoke was not rerun for this routing/log-only change.
