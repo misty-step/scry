@@ -44,7 +44,7 @@ func NewClaude(apiKey, judgeModel, draftModel string, opts ...option.RequestOpti
 	if draftModel == "" {
 		draftModel = DefaultDraftModel
 	}
-	opts = append([]option.RequestOption{option.WithAPIKey(apiKey)}, opts...)
+	opts = append([]option.RequestOption{option.WithAPIKey(apiKey), option.WithMaxRetries(0)}, opts...)
 	return &Claude{secret: apiKey, client: anthropic.NewClient(opts...), JudgeModel: judgeModel, DraftModel: draftModel}
 }
 
