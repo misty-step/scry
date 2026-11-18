@@ -206,8 +206,8 @@ p { max-width: var(--measure); }
   transition: background-color var(--fast) var(--ease), border-color var(--fast) var(--ease), opacity var(--fast) var(--ease);
 }
 .btn:hover { background: var(--sunken); }
-.btn-accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-.btn-accent:hover { background: var(--accent); opacity: 0.88; }
+.btn-accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); transition: none; }
+.btn-accent:hover { background: var(--accent); text-decoration: underline; }
 .btn:disabled, .btn[aria-disabled="true"] { color: var(--ink-muted); border-color: var(--line); background: transparent; cursor: default; }
 .btn.wide { width: 100%; }
 
