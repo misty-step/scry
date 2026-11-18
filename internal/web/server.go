@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -89,6 +90,16 @@ func New(a *app.App, log *slog.Logger) *Server {
 		fileServer.ServeHTTP(w, r)
 	})))
 	mux.HandleFunc("GET /healthz", s.healthz)
+	if os.Getenv("SCRY_FAULT_DRILL") == "1" && os.Getenv("SCRY_FAULT_DRILL_TOKEN") != "" {
+		secret := os.Getenv("SCRY_FAULT_DRILL_TOKEN")
+		mux.HandleFunc("POST /ops/fault-drill", func(w http.ResponseWriter, r *http.Request) {
+			if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+secret)) != 1 {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, "operator fault drill", 500)
+		})
+	}
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "User-agent: *\nAllow: /$\nAllow: /signup\nDisallow: /\n")
 	})

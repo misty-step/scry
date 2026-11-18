@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/getsentry/sentry-go"
 	"log/slog"
 	"net/http"
 	"os"
@@ -42,7 +43,12 @@ func main() {
 	if env("LOG_LEVEL", "") == "debug" {
 		level = slog.LevelDebug
 	}
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+	if err := sentry.Init(sentry.ClientOptions{Dsn: env("SENTRY_DSN", ""), SendDefaultPII: false}); err != nil {
+		fmt.Fprintln(os.Stderr, "invalid Sentry configuration")
+		os.Exit(1)
+	}
+	defer sentry.Flush(2 * time.Second)
+	log := slog.New(alert.SentryHandler{Handler: slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})})
 	slog.SetDefault(log)
 	cmd := "serve"
 	if len(os.Args) > 1 {

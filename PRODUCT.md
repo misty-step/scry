@@ -17,6 +17,8 @@ Scry gets what's worth knowing into your head and keeps it there, for the fewest
 - As a learner, my library and history are mine alone, and nobody else can see them.
 - As a paying user, I know what I pay and what my allowance covers, and I can top up or cancel any time.
 
+- As an operator, production errors and health are watched continuously, and an agent is alerted, triages and proposes or ships the fix. A fault drill proves this works.
+
 ## Business rules
 
 - No free tier. There's a 7-day trial with a card up front.

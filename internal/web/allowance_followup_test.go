@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"errors"
+	"net/http"
 	"scry/internal/auth"
 	"scry/internal/store"
 	"strings"
@@ -99,5 +100,29 @@ func TestClerkUnconfiguredAndVerificationGate(t *testing.T) {
 	b.get("/billing")
 	if b.path != "/signin?next=%2Fbilling" && !strings.HasPrefix(b.path, "/signin") {
 		t.Fatal(b.path)
+	}
+}
+
+func TestOperatorFaultDrill(t *testing.T) {
+	t.Setenv("SCRY_FAULT_DRILL", "1")
+	t.Setenv("SCRY_FAULT_DRILL_TOKEN", "local-drill")
+	w := newWorld(t)
+	req, _ := http.NewRequest("POST", w.srv.URL+"/ops/fault-drill", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Fatal(resp.StatusCode)
+	}
+	req.Header.Set("Authorization", "Bearer local-drill")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 500 || !strings.Contains(w.logs.String(), `"level":"ERROR"`) {
+		t.Fatal(resp.StatusCode, w.logs.String())
 	}
 }

@@ -614,3 +614,19 @@ almost correct, incorrect. Stored scheduling grades stay stable. The one choice
 question uses plain instructions and label-only criteria (the API's fixed
 choice set), not the old rubric. Explanation seam and its existing strings are
 unchanged; refusals/missing/none_of_these still abstain once with cost logged.
+
+## docs/runbook — MIS-1210 monitoring fault drill
+
+Set SENTRY_DSN in the service environment; unset is a no-op. Error-level
+structured events (including recovered panics, background failures and every
+HTTP 5xx) report sanitized event names to Sentry. /healthz checks SQLite.
+Configure an external continuous health probe and Sentry alert routing to the
+incident agent. The agent itself is outside this implementation.
+
+For an operator-controlled drill, temporarily set SCRY_FAULT_DRILL=1 and a
+random SCRY_FAULT_DRILL_TOKEN in the environment, restart, then POST
+/ops/fault-drill with Authorization: Bearer <that token>. It returns 500 and
+reports an error event. Verify Sentry receipt, agent alert, triage and proposed
+or shipped fix. Record incident link and timestamps. Remove both drill
+variables, restart and verify the endpoint is 404 and /healthz is healthy.
+Never put the token in a URL or commit it. No drill was run on production.
