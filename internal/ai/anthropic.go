@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"scry/internal/safeerr"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 // drafting runs on a stronger one and streams, so ideas appear as they
 // are written.
 type Claude struct {
+	secret     string
 	client     anthropic.Client
 	JudgeModel string
 	DraftModel string
@@ -43,7 +45,7 @@ func NewClaude(apiKey, judgeModel, draftModel string, opts ...option.RequestOpti
 		draftModel = DefaultDraftModel
 	}
 	opts = append([]option.RequestOption{option.WithAPIKey(apiKey)}, opts...)
-	return &Claude{client: anthropic.NewClient(opts...), JudgeModel: judgeModel, DraftModel: draftModel}
+	return &Claude{secret: apiKey, client: anthropic.NewClient(opts...), JudgeModel: judgeModel, DraftModel: draftModel}
 }
 
 func (c *Claude) Name() string { return "anthropic" }
@@ -77,7 +79,8 @@ var judgeSchema = map[string]any{
 
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-func (c *Claude) Judge(ctx context.Context, in JudgeInput) (Judgment, Usage, error) {
+func (c *Claude) Judge(ctx context.Context, in JudgeInput) (retJ Judgment, retU Usage, retErr error) {
+	defer func() { retErr = safeerr.Redact(retErr, c.secret) }()
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	user := "<question>" + in.Question + "</question>\n<reference_answer>" + in.Expected + "</reference_answer>\n<learner_answer>" + in.Answer + "</learner_answer>"
@@ -149,7 +152,8 @@ Then one line per idea: {"idea":{"title":"…","summary":"…","links":["…"],"
 Last line: {"done":true,"note":"one plain sentence on how you shaped this to the learner, or empty"}
 If there is nothing useful to write, reply with the single line {"nothing":"one plain sentence saying why, with a suggestion to narrow the topic"}.`
 
-func (c *Claude) Draft(ctx context.Context, in DraftInput, sink DraftSink) (DraftResult, Usage, error) {
+func (c *Claude) Draft(ctx context.Context, in DraftInput, sink DraftSink) (retD DraftResult, retU Usage, retErr error) {
+	defer func() { retErr = safeerr.Redact(retErr, c.secret) }()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	var user strings.Builder

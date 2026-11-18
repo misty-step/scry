@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"scry/internal/safeerr"
 	"strings"
 	"time"
 )
@@ -72,7 +73,8 @@ type OpenAI struct {
 
 func (o OpenAI) Name() string { return "openai" }
 
-func (o OpenAI) Transcribe(ctx context.Context, a Audio) (string, error) {
+func (o OpenAI) Transcribe(ctx context.Context, a Audio) (result string, retErr error) {
+	defer func() { retErr = safeerr.Redact(retErr, o.APIKey) }()
 	base, model := o.BaseURL, o.Model
 	if base == "" {
 		base = "https://api.openai.com"

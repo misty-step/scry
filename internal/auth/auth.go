@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"scry/internal/safeerr"
 	"strings"
 	"time"
 
@@ -97,7 +98,8 @@ type IdentityToolkit struct {
 
 func (i *IdentityToolkit) Name() string { return "identity-toolkit" }
 
-func (i *IdentityToolkit) call(ctx context.Context, method, email, password string) (string, error) {
+func (i *IdentityToolkit) call(ctx context.Context, method, email, password string) (result string, retErr error) {
+	defer func() { retErr = safeerr.Redact(retErr, i.APIKey) }()
 	base := i.BaseURL
 	if base == "" {
 		base = "https://identitytoolkit.googleapis.com"

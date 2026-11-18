@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"scry/internal/safeerr"
 	"strconv"
 	"strings"
 	"time"
@@ -61,7 +62,8 @@ type stripeError struct {
 	} `json:"error"`
 }
 
-func (s *Stripe) do(ctx context.Context, method, path string, form url.Values, key string, out any) error {
+func (s *Stripe) do(ctx context.Context, method, path string, form url.Values, key string, out any) (retErr error) {
+	defer func() { retErr = safeerr.Redact(retErr, s.secret) }()
 	base := s.BaseURL
 	if base == "" {
 		base = "https://api.stripe.com"
