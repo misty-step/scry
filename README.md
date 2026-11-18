@@ -51,8 +51,8 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 Interfaces isolate auth, billing, model, speech, and alerts. Test adapters use
 local bcrypt auth, fake cards, scripted judgments, simulated speech, and log-only
 alerts. **No keys are needed or used.** Inactive provider adapters are included:
-Identity Toolkit (IDENTITY_API_KEY), Anthropic (ANTHROPIC_API_KEY; optional
-SCRY_JUDGE_MODEL, SCRY_DRAFT_MODEL), speech (OPENAI_API_KEY; optional
+Identity Toolkit (IDENTITY_API_KEY), Jev (OPENROUTER_API_KEY or TYPESAFE_API_KEY),
+Anthropic drafting only (ANTHROPIC_API_KEY; optional SCRY_DRAFT_MODEL), speech (OPENAI_API_KEY; optional
 SCRY_SPEECH_MODEL), Stripe (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY,
 STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET). Do not enable them for this delivery.
 Stripe rejects non-test secret/publishable keys. Never commit credentials.
@@ -170,7 +170,7 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: favorite book core ideas | TestStory_TurnAFavoriteBookIntoASetOfItsCoreIdeas |
 | Story: agents add/suggest; one-tap approval | TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
 | Story: due items, typing/speaking, five minutes | TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinutes |
-| Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord |
+| Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |
 | Story: connected ideas; each item belongs to an idea | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea |
 | Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
 | Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
@@ -204,3 +204,41 @@ The smoke blocks external requests, uses synthetic microphone input and test
 adapters, measures Check contrast in both modes and at desktop/phone widths,
 and verifies one transcription upload at stop, visible reasons and wrapping
 strikes. All provider-contract tests use local stand-ins, never real keys.
+
+
+## Jev judge (MIS-1210 ruling)
+
+Non-exact study answers use Jev's typed decision API, not a generative judge.
+OPENROUTER_API_KEY selects POST https://openrouter.ai/api/alpha/decisions with
+model ~typesafe/jev-latest; otherwise TYPESAFE_API_KEY selects POST
+https://api.typesafe.ai/v1/systemone with model jev-latest. OpenRouter wins when
+both keys are configured. No automatic provider failover or retries. Both routes
+use one choice question with criteria and a JSON state containing the question,
+reference and untrusted learner answer. SCRY_JUDGE_MODEL is no longer used.
+ANTHROPIC_API_KEY remains necessary only for the separate drafting provider.
+Test mode stays entirely local regardless of configured keys.
+
+The small judgeOptions table in internal/ai/jev.go supplies both verdicts and
+fixed user-facing descriptions. Kaylee recommended this design; Phaedrus has
+not yet approved the wording. No generated prose or fabricated close-word spans.
+An unknown/none choice, low concentration or invalid/provider output returns
+the existing unavailable-judge path without a review or schedule change.
+Acceptance requires confidence >= 0.5, selected probability >= 0.8 and a
+runner-up margin >= 0.2, a valid normalized distribution and a recognized choice.
+These are provisional abstention gates, not answer-matching heuristics.
+
+Every attempt logs resolved model (unavailable if unknown), latency and cost
+(null if unknown), never learner state, raw provider bodies or credentials.
+OpenRouter cost comes from usage.cost; missing cost fails closed. Direct Jev
+1.13/1.14 cost is estimated from reported input tokens at $0.042/M, with free
+outputs; unknown direct model versions fail closed pending a price review.
+Charges round upward to micro-dollars. Existing conservative reservations
+remain: known usage settles even on abstention, unknown cost retains the hold.
+Exact-text word diff and folding are unchanged.
+
+Contracts: [TypeSafe System One](https://docs.typesafe.ai/api/system-one),
+[Choice](https://docs.typesafe.ai/primitives/choice),
+[pricing](https://docs.typesafe.ai/models), and
+[OpenRouter Decisions](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request).
+Local tests verify wire behavior and isolation, not live Jev accuracy or
+resistance to semantic prompt injection in the real model.
