@@ -587,3 +587,7 @@ go test -race -count=1 ./... pass. Chromium TestReviewBrowserSmoke passes
 against its isolated httptest server (SCRY_BROWSER_SMOKE=1). The F2 race
 regression also confirms eight concurrent requests report exactly one credit.
 No preview files or process on port 18080 were touched.
+
+MIS-1210 ruling 6: remove all punctuation, including apostrophes, within
+whitespace-delimited words before comparing; preserve original words in the
+plain diff. No fuzzy matching.

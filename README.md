@@ -284,3 +284,4 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Verifier design regressions D2/D3/D5/D7/D10 | TestVerifierDesignRegressions |
 | Trial drafting refusal and truthful spendable allowance (F1) | TestF1_TrialDraftRefusalAgreesWithBilling |
 | Truthful repeated top-up confirmation (F2) | TestF2_RepeatedTopupIsTruthful |
+| Exact folding and near-miss diff | TestAcceptedFolding |
