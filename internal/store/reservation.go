@@ -44,3 +44,10 @@ func (u *UserStore) Settle(ctx context.Context, id string, use Usage, now time.T
 		return u.Spend(ctx, use, now)
 	})
 }
+
+// ReservedMicros reports allowance held by work in flight.
+func (u *UserStore) ReservedMicros(ctx context.Context) (int64, error) {
+	var amount int64
+	err := u.s.db.QueryRowContext(ctx, "SELECT COALESCE(SUM(amount),0) FROM reservations WHERE user_id=?", u.uid).Scan(&amount)
+	return amount, err
+}

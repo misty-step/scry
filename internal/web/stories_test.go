@@ -818,7 +818,7 @@ func TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime(t *t
 	has(t, page,
 		"Scry is $5 a month, charged to your Visa ending 4242. The next charge is on "+reset+".",
 		"You've used 0% of this month's allowance. It resets on "+reset+".",
-		"a monthly allowance of $3 of model time: every answer judged, every spoken answer heard, and roughly",
+		"a monthly allowance of $3 of model time. Your remaining allowance can reserve",
 		"Top up · $5",
 		`class="meter"`,
 		"$5.00", // the first charge, in the history

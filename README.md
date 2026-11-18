@@ -282,3 +282,4 @@ Contracts: [TypeSafe System One](https://docs.typesafe.ai/api/system-one),
 and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streaming).
 
 | Verifier design regressions D2/D3/D5/D7/D10 | TestVerifierDesignRegressions |
+| Trial drafting refusal and truthful spendable allowance (F1) | TestF1_TrialDraftRefusalAgreesWithBilling |

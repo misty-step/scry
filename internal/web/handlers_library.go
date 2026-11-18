@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"scry/internal/ai"
 	"scry/internal/app"
 	"scry/internal/store"
 )
@@ -294,7 +295,20 @@ func (s *Server) suggestionDismiss(w http.ResponseWriter, r *http.Request, c *rc
 }
 
 func (s *Server) learn(w http.ResponseWriter, r *http.Request, c *rc) error {
-	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Learn something new", "Nav": "learn", "Q": r.URL.Query().Get("q")})
+	sub, err := s.App.Plan(r.Context(), c.user.ID)
+	if err != nil {
+		return err
+	}
+	reserved, err := c.us.ReservedMicros(r.Context())
+	if err != nil {
+		return err
+	}
+	hint := ""
+	if sub.AllowanceMicros-sub.UsedMicros+sub.TopupMicros-reserved < ai.DraftBudgetMicros {
+		hint = "Not enough allowance left for a draft. Top up or check Billing."
+	}
+
+	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Learn something new", "Nav": "learn", "Q": r.URL.Query().Get("q"), "Error": hint})
 }
 
 func (s *Server) learnAsk(w http.ResponseWriter, r *http.Request, c *rc) error {

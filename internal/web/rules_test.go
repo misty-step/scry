@@ -198,7 +198,7 @@ func TestRule_Prices_SmallBaseCappedAllowanceAndTopUpsBeyondIt(t *testing.T) {
 	b.get("/learn")
 	b.post("/learn", "q", "philosophy")
 	w.app.WaitDrafts()
-	has(t, b.mustGet(b.path), "You've reached this month's allowance, so Scry can't draft this yet.", `href="/billing"`)
+	has(t, b.mustGet(b.path), "Not enough allowance left for a draft. Scry can't draft this yet.", `href="/billing"`)
 	if len(w.model.drafts) != 0 {
 		t.Error("a draft was written past the cap")
 	}
@@ -281,7 +281,7 @@ func TestRule_PhaedrusIsTheFirstCustomerWithNoSpecialPowers(t *testing.T) {
 	_ = w.lib(app.DemoEmail).SaveSubscription(ctx, sub)
 	p.get("/learn")
 	p.post("/learn", "q", "philosophy")
-	has(t, p.mustGet(p.path), "You've reached this month's allowance")
+	has(t, p.mustGet(p.path), "Not enough allowance left for a draft")
 	// ...and loses access like anyone when the plan ends.
 	sub.Status = "ended"
 	_ = w.lib(app.DemoEmail).SaveSubscription(ctx, sub)

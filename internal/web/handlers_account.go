@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"scry/internal/ai"
 	"scry/internal/app"
 	"scry/internal/billing"
 	"scry/internal/store"
@@ -182,7 +183,7 @@ type billingView struct {
 	Ledger     []store.LedgerEntry
 }
 
-func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.LedgerEntry) billingView {
+func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.LedgerEntry, reserved ...int64) billingView {
 	cfg := s.App.Cfg
 	loc := c.user.Location()
 	sub.TrialEnd = sub.TrialEnd.In(loc)
@@ -245,9 +246,18 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 			v.Topup = "You also have " + money((sub.TopupMicros+5000)/10000) + " of top-up credit, which is used after the allowance and does not expire."
 		}
 	}
+
+	remaining := max(int64(0), sub.AllowanceMicros-sub.UsedMicros+sub.TopupMicros)
+	for _, amount := range reserved {
+		remaining = max(int64(0), remaining-amount)
+	}
+	if remaining < ai.DraftBudgetMicros {
+		v.Allowance += " Not enough allowance left for a draft. Smaller operations may still fit."
+	}
 	v.Covers = "The " + price + " covers running Scry and a monthly allowance of " + money(cfg.AllowanceMicros/10000) +
-		" of model time: every answer judged, every spoken answer heard, and roughly " + plural(cfg.DraftsPerAllowance(), "draft", "drafts") +
-		" of new material. A top-up adds " + money(cfg.TopupMicros/10000) + " more. Prices cover costs plus a small margin."
+		" of model time. Your remaining allowance can reserve " + plural(int(remaining/ai.DraftBudgetMicros), "draft", "drafts") +
+		" at the worst-case cost. Each draft needs about $0.90 available before it starts; only actual usage is charged. Judging and speech share this allowance. In-flight work reduces what is available. A top-up adds " + money(cfg.TopupMicros/10000) + " more. Prices cover costs plus a small margin."
+
 	return v
 }
 
@@ -266,6 +276,10 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if err != nil {
 		return err
 	}
+	reserved, err := c.us.ReservedMicros(r.Context())
+	if err != nil {
+		return err
+	}
 	flash := map[string]string{
 		"topup":   "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added.",
 		"card":    "Your card was updated.",
@@ -273,7 +287,7 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 		"started": "Welcome back. Your plan is active again.",
 	}[r.URL.Query().Get("ok")]
 	return s.render(w, r, c, http.StatusOK, "billing.html", map[string]any{
-		"Title": "Billing", "Nav": "billing", "B": s.billingView(c, sub, ledger), "Flash": flash,
+		"Title": "Billing", "Nav": "billing", "B": s.billingView(c, sub, ledger, reserved), "Flash": flash,
 		"TopupPrice": s.App.Cfg.TopupCents, "Price": s.App.Cfg.PriceCents, "TopupError": r.URL.Query().Get("declined"),
 	})
 }

@@ -567,3 +567,10 @@ D3 applies the existing one-shot 200ms strike animation (static with reduced
 motion). D7 gives wordmark/navigation/Again minimum 44px targets. D10 gives
 allowance-refused drafts a real Display heading. Regression assertions were
 run failing before implementation. F1 and F2 remain outstanding.
+
+F1: Keep the conservative draft reservation and atomic cap unchanged rather
+than risk under-reserving live costs. Billing now counts worst-case draft
+reservations from remaining spendable credit, subtracting in-flight holds;
+it explains the $0.90 start requirement and actual-cost settlement. Learn
+and refused drafts explicitly say not enough allowance left for a draft.
+The trial-until-refused HTTP regression failed before the copy change.
