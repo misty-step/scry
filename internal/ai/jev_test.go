@@ -78,7 +78,7 @@ func TestJev_RoutesAndUntrustedInjection(t *testing.T) {
 	}
 }
 func TestJev_FailsClosedWithoutRetries(t *testing.T) {
-	for _, kind := range []string{"none", "low", "ambiguous", "invalid", "missing", "provider", "redirect"} {
+	for _, kind := range []string{"none", "low", "ambiguous", "invalid", "missing", "provider", "redirect", "refusal", "missing_key", "unexpected_type"} {
 		t.Run(kind, func(t *testing.T) {
 			calls := 0
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +94,12 @@ func TestJev_FailsClosedWithoutRetries(t *testing.T) {
 				b := jevResponse("right", 1)
 				a := b["answers"].(map[string]any)["judgment"].(map[string]any)
 				switch kind {
+				case "refusal":
+					a["type"] = "refusal"
+				case "missing_key":
+					b["answers"] = map[string]any{}
+				case "unexpected_type":
+					a["type"] = "score"
 				case "none":
 					b = jevResponse("none_of_these", 1)
 				case "low":
