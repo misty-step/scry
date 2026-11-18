@@ -218,7 +218,6 @@ p { max-width: var(--measure); }
 }
 .link.quiet { color: var(--ink-muted); }
 .link:hover { color: var(--ink); }
-p .link, .meta .link { display: inline; min-height: 0; }
 
 .form { display: grid; gap: var(--s3); max-width: 480px; margin-top: var(--s4); }
 .field { display: grid; gap: var(--s2); }

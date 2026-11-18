@@ -66,3 +66,10 @@ func TestG12_SpeechUploadsOnlyAtStop(t *testing.T) {
 		t.Fatal("must send sample-counted PCM")
 	}
 }
+
+func TestG14_InlineLinksKeepTouchTargets(t *testing.T) {
+	b, _ := staticFS.ReadFile("static/app.css")
+	if strings.Contains(string(b), "p .link, .meta .link { display: inline; min-height: 0; }") {
+		t.Fatal("inline links override 44px minimum")
+	}
+}
