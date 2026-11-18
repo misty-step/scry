@@ -7,14 +7,11 @@ use crate::{
     owner_token::{self, MutationActor, OwnerToken},
     persistence, web,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD};
+use base64::Engine as _;
 use js_sys::{Array, Function, Promise, Reflect, Uint8Array};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-};
+use std::{cell::RefCell, collections::BTreeMap};
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 use worker::*;
@@ -26,6 +23,8 @@ const RECOVERY_MS: i64 = 90_000;
 const INTERNAL_HEADER: &str = "x-scry-internal-key";
 const BACKUP_PROOF_HEADER: &str = "x-scry-backup-proof";
 const QA_SPACE_NAME: &str = "scry-qa";
+const EXPORT_FULL: &str = "Storage is full: the notebook is too large for one complete export. Nothing has been deleted; history and the Library stay readable.";
+const QA_NO_BACKUPS: &str = "Backups do not apply to this verification space. Nothing was saved.";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AccessPrincipal {
@@ -151,6 +150,7 @@ fn view_query(
     env: &Env,
     fields: &BTreeMap<String, String>,
     preparation_ready: bool,
+    verification: bool,
 ) -> Result<BTreeMap<String, String>> {
     let mut query: BTreeMap<_, _> = fields
         .iter()
@@ -159,60 +159,14 @@ fn view_query(
         .collect();
     query.insert("__nonce".into(), random_id()?);
     query.insert("__preparation_ready".into(), preparation_ready.to_string());
+    // The isolated verification space: Settings says backups do not apply.
+    if verification {
+        query.insert("__verification".into(), "true".into());
+    }
     if development(env) || variable(env, "SCRY_ENV") == "synthetic-preview" {
         query.insert("__synthetic".into(), "true".into());
     }
     Ok(query)
-}
-fn observe_read(app: &mut App, path: &str, timestamp: i64) -> bool {
-    let mut concepts = BTreeSet::new();
-    if path == "/export" && app.protected_goal().is_none() {
-        concepts.extend(app.concepts.keys().cloned());
-    } else if path == "/history" {
-        concepts.extend(
-            app.events
-                .iter()
-                .filter(|event| !app.protected_concept(&event.concept_id))
-                .map(|event| event.concept_id.clone()),
-        );
-    } else if let Some(id) = path.strip_prefix("/concepts/") {
-        if !app.protected_concept(id) {
-            concepts.insert(id.into());
-        }
-    } else if let Some(id) = path
-        .strip_prefix("/goals/")
-        .or_else(|| path.strip_prefix("/photos/"))
-    {
-        if app.protected_goal() != Some(id)
-            && let Some(goal) = app.goals.get(id)
-        {
-            concepts.extend(goal.concept_ids.iter().filter_map(|id| {
-                app.concepts
-                    .get(id)
-                    .filter(|concept| !concept.archived && !app.protected_concept(id))
-                    .map(|concept| concept.id.clone())
-            }));
-        }
-    } else if let Some(id) = path
-        .strip_prefix("/questions/")
-        .and_then(|id| id.strip_suffix("/edit"))
-        && let Some(question) = app.questions.get(id)
-        && !app.protected_concept(&question.concept_id)
-    {
-        concepts.insert(question.concept_id.clone());
-    }
-    let mut changed = false;
-    for id in concepts {
-        if let Some(concept) = app.concepts.get_mut(&id)
-            && concept.exposure_ms != Some(timestamp)
-        {
-            // This affects future presentations only. The occurrence's saved
-            // assistance and submitted answer remain unchanged while checking.
-            concept.exposure_ms = Some(timestamp);
-            changed = true;
-        }
-    }
-    changed
 }
 fn render_error(
     env: &Env,
@@ -221,9 +175,21 @@ fn render_error(
     fields: &BTreeMap<String, String>,
     e: AppError,
     preparation_ready: bool,
+    verification: bool,
 ) -> Result<Response> {
-    let view_path = web::mutation_error_path(app, path);
-    let query = view_query(env, fields, preparation_ready)?;
+    let control_page =
+        web::study_control_page(app, path, fields.get("study_id").map(String::as_str));
+    let view_path = control_page
+        .as_deref()
+        .unwrap_or_else(|| web::mutation_error_path(app, path));
+    let mut query = view_query(env, fields, preparation_ready, verification)?;
+    // A refused native answer or save keeps the text typed for its Prompt.
+    if matches!(path, "/practice/answer" | "/practice/draft")
+        && let (Some(prompt), Some(answer)) = (fields.get("prompt_id"), fields.get("answer"))
+    {
+        query.insert("__typed_prompt".into(), prompt.clone());
+        query.insert("__typed".into(), answer.clone());
+    }
     private(
         Response::from_html(web::render(app, view_path, &query, now(), Some(&e.message)))?
             .with_status(e.status),
@@ -315,46 +281,86 @@ extern "C" {
     fn report_rust(env: &Env, ctx: &JsValue, category: &str) -> std::result::Result<(), JsValue>;
 }
 
+/// Sends one fixed failure category to the triage route. No request, response,
+/// error, learner identity or content crosses this interface: only the
+/// deployment's own bindings and a literal category. JS owns `waitUntil`, so
+/// the send never delays the caller, and even a reporter exception is ignored.
+fn report(env: &Env, ctx: &JsValue, category: &'static str) {
+    let _ = report_rust(env, ctx, category);
+}
+
 #[event(fetch)]
 pub async fn fetch(req: Request, env: Env, ctx: Context) -> Result<Response> {
-    let result = handle_fetch(req, env.clone()).await;
-    let category = match &result {
-        Err(_) => Some("request_exception"),
-        Ok(response) if response.status_code() >= 500 => Some("upstream_5xx"),
-        _ => None,
-    };
+    // Health answers GET and HEAD alike, before any other boundary check.
+    let (result, category) =
+        if req.path() == "/healthz" && matches!(req.method(), Method::Get | Method::Head) {
+            match health(&req, &env).await {
+                Ok((response, category)) => (Ok(response), category),
+                Err(error) => (Err(error), Some("request_exception")),
+            }
+        } else {
+            let mut incident = None;
+            let result = handle_fetch(req, env.clone(), &mut incident).await;
+            let category = match &result {
+                Err(_) => Some("request_exception"),
+                Ok(response) if response.status_code() >= 500 => Some("upstream_5xx"),
+                _ => incident,
+            };
+            (result, category)
+        };
     if let Some(category) = category {
-        // No request, response, error, learner identity or content crosses this
-        // interface. JS owns waitUntil; even a reporter exception is ignored.
-        let _ = report_rust(&env, ctx.as_ref().as_ref(), category);
+        report(&env, ctx.as_ref().as_ref(), category);
     }
     result
 }
 
-async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
+/// Health answers with what it finds. An unhealthy answer that names a known
+/// state, a stale backup or an unverified proof, already says so and is not
+/// an incident. Failing to reach or load the stored state is one.
+async fn health(req: &Request, env: &Env) -> Result<(Response, Option<&'static str>)> {
     // The optional proof narrows the existing health verdict to an exact fully
     // verified archive and its persisted next alarm, never exposing metadata.
-    if req.path() == "/healthz" && req.method() == Method::Get {
-        let proof = req.headers().get(BACKUP_PROOF_HEADER)?;
-        if proof
-            .as_deref()
-            .is_some_and(|value| !valid_backup_proof(value))
-        {
-            return backup_proof_response(false, 400);
-        }
-        return match internal_request_with_proof(
-            &env,
-            "/__internal/health",
-            Method::Get,
-            proof.as_deref(),
-        )
-        .await
-        {
-            Ok(response) => private(response),
-            Err(_) if proof.is_some() => backup_proof_response(false, 503),
-            Err(_) => private(Response::error("backup_unavailable", 503)?),
-        };
+    let proof = req.headers().get(BACKUP_PROOF_HEADER)?;
+    if proof
+        .as_deref()
+        .is_some_and(|value| !valid_backup_proof(value))
+    {
+        return Ok((backup_proof_response(false, 400)?, None));
     }
+    Ok(
+        match internal_request_with_proof(env, "/__internal/health", Method::Get, proof.as_deref())
+            .await
+        {
+            Ok(response) => (private(response)?, None),
+            Err(_) if proof.is_some() => (backup_proof_response(false, 503)?, Some("upstream_5xx")),
+            Err(_) => (
+                private(Response::error("backup_unavailable", 503)?)?,
+                Some("upstream_5xx"),
+            ),
+        },
+    )
+}
+
+/// Whether the browser says another site is loading this read as a
+/// subresource, frame or script fetch rather than navigating to it.
+fn cross_site_load(req: &Request) -> Result<bool> {
+    let headers = req.headers();
+    if headers.get("Sec-Fetch-Site")?.as_deref() != Some("cross-site") {
+        return Ok(false);
+    }
+    Ok(
+        !(headers.get("Sec-Fetch-Mode")?.as_deref() == Some("navigate")
+            && headers.get("Sec-Fetch-Dest")?.as_deref() == Some("document")),
+    )
+}
+
+/// `incident` names a failure to report even though the answer is an
+/// ordinary one, such as Access signing keys the provider did not supply.
+async fn handle_fetch(
+    req: Request,
+    env: Env,
+    incident: &mut Option<&'static str>,
+) -> Result<Response> {
     let url = req.url()?;
     let canonical = match configured_origin(&env) {
         Ok(v) => v,
@@ -390,6 +396,13 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     }
     if req.path().starts_with("/__internal") {
         return private(Response::error("Not found.", 404)?);
+    }
+    // Another site may link to Scry, never load its content. A read the
+    // browser marks cross-site is served only as a top-level navigation, which
+    // includes the sign-in redirect back from the access provider. A request
+    // without fetch metadata (the CLI, an older client) is unchanged.
+    if read && cross_site_load(&req)? {
+        return private(Response::error("Open Scry directly to view this.", 403)?);
     }
     let api_request = req.path().starts_with("/api/v1/");
     let bearer = api_request && req.headers().has("Authorization")?;
@@ -471,6 +484,11 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
                 _ => private(Response::error("backup_failed", 503)?),
             };
         }
+        // The answer is the same refusal either way; only a provider or
+        // network failure to supply the signing keys is an incident.
+        if matches!(access, Err(AccessRefusal::KeysUnavailable)) {
+            *incident = Some("access_keys_unavailable");
+        }
         let identity = match access {
             Ok(identity) => identity,
             Err(_) if api_request => return api_refusal(),
@@ -516,16 +534,14 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
         }
         return api_json(&json!({"version": 1, "scope": scope}), 200);
     }
-    // Saving learner text is an enhanced-only action: do not buffer a body or
-    // contact the object without the page's original scope precondition.
-    if matches!(
-        req.path().as_str(),
-        "/practice/draft" | "/practice/draft/discard"
-    ) && req.headers().get("X-Scry-Request")?.as_deref() != Some("page")
+    let checkpoint_mode = req.headers().get("X-Scry-Checkpoint-Mode")?;
+    // Save draft is a native form, bound to its notebook by the same origin
+    // and CSRF checks as every other form. Automatic saving is enhanced-only:
+    // do not buffer its body or contact the object without the page's scope.
+    if checkpoint_mode.is_some() && req.headers().get("X-Scry-Request")?.as_deref() != Some("page")
     {
         return private(Response::error("Authenticated page required.", 403)?);
     }
-    let checkpoint_mode = req.headers().get("X-Scry-Checkpoint-Mode")?;
     if checkpoint_mode
         .as_deref()
         .is_some_and(|mode| mode != "auto-v1")
@@ -601,7 +617,13 @@ async fn handle_fetch(req: Request, env: Env) -> Result<Response> {
     } else {
         let max = if mode == "restore" {
             persistence::MAX_ARCHIVE_BYTES
-        } else if checkpoint_mode.as_deref() == Some("auto-v1") {
+        } else if checkpoint_mode.as_deref() == Some("auto-v1")
+            || matches!(
+                req.path().as_str(),
+                "/practice/draft" | "/practice/draft/discard"
+            )
+        {
+            // A draft is at most 32 KiB of text, however it is sent.
             128 * 1024
         } else {
             MAX_HTTP_BODY
@@ -722,7 +744,57 @@ async fn internal_request_with_proof(
         .await
 }
 
-async fn validate_access(req: &Request, env: &Env) -> Result<AccessIdentity> {
+/// Why Access yielded no identity. A missing, malformed, forged or expired
+/// credential is `Denied`, an ordinary answer. `KeysUnavailable` is the access
+/// provider or the network failing to supply readable signing keys.
+enum AccessRefusal {
+    Denied,
+    KeysUnavailable,
+}
+impl From<Error> for AccessRefusal {
+    fn from(_: Error) -> Self {
+        Self::Denied
+    }
+}
+impl From<serde_json::Error> for AccessRefusal {
+    fn from(_: serde_json::Error) -> Self {
+        Self::Denied
+    }
+}
+impl From<JsValue> for AccessRefusal {
+    fn from(_: JsValue) -> Self {
+        Self::Denied
+    }
+}
+/// The issuer's signing keys, read through the bounded five-minute cache.
+async fn access_keys(issuer: &str) -> Result<Value> {
+    let request = Request::new_with_init(
+        &format!("{issuer}/cdn-cgi/access/certs"),
+        RequestInit::new().with_redirect(RequestRedirect::Manual),
+    )?;
+    let mut response = timed_fetch(request, 10_000).await?;
+    if response.status_code() != 200 {
+        return Err(Error::RustError("Access keys unavailable.".into()));
+    }
+    let bytes = bounded_response_body(&mut response, 64 * 1024).await?;
+    let keys: Value = serde_json::from_slice(&bytes)?;
+    if !keys.get("keys").is_some_and(Value::is_array) {
+        return Err(Error::RustError("Access keys unreadable.".into()));
+    }
+    ACCESS_KEYS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.len() >= 4 {
+            cache.clear();
+        }
+        cache.insert(issuer.to_string(), (now(), keys.clone()));
+    });
+    Ok(keys)
+}
+
+async fn validate_access(
+    req: &Request,
+    env: &Env,
+) -> std::result::Result<AccessIdentity, AccessRefusal> {
     let team = variable(env, "ACCESS_TEAM");
     let aud = variable(env, "ACCESS_AUDIENCE");
     let owner = secret(env, "OWNER_SUBJECT");
@@ -734,18 +806,18 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessIdentity> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
     {
-        return Err(Error::RustError("Access is not configured.".into()));
+        return Err(AccessRefusal::Denied);
     }
     let token = req
         .headers()
         .get("Cf-Access-Jwt-Assertion")?
         .unwrap_or_default();
     if token.len() > 16 * 1024 {
-        return Err(Error::RustError("Invalid token.".into()));
+        return Err(AccessRefusal::Denied);
     }
     let parts: Vec<_> = token.split('.').collect();
     if parts.len() != 3 {
-        return Err(Error::RustError("Invalid token.".into()));
+        return Err(AccessRefusal::Denied);
     }
     let decode = |part: &str| {
         base64::engine::general_purpose::URL_SAFE_NO_PAD
@@ -814,7 +886,7 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessIdentity> {
             .get("iat")
             .is_some_and(|v| !v.as_i64().is_some_and(|n| n <= seconds + 30))
     {
-        return Err(Error::RustError("Invalid token.".into()));
+        return Err(AccessRefusal::Denied);
     }
     let cached = ACCESS_KEYS
         .with(|cache| cache.borrow().get(&issuer).cloned())
@@ -831,26 +903,9 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessIdentity> {
         .map(|(_, keys)| keys);
     let jwks = match cached {
         Some(keys) => keys,
-        None => {
-            let request = Request::new_with_init(
-                &format!("{issuer}/cdn-cgi/access/certs"),
-                RequestInit::new().with_redirect(RequestRedirect::Manual),
-            )?;
-            let mut response = timed_fetch(request, 10_000).await?;
-            if response.status_code() != 200 {
-                return Err(Error::RustError("Access keys unavailable.".into()));
-            }
-            let bytes = bounded_response_body(&mut response, 64 * 1024).await?;
-            let keys: Value = serde_json::from_slice(&bytes)?;
-            ACCESS_KEYS.with(|cache| {
-                let mut cache = cache.borrow_mut();
-                if cache.len() >= 4 {
-                    cache.clear();
-                }
-                cache.insert(issuer.clone(), (now(), keys.clone()));
-            });
-            keys
-        }
+        None => access_keys(&issuer)
+            .await
+            .map_err(|_| AccessRefusal::KeysUnavailable)?,
     };
     let key = jwks
         .get("keys")
@@ -901,7 +956,7 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessIdentity> {
     )
     .await?;
     if verified.as_bool() != Some(true) {
-        return Err(Error::RustError("Invalid signature.".into()));
+        return Err(AccessRefusal::Denied);
     }
     // Key retrieval and signature verification can outlive the assertion.
     if !claims
@@ -909,7 +964,7 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessIdentity> {
         .and_then(Value::as_i64)
         .is_some_and(|expiry| expiry > now() / 1000)
     {
-        return Err(Error::RustError("Expired token.".into()));
+        return Err(AccessRefusal::Denied);
     }
     let principal = principal.ok_or_else(|| Error::RustError("Invalid identity.".into()))?;
     let subject = claims
@@ -928,7 +983,7 @@ async fn validate_access(req: &Request, env: &Env) -> Result<AccessIdentity> {
         ("person", subject)
     };
     if identity.is_empty() {
-        return Err(Error::RustError("Invalid identity.".into()));
+        return Err(AccessRefusal::Denied);
     }
     let actor = serde_json::to_string(&(issuer, kind, identity))?;
     Ok(AccessIdentity { principal, actor })
@@ -1028,7 +1083,7 @@ impl DurableObject for LearningSpace {
                 let verified = self.backup_proof(&expected).await.unwrap_or(false);
                 return backup_proof_response(verified, if verified { 200 } else { 503 });
             }
-            let rows = self.stored_rows()?;
+            let rows = self.read_rows()?;
             let fresh = !rows.is_empty()
                 && persistence::app_from_rows(&rows)
                     .map_err(to_worker_error)?
@@ -1055,7 +1110,7 @@ impl DurableObject for LearningSpace {
         let url = req.url()?;
         if matches!(req.method(), Method::Get | Method::Head) {
             if path == "/readyz" {
-                self.load()?;
+                self.read_snapshot()?;
                 return private(Response::ok("ready")?);
             }
             if let Some((mime, bytes)) = web::asset(&path) {
@@ -1063,49 +1118,25 @@ impl DurableObject for LearningSpace {
                 response.headers_mut().set("Content-Type", mime)?;
                 return private(response);
             }
-            let mut app = self.load()?;
-            let previous = app.clone();
-            engine::recover_grading(&mut app, now());
-            if path != "/"
-                && path != "/recall"
-                && path != "/lessons"
-                && !path.starts_with("/library")
-                && let Err(e) = engine::ensure_occurrence(&mut app, now(), &random_id()?)
-            {
-                return app_error(e);
-            }
-            if path == "/recall"
-                && let Err(e) = crate::study::ensure_stream(&mut app, now(), &random_id()?)
-            {
-                return app_error(e);
-            }
-            if app != previous {
-                self.save(&mut app, Some(previous.revision))?;
-            }
+            // A read loads and renders. It selects no question, recovers no
+            // work, records no exposure and moves no alarm. Only a space that
+            // was never used is written, once, with the empty notebook whose
+            // forms need its cross-site value.
+            let app = self.load()?;
             if app.practice.protected() && path == "/export" {
                 return api_error(AppError::new(
                     409,
                     "Record exact practice assistance before export.",
                 ));
             }
-            if app.protected_goal().is_some()
-                && (path == "/export"
-                    || path
-                        .strip_prefix("/photos/")
-                        .is_some_and(|id| app.protected_goal() == Some(id)))
-            {
-                let mut gate_query = BTreeMap::new();
-                gate_query.insert("return_to".into(), path.clone());
-                let gate_query = view_query(&self.env, &gate_query, self.preparation_ready())?;
-                return private(Response::from_html(web::render(
-                    &app,
-                    "/gate",
-                    &gate_query,
-                    now(),
-                    None,
-                ))?);
-            }
             if path == "/export" {
+                // A notebook past capacity says so; nothing is deleted to fit.
+                if matches!(
+                    persistence::footprint(&app),
+                    persistence::Footprint::TooLarge
+                ) {
+                    return private(Response::error(EXPORT_FULL, 413)?);
+                }
                 // Includes referenced assets, never just the database metadata.
                 let archive = self
                     .archive(app)
@@ -1115,29 +1146,11 @@ impl DurableObject for LearningSpace {
                 drop(archive);
                 // Assets await outside SQLite. Recheck the latest attempt
                 // before returning answers from the earlier committed snapshot.
-                let mut latest = self.load()?;
-                if latest.practice.protected() {
+                if self.load()?.practice.protected() {
                     return api_error(AppError::new(
                         409,
                         "Record exact practice assistance before export.",
                     ));
-                }
-                if latest.protected_goal().is_some() {
-                    let mut query = BTreeMap::new();
-                    query.insert("return_to".into(), path.clone());
-                    return private(Response::from_html(web::render(
-                        &latest,
-                        "/gate",
-                        &view_query(&self.env, &query, self.preparation_ready())?,
-                        now(),
-                        None,
-                    ))?);
-                }
-                if req.method() == Method::Get {
-                    let before = latest.revision;
-                    if observe_read(&mut latest, &path, now()) {
-                        self.save(&mut latest, Some(before))?;
-                    }
                 }
                 let hash = persistence::sha256(&bytes);
                 let mut response = Response::from_bytes(bytes)?;
@@ -1172,24 +1185,6 @@ impl DurableObject for LearningSpace {
                                 503,
                             )?);
                         }
-                        let mut latest = self.load()?;
-                        if latest.protected_goal() == Some(id) {
-                            let mut query = BTreeMap::new();
-                            query.insert("return_to".into(), path.clone());
-                            return private(Response::from_html(web::render(
-                                &latest,
-                                "/gate",
-                                &view_query(&self.env, &query, self.preparation_ready())?,
-                                now(),
-                                None,
-                            ))?);
-                        }
-                        if req.method() == Method::Get {
-                            let before = latest.revision;
-                            if observe_read(&mut latest, &path, now()) {
-                                self.save(&mut latest, Some(before))?;
-                            }
-                        }
                         let mut response = Response::from_bytes(bytes)?;
                         response.headers_mut().set("Content-Type", &photo.mime)?;
                         return private(response);
@@ -1201,17 +1196,14 @@ impl DurableObject for LearningSpace {
                 .query_pairs()
                 .map(|(k, v)| (k.into_owned(), v.into_owned()))
                 .collect();
-            let query = view_query(&self.env, &external_query, self.preparation_ready())?;
-            self.arm().await?;
-            // Alarm installation can yield to another owner request. Render
-            // and mark only the latest allowed reference content after it.
-            let mut app = self.load()?;
-            if req.method() == Method::Get {
-                let before = app.revision;
-                if observe_read(&mut app, &path, now()) {
-                    self.save(&mut app, Some(before))?;
-                }
-            }
+            let mut query = view_query(
+                &self.env,
+                &external_query,
+                self.preparation_ready(),
+                !self.backups_apply(),
+            )?;
+            // Settings offers the paid judgment switch only where Jev is reachable.
+            query.insert("__judgment".into(), self.judgment_capable().to_string());
             return private(Response::from_html(web::render(
                 &app,
                 &path,
@@ -1304,43 +1296,35 @@ impl DurableObject for LearningSpace {
             api::normalize_draft_form(&mut fields);
         }
         let mut app = self.load()?;
-        let before = app.revision;
         if fields.get("csrf").map(String::as_str) != Some(app.csrf.as_str()) {
             return private(Response::error("Reload before submitting.", 403)?);
         }
         // Refuse before photo bytes, R2 puts, operation receipts or new jobs.
+        // The earlier notebook's writes, its pace and the authored demo
+        // (`/__fixture`) are refused here too.
         if let Err(error) = engine::admit_current_mutation(&path) {
-            return render_error(&self.env, &app, &path, &fields, error, false);
+            return self.refusal(&app, &path, &fields, error, false);
         }
-        if path == "/__fixture" {
-            if (!development(&self.env) && variable(&self.env, "SCRY_ENV") != "synthetic-preview")
-                || !app.goals.is_empty()
-                || !app.events.is_empty()
-            {
-                return private(Response::error(
-                    "Authored fixtures require an unused isolated development space.",
-                    409,
-                )?);
-            }
-            if let Err(e) = engine::seed_fixture(&mut app, now()) {
-                return app_error(e);
-            }
-            self.save(&mut app, Some(before))?;
-            self.arm().await?;
-            return redirect("/notebook");
+        if path == "/settings/backup" && !self.backups_apply() {
+            return self.refusal(
+                &app,
+                &path,
+                &fields,
+                AppError::new(403, QA_NO_BACKUPS),
+                false,
+            );
         }
         if path == "/library/version/add"
             && let Err(e) = api::library_form_fields(&mut fields)
         {
-            return render_error(&self.env, &app, &path, &fields, e, self.preparation_ready());
+            return self.refusal(&app, &path, &fields, e, self.preparation_ready());
         }
         let mut photo_key = None;
         if let Some(FormEntry::File(file)) = form.get("photo")
             && file.size() > 0
         {
             if path != "/create" || file.size() > PHOTO_LIMIT {
-                return render_error(
-                    &self.env,
+                return self.refusal(
                     &app,
                     &path,
                     &fields,
@@ -1357,8 +1341,7 @@ impl DurableObject for LearningSpace {
                 .map(String::as_str)
                 .unwrap_or_default();
             if text.len() > 1024 {
-                return render_error(
-                    &self.env,
+                return self.refusal(
                     &app,
                     &path,
                     &fields,
@@ -1380,8 +1363,7 @@ impl DurableObject for LearningSpace {
             }
             let bytes = file.bytes().await?;
             let Some(mime) = persistence::image_mime(&bytes) else {
-                return render_error(
-                    &self.env,
+                return self.refusal(
                     &app,
                     &path,
                     &fields,
@@ -1421,8 +1403,7 @@ impl DurableObject for LearningSpace {
             if fields.get("csrf").map(String::as_str) != Some(app.csrf.as_str())
                 || app.csrf.len() < 24
             {
-                return render_error(
-                    &self.env,
+                return self.refusal(
                     &app,
                     &path,
                     &fields,
@@ -1437,14 +1418,18 @@ impl DurableObject for LearningSpace {
             if !operation.starts_with(crate::study::AUTOSAVE_OPERATION_PREFIX) {
                 return private(Response::error("Invalid automatic save operation.", 422)?);
             }
-            if !replayed && crate::study::autosave_remaining(&app) == 0 {
-                return private(Response::error(
-                    "Automatic saving has reached its limit. Use Save draft.",
-                    429,
-                )?);
+            if !replayed {
+                crate::study::make_room_for_autosave(&mut app);
             }
         }
-        let result = engine::mutate(&mut app, &path, &fields, now(), &seed);
+        let result = engine::mutate_browser(
+            &mut app,
+            &path,
+            &fields,
+            now(),
+            &seed,
+            self.judgment_capable(),
+        );
         match result {
             Err(e) => {
                 if let Some(key) = photo_key {
@@ -1457,25 +1442,14 @@ impl DurableObject for LearningSpace {
                         let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
                     }
                 }
-                render_error(&self.env, &app, &path, &fields, e, self.preparation_ready())
+                self.refusal(&app, &path, &fields, e, self.preparation_ready())
             }
             Ok(result) => {
-                // New captured or edited content must fit a complete recovery
-                // archive. Paid completions still retain their raw/ledger
-                // outcome through the separate durable work path.
-                if app.revision != before
-                    && (matches!(
-                        path.as_str(),
-                        "/create"
-                            | "/add"
-                            | "/library/version/add"
-                            | "/library/mapping/add"
-                            | "/practice/nato/start"
-                            | "/practice/lesson/start"
-                            | "/practice/draft"
-                            | "/practice/draft/discard"
-                    ) || path.ends_with("/edit"))
-                    && let Err(e) = persistence::archive_size(&app)
+                // Whatever this changed must fit a complete recovery archive,
+                // by the rule the API uses. Paid completions still retain their
+                // raw/ledger outcome through the separate durable work path.
+                if let Err(e) =
+                    persistence::admit_growth(&path, before, &app, persistence::Client::Browser)
                 {
                     let retained = self.load()?;
                     if let Some(key) = photo_key
@@ -1486,14 +1460,7 @@ impl DurableObject for LearningSpace {
                     {
                         let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
                     }
-                    return render_error(
-                        &self.env,
-                        &retained,
-                        &path,
-                        &fields,
-                        e,
-                        self.preparation_ready(),
-                    );
+                    return self.refusal(&retained, &path, &fields, e, self.preparation_ready());
                 }
                 if !matches!(path.as_str(), "/practice/draft" | "/practice/draft/discard")
                     || !replayed
@@ -1511,8 +1478,7 @@ impl DurableObject for LearningSpace {
                             {
                                 let _ = self.env.bucket("SCRY_ASSETS")?.delete(&key).await;
                             }
-                            return render_error(
-                                &self.env,
+                            return self.refusal(
                                 &retained,
                                 &path,
                                 &fields,
@@ -1522,8 +1488,10 @@ impl DurableObject for LearningSpace {
                         }
                     }
                 }
-                if path == "/settings/backup" {
-                    self.backup(false).await?;
+                // A failed backup is recorded in the notebook, and Settings,
+                // where this returns, shows it. Study stays available.
+                if path == "/settings/backup" && self.backup(false).await.is_err() {
+                    report(&self.env, self.state.as_raw().as_ref(), "backup_failure");
                 }
                 if path == "/tokens/create" && !replayed {
                     return private(Response::from_html(web::token_created(
@@ -1548,7 +1516,8 @@ impl DurableObject for LearningSpace {
                             "prompt_id": fields.get("prompt_id"),
                             "generation": generation.to_string(),
                             "current": crate::study::checkpoint_current(&latest, &fields, generation),
-                            "remaining": crate::study::autosave_remaining(&latest),
+                            // Kept for pages that still read it: saving has no budget.
+                            "remaining": crate::study::AUTOSAVE_RECEIPT_LIMIT,
                         }),
                         200,
                     );
@@ -1572,52 +1541,46 @@ impl DurableObject for LearningSpace {
                                 .as_ref()
                                 .and_then(|p| app.library.versions.get(&p.prompt.version_id))
                                 .is_some_and(crate::library::is_nato)));
-                redirect(destination.map(String::as_str).unwrap_or_else(|| {
-                    if focused {
-                        "/?practice=nato"
-                    } else {
-                        web::mutation_redirect(&app, &path, &result.redirect)
-                    }
-                }))
+                let control_page = web::study_control_page(
+                    &app,
+                    &path,
+                    fields.get("study_id").map(String::as_str),
+                );
+                let location = destination
+                    .or(control_page.as_ref())
+                    .map(String::as_str)
+                    .unwrap_or_else(|| {
+                        if focused {
+                            "/?practice=nato"
+                        } else {
+                            web::mutation_redirect(&app, &path, &result.redirect)
+                        }
+                    });
+                // The page says the text was already there; nothing was added.
+                if api::library_existing(&path, &result) == Some(true) {
+                    return redirect(&format!("{location}?existing=1"));
+                }
+                redirect(location)
             }
         }
     }
     async fn alarm(&self) -> Result<Response> {
-        // The recovery alarm is installed before any paid send. An evicted or
-        // timed-out send becomes uncertain once, never another invisible send.
-        let mut app = self.load()?;
-        let before = app.revision;
-        engine::recover_grading(&mut app, now());
-        if app.revision != before {
-            self.save(&mut app, Some(before))?;
-        }
-        if app
-            .backup
-            .completed_ms
-            .is_none_or(|last| last <= now() - DAY_MS)
+        // No read arms the alarm, so every way out of this handler arms the
+        // next one. A failure here must not end daily backups until the next
+        // deliberate action.
+        let outcome = self.run_alarm().await;
+        let armed = self.arm().await;
+        // A failed backup, recovery, claim or rearm is unexpected. It is
+        // reported after the outcome is fixed and never changes it.
+        if armed.is_err()
+            || !outcome.as_ref().is_ok_and(|(response, backup_failed)| {
+                !*backup_failed && response.status_code() == 200
+            })
         {
-            let _ = self.backup(false).await;
+            report(&self.env, self.state.as_raw().as_ref(), "alarm_failure");
         }
-        let mut app = self.load()?;
-        let before = app.revision;
-        if !app.restored_paused {
-            let config = self.work_config();
-            let lease = random_id()?;
-            match engine::claim_grading_work(&mut app, now(), &lease, &config) {
-                Err(e) => return app_error(e),
-                Ok(work) => {
-                    if app.revision != before {
-                        self.save(&mut app, Some(before))?;
-                    }
-                    if let Some(work) = work {
-                        set_alarm(&self.state.storage(), now() + RECOVERY_MS).await?;
-                        self.run_work(work).await?;
-                    }
-                }
-            }
-        }
-        self.arm().await?;
-        private(Response::ok("ok")?)
+        armed?;
+        outcome.map(|(response, _)| response)
     }
 }
 
@@ -1636,6 +1599,47 @@ struct PersistedBackupProof {
     backup: BackupStatus,
 }
 impl LearningSpace {
+    /// The alarm's response, and whether a backup it attempted failed.
+    async fn run_alarm(&self) -> Result<(Response, bool)> {
+        // The recovery alarm is installed before any paid send. An evicted or
+        // timed-out send becomes uncertain once, never another invisible send.
+        // Only Checks of Study answers are recovered, claimed and sent here.
+        // A check saved in the earlier concept notebook is never read.
+        let mut app = self.load()?;
+        let before = app.revision;
+        engine::recover_checks(&mut app, now());
+        if app.revision != before {
+            self.save(&mut app, Some(before))?;
+        }
+        let mut backup_failed = false;
+        if self.backups_apply()
+            && app
+                .backup
+                .completed_ms
+                .is_none_or(|last| last <= now() - DAY_MS)
+        {
+            backup_failed = self.backup(false).await.is_err();
+        }
+        let mut app = self.load()?;
+        let before = app.revision;
+        if !app.restored_paused {
+            let config = self.work_config();
+            let lease = random_id()?;
+            match engine::claim_check_work(&mut app, now(), &lease, &config) {
+                Err(e) => return Ok((app_error(e)?, backup_failed)),
+                Ok(work) => {
+                    if app.revision != before {
+                        self.save(&mut app, Some(before))?;
+                    }
+                    if let Some(work) = work {
+                        set_alarm(&self.state.storage(), now() + RECOVERY_MS).await?;
+                        self.run_work(work).await?;
+                    }
+                }
+            }
+        }
+        Ok((private(Response::ok("ok")?)?, backup_failed))
+    }
     fn bearer_token(&self, authorization: &str) -> Option<OwnerToken> {
         let secret = authorization.strip_prefix("Bearer ")?;
         let id = owner_token::token_id(secret)?;
@@ -1708,8 +1712,14 @@ impl LearningSpace {
                     Err(error) => api_error(error),
                 },
                 _ => {
-                    if app.protected_goal().is_some() || app.practice.protected() {
+                    if app.practice.protected() {
                         return api_error(AppError::new(409, "Record assistance before export."));
+                    }
+                    if matches!(
+                        persistence::footprint(&app),
+                        persistence::Footprint::TooLarge
+                    ) {
+                        return api_error(AppError::new(413, EXPORT_FULL));
                     }
                     let mut snapshot = app;
                     if snapshot.csrf.is_empty() {
@@ -1722,7 +1732,7 @@ impl LearningSpace {
                         return api_refusal();
                     }
                     let latest = self.read_snapshot()?;
-                    if latest.protected_goal().is_some() || latest.practice.protected() {
+                    if latest.practice.protected() {
                         return api_error(AppError::new(409, "Record assistance before export."));
                     }
                     api_json(&archive, 200)
@@ -1825,12 +1835,21 @@ impl LearningSpace {
             .as_ref()
             .map_or(MutationActor::Browser, |t| MutationActor::Token(&t.info));
         let seed = random_id()?;
-        let result = match engine::mutate_as(&mut app, canonical_path, &fields, now(), &seed, actor)
-        {
+        let result = match engine::mutate_judged(
+            &mut app,
+            canonical_path,
+            &fields,
+            now(),
+            &seed,
+            actor,
+            self.judgment_capable(),
+        ) {
             Ok(result) => result,
             Err(error) => return api_error(error),
         };
-        if let Err(error) = persistence::archive_size(&app) {
+        if let Err(error) =
+            persistence::admit_growth(canonical_path, before, &app, persistence::Client::Api)
+        {
             return api_error(error);
         }
         if !matches!(
@@ -1858,7 +1877,12 @@ impl LearningSpace {
         self.arm().await?;
         api_json(
             &api::MutationResponse {
-                practice: crate::study::wire_response(&app, &result),
+                practice: if canonical_path.starts_with("/library/") {
+                    None
+                } else {
+                    crate::study::wire_response(&app, &result)
+                },
+                existing: api::library_existing(canonical_path, &result),
                 result,
                 replayed,
                 token,
@@ -1882,9 +1906,41 @@ impl LearningSpace {
     fn space_name(&self) -> Result<String> {
         self.principal()?.space_name(&self.env)
     }
+    /// Only the Owner's space is backed up. The verification space never
+    /// writes, reads or prunes the backup bucket, by any route or alarm.
+    fn backups_apply(&self) -> bool {
+        matches!(self.principal(), Ok(AccessPrincipal::Owner))
+    }
+    /// A refused form answers with the page it came from and the refusal.
+    fn refusal(
+        &self,
+        app: &App,
+        path: &str,
+        fields: &BTreeMap<String, String>,
+        e: AppError,
+        preparation_ready: bool,
+    ) -> Result<Response> {
+        render_error(
+            &self.env,
+            app,
+            path,
+            fields,
+            e,
+            preparation_ready,
+            !self.backups_apply(),
+        )
+    }
     // No application initialization, token metadata save, recovery or alarm.
     // The platform may allocate SQLite files when it activates the object.
     fn read_snapshot(&self) -> Result<App> {
+        let rows = self.read_rows()?;
+        if rows.is_empty() {
+            return Ok(App::new(String::new()));
+        }
+        persistence::app_from_rows(&rows).map_err(to_worker_error)
+    }
+    // Only SELECTs: the stored rows, or none where nothing was ever stored.
+    fn read_rows(&self) -> Result<BTreeMap<String, String>> {
         let sql = self.state.storage().sql();
         let tables: Vec<Value> = sql
             .exec(
@@ -1893,13 +1949,12 @@ impl LearningSpace {
             )?
             .to_array()?;
         if tables.is_empty() {
-            return Ok(App::new(String::new()));
+            return Ok(BTreeMap::new());
         }
         let records: Vec<StoredRow> = sql
             .exec("SELECT key, value FROM records ORDER BY key", None)?
             .to_array()?;
-        let rows = records.into_iter().map(|r| (r.key, r.value)).collect();
-        persistence::app_from_rows(&rows).map_err(to_worker_error)
+        Ok(records.into_iter().map(|r| (r.key, r.value)).collect())
     }
     // Only SELECTs: do not create records, initialize an App, recover work,
     // save status or arm an alarm while observing the backup proof.
@@ -2041,7 +2096,7 @@ impl LearningSpace {
         let jev = !disabled
             && !secret(&self.env, "JEV_API_KEY").is_empty()
             && !jev_model.is_empty()
-            && valid_provider_url(&variable(&self.env, "JEV_URL"));
+            && judge_endpoint_allowed(&self.env);
         engine::WorkConfig {
             generation: false,
             jev,
@@ -2052,6 +2107,13 @@ impl LearningSpace {
     }
     fn preparation_ready(&self) -> bool {
         false
+    }
+    /// Whether this Scry can reach Jev at all: its key, model and endpoint are
+    /// bound, the deployment holds model authority for that endpoint, and the
+    /// space is the Owner's own, never a QA or synthetic one. Where this is
+    /// false every answer is graded locally and nothing is sent.
+    fn judgment_capable(&self) -> bool {
+        self.work_config().jev
     }
     async fn arm(&self) -> Result<()> {
         if variable(&self.env, "SCRY_ENV") == "restore" {
@@ -2064,24 +2126,40 @@ impl LearningSpace {
             .completed_ms
             .map(|t| t + DAY_MS)
             .unwrap_or(timestamp + DAY_MS);
-        let mut alarm = if app.backup.error.is_some() {
+        // The verification space takes no backups, so only its checks arm it.
+        let mut alarm = if !self.backups_apply() {
+            i64::MAX
+        } else if app.backup.error.is_some() {
             timestamp + 30 * 60_000
         } else {
             due.max(timestamp + 1000)
         };
         if !app.restored_paused {
-            for assessment in app.assessments.values() {
-                if assessment.status == "queued" {
-                    alarm = alarm.min(timestamp + 1000);
-                }
-                if assessment.status == "sent" {
-                    alarm = alarm.min(assessment.started_ms.unwrap_or(timestamp) + RECOVERY_MS);
+            // A queued Check is claimed by the next alarm; a sent one is
+            // recovered once its outcome can no longer arrive. A check saved
+            // in the earlier concept notebook asks for no alarm: nothing would
+            // claim or recover it.
+            for check in app.practice.checks.values() {
+                match check.status {
+                    crate::study::CheckStatus::Queued => alarm = alarm.min(timestamp + 1000),
+                    crate::study::CheckStatus::Sent => {
+                        alarm = alarm.min(check.started_ms.unwrap_or(timestamp) + RECOVERY_MS)
+                    }
+                    _ => {}
                 }
             }
+        }
+        if alarm == i64::MAX {
+            return self.state.storage().delete_alarm().await;
         }
         set_alarm(&self.state.storage(), alarm.max(timestamp + 1000)).await
     }
     async fn run_work(&self, work: engine::Work) -> Result<()> {
+        // Only a Check is claimed. Work of any other kind is neither sent nor
+        // finished nor failed: its saved record stays as it is.
+        if work.kind != engine::CHECK_WORK {
+            return Ok(());
+        }
         let result = self.transmit(&work).await;
         let mut app = self.load()?;
         let before = app.revision;
@@ -2119,8 +2197,10 @@ impl LearningSpace {
         &self,
         work: &engine::Work,
     ) -> std::result::Result<(String, String, Option<u64>, Option<String>), (String, bool)> {
-        if work.kind != "assessment" {
-            return Err(("Native content generation is retired.".into(), false));
+        // Only a Check of a Study answer leaves Scry. Generation is retired
+        // and the earlier concept notebook is history.
+        if work.kind != engine::CHECK_WORK {
+            return Err(("Only a Check of a Study answer is sent.".into(), false));
         }
         if !self.external_work_allowed() {
             return Err((
@@ -2128,107 +2208,25 @@ impl LearningSpace {
                 false,
             ));
         }
-        let chat = work.kind == "generation" || work.kind == "transcribe";
-        let endpoint = if chat {
-            "https://openrouter.ai/api/v1/chat/completions".into()
-        } else {
-            variable(&self.env, "JEV_URL")
-        };
-        if !valid_provider_url(&endpoint) {
+        let endpoint = variable(&self.env, "JEV_URL");
+        if !judge_endpoint_allowed(&self.env) {
             return Err((
                 "The model endpoint is not securely configured.".into(),
                 false,
             ));
         }
-        let key = secret(
-            &self.env,
-            if chat {
-                "OPENROUTER_API_KEY"
-            } else {
-                "JEV_API_KEY"
-            },
-        );
-        let model = variable(
-            &self.env,
-            if chat {
-                "OPENROUTER_MODEL"
-            } else {
-                "JEV_MODEL"
-            },
-        );
+        let key = secret(&self.env, "JEV_API_KEY");
+        let model = variable(&self.env, "JEV_MODEL");
         if key.is_empty() || model.is_empty() {
             return Err(("The model is not configured.".into(), false));
-        }
-        let mut request = work.request.clone();
-        if let Some(photo_key) = &work.photo_key {
-            let bucket = self
-                .env
-                .bucket("SCRY_ASSETS")
-                .map_err(|_| ("Photo storage is unavailable.".into(), false))?;
-            let photo = self
-                .load()
-                .map_err(|_| ("Saved state is unavailable.".into(), false))?
-                .goals
-                .values()
-                .filter_map(|g| g.photo.clone())
-                .find(|p| &p.key == photo_key)
-                .ok_or_else(|| ("The saved photo is missing.".into(), false))?;
-            let object = bucket
-                .get(photo_key)
-                .execute()
-                .await
-                .map_err(|_| ("The saved photo could not be read.".into(), false))?
-                .ok_or_else(|| ("The saved photo is missing.".into(), false))?;
-            if object.size() != photo.size as u64 || photo.size > PHOTO_LIMIT {
-                return Err((
-                    "The saved photo failed integrity verification.".into(),
-                    false,
-                ));
-            }
-            let bytes = object
-                .body()
-                .ok_or_else(|| ("The saved photo has no data.".into(), false))?
-                .bytes()
-                .await
-                .map_err(|_| ("The saved photo could not be read.".into(), false))?;
-            if bytes.len() > PHOTO_LIMIT
-                || bytes.len() != photo.size
-                || persistence::sha256(&bytes) != photo.sha256
-            {
-                return Err((
-                    "The saved photo failed integrity verification.".into(),
-                    false,
-                ));
-            }
-            let messages = request
-                .get_mut("messages")
-                .and_then(Value::as_array_mut)
-                .ok_or_else(|| ("The transcription request is invalid.".into(), false))?;
-            let user = messages
-                .iter_mut()
-                .rev()
-                .find(|v| v.get("role").and_then(Value::as_str) == Some("user"))
-                .ok_or_else(|| ("The transcription request is invalid.".into(), false))?;
-            let text = user
-                .get("content")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .or_else(|| {
-                    user.get("content").and_then(Value::as_array).map(|parts| {
-                        parts
-                            .iter()
-                            .filter_map(|p| p.get("text").and_then(Value::as_str))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
-                })
-                .unwrap_or_else(|| "Transcribe this photo accurately.".into());
-            user["content"] = json!([{"type":"text","text":text},{"type":"image_url","image_url":{"url":format!("data:{};base64,{}",photo.mime,STANDARD.encode(bytes))}}]);
         }
         let current = self
             .load()
             .map_err(|_| ("Saved state is unavailable.".into(), false))?;
         engine::authorize_work(&current, &work.id, now()).map_err(|e| (e.message, false))?;
+        if !engine::awaits_send(&current, work) {
+            return Err(("This check is no longer waiting to be sent.".into(), false));
+        }
         let headers = Headers::new();
         headers
             .set("Authorization", &format!("Bearer {key}"))
@@ -2242,7 +2240,7 @@ impl LearningSpace {
         headers
             .set("X-OpenRouter-Title", "Scry")
             .map_err(|_| ("The provider request is invalid.".into(), false))?;
-        let body = serde_json::to_string(&request)
+        let body = serde_json::to_string(&work.request)
             .map_err(|_| ("The provider request is invalid.".into(), false))?;
         let mut init = RequestInit::new();
         init.with_method(Method::Post)
@@ -2337,6 +2335,12 @@ impl LearningSpace {
         Ok(persistence::Archive::new(app, photos, now()))
     }
     async fn backup(&self, pre_release: bool) -> Result<()> {
+        // Refused before anything is read, written or recorded.
+        if !self.backups_apply() {
+            return Err(Error::RustError(
+                "Backups do not apply to this learning space.".into(),
+            ));
+        }
         let operation = async {
             let app = self.load()?;
             let archive = self.archive(app).await?;
@@ -2459,7 +2463,7 @@ impl LearningSpace {
             Err(e) => return app_error(e),
         };
         // Reject revision exhaustion before any photo or SQLite write.
-        if let Err(error) = engine::pause_for_restore(&mut archive.app, now()) {
+        if let Err(error) = engine::pause_restored(&mut archive.app, now()) {
             return app_error(error);
         }
         let mut renamed = BTreeMap::new();
@@ -2509,15 +2513,30 @@ impl LearningSpace {
         )?)
     }
 }
-fn valid_provider_url(raw: &str) -> bool {
-    Url::parse(raw).is_ok_and(|url| {
-        url.scheme() == "https"
-            && url.host_str().is_some()
-            && url.username().is_empty()
-            && url.password().is_none()
-            && url.query().is_none()
-            && url.fragment().is_none()
-    })
+/// Whether this deployment may send an answer to its bound judge endpoint.
+/// Only production holds model authority. A preview may reach Jev only at a
+/// host under `.invalid`, which DNS reserves and never resolves: there it is
+/// the controlled egress of a test harness, so a real key bound to a preview
+/// can never reach a provider. Every other environment sends nothing.
+fn judge_endpoint_allowed(env: &Env) -> bool {
+    let Ok(url) = Url::parse(&variable(env, "JEV_URL")) else {
+        return false;
+    };
+    let secure = url.scheme() == "https"
+        && url.host_str().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none();
+    let test_host = url
+        .host_str()
+        .is_some_and(|host| host == "invalid" || host.ends_with(".invalid"));
+    secure
+        && match variable(env, "SCRY_ENV").as_str() {
+            "production" => true,
+            "preview" => test_host,
+            _ => false,
+        }
 }
 async fn set_alarm(storage: &Storage, millis: i64) -> Result<()> {
     storage
@@ -2534,7 +2553,7 @@ async fn set_alarm(storage: &Storage, millis: i64) -> Result<()> {
 pub async fn scheduled(
     _event: worker::worker_sys::ScheduledEvent,
     env: Env,
-    _ctx: worker::worker_sys::ScheduleContext,
+    ctx: worker::worker_sys::ScheduleContext,
 ) -> std::result::Result<(), JsValue> {
     std::panic::AssertUnwindSafe(async move {
         if variable(&env, "SCRY_ENV") == "restore" {
@@ -2553,6 +2572,7 @@ pub async fn scheduled(
         // Binding errors and response bodies may contain private context. The
         // operation is enough to identify this failure without exposing it.
         result.map_err(|_| {
+            report(&env, ctx.as_ref(), "scheduled_failure");
             js_sys::Error::new("The scheduled complete snapshot could not be verified.").into()
         })
     })

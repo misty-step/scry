@@ -10,7 +10,8 @@ Agents never use the owner's account. They sign in through the same production f
 the dedicated AgentMail QA account `scry-qa@agentmail.to`, which phaedrus
 authorized via Home on 2026-10-21. The Worker gives that identity the isolated
 QA principal: owner capabilities inside the `scry-qa` space, and no owner
-operations. Intent: [S09](../SPEC.md#s09--keep-the-application-private). The
+operations or backups: its Settings says backups do not apply, a backup request
+is refused, and its alarm takes none. Intent: [SPEC § Privacy](../SPEC.md#privacy). The
 dated configuration is in the [runbook](../docs/runbook.md#owner-subject-re-pointed--2026-10-20).
 
 ## Sub-features
@@ -111,9 +112,9 @@ from `doctor.mjs prod` (its checks are listed in
   owner's subject equality cannot be read back. `owner.subject-age` catches
   only an `OWNER_SUBJECT` put, per the audit log, made before every owner-policy
   Access user existed. A PASS does not show the subject is the right user.
-- Every page GET may freeze the next question in the space it renders; `/`
-  also freezes the next exact Prompt. The QA journey's GETs therefore write
-  only to `scry-qa`.
+- A page GET selects nothing and writes nothing, except the first-ever read
+  of an unused space, which saves its empty notebook. The QA journey's GETs
+  therefore touch only `scry-qa`.
 - Production serves the code in the runbook's serving observation and can lag master.
 - A redirect to Access, a 200 for the QA service token or an Access "allowed"
   log is not QA sign-in. A QA login without `role.not-owner` PASS is not role proof.

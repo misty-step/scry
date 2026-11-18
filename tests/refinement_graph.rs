@@ -1,8 +1,10 @@
+mod common;
+
 use scry::{engine, generation, model::*};
 use serde_json::json;
 use std::collections::BTreeMap;
 
-const NOW: i64 = 1_791_410_400_000;
+const NOW: i64 = 1_800_000_000_000;
 
 fn config() -> engine::WorkConfig {
     engine::WorkConfig {
@@ -65,8 +67,8 @@ fn candidate(key: &str, prerequisite: &str, prompt: &str) -> generation::Batch {
 #[test]
 fn publication_links_unchanged_saved_ideas_and_updates_edges_without_rewriting_notes_or_questions()
 {
-    let mut app = App::new("refinement-graph-owner-csrf-32-characters".into());
-    engine::seed_fixture(&mut app, NOW).unwrap();
+    let (mut app, now) = common::earlier("question-cold-choice");
+    assert_eq!(now, NOW);
     let goal = app.goals.values().next().unwrap().id.clone();
     let prerequisite = app
         .concepts
@@ -123,8 +125,8 @@ fn publication_links_unchanged_saved_ideas_and_updates_edges_without_rewriting_n
 
 #[test]
 fn lifecycle_failure_in_a_later_concept_cannot_partially_publish_earlier_material() {
-    let mut app = App::new("graph-atomic-publication-csrf-32-characters".into());
-    engine::seed_fixture(&mut app, NOW).unwrap();
+    let (mut app, now) = common::earlier("question-cold-choice");
+    assert_eq!(now, NOW);
     let goal = app.goals.keys().next().unwrap().clone();
     let prerequisite = app
         .concepts
@@ -133,27 +135,25 @@ fn lifecycle_failure_in_a_later_concept_cannot_partially_publish_earlier_materia
         .unwrap()
         .id
         .clone();
-    for (operation, path, extra) in [
+    // The prerequisite idea is archived, and its held question with it.
+    app.concepts.get_mut(&prerequisite).unwrap().archived = true;
+    app.occurrence = None;
+    let fields = BTreeMap::from([
+        ("csrf".into(), app.csrf.clone()),
+        ("operation_id".into(), "atomic-graph-refine01".into()),
         (
-            "atomic-graph-archive01",
-            format!("/concepts/{prerequisite}/archive"),
-            None,
+            "feedback".into(),
+            "Provide useful examples of conditional requests.".into(),
         ),
-        (
-            "atomic-graph-refine01",
-            format!("/goals/{goal}/refine"),
-            Some("Provide useful examples of conditional requests."),
-        ),
-    ] {
-        let mut fields = BTreeMap::from([
-            ("csrf".into(), app.csrf.clone()),
-            ("operation_id".into(), operation.into()),
-        ]);
-        if let Some(text) = extra {
-            fields.insert("feedback".into(), text.into());
-        }
-        engine::mutate(&mut app, &path, &fields, NOW, operation).unwrap();
-    }
+    ]);
+    engine::mutate(
+        &mut app,
+        &format!("/goals/{goal}/refine"),
+        &fields,
+        NOW,
+        "atomic-graph-refine01",
+    )
+    .unwrap();
     let mut batch = candidate(
         "first-good-new",
         "",

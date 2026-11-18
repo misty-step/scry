@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Write flows against a run-owned synthetic Worker (built WASM, workerd SQLite
 // and local R2, no egress) with the compiled CLI and a real browser:
-// empty notebook → concept flow → Owner token + CLI login → Library find and
-// keep → exact Study on the 390px phone Stream → token revocation → backend down.
+// empty Earlier practice → the earlier concept notebook as read-only history →
+// Owner token + CLI login → Library find and keep → exact Study on the 390px
+// phone Stream → token revocation → backend down.
 //   local-journeys.mjs [--width 390]
 // Needs `worker-build --release --locked` (build/) and
 // `cargo build --locked --bin scry` (target/debug/scry). Exit 0 PASS, 1 FAIL,
@@ -15,7 +16,8 @@ import {join} from 'node:path';
 import {repo,outDir,reporter,launch,settle} from './lib.mjs';
 
 process.chdir(repo);
-const {createSyntheticRuntime}=await import(join(repo,'qa/runtime-helper.mjs'));
+const {createSyntheticRuntime,syntheticSpace}=await import(join(repo,'qa/runtime-helper.mjs'));
+const {seedEarlier}=await import(join(repo,'qa/earlier-fixture.mjs'));
 const {feedbackArrival,assertFeedbackArrival}=await import(join(repo,'qa/feedback-arrival.mjs'));
 const width=Number(process.argv[process.argv.indexOf('--width')+1]||390)||390;
 const cliPath=join(repo,process.env.SCRY_STUDY_CLI||'target/debug/scry');
@@ -57,24 +59,30 @@ try{
  await step('notebook.empty',async()=>{
   await page.goto(origin+'/notebook');
   const h1=await page.getByRole('heading',{level:1}).innerText();
-  if(h1!=='Follow your curiosity.')throw Error(`empty notebook heading "${h1}"`);
-  log('notebook.empty','PASS',`fresh notebook /notebook → "${h1}" with Library and the authored-demo action`,{evidence:await shot('notebook-empty')});
+  if(h1!=='Earlier practice')throw Error(`empty notebook heading "${h1}"`);
+  await page.getByText('Nothing is saved in the earlier concept notebook.',{exact:true}).waitFor();
+  if(await page.locator('main form,main button').count())throw Error('Earlier practice offers an action');
+  log('notebook.empty','PASS',`fresh notebook /notebook → "${h1}", nothing saved, no action`,{evidence:await shot('notebook-empty')});
  });
  await step('notebook.concept',async()=>{
-  await page.getByRole('button',{name:'Explore an authored demo'}).click();
-  await page.locator('[data-state="question"]').waitFor();
-  await page.locator('.choice').first().click();
-  await page.locator('[data-state="result"]').waitFor();
-  await page.reload();await page.locator('[data-state="result"]').waitFor();
-  const held=await shot('notebook-held-result');
-  await page.getByRole('button',{name:'Next question'}).click();
-  await page.locator('[data-state="question"]').waitFor();
-  await page.getByRole('link',{name:'Map',exact:true}).click();await page.locator('[data-state="map"]').waitFor();
-  await page.locator('a[href^="/goals/"]').first().click();await page.locator('[data-state="goal"]').waitFor();
-  await page.locator('main a[href^="/concepts/"]').first().click();
-  await page.locator('[data-state="concept"],[data-state="gate"]').first().waitFor();
-  const gate=await page.locator('[data-state="gate"]').count();
-  log('notebook.concept','PASS',`demo question → choice → held result survives reload → Next question → Map → goal → concept (${gate?'assistance gate before reference':'reference'})`,{evidence:[held,await shot('notebook-concept')]});
+  // An earlier concept notebook holding one question that was never answered,
+  // loaded from tests/fixtures/earlier-notebook.json into its own space (no
+  // route can create one). It is history: shown read-only, nothing to submit.
+  const earlier=await createSyntheticRuntime({name:'verify-scry-local-earlier'});
+  try{
+   await seedEarlier(await earlier.mf.unsafeGetDurableObjectStorage('verify-scry-local-earlier','LearningSpace',{name:syntheticSpace}),'question-cold-choice',await earlier.mf.getR2Bucket('SCRY_ASSETS'));
+   const none=async where=>{if(await page.locator('main form,main button,main textarea,.choice').count())throw Error(`${where} offers something to submit`);};
+   await page.goto(earlier.url+'/notebook');
+   await page.locator('[data-state="earlier-unanswered"]').waitFor();
+   await page.getByRole('heading',{name:'Not answered.',exact:true}).waitFor();await none('Earlier practice');
+   await page.reload();await page.locator('[data-state="earlier-unanswered"]').waitFor();
+   const held=await shot('notebook-unanswered');
+   await page.getByRole('link',{name:'Map',exact:true}).click();await page.locator('[data-state="map"]').waitFor();await none('the Map');
+   await page.locator('a[href^="/goals/"]').first().click();await page.locator('[data-state="goal"]').waitFor();await none('a Goal');
+   await page.locator('main a[href^="/concepts/"]').first().click();
+   await page.locator('[data-state="concept"]').waitFor();await none('a Concept');
+   log('notebook.concept','PASS','stored earlier notebook → held question shown as "Not answered." with no control, across reload → Map → goal → concept (reference, no form anywhere)',{evidence:[held,await shot('notebook-concept')]});
+  }finally{await earlier.mf.dispose();}
  });
  await step('token.create',async()=>{
   await page.goto(origin+'/settings#owner-tokens');
@@ -135,13 +143,13 @@ try{
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
   if(overflow)throw Error('horizontal overflow at phone width');
   await page.getByRole('button',{name:'Next',exact:true}).click();
-  await page.locator('[data-state="exact-prompt"],[data-state="exact-caught-up"]').first().waitFor();
+  await page.locator('[data-state="exact-prompt"],[data-state="mixed-home"],[data-state="rest"]').first().waitFor();
   log('study.phone','PASS',`scry learn → /recall opens source Study (no field) → Try from memory opens hidden quiz (one field); typed answer → ${verdict} with Diff [${[...new Set(kinds)].join(', ')}] held across reload and equal to scry next; Next advances. On arrival the first changed word and replacement are fully visible and unoccluded`,{evidence:[prompt,arrival,diff,await shot('study-next')]});
  });
  await step('notebook.legacy-link',async()=>{
   await page.goto(origin+'/notebook');
-  await page.locator('[data-state="question"],[data-state="result"],[data-state="intro"]').first().waitFor();
-  log('notebook.legacy-link','PASS','/notebook still opens the concept notebook while exact Studies own /',{evidence:await shot('notebook-legacy')});
+  await page.locator('[data-state="earlier-unanswered"]').waitFor();
+  log('notebook.legacy-link','PASS','/notebook still shows the earlier concept notebook, unchanged and read-only, while Study owns /',{evidence:await shot('notebook-legacy')});
  });
  await step('token.revoke',async()=>{
   await page.goto(origin+'/settings#owner-tokens');
@@ -158,19 +166,20 @@ try{
   log('token.revoke','PASS',`Settings → Revoke; next scry whoami exits ${who.code}: ${who.err||'refused'}`);
  });
  await step('state.backend-down',async()=>{
-  // Answer the open notebook question after stopping the Worker. Never click a
+  // Answer the held Study Prompt after stopping the Worker. Never click a
   // link here: navigating to a dead origin shows the browser's error page.
-  await page.goto(origin+'/notebook');await page.locator('[data-state="question"]').waitFor();
-  const choices=await page.locator('.choice').count();
-  if(!choices)await page.locator('#answer').fill('synthetic answer while the backend is down');
+  await page.goto(origin+'/recall');
+  if(await page.locator('[data-state="mixed-home"]').count())await page.getByRole('button',{name:'Study',exact:true}).click();
+  await page.locator('[data-state="exact-prompt"]').waitFor();
+  if(await page.getByRole('button',{name:'Try from memory',exact:true}).count())await page.getByRole('button',{name:'Try from memory',exact:true}).click();
+  await page.getByLabel('Your answer',{exact:true}).fill('synthetic answer while the backend is down');
   await runtime.mf.dispose();alive=false;
-  if(choices)await page.locator('.choice').first().click();
-  else await page.getByRole('button',{name:'Check my answer',exact:true}).click();
+  await page.getByRole('button',{name:'Check my answer',exact:true}).click();
   const message=page.getByText('The response did not arrive. Your draft is still here.',{exact:true});
   await message.waitFor();
-  if(await page.locator('[data-state="result"]').count())throw Error('a result appeared with the backend down');
+  if(await page.locator('[data-state="exact-result"]').count())throw Error('a result appeared with the backend down');
   await page.getByRole('button',{name:'Reconcile this attempt',exact:true}).waitFor();
-  log('state.backend-down','PASS',`Worker stopped, then ${choices?'choice tap':'typed answer'} → no result; "The response did not arrive. Your draft is still here." with Reconcile this attempt`,{evidence:await shot('backend-down')});
+  log('state.backend-down','PASS','Worker stopped, then a typed Study answer → no result; "The response did not arrive. Your draft is still here." with Reconcile this attempt',{evidence:await shot('backend-down')});
  });
 }catch(e){
  log('local.launch','FAIL',e.message.split('\n')[0]);

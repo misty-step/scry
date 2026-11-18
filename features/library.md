@@ -2,17 +2,18 @@
 
 The owner searches his Library before adding a text, keeps each Work and Version
 once, and builds Studies on what is already there. Behavior authority:
-[US-015](../SPEC.md#us-015-find-a-work-before-creating-it).
+[SPEC § Library](../SPEC.md#library).
 [ADR 004](../docs/adr/004-rust-cloudflare-candidate.md#2026-10-20-library-storage-amendment-316)
 owns storage and rollback.
 
 ## Sub-features
 
-- `library-search` finds Works by title, alias or opening words, or says "Nothing matches."
+- `library-search` finds Works by title, alias or opening words, listed by title, or says "Nothing matches."
 - `library-add` stores a Version with Kind, Sections, Units, Provenance and Rights; units must rejoin to the text exactly.
-- `library-keep` attaches a Version to an existing Work by title or alias and returns an identical Version instead of duplicating it.
-- `library-supersede` corrects wording as a new Version and keeps the old one and its Attempts.
-- `library-show` shows Works and Versions without changing any Study.
+- `library-keep` attaches a Version to an existing Work by title or alias and returns an identical Version, under any Work name, with `existing: true`, instead of duplicating it; the same text with different Units, aliases, pairs or Spelling-strict setting is refused with what differs. The Starter shelf is never refused: a starter entry keeps a studied copy of its text or starts its own Version beside an unstudied one.
+- `library-supersede` corrects wording as a new Version, even for a case, punctuation or spacing change, and keeps the old one and its Attempts.
+- `library-relations` records part-of and related-to Relations declared in a manifest and shows each on both Works.
+- `library-show` shows Works (`/library/works/ID`) and Versions with their Provenance, Rights status, corrections and Relations (a Version also its Work's part-of and related-to), without changing any Study.
 - `library-delete` removes unused content and refuses content a Study uses.
 - `library-export` exports the Library alone, with no Study, Attempt or token.
 
@@ -45,6 +46,14 @@ Preconditions:
   `node --test qa/library.test.mjs` reuses them, and `tests/library.rs` proves
   the Study-reference refusal. The [exact Study journey](exact-study.md) proves
   real deletion refusal after active, paused and dropped Studies.
+- **Duplicates, corrections, Provenance and Relations.** `node --test qa/library-spec.test.mjs`
+  drives the compiled CLI, Owner API, native forms and pages, and compiled tool
+  server against one built Worker: a duplicate under another Work's title
+  returns the existing Version from every client, a case-only correction
+  creates a superseding Version and names the archive `library-v5`, Provenance
+  is shown on the Version page, Relations appear on both Work pages, and every
+  Library page and read stays fenced during protected recall.
+  `tests/library_spec.rs` holds the engine-level proof.
 - **CLI transport regression.** `node --test qa/cli-process.test.mjs` covers fast
   no-input exits, drained output, real stdin, explicit refusals and failed input
   delivery. The Library journey keeps all exit, JSON and state assertions; its

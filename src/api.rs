@@ -14,6 +14,9 @@ pub struct MutationResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub practice: Option<serde_json::Value>,
     pub replayed: bool,
+    /// On a Library add: whether the text was already there and nothing was added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token: Option<TokenInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -27,13 +30,18 @@ pub fn mutation_path(path: &str) -> Option<&str> {
         "/api/v1/studies/pause" => Some("/practice/pause"),
         "/api/v1/studies/resume" => Some("/practice/resume"),
         "/api/v1/studies/drop" => Some("/practice/drop"),
+        "/api/v1/studies/pace" => Some("/practice/pace"),
+        // Study's mix, exactly as the app's Study and Next serve it.
+        "/api/v1/mix" => Some("/practice/review/start"),
         "/api/v1/next" => Some("/practice/next"),
         "/api/v1/answer" => Some("/practice/answer"),
         "/api/v1/draft" => Some("/practice/draft"),
         "/api/v1/draft/discard" => Some("/practice/draft/discard"),
         "/api/v1/reveal" => Some("/practice/reveal"),
         "/api/v1/quiz" => Some("/practice/quiz"),
+        // Retired: kept so an old client is refused with 410 before any write.
         "/api/v1/correct" => Some("/practice/correct"),
+        "/api/v1/check" => Some("/practice/check"),
         "/api/v1/library/mappings" => Some("/library/mapping/add"),
         "/api/v1/library/versions" => Some("/library/version/add"),
         "/api/v1/library/versions/supersede" => Some("/library/version/supersede"),
@@ -43,6 +51,7 @@ pub fn mutation_path(path: &str) -> Option<&str> {
         "/api/v1/tokens" => Some("/tokens/create"),
         "/api/v1/tokens/revoke" => Some("/tokens/revoke"),
         "/api/v1/settings" => Some("/settings"),
+        // Retired: generation is refused with 410 before any write.
         "/api/v1/create" => Some("/create"),
         _ => None,
     }
@@ -78,6 +87,17 @@ pub fn normalize_draft_form(fields: &mut BTreeMap<String, String>) {
 }
 
 /// Only Library draft metadata is nested. Other API field rules stay unchanged.
+/// Whether a Library add's committed result says the text was already there.
+pub fn library_existing(path: &str, result: &MutationResult) -> Option<bool> {
+    matches!(path, "/library/version/add" | "/library/mapping/add").then(|| {
+        result
+            .data
+            .as_ref()
+            .and_then(|d| d.get("existing"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    })
+}
 pub fn library_fields(mut value: serde_json::Value) -> AppResult<BTreeMap<String, String>> {
     if let Some(data) = value.get_mut("data") {
         if !data.is_object() {
@@ -139,6 +159,10 @@ pub fn library_form_fields(fields: &mut BTreeMap<String, String>) -> AppResult<(
         spelling_strict: false,
         ordered_aliases: Default::default(),
         sections: None,
+        provenance: crate::library::Provenance::Supplied,
+        relations: vec![],
+        direction: Default::default(),
+        safety_bearing: Default::default(),
     };
     fields.insert(
         "data".into(),

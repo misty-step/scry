@@ -93,11 +93,6 @@ impl App {
             .get(&o.question_id)
             .map(|q| q.goal_id.as_str())
     }
-    pub fn protected_concept(&self, id: &str) -> bool {
-        self.occurrence.as_ref().is_some_and(|o| {
-            matches!(o.phase.as_str(), "question" | "checking") && !o.assisted && o.concept_id == id
-        })
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -398,11 +393,16 @@ pub struct Feedback {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Preferences {
     pub pace: String,
+    /// The Owner has turned paid judgment on: an answer that is not an exact or
+    /// alias match may leave Scry to be judged by Jev. Absent means off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub paid_judgment: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
         Self {
             pace: "steady".into(),
+            paid_judgment: false,
         }
     }
 }
@@ -434,11 +434,12 @@ impl AppError {
             message: message.into(),
         }
     }
+    /// What a browser is told when its page is stale. It says nothing to an
+    /// agent, whose clients keep their own fixed phrase for it.
+    pub const STALE_PAGE: &'static str =
+        "This changed in another tab. Reload to continue from your saved progress.";
     pub fn conflict() -> Self {
-        Self::new(
-            409,
-            "This changed in another tab. Reload to continue from your saved progress.",
-        )
+        Self::new(409, Self::STALE_PAGE)
     }
 }
 pub type AppResult<T> = Result<T, AppError>;

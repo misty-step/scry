@@ -209,8 +209,9 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     const readback = await exported.json();
     for (const section of ['questions', 'concepts', 'events', 'operations', 'revival_go', 'revival_schedule_origins'])
       assert.deepEqual(readback.app[section], app[section]);
-    // Retired capture cannot alter restored custody. Use a supported Settings
-    // write for the separate accepted-write/replay and next-backup contract.
+    // Retired capture and the earlier notebook's retired pace cannot alter
+    // restored custody. Creating an Owner token is the supported Settings write
+    // for the separate accepted-write/replay and next-backup contract.
     const html = await (await active.worker.fetch(origin + '/settings')).text();
     const fields = Object.fromEntries([...html.matchAll(/name="(csrf|revision)" value="([^"]+)"/g)]
       .map(match => [match[1], match[2]]));
@@ -223,13 +224,23 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     assert.equal((await capture()).status, 410);
     assert.equal((await capture()).status, 410);
     assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), beforeRefusal);
-    const saveSettings = () => active.worker.fetch(origin + '/settings', {method: 'POST', redirect: 'manual',
+    const pace = () => active.worker.fetch(origin + '/settings', {method: 'POST', redirect: 'manual',
       headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({...fields, pace: 'light'})});
-    assert.equal((await saveSettings()).status, 303);
-    assert.equal((await saveSettings()).status, 303);
+      body: new URLSearchParams({...fields, operation_id: 'synthetic-retired-pace-after-go', pace: 'light'})});
+    assert.equal((await pace()).status, 410);
+    assert.equal((await pace()).status, 410);
+    assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), beforeRefusal);
+    const tokenName = 'Synthetic accepted write after Go projection';
+    const tokenNames = app => Object.values(app.owner_tokens ?? {}).map(token => token.name).sort();
+    const expectedTokens = [...tokenNames(readback.app), tokenName].sort();
+    const createToken = () => active.worker.fetch(origin + '/tokens/create', {method: 'POST', redirect: 'manual',
+      headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({...fields, name: tokenName})});
+    assert.equal((await createToken()).status, 200);
+    assert.equal((await createToken()).status, 303, 'An exact retry replays the saved receipt.');
     const accepted = await (await active.worker.fetch(origin + '/export')).json();
-    assert.equal(accepted.app.preferences.pace, 'light');
+    assert.equal(accepted.app.preferences.pace, readback.app.preferences.pace);
+    assert.deepEqual(tokenNames(accepted.app), expectedTokens);
     // Restore legitimately relocates each retained photo into the fresh
     // namespace. Compare subsequent writes with that exact restored baseline.
     assert.deepEqual(accepted.app.goals, readback.app.goals);
@@ -244,7 +255,8 @@ test('native source -> CF-only projection -> real Rust restore preserves content
     const recovered = JSON.parse(independent);
     assert.equal(recovered.format, 'scry-rust-durable-sqlite-go-projection-v1');
     assert.deepEqual(recovered.app.goals, readback.app.goals);
-    assert.equal(recovered.app.preferences.pace, 'light');
+    assert.equal(recovered.app.preferences.pace, readback.app.preferences.pace);
+    assert.deepEqual(tokenNames(recovered.app), expectedTokens);
     assert.deepEqual(recovered.app.revival_schedule_origins, app.revival_schedule_origins);
     await restore(independent, async ({response}) => assert.equal(response.status, 200, await response.text()));
   });
@@ -405,7 +417,7 @@ for (const mode of ['learner-correct', 'learner-missed']) {
       assert.deepEqual(restored.events, app.events);
       assert.deepEqual(restored.questions, app.questions);
       assert.deepEqual(restored.occurrence, app.occurrence);
-      assert.match(await (await active.worker.fetch(origin + '/notebook')).text(), /You checked your answer/);
+      assert.match(await (await active.worker.fetch(origin + '/notebook')).text(), /data-state="earlier-result"[\s\S]*Self-checked/);
       assert.match(await (await active.worker.fetch(origin + '/history')).text(), /Self-checked/);
       assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
       const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
@@ -456,13 +468,17 @@ for (const mode of ['zero-rating', 'zero-rating-wrong', 'zero-rating-recall-wron
       assert.deepEqual(restored.questions, app.questions);
       assert.deepEqual(restored.occurrence, app.occurrence);
       assert.deepEqual(restored.revival_go, app.revival_go);
-      // Deliberate Next dismisses the imported held result, not its history.
+      // The imported held result is history: Next is refused and it stays held.
       const fields = {csrf: restored.csrf, occurrence_id: restored.occurrence.id,
         operation_id: 'synthetic-next-after-go-noop'};
       const next = await active.worker.fetch(origin + '/review/next', {method: 'POST', redirect: 'manual',
         headers: {'X-Scry-Test-Origin': origin, 'Content-Type': 'application/x-www-form-urlencoded'},
         body: new URLSearchParams(fields)});
-      assert.equal(next.status, 303);
+      assert.equal(next.status, 410);
+      const refused = (await read()).app;
+      assert.deepEqual(refused.occurrence, app.occurrence);
+      assert.deepEqual(refused.events, app.events);
+      assert.deepEqual(refused.operations, restored.operations);
       const snapshot = await active.worker.scheduled({cron: '17 3 * * *'});
       assert.equal(snapshot.outcome, 'ok');
       const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
@@ -546,18 +562,8 @@ for (const mode of ['selfcheck', 'selfcheck-helped', 'selfcheck-history', 'selfc
         assert.deepEqual(ungraded.events, original.events);
         assert.deepEqual(ungraded.questions, original.questions);
         assert.deepEqual(ungraded.occurrence, original.occurrence);
-        // Retain the historical transition/replay/custody proof without treating
-        // a new user-supplied judgment as supported current HTTP behavior.
-        const historical = {path: '/review/self', fields, now_ms: Date.now(), seed: 'historical-import-judgment'};
-        await historicalMutation(storage, historical);
-        const afterHistorical = await storage.exec('SELECT key,value FROM records ORDER BY key');
-        assert.equal((await historicalMutation(storage, historical)).replayed, true);
-        assert.deepEqual(await storage.exec('SELECT key,value FROM records ORDER BY key'), afterHistorical);
-        const judged = await read();
-        assert.equal(judged.events.length, original.events.length + 1);
-        assert.deepEqual(judged.events.slice(0, original.events.length), original.events);
-        assert.equal(judged.events.at(-1).result.authority, 'learner');
-        assert.equal(judged.questions['legacy-import-quiz-quiz0'].schedule_version, 2);
+        // The engine no longer holds a self-judgment transition: the answer
+        // stays ungraded, and custody is proven through the backup below.
       }
       assert.equal((await active.worker.scheduled({cron: '17 3 * * *'})).outcome, 'ok');
       const backups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');

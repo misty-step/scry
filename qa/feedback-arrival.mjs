@@ -60,7 +60,16 @@ export async function fullAnswer(page, f, attempt, expected) {
     await summary.focus(); await page.keyboard.press('Enter');
     assert.equal(await details.getAttribute('open'),null);
     await page.keyboard.press('Tab');
-    assert.equal(await page.getByRole('button',{name:'Next',exact:true}).evaluate(node=>node===document.activeElement),true,'Next follows the closed disclosure in keyboard order.');
-    assert.deepEqual(await f.rows(),before,'Closing Full answer and focusing Next do not advance.');
+    // A missed phrase leads with its guided retry; every other result leads with Next.
+    const missed=attempt.grade.verdict==='Again'&&attempt.prompt.scope.kind==='unit'&&await page.locator('.mapping-study').count()===0;
+    assert.equal(await page.locator('form[data-next] button').count(),1,'A result has one primary next action.');
+    assert.equal((await page.locator('form[data-next] button').innerText()).trim(),missed?'Try this phrase again':'Next');
+    assert.equal(await page.locator('form[data-next] button').evaluate(node=>node===document.activeElement),true,'The primary action follows the closed disclosure in keyboard order.');
+    if(missed){
+      assert.equal((await page.locator('.lesson-target .exact-expected').innerText()).trim(),expected.trim(),'A missed phrase shows the expected phrase outside any disclosure.');
+      assert.equal(await page.locator('.lesson-target').isVisible(),true);
+      assert.equal(await page.getByRole('button',{name:'Next',exact:true}).count(),1,'Continuing stays an explicit secondary choice.');
+    }
+    assert.deepEqual(await f.rows(),before,'Closing Full answer and focusing the next action do not advance.');
   };
 }

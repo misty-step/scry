@@ -163,6 +163,12 @@ fn repeated_starter_and_agent_manifest_preserve_same_study_and_schedule() {
         json!({"operation_id":"starter-next-0001"}),
         "next",
     );
+    // The agent's Study shows the pair first; its answer belongs to the Quiz.
+    let source = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    let f =
+        api::fields(json!({"csrf":app.csrf,"operation_id":"starter-quiz-0001","prompt_id":source}))
+            .unwrap();
+    engine::mutate(&mut app, "/practice/quiz", &f, NOW, "quiz").unwrap();
     let pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
     let f=api::fields(json!({"csrf":app.csrf,"operation_id":"starter-answer-0001","prompt_id":pid,"answer":"Alfa"})).unwrap();
     let result = engine::mutate(&mut app, "/practice/answer", &f, NOW, "answer").unwrap();
@@ -223,6 +229,20 @@ fn focused_home_is_one_native_action_and_never_discloses_the_held_answer() {
         "focused-start",
     )
     .unwrap();
+    // Start practice shows the first letter with its code word and nothing to type into.
+    let source = page(&app, "/");
+    assert!(source.contains("aria-label=\"Letter A\""));
+    assert!(source.contains("data-study-phase=\"study\"") && source.contains("Alfa"));
+    assert!(!source.contains("id=\"answer\"") && !source.contains("action=\"/practice/answer\""));
+    assert!(!source.contains("action=\"/practice/reveal\""));
+    assert!(!source.contains("Bravo") && !source.contains("Alphabet reference"));
+    let studying = app.clone();
+    assert_eq!(page(&app, "/"), source);
+    assert_eq!(app, studying, "Reading the source is not a mutation");
+    let quiz = form_fields(&source, "/practice/quiz");
+    engine::mutate(&mut app, "/practice/quiz", &quiz, NOW, "focused-quiz").unwrap();
+    assert!(app.practice.attempts.is_empty());
+    assert_eq!(app.practice.cards, studying.practice.cards);
     let prompt = page(&app, "/");
     assert!(prompt.contains("data-state=\"exact-prompt\""));
     assert!(prompt.contains("aria-label=\"Letter A\""));

@@ -1,5 +1,7 @@
 # Scry
 
+> **Product contract (2026-11-17):** [PRODUCT.md](PRODUCT.md) is the product contract and [DESIGN.md](DESIGN.md) the visual one; the Go recompile reads only those two. `SPEC.md` and `VISION.md` are retired history under [docs/history/2026-11-17-retired](docs/history/2026-11-17-retired/README.md); they describe the current Rust code and matter only when maintaining it.
+
 For each change load [verify-scry](.agents/skills/verify-scry/SKILL.md), use the
 existing `features/` navigation map and retain actual journey proof in the card
 and PR. New Hermes profiles review the checkout, then use native
@@ -7,8 +9,11 @@ and PR. New Hermes profiles review the checkout, then use native
 
 Shared standard: [Constitution](https://foundations.mistystep.io/) and [Way of working](https://foundations.mistystep.io/way-of-working).
 
-Read [SPEC.md](SPEC.md), especially "Exact recall first" and US-014 to US-021,
-before scoping or verifying behavior. [GLOSSARY](GLOSSARY.md) owns the words. It is the only story/acceptance authority. [VISION](VISION.md) explains
+Read [SPEC.md](docs/history/2026-11-17-retired/SPEC.md) before scoping or verifying behavior. It is the
+present-tense target state and the only behavior authority; its
+[Terms](docs/history/2026-11-17-retired/SPEC.md#terms) own the words. Change it and close drift through the
+[spec skill](https://github.com/misty-step/mistystack/blob/master/skills/spec/SKILL.md),
+never through a ticket backlog. [VISION](docs/history/2026-11-17-retired/VISION.md) explains
 intent; [DESIGN](DESIGN.md) owns visuals; [ADRs](docs/adr/README.md) own technical
 decisions. Do not restate their contracts here.
 
@@ -38,7 +43,8 @@ preview work uses isolated synthetic data without production capabilities.
 Read [QA](docs/qa/system.md) and [.agents/skills/scry-qa/SKILL.md](.agents/skills/scry-qa/SKILL.md).
 QA runs against SPEC, never edits intent to fit implementation. Use the existing
 native, target, runtime and browser gates documented there; `qa/walk --all`
-discovers numbered stories from SPEC. Worktree receipts are development proof;
+runs every journey and refuses to start when a journey's SPEC capability
+heading is missing. Worktree receipts are development proof;
 release artifacts require committed source and the exact tested bytes.
 
 Phone experience, real-provider usefulness, deployed private ingress and
@@ -76,4 +82,16 @@ Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 ### Domain docs
 
-Single-context: root `GLOSSARY.md` (created lazily) and `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: [SPEC § Terms](docs/history/2026-11-17-retired/SPEC.md#terms) and `docs/adr/`. See `docs/agents/domain.md`.
+
+<!-- mistystack:core -->
+# Misty Step core
+
+- Before your first tool call, say in a line what the user wants and the change you expect to make. Then start; do not wait for confirmation.
+- Finish the work you were given. Diagnose and work through ordinary obstacles such as errors, timeouts and failing tools. Leave a deliberate blocker alone (withheld access, a file marked not to be touched, a safety guardrail), report it, and finish everything that does not depend on it.
+- Prove the change on the real running path before you call it done. Report what you ran and saw, what that check did not cover, and which claims are inferred or guessed.
+- Take the simplest design that solves the problem. Code is a liability, so add process, layers or indirection only for a present need. Before proving a working draft, cut its wrappers and dead paths, or rewrite a bloated one from first principles. Every fact has one home: product or UI changes reconcile `SPEC.md` (and `DESIGN.md` on UI surfaces) in the same slice so code, spec and design tokens stay at homeostasis.
+- Nontrivial work: load the `misty` skill for the work loop, autonomy, delegation and reporting; if `mistystack` skills are absent in this environment, bootstrap them once with `git clone --depth 1 https://github.com/misty-step/mistystack.git /tmp/mistystack` and read `/tmp/mistystack/skills/misty/SKILL.md`.
+- Builds, suites, browser QA, untrusted code and long jobs: follow `boat-workers` for one saved-toolchain-snapshot worker per slice, stopped while idle and deleted after evidence collection; fresh per command only for untrusted code.
+- Active agents have no wall-clock cap. Use `watchdog` for periodic supervision against their self-contained briefs, real completion probes and evidence-based recovery.
+<!-- /mistystack:core -->

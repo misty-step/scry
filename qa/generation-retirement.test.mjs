@@ -21,6 +21,13 @@ test('retired generation POSTs refuse before jobs, photos, receipts or spend; na
    assert.equal(response.status,410);assert.match(await response.text(),/Self-grading is retired/);
    assert.deepEqual((await read()).app,before.app);
   }
+  // The earlier concept notebook is history: nothing presents, answers or dismisses a question.
+  for(const path of ['/review/intro','/review/answer','/review/reveal','/review/help','/review/retry','/review/next','/concepts/historical/practice']) {
+   const response=await request(path,{method:'POST',headers:{'X-Scry-Test-Origin':runtime.url,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,occurrence_id:'historical',answer:'Unsent synthetic answer',known:'false'})});
+   assert.equal(response.status,410,`${path} must be retired`);
+   assert.match(await response.text(),/The earlier concept notebook is kept as history/);
+   assert.deepEqual((await read()).app,before.app);
+  }
   const data=new FormData();for(const [k,v] of Object.entries(fields))data.set(k,v);data.set('photo',new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'}),'synthetic.png');
   const encoded=new globalThis.Request(runtime.url,{method:'POST',body:data});
   const upload=await request('/create',{method:'POST',headers:{'X-Scry-Test-Origin':runtime.url,'Content-Type':encoded.headers.get('Content-Type')},body:Buffer.from(await encoded.arrayBuffer())});assert.equal(upload.status,410);
@@ -41,7 +48,9 @@ test('retired generation POSTs refuse before jobs, photos, receipts or spend; na
   const manifest=JSON.parse(readFileSync(new URL('../examples/nato-alphabet.json',import.meta.url),'utf8'));
   const imported=await mutate('/api/v1/library/mappings',{data:manifest});
   await mutate('/api/v1/learn',{version_id:imported.result.entity_id});
-  const prompt=(await mutate('/api/v1/next')).practice.prompt;
+  // The new pair is studied, then answered as a Quiz.
+  const source=(await mutate('/api/v1/next')).practice;assert.equal(source.phase,'study');
+  const prompt=(await mutate('/api/v1/quiz',{prompt_id:source.prompt.id})).practice.prompt;
   const answer=(await mutate('/api/v1/answer',{prompt_id:prompt.id,answer:'Alfa'})).practice.attempt;
   assert.equal(answer.grade.verdict,'Good');assert.equal(answer.assisted,false);
   const graded=(await read()).app;assert.deepEqual(graded.spend,[]);assert.deepEqual(graded.jobs,{});assert.deepEqual(graded.goals,{});

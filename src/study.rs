@@ -1,6 +1,7 @@
 //! Exact text practice policy. The engine owns receipts; runtime owns commits.
 use crate::{
-    grading::{self, Grade, Verdict},
+    generation::{RECALL_LIMIT, RecallAliases, RecallInput, RecallKind, RecallScope},
+    grading::{self, Authority, Grade, UnitVerdict, Verdict},
     learning,
     library::{Kind, Version},
     model::*,
@@ -41,11 +42,18 @@ impl Pace {
         }
     }
 }
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+/// The direction of a Card: forward asks for a pair's value from its key,
+/// reverse for its key from its value.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
     Forward,
+    Reverse,
 }
+/// The form a Prompt takes. New Prompts use `Read` for Source study and
+/// `SectionHeading`, `WholeTitle`, `MappingKey` or `MappingValue` for a Quiz. The first-letter
+/// and previous-line forms, and a Card's own level, exist only in older records:
+/// they are replayed and shown, never used to choose what to present.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Cue {
@@ -58,11 +66,14 @@ pub enum Cue {
     WholeTitle,
     /// A supplied key, never an answer-bearing text cue.
     MappingKey,
+    /// A supplied value, asking for its key: a reverse Card's Quiz.
+    MappingValue,
 }
 impl Cue {
     fn assisted(self) -> bool {
         matches!(self, Self::Read | Self::FirstLetters | Self::FirstLetter)
     }
+    // Replay arithmetic for recorded Attempts. Presentation never reads it.
     fn fade(self) -> Self {
         match self {
             Self::Read => Self::FirstLetters,
@@ -71,6 +82,7 @@ impl Cue {
             Self::PreviousLine => Self::SectionHeading,
             Self::SectionHeading | Self::WholeTitle => Self::WholeTitle,
             Self::MappingKey => Self::MappingKey,
+            Self::MappingValue => Self::MappingValue,
         }
     }
     fn lapse(self) -> Self {
@@ -81,6 +93,7 @@ impl Cue {
             Self::SectionHeading => Self::PreviousLine,
             Self::WholeTitle => Self::SectionHeading,
             Self::MappingKey => Self::MappingKey,
+            Self::MappingValue => Self::MappingValue,
         }
     }
 }
@@ -96,7 +109,9 @@ pub struct Study {
     /// Explicit phrase/sequence lesson; does not alter retained Pace or due dates.
     #[serde(default, skip_serializing_if = "is_false")]
     pub lesson: bool,
-    /// App source/quiz semantics survive an exhausted or dismissed current prompt.
+    /// Set once a Prompt of this Study is held as study or Quiz, so its archive
+    /// names the phase format and a reader older than that format refuses it.
+    /// Presentation does not depend on it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub source_quiz: bool,
     pub status: Status,
@@ -152,6 +167,10 @@ pub struct Prompt {
     pub context: Option<String>,
     pub cue: String,
     pub assisted: bool,
+    /// The pair's author flagged it safety-bearing: the answer must state the
+    /// safe practice itself. Omitted otherwise.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub safety_bearing: bool,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -162,7 +181,7 @@ pub enum StudyPhase {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Presentation {
-    /// Absent on retained/API guided presentations; immutable Attempts are unchanged.
+    /// Absent only on a Prompt held since an older record, which stays answerable once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<StudyPhase>,
     pub prompt: Prompt,
@@ -194,6 +213,10 @@ pub struct Effect {
     pub revision_before: u64,
     pub before: CardState,
     pub after: CardState,
+    /// A Verdict that arrived after a newer Attempt on this Card. It is recorded
+    /// and leaves the Card as that newer Attempt left it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub superseded: bool,
 }
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -232,6 +255,162 @@ pub struct Attempt {
     #[serde(default, skip_serializing_if = "SchedulePolicy::is_legacy")]
     pub schedule_policy: SchedulePolicy,
     pub effects: Vec<Effect>,
+    /// Present only where the answer was left for Jev to judge. `grade` is then
+    /// the local comparison alone and the Verdict is the one decided here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judgment: Option<Judgment>,
+}
+impl Attempt {
+    /// The Verdict, from whoever decided it. An answer that awaits Jev, or that
+    /// Jev could not judge, has none: it is neither a miss nor a success.
+    pub fn verdict(&self) -> Option<Verdict> {
+        match &self.judgment {
+            None => Some(self.grade.verdict),
+            Some(j) => j.decided.as_ref().map(|d| d.verdict),
+        }
+    }
+    /// Who decided the Verdict, where there is one.
+    pub fn authority(&self) -> Option<&Authority> {
+        match &self.judgment {
+            None => Some(&self.grade.authority),
+            Some(j) => j.decided.as_ref().map(|d| &d.authority),
+        }
+    }
+    /// Each Card this answer was given for, with its Unit, decided or not.
+    pub fn card_units(&self) -> Vec<(&str, &str)> {
+        match &self.judgment {
+            None => self
+                .effects
+                .iter()
+                .map(|e| (e.card_id.as_str(), e.unit_id.as_str()))
+                .collect(),
+            Some(j) => j
+                .targets
+                .iter()
+                .map(|t| (t.card_id.as_str(), t.unit_id.as_str()))
+                .collect(),
+        }
+    }
+    pub fn card_ids(&self) -> impl Iterator<Item = &str> {
+        self.card_units().into_iter().map(|(card, _)| card)
+    }
+    fn first_unit_index(&self) -> usize {
+        match &self.judgment {
+            None => self.effects[0].unit_index,
+            Some(j) => j.targets[0].unit_index,
+        }
+    }
+}
+pub const RECALL_POLICY: &str = "recall-v1";
+pub const JEV_AUTHORITY: &str = "jev";
+/// One answer is checked at most three times, as the earlier concept flow allows.
+pub const CHECK_LIMIT: usize = 3;
+/// A paid judgment of one Attempt. `targets` freeze each Card as the answer
+/// found it; `decided` is absent until Jev accepts or rejects the answer.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Judgment {
+    pub policy: String,
+    pub targets: Vec<Target>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided: Option<Decided>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Decided {
+    pub check_id: String,
+    pub sequence: u64,
+    pub decided_ms: i64,
+    pub verdict: Verdict,
+    pub units: Vec<UnitVerdict>,
+    pub authority: Authority,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckStatus {
+    Queued,
+    Sent,
+    Accepted,
+    Rejected,
+    Unsure,
+    Failed,
+    Unknown,
+    Refused,
+    Superseded,
+}
+impl CheckStatus {
+    /// Waiting to be sent, or sent with no outcome yet.
+    pub fn open(self) -> bool {
+        matches!(self, Self::Queued | Self::Sent)
+    }
+}
+/// One deliberate request that Jev judge an Attempt's saved answer. Its raw
+/// response and cost live in the Spend ledger under `lease`.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Check {
+    pub id: String,
+    pub attempt_id: String,
+    pub sequence: u64,
+    pub status: CheckStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_ms: Option<i64>,
+    pub created_ms: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acting_token: Option<String>,
+}
+/// What this request may ask of Jev. Both are false wherever paid judgment is
+/// not offered, and then every answer is graded locally.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Judging {
+    /// The serving Scry can reach Jev.
+    pub capable: bool,
+    /// The request carries paid permission.
+    pub paid: bool,
+}
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JudgmentState {
+    Checking,
+    Ungraded,
+    Decided,
+}
+/// Where an Attempt's paid judgment stands, from its newest Check.
+#[derive(Clone, Debug)]
+pub struct JudgmentView<'a> {
+    pub state: JudgmentState,
+    pub decided: Option<&'a Decided>,
+    pub check: Option<&'a Check>,
+    /// Whether the Owner may still ask for another check of this answer.
+    pub checks_left: bool,
+}
+pub fn judgment_view<'a>(app: &'a App, attempt: &'a Attempt) -> Option<JudgmentView<'a>> {
+    let judgment = attempt.judgment.as_ref()?;
+    let checks = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| c.attempt_id == attempt.id)
+        .collect::<Vec<_>>();
+    let decided = judgment.decided.as_ref();
+    let check = match decided {
+        Some(d) => app.practice.checks.get(&d.check_id),
+        None => checks.iter().copied().max_by_key(|c| (c.sequence, &c.id)),
+    };
+    let state = if decided.is_some() {
+        JudgmentState::Decided
+    } else if check.is_some_and(|c| c.status.open()) {
+        JudgmentState::Checking
+    } else {
+        JudgmentState::Ungraded
+    };
+    Some(JudgmentView {
+        state,
+        decided,
+        check,
+        checks_left: state == JudgmentState::Ungraded && checks.len() < CHECK_LIMIT,
+    })
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Correction {
@@ -267,6 +446,9 @@ pub struct Practice {
     pub cards: BTreeMap<String, Card>,
     pub attempts: BTreeMap<String, Attempt>,
     pub corrections: BTreeMap<String, Correction>,
+    /// Checks of Attempts left for Jev to judge. Absent wherever none exists.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub checks: BTreeMap<String, Check>,
     pub current: Option<Presentation>,
 }
 impl Practice {
@@ -277,6 +459,7 @@ impl Practice {
             && self.cards.is_empty()
             && self.attempts.is_empty()
             && self.corrections.is_empty()
+            && self.checks.is_empty()
             && self.current.is_none()
     }
     pub fn protected(&self) -> bool {
@@ -292,13 +475,13 @@ fn field<'a>(fields: &'a BTreeMap<String, String>, key: &str) -> &'a str {
 fn id(seed: &str, kind: &str) -> String {
     crate::persistence::sha256(format!("{seed}:study:{kind}").as_bytes())[..32].into()
 }
-fn initial(now: i64, kind: Kind) -> CardState {
+fn initial(now: i64, kind: Kind, direction: Direction) -> CardState {
     CardState {
         schedule: learning::new_card(now),
-        cue: if kind == Kind::KeyedMapping {
-            Cue::MappingKey
-        } else {
-            Cue::Read
+        cue: match (kind, direction) {
+            (Kind::KeyedMapping, Direction::Reverse) => Cue::MappingValue,
+            (Kind::KeyedMapping, Direction::Forward) => Cue::MappingKey,
+            _ => Cue::Read,
         },
         successes: 0,
     }
@@ -306,13 +489,47 @@ fn initial(now: i64, kind: Kind) -> CardState {
 /// Mapping Units retain their supplied key and delimiter in Library/history.
 /// Only their value is an expected answer; clients never supply this projection.
 pub(crate) fn expected_unit<'a>(version: &Version, unit: &'a crate::library::Unit) -> &'a str {
+    expected_answer(version, unit, Direction::Forward)
+}
+/// What a Card in this direction asks for: a pair's value forward, its key
+/// in reverse, and a text or list Unit itself.
+pub(crate) fn expected_answer<'a>(
+    version: &Version,
+    unit: &'a crate::library::Unit,
+    direction: Direction,
+) -> &'a str {
     if version.kind == Kind::KeyedMapping {
-        crate::library::mapping_pair(&unit.text)
-            .expect("validated mapping Unit")
-            .1
+        let (key, value) =
+            crate::library::mapping_pair(&unit.text).expect("validated mapping Unit");
+        if direction == Direction::Reverse {
+            key
+        } else {
+            value
+        }
     } else {
         &unit.text
     }
+}
+/// The direction a Prompt asks in. Only a reverse Card's Quiz shows a value.
+pub fn prompt_direction(app: &App, prompt: &Prompt, targets: &[Target]) -> Direction {
+    if prompt.cue_level == Cue::MappingValue {
+        return Direction::Reverse;
+    }
+    targets
+        .first()
+        .and_then(|t| app.practice.cards.get(&t.card_id))
+        .map_or(Direction::Forward, |c| c.direction)
+}
+/// The direction an Attempt answered in, from what it froze.
+pub fn attempt_direction(app: &App, attempt: &Attempt) -> Direction {
+    if attempt.prompt.cue_level == Cue::MappingValue {
+        return Direction::Reverse;
+    }
+    attempt
+        .card_ids()
+        .next()
+        .and_then(|id| app.practice.cards.get(id))
+        .map_or(Direction::Forward, |c| c.direction)
 }
 pub(crate) fn studyable(version: &Version) -> AppResult<()> {
     match version.kind {
@@ -354,13 +571,14 @@ fn response(entity: Option<String>, data: Value) -> MutationResult {
     }
 }
 const MAPPING_PROMPT_TITLE: &str = "Recall the matching value";
+const MAPPING_REVERSE_TITLE: &str = "Recall the matching key";
 /// Supplied metadata may contain the answer. Preserve it in Library/history,
 /// but never use it as an extra mapping cue, including restored held Prompts.
 pub(crate) fn visible_prompt_title(prompt: &Prompt) -> &str {
-    if prompt.cue_level == Cue::MappingKey {
-        MAPPING_PROMPT_TITLE
-    } else {
-        &prompt.title
+    match prompt.cue_level {
+        Cue::MappingKey => MAPPING_PROMPT_TITLE,
+        Cue::MappingValue => MAPPING_REVERSE_TITLE,
+        _ => &prompt.title,
     }
 }
 fn held(app: &App) -> AppResult<Value> {
@@ -382,30 +600,62 @@ pub struct MappingFeedback {
     pub kind: &'static str,
     pub key: String,
     pub expected: String,
+    /// Forward: the key whose value the answer is.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub answered_key: Option<String>,
+    /// Reverse: the value whose key the answer is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub answered_value: Option<String>,
+    /// Present only for a reverse Card.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction: Option<Direction>,
+}
+/// The other pair a mapping answer belongs to, as (key, value): in the
+/// forward direction the pair whose value it is, in reverse the pair whose key.
+pub(crate) fn other_pair<'a>(
+    version: &'a Version,
+    unit_id: &str,
+    direction: Direction,
+    answer: &str,
+) -> Option<(&'a str, &'a str)> {
+    let answer = grading::mapping_words(answer);
+    units(version)
+        .into_iter()
+        .filter(|u| u.id != unit_id)
+        .filter_map(|u| crate::library::mapping_pair(&u.text))
+        .find(|(key, value)| {
+            grading::mapping_words(if direction == Direction::Reverse {
+                key
+            } else {
+                value
+            }) == answer
+        })
 }
 pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback> {
     let version = &app.library.versions[&attempt.version_id];
     if version.kind != Kind::KeyedMapping {
         return None;
     }
-    let unit = units(version)[attempt.effects[0].unit_index];
-    let (key, expected) = crate::library::mapping_pair(&unit.text)?;
-    let answer = grading::mapping_words(&attempt.raw_answer);
-    let answered_key = (attempt.grade.verdict == Verdict::Again)
-        .then(|| {
-            units(version)
-                .into_iter()
-                .filter(|u| u.id != unit.id)
-                .filter_map(|u| crate::library::mapping_pair(&u.text))
-                .find(|(_, value)| grading::mapping_words(value) == answer)
-                .map(|(key, _)| key.to_string())
-        })
+    let unit = units(version)[attempt.first_unit_index()];
+    let direction = attempt_direction(app, attempt);
+    let (key, _) = crate::library::mapping_pair(&unit.text)?;
+    let expected = expected_answer(version, unit, direction);
+    let verdict = attempt.verdict();
+    let other = (verdict == Some(Verdict::Again))
+        .then(|| other_pair(version, &unit.id, direction, &attempt.raw_answer))
         .flatten();
-    let kind = if attempt.grade.verdict == Verdict::Good {
+    let (answered_key, answered_value) = match (other, direction) {
+        (Some((key, _)), Direction::Forward) => (Some(key.to_string()), None),
+        (Some((_, value)), Direction::Reverse) => (None, Some(value.to_string())),
+        (None, _) => (None, None),
+    };
+    let wrong_pair = other.is_some();
+    let kind = if verdict == Some(Verdict::Good) {
         "correct"
-    } else if answered_key.is_some() {
+    } else if verdict.is_none() {
+        // Jev has not decided: the local comparison alone names no outcome.
+        "ungraded"
+    } else if wrong_pair {
         "wrong_key"
     } else if attempt
         .grade
@@ -422,17 +672,34 @@ pub fn mapping_feedback(app: &App, attempt: &Attempt) -> Option<MappingFeedback>
         key: key.into(),
         expected: expected.into(),
         answered_key,
+        answered_value,
+        direction: (direction == Direction::Reverse).then_some(direction),
     })
 }
 /// Resolve immutable response references only after the runtime has committed.
 pub fn wire_response(app: &App, result: &MutationResult) -> Option<Value> {
     let mut data = result.data.clone()?;
+    // A Library add that found its text already there carries no practice.
+    if data.get("existing").is_some() {
+        return None;
+    }
     if let Some(id) = data.get("attempt_id").and_then(Value::as_str) {
         let attempt = app.practice.attempts.get(id);
         let feedback = attempt.and_then(|a| mapping_feedback(app, a));
         data["attempt"] = json!(attempt);
         if let Some(feedback) = feedback {
             data["mapping_feedback"] = json!(feedback);
+        }
+        // `attempt.grade` is the local comparison. Where Jev was asked, the
+        // Verdict and its Authority are here, or absent while there is none.
+        if let Some(view) = attempt.and_then(|a| judgment_view(app, a)) {
+            data["judgment"] = json!({
+                "state": view.state,
+                "verdict": view.decided.map(|d| d.verdict),
+                "authority": view.decided.map(|d| &d.authority),
+                "reason": view.check.and_then(|c| c.reason.as_ref()),
+                "check_id": view.check.map(|c| &c.id),
+            });
         }
     }
     if let Some(id) = data.get("correction_id").and_then(Value::as_str) {
@@ -465,7 +732,9 @@ pub(crate) fn check_replay(app: &App, result: &MutationResult) -> AppResult<()> 
             serde_json::from_value(value.clone()).map_err(|_| AppError::conflict())?;
         // Do not rewrite a historical receipt merely to make it replayable.
         // A pre-fix supplied mapping title is unsafe while any recall is protected.
-        if prompt.cue_level == Cue::MappingKey && prompt.title != MAPPING_PROMPT_TITLE {
+        if matches!(prompt.cue_level, Cue::MappingKey | Cue::MappingValue)
+            && prompt.title != visible_prompt_title(&prompt)
+        {
             return Err(AppError::conflict());
         }
         let current = &app.practice.current.as_ref().unwrap().prompt;
@@ -531,7 +800,46 @@ fn effect(
         revision_before: target.revision,
         before: target.before.clone(),
         after,
+        superseded: false,
     })
+}
+/// The effect of a Verdict that arrives after its answer, on a Card no later
+/// Attempt has touched. It is computed at the moment of recall, as a Correction
+/// is, so replay needs stored data only. The pending Attempt took one revision.
+fn late_effect(target: &Target, verdict: Verdict, a: &Attempt) -> AppResult<Effect> {
+    effect(
+        &Target {
+            revision: target.revision + 1,
+            ..target.clone()
+        },
+        verdict,
+        a.revealed,
+        a.created_ms,
+        a.schedule_policy,
+    )
+}
+/// The Card has a newer Attempt: record the Verdict and leave the Card alone.
+fn superseded_effect(
+    target: &Target,
+    verdict: Verdict,
+    a: &Attempt,
+    state: &CardState,
+    revision: u64,
+) -> Effect {
+    Effect {
+        card_id: target.card_id.clone(),
+        unit_id: target.unit_id.clone(),
+        unit_index: target.unit_index,
+        cue_level: target.cue,
+        verdict,
+        assisted: a.assisted,
+        extra_practice: false,
+        scheduled: false,
+        revision_before: revision,
+        before: state.clone(),
+        after: state.clone(),
+        superseded: true,
+    }
 }
 fn disclosure_effect(target: &Target) -> Effect {
     Effect {
@@ -546,6 +854,7 @@ fn disclosure_effect(target: &Target) -> Effect {
         revision_before: target.revision,
         before: target.before.clone(),
         after: target.before.clone(),
+        superseded: false,
     }
 }
 fn target(card: &Card, cue: Cue) -> Target {
@@ -582,20 +891,53 @@ fn active(app: &App, fields: &BTreeMap<String, String>, answered: bool) -> AppRe
     }
     Ok(p.clone())
 }
-/// Cap automatic receipts across tabs and reloads without changing receipt format.
+/// A Prompt held under an earlier release may cover a scope recovery refuses,
+/// such as a Recitation over Units not all introduced. It is never answered or
+/// revealed into history, where it could not be removed; leaving it closes it.
+fn recordable(app: &App, p: &Presentation) -> AppResult<()> {
+    validate_targets(app, &p.prompt, &p.targets).map_err(|_| {
+        AppError::new(
+            409,
+            "This held Prompt cannot be recorded. Leave it to continue.",
+        )
+    })
+}
+/// A notebook keeps the receipts of its newest automatic saves, at most this many.
 pub const AUTOSAVE_RECEIPT_LIMIT: usize = 512;
 pub const AUTOSAVE_OPERATION_PREFIX: &str = "autosave-";
 
-pub fn autosave_remaining(app: &App) -> usize {
-    let used = app
+/// A checkpoint replaces its predecessor, so automatic saving never runs out:
+/// before a new automatic save, the receipts of the oldest ones beyond the
+/// newest `AUTOSAVE_RECEIPT_LIMIT - 1` are dropped. Receipts keep their format
+/// and nothing else is touched. Generations only grow, so a replay of a dropped
+/// save expects an older generation and is refused as a conflict; it is never
+/// applied twice. A notebook below the limit is left byte for byte as it was.
+pub fn make_room_for_autosave(app: &mut App) {
+    let mut automatic = app
         .operations
         .iter()
         .filter(|(id, receipt)| {
             id.starts_with(AUTOSAVE_OPERATION_PREFIX)
                 && receipt.path.as_deref() == Some("/practice/draft")
         })
-        .count();
-    AUTOSAVE_RECEIPT_LIMIT.saturating_sub(used)
+        .map(|(id, receipt)| {
+            let generation = receipt
+                .result
+                .data
+                .as_ref()
+                .and_then(|data| data.get("draft_generation"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            (generation, id.clone())
+        })
+        .collect::<Vec<_>>();
+    let Some(excess) = (automatic.len() + 1).checked_sub(AUTOSAVE_RECEIPT_LIMIT) else {
+        return;
+    };
+    automatic.sort();
+    for (_, id) in automatic.into_iter().take(excess) {
+        app.operations.remove(&id);
+    }
 }
 
 pub fn checkpoint_current(app: &App, fields: &BTreeMap<String, String>, generation: u64) -> bool {
@@ -640,7 +982,11 @@ fn make_prompt(
     };
     let text = &all[first].text;
     let rendered = match cue {
-        Cue::Read => text.clone(),
+        // Source study shows the supplied Units of its scope, in order.
+        Cue::Read => cards
+            .iter()
+            .map(|c| all[c.unit_index].text.as_str())
+            .collect(),
         Cue::FirstLetters => grading::normalized_words(text)
             .iter()
             .filter_map(|w| w.chars().next())
@@ -659,6 +1005,10 @@ fn make_prompt(
             .expect("validated mapping Unit")
             .0
             .into(),
+        Cue::MappingValue => crate::library::mapping_pair(text)
+            .expect("validated mapping Unit")
+            .1
+            .into(),
     };
     Presentation {
         phase: None,
@@ -667,10 +1017,10 @@ fn make_prompt(
             study_id: study.id.clone(),
             version_id: v.id.clone(),
             version_hash: v.normalized_hash.clone(),
-            title: if v.kind == Kind::KeyedMapping {
-                MAPPING_PROMPT_TITLE.into()
-            } else {
-                app.library.works[&v.work_id].title.clone()
+            title: match (v.kind, cards[0].direction) {
+                (Kind::KeyedMapping, Direction::Reverse) => MAPPING_REVERSE_TITLE.into(),
+                (Kind::KeyedMapping, Direction::Forward) => MAPPING_PROMPT_TITLE.into(),
+                _ => app.library.works[&v.work_id].title.clone(),
             },
             scope,
             unit_ids: cards.iter().map(|c| c.unit_id.clone()).collect(),
@@ -678,6 +1028,7 @@ fn make_prompt(
             context,
             cue: rendered,
             assisted: cue.assisted(),
+            safety_bearing: v.kind == Kind::KeyedMapping && v.safety_bearing.contains(&first),
         },
         targets: cards.iter().map(|c| target(c, cue)).collect(),
         created_ms: now,
@@ -685,30 +1036,36 @@ fn make_prompt(
         attempt_id: None,
     }
 }
-/// Current app learning separates source reading from an actual memory quiz.
-/// Retained cue state is history, not permission to disclose a due quiz answer.
-fn make_ui_prompt(
+/// Whether the Owner has answered this Card. A reveal on its own is not practice.
+fn practised(app: &App, card: &Card) -> bool {
+    card.state.schedule.last_review_ms.is_some()
+        || app
+            .practice
+            .attempts
+            .values()
+            .any(|a| !a.disclosure && a.card_ids().any(|id| id == card.id))
+}
+/// Every new Prompt is Source study or a Quiz. A Unit or whole list not yet
+/// practised is studied first; a text Recitation is a chosen challenge, prompted
+/// from its heading or title alone. A Card's retained cue level is never read.
+fn present(
     app: &App,
     study: &Study,
     cards: Vec<&Card>,
     scope: Scope,
-    cue: Cue,
     now: i64,
     seed: &str,
 ) -> Presentation {
-    let learned = cards.iter().any(|c| {
-        c.state.schedule.last_review_ms.is_some()
-            || app
-                .practice
-                .attempts
-                .values()
-                .any(|a| !a.disclosure && a.effects.iter().any(|e| e.card_id == c.id))
-    });
-    let source = cue.assisted() && !learned;
+    let kind = app.library.versions[&study.version_id].kind;
+    let source = match scope {
+        Scope::Unit { .. } => !practised(app, cards[0]),
+        Scope::Whole if kind == Kind::OrderedList => !cards.iter().all(|c| practised(app, c)),
+        Scope::Whole | Scope::Section { .. } => false,
+    };
     let cue = if source {
         Cue::Read
     } else {
-        quiz_cue(&scope, app.library.versions[&study.version_id].kind)
+        quiz_cue(&scope, kind, cards[0].direction)
     };
     let mut p = make_prompt(app, study, cards, scope, cue, now, seed);
     p.phase = Some(if source {
@@ -718,33 +1075,50 @@ fn make_ui_prompt(
     });
     p
 }
-fn mark_current_ui(app: &mut App) {
-    let Some(old) = app
-        .practice
-        .current
-        .clone()
-        .filter(|p| p.attempt_id.is_none())
-    else {
-        return;
-    };
-    let study = &app.practice.studies[&old.prompt.study_id];
-    let cards = old
-        .targets
-        .iter()
-        .map(|t| &app.practice.cards[&t.card_id])
-        .collect();
-    let mut p = make_ui_prompt(
-        app,
-        study,
-        cards,
-        old.prompt.scope.clone(),
-        old.prompt.cue_level,
-        old.created_ms,
-        &old.prompt.id,
-    );
-    p.prompt.id = old.prompt.id;
-    p.revealed = old.revealed;
+/// Hold a new Prompt and mark its Study for the phase archive format. A Prompt
+/// that recovery would refuse is never held: stored state is validated only
+/// when an archive is written or read, so it must be refused here, before it
+/// can be answered into history.
+fn hold(app: &mut App, p: Presentation) -> AppResult<()> {
+    validate_targets(app, &p.prompt, &p.targets)?;
+    app.practice
+        .studies
+        .get_mut(&p.prompt.study_id)
+        .expect("Prompt Study")
+        .source_quiz = true;
     app.practice.current = Some(p);
+    Ok(())
+}
+const NOT_INTRODUCED: &str = "Introduce every Unit in this scope before Recitation.";
+const PHRASE_NOT_INTRODUCED: &str = "That phrase has not been introduced yet. Start this lesson to practise any of its phrases, or choose Next.";
+/// Whether every Unit of this Study's Version has a Card: a text lesson that
+/// has been entered, a list presented whole, or Units all introduced at Pace.
+pub fn fully_introduced(app: &App, study: &Study) -> bool {
+    introduced(app, study) >= units(&app.library.versions[&study.version_id]).len()
+}
+/// The Cards of a Recitation, in the order of its scope. A Recitation covers
+/// every Unit of its Section or Version, so each must already be introduced.
+/// Nothing is introduced here: a refusal leaves the notebook as it was.
+fn recitation_cards<'a>(
+    app: &'a App,
+    sid: &str,
+    scope: impl Iterator<Item = &'a crate::library::Unit>,
+) -> AppResult<Vec<&'a Card>> {
+    let introduced = app
+        .practice
+        .cards
+        .values()
+        .filter(|c| c.study_id == sid)
+        .map(|c| (c.unit_id.as_str(), c))
+        .collect::<BTreeMap<_, _>>();
+    scope
+        .map(|u| {
+            introduced
+                .get(u.id.as_str())
+                .copied()
+                .ok_or_else(|| AppError::new(409, NOT_INTRODUCED))
+        })
+        .collect()
 }
 fn study_start(
     app: &mut App,
@@ -763,27 +1137,21 @@ fn study_start(
             "Start studying without answer or grading overrides.",
         ));
     }
-    let held_before = app.practice.current.is_some();
     let learned = mutate(app, "/practice/learn", fields, now, seed)?;
     let sid = learned.entity_id.expect("Study identity");
-    app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
     let mut result = next(
         app,
         &BTreeMap::from([("study_id".into(), sid.clone())]),
         now,
         seed,
     )?;
-    if !held_before {
-        mark_current_ui(app);
-    }
     result.entity_id = Some(sid);
-    if app.practice.current.is_some() {
-        result.data = Some(held(app)?);
-    }
     Ok(result)
 }
-fn quiz_cue(scope: &Scope, kind: Kind) -> Cue {
-    if kind == Kind::KeyedMapping {
+fn quiz_cue(scope: &Scope, kind: Kind, direction: Direction) -> Cue {
+    if kind == Kind::KeyedMapping && direction == Direction::Reverse {
+        Cue::MappingValue
+    } else if kind == Kind::KeyedMapping {
         Cue::MappingKey
     } else if matches!(scope, Scope::Section { .. }) {
         Cue::SectionHeading
@@ -815,17 +1183,18 @@ fn quiz(
     }
     let study = &app.practice.studies[&old.prompt.study_id];
     let kind = app.library.versions[&study.version_id].kind;
-    let cards = old
+    let cards: Vec<&Card> = old
         .targets
         .iter()
         .map(|t| &app.practice.cards[&t.card_id])
         .collect();
+    let direction = cards[0].direction;
     let mut p = make_prompt(
         app,
         study,
         cards,
         old.prompt.scope.clone(),
-        quiz_cue(&old.prompt.scope, kind),
+        quiz_cue(&old.prompt.scope, kind, direction),
         now,
         seed,
     );
@@ -833,33 +1202,136 @@ fn quiz(
     // Help belongs to this attempt: hiding a peek does not erase assistance.
     // Initial source reading has no Attempt and is not itself a successful recall.
     p.revealed = old.revealed;
-    app.practice
-        .studies
-        .get_mut(&p.prompt.study_id)
-        .unwrap()
-        .source_quiz = true;
-    app.practice.current = Some(p);
+    hold(app, p)?;
     Ok(response(None, held(app)?))
 }
 
+/// Introduce one Unit: its forward Card and, where its Version declares both
+/// directions, its reverse Card with it. The Unit counts once against Pace.
 fn introduce_card(app: &mut App, study: &Study, index: usize, now: i64, seed: &str) -> String {
     let version = &app.library.versions[&study.version_id];
     let unit = units(version)[index];
-    let cid = id(seed, "card");
-    app.practice.cards.insert(
-        cid.clone(),
-        Card {
-            id: cid.clone(),
-            study_id: study.id.clone(),
-            unit_id: unit.id.clone(),
-            unit_index: index,
-            direction: Direction::Forward,
-            introduced_ms: now,
-            revision: 0,
-            state: initial(now, version.kind),
-        },
-    );
-    cid
+    let mut directions = vec![(Direction::Forward, id(seed, "card"))];
+    if version.kind == Kind::KeyedMapping
+        && version.direction == crate::library::MappingDirection::Both
+    {
+        directions.push((Direction::Reverse, id(seed, "reverse-card")));
+    }
+    let (kind, unit_id) = (version.kind, unit.id.clone());
+    for (direction, cid) in &directions {
+        app.practice.cards.insert(
+            cid.clone(),
+            Card {
+                id: cid.clone(),
+                study_id: study.id.clone(),
+                unit_id: unit_id.clone(),
+                unit_index: index,
+                direction: *direction,
+                introduced_ms: now,
+                revision: 0,
+                state: initial(now, kind, *direction),
+            },
+        );
+    }
+    directions.swap_remove(0).1
+}
+
+fn whole_list(app: &App, study: &Study) -> bool {
+    app.library.versions[&study.version_id].kind == Kind::OrderedList
+}
+/// How many Units this Study has introduced: one forward Card each.
+fn introduced(app: &App, study: &Study) -> usize {
+    app.practice
+        .cards
+        .values()
+        .filter(|c| c.study_id == study.id && c.direction == Direction::Forward)
+        .count()
+}
+/// A list begun item by item under an older record is recalled whole from now
+/// on. Its remaining items are new material, which only an active Study receives.
+fn list_waits(app: &App, study: &Study) -> bool {
+    whole_list(app, study)
+        && study.status != Status::Active
+        && introduced(app, study) < units(&app.library.versions[&study.version_id]).len()
+}
+
+/// Cards whose newest Attempt is still with Jev: its Check is queued or sent
+/// and nothing has touched the Card since. Study, Next and a Lesson's Next do
+/// not choose such a Card, because answering it again would leave Jev's
+/// Verdict recorded as superseded, with no effect on the schedule. A whole
+/// list is one Prompt, so one waiting item holds its list back. This is a rule
+/// of selection only: nothing is stored, and a Card or scope the Owner names
+/// outright is still presented.
+pub fn awaiting_verdict(app: &App) -> BTreeSet<String> {
+    let mut waiting = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| c.status.open())
+        .filter_map(|c| app.practice.attempts.get(&c.attempt_id))
+        .filter_map(|a| a.judgment.as_ref().filter(|j| j.decided.is_none()))
+        .flat_map(|j| &j.targets)
+        .filter(|t| {
+            app.practice
+                .cards
+                .get(&t.card_id)
+                .is_some_and(|c| c.revision == t.revision + 1 && c.state == t.before)
+        })
+        .map(|t| t.card_id.clone())
+        .collect::<BTreeSet<_>>();
+    let lists = waiting
+        .iter()
+        .map(|id| app.practice.cards[id].study_id.as_str())
+        .filter(|sid| whole_list(app, &app.practice.studies[*sid]))
+        .collect::<BTreeSet<_>>();
+    if !lists.is_empty() {
+        waiting.extend(
+            app.practice
+                .cards
+                .values()
+                .filter(|c| lists.contains(c.study_id.as_str()))
+                .map(|c| c.id.clone()),
+        );
+    }
+    waiting
+}
+/// Whether presenting this Study's list whole would re-ask a waiting item.
+fn list_awaits(app: &App, study: &Study, waiting: &BTreeSet<String>) -> bool {
+    whole_list(app, study)
+        && app
+            .practice
+            .cards
+            .values()
+            .any(|c| c.study_id == study.id && waiting.contains(&c.id))
+}
+/// The held result is still with Jev, so it stays held when nothing else is
+/// eligible: the Owner sees it being checked, not an empty page.
+fn held_awaits(app: &App, p: &Presentation) -> bool {
+    p.attempt_id.as_ref().is_some_and(|aid| {
+        app.practice
+            .checks
+            .values()
+            .any(|c| &c.attempt_id == aid && c.status.open())
+    })
+}
+/// The newest answer still with Jev among the Studies in scope, if its Card
+/// is still waiting: what a nothing-due page shows instead of rest.
+pub fn checking_attempt(app: &App, in_scope: impl Fn(&Study) -> bool) -> Option<&Attempt> {
+    let waiting = awaiting_verdict(app);
+    app.practice
+        .checks
+        .values()
+        .filter(|c| c.status.open())
+        .filter_map(|c| app.practice.attempts.get(&c.attempt_id))
+        .filter(|a| {
+            a.card_ids().any(|id| waiting.contains(id))
+                && app
+                    .practice
+                    .studies
+                    .get(&a.prompt.study_id)
+                    .is_some_and(|s| s.status != Status::Dropped && in_scope(s))
+        })
+        .max_by_key(|a| (a.sequence, &a.id))
 }
 
 /// Mixed review admits only content the learner has actually practised.
@@ -871,7 +1343,7 @@ pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
         .attempts
         .values()
         .filter(|a| !a.disclosure)
-        .flat_map(|a| a.effects.iter().map(|e| e.card_id.as_str()))
+        .flat_map(|a| a.card_ids())
         .collect::<BTreeSet<_>>();
     app.practice
         .cards
@@ -879,6 +1351,7 @@ pub fn mixed_cards(app: &App, now: i64) -> Vec<&Card> {
         .filter(|c| {
             app.practice.studies[&c.study_id].status != Status::Dropped
                 && eligible.contains(c.study_id.as_str())
+                && !list_waits(app, &app.practice.studies[&c.study_id])
                 && c.state.schedule.last_review_ms.is_some()
                 && c.state.schedule.due_ms <= now
                 && practised.contains(c.id.as_str())
@@ -896,13 +1369,20 @@ enum ContinuousChoice {
 }
 
 fn continuous_limit(app: &App, s: &Study, now: i64) -> bool {
-    // Focused NATO's all-letters choice is not a catalog-wide learning budget.
-    app.practice
-        .cards
-        .values()
-        .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
-        .count()
-        < s.pace.limit()
+    // An ordered list is introduced whole. Focused NATO's all-letters choice
+    // is not a catalog-wide learning budget.
+    whole_list(app, s)
+        || app
+            .practice
+            .cards
+            .values()
+            .filter(|c| {
+                c.study_id == s.id
+                    && c.direction == Direction::Forward
+                    && c.introduced_ms > now.saturating_sub(DAY_MS)
+            })
+            .count()
+            < s.pace.limit()
 }
 
 fn continuous_version_eligible(app: &App, v: &Version) -> bool {
@@ -953,7 +1433,7 @@ fn continuous_scope_eligible(
 
 fn continuous_target_eligible(app: &App, study: &Study, index: usize) -> bool {
     let v = &app.library.versions[&study.version_id];
-    let whole = study.lesson && v.kind == Kind::OrderedList;
+    let whole = v.kind == Kind::OrderedList;
     let (start, end) = if whole {
         (0, units(v).len())
     } else {
@@ -962,29 +1442,47 @@ fn continuous_target_eligible(app: &App, study: &Study, index: usize) -> bool {
     continuous_scope_eligible(app, v, start, end, whole)
 }
 
-fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
+/// `avoid` holds the other direction of the pair just answered: its answer
+/// was on screen, so it is served only when nothing else is eligible. Without
+/// `start`, no Work not yet started is chosen.
+fn continuous_choice(
+    app: &App,
+    now: i64,
+    avoid: &BTreeSet<String>,
+    start: bool,
+) -> Option<ContinuousChoice> {
     let mut last = BTreeMap::<&str, u64>::new();
     for a in app.practice.attempts.values().filter(|a| !a.disclosure) {
         let served = last.entry(&a.prompt.study_id).or_default();
         *served = (*served).max(a.sequence);
     }
-    if let Some(c) = mixed_cards(app, now)
+    let waiting = awaiting_verdict(app);
+    let (due, avoided): (Vec<&Card>, Vec<&Card>) = mixed_cards(app, now)
         .into_iter()
         .filter(|c| {
-            continuous_target_eligible(app, &app.practice.studies[&c.study_id], c.unit_index)
+            !waiting.contains(&c.id)
+                && continuous_target_eligible(app, &app.practice.studies[&c.study_id], c.unit_index)
         })
-        .min_by_key(|c| {
-            (
-                last.get(c.study_id.as_str()).copied().unwrap_or(0),
-                c.state.schedule.due_ms,
-                app.practice.studies[&c.study_id].created_ms,
-                &c.study_id,
-                c.unit_index,
-            )
-        })
-    {
-        return Some(ContinuousChoice::Card(c.id.clone()));
+        .partition(|c| !avoid.contains(&c.id));
+    let first_due = |cards: Vec<&Card>| {
+        cards
+            .into_iter()
+            .min_by_key(|c| {
+                (
+                    last.get(c.study_id.as_str()).copied().unwrap_or(0),
+                    c.state.schedule.due_ms,
+                    app.practice.studies[&c.study_id].created_ms,
+                    &c.study_id,
+                    c.unit_index,
+                    c.direction,
+                )
+            })
+            .map(|c| ContinuousChoice::Card(c.id.clone()))
+    };
+    if let Some(choice) = first_due(due) {
+        return Some(choice);
     }
+    let fallback = first_due(avoided);
     let catalog = crate::lessons::catalog();
     let mut choices: Vec<(u64, String, ContinuousChoice)> = Vec::new();
     for study in app
@@ -1002,28 +1500,17 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
             .filter(|c| {
                 c.study_id == study.id
                     && c.state.schedule.last_review_ms.is_none()
+                    && !waiting.contains(&c.id)
+                    && !avoid.contains(&c.id)
                     && continuous_target_eligible(app, study, c.unit_index)
             })
-            .min_by_key(|c| c.unit_index);
+            .min_by_key(|c| (c.unit_index, c.direction));
         let choice = if let Some(c) = unfinished {
             Some(ContinuousChoice::Card(c.id.clone()))
         } else if continuous_limit(app, study, now)
-            && continuous_target_eligible(
-                app,
-                study,
-                app.practice
-                    .cards
-                    .values()
-                    .filter(|c| c.study_id == study.id)
-                    .count(),
-            )
-            && app
-                .practice
-                .cards
-                .values()
-                .filter(|c| c.study_id == study.id)
-                .count()
-                < units(&app.library.versions[&study.version_id]).len()
+            && !list_awaits(app, study, &waiting)
+            && continuous_target_eligible(app, study, introduced(app, study))
+            && introduced(app, study) < units(&app.library.versions[&study.version_id]).len()
         {
             Some(ContinuousChoice::Introduce(study.id.clone()))
         } else {
@@ -1058,7 +1545,7 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         .library
         .works
         .values()
-        .filter(|w| !studied_works.contains(w.id.as_str()))
+        .filter(|w| start && !studied_works.contains(w.id.as_str()))
     {
         let version = app
             .library
@@ -1098,14 +1585,16 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         "baby-everyday",
         "baby-montessori",
     ];
-    for (rank, starter) in defaults.iter().enumerate() {
+    for (rank, starter) in defaults.iter().enumerate().filter(|_| start) {
         let input = crate::lessons::input(starter).expect("curated default exists");
         let is_michael = *starter == "st-michael-en";
         let represented = if is_michael {
-            app.library
-                .works
-                .values()
-                .any(|w| w.title == input.title && studied_works.contains(w.id.as_str()))
+            starter_studied(app, &input)
+                || app
+                    .library
+                    .works
+                    .values()
+                    .any(|w| w.title == input.title && studied_works.contains(w.id.as_str()))
                 || app.library.versions.values().any(|v| {
                     catalog.iter().any(|l| {
                         l.matches(v)
@@ -1115,7 +1604,8 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
                     })
                 })
         } else {
-            app.library.works.values().any(|w| w.title == input.title)
+            starter_studied(app, &input)
+                || app.library.works.values().any(|w| w.title == input.title)
                 || app.library.versions.values().any(|v| {
                     if *starter == "nato" {
                         crate::library::is_nato(v)
@@ -1136,11 +1626,73 @@ fn continuous_choice(app: &App, now: i64) -> Option<ContinuousChoice> {
         .into_iter()
         .min_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)))
         .map(|(_, _, c)| c)
+        .or(fallback)
+        .or_else(|| {
+            // An unfinished Card of the pair just answered, when nothing else is.
+            app.practice
+                .cards
+                .values()
+                .filter(|c| {
+                    avoid.contains(&c.id)
+                        && c.state.schedule.last_review_ms.is_none()
+                        && !waiting.contains(&c.id)
+                        && app.practice.studies[&c.study_id].status == Status::Active
+                        && study_reviewable(app, &app.practice.studies[&c.study_id])
+                })
+                .min_by_key(|c| (c.unit_index, c.direction))
+                .map(|c| ContinuousChoice::Card(c.id.clone()))
+        })
+}
+/// The other directions of the mapping pair a held result answered.
+fn answered_siblings(app: &App, held: Option<&Presentation>) -> BTreeSet<String> {
+    let Some(p) = held.filter(|p| p.attempt_id.is_some() && p.targets.len() == 1) else {
+        return BTreeSet::new();
+    };
+    let answered = &p.targets[0].card_id;
+    app.practice
+        .cards
+        .values()
+        .filter(|c| {
+            &c.id != answered
+                && c.study_id == p.prompt.study_id
+                && p.prompt.unit_ids.first() == Some(&c.unit_id)
+        })
+        .map(|c| c.id.clone())
+        .collect()
 }
 
+/// The Version a starter, lesson or NATO entry resolves to; see
+/// `Library::admit_starter`. A Version kept for its Study must be one this
+/// entry can practise: the canonical alphabet for NATO, any studyable
+/// Version otherwise.
+fn starter_version(
+    app: &mut App,
+    input: crate::library::VersionInput,
+    seed: &str,
+) -> AppResult<String> {
+    let nato = crate::library::is_nato_input(&input);
+    let studies = &app.practice.studies;
+    let studied = |id: &str| studies.values().any(|s| s.version_id == id);
+    let usable = |v: &crate::library::Version| {
+        if nato {
+            crate::library::is_nato(v)
+        } else {
+            reviewable(v).is_ok()
+        }
+    };
+    app.library.admit_starter(input, seed, &studied, &usable)
+}
+/// Whether the Owner already studies a Version with this starter's text, in
+/// any structure: that Study is his choice and Study does not bypass it.
+fn starter_studied(app: &App, input: &crate::library::VersionInput) -> bool {
+    app.library.same_text_versions(input).is_ok_and(|ids| {
+        ids.iter()
+            .any(|id| app.practice.studies.values().any(|s| &s.version_id == id))
+    })
+}
 /// Home-only subject preview. Never render editable metadata as a recall cue.
 pub fn continuous_preview(app: &App, now: i64) -> Option<String> {
-    let vid = match continuous_choice(app, now)? {
+    let vid = match continuous_choice(app, now, &BTreeSet::new(), true)? {
         ContinuousChoice::Card(cid) => app.practice.studies[&app.practice.cards[&cid].study_id]
             .version_id
             .clone(),
@@ -1170,8 +1722,7 @@ fn continuous_present(
                     let vid = match choice {
                         ContinuousChoice::Version(vid) => vid,
                         ContinuousChoice::Starter(starter) => {
-                            app.library
-                                .add(crate::lessons::input(&starter)?, seed, None)?
+                            starter_version(app, crate::lessons::input(&starter)?, seed)?
                         }
                         _ => unreachable!(),
                     };
@@ -1190,46 +1741,62 @@ fn continuous_present(
                     sid
                 }
             };
-            app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
             let study = app.practice.studies[&sid].clone();
-            let index = app
-                .practice
-                .cards
-                .values()
-                .filter(|c| c.study_id == sid)
-                .count();
-            if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
-                for i in index..units(&app.library.versions[&study.version_id]).len() {
-                    introduce_card(app, &study, i, now, &format!("{seed}:unit:{i}"));
-                }
+            if whole_list(app, &study) {
                 lesson_present(app, &sid, 0, true, now, seed)?;
                 return Ok(());
             }
+            let index = introduced(app, &study);
             introduce_card(app, &study, index, now, seed)
         }
     };
-    let sid = app.practice.cards[&cid].study_id.clone();
-    app.practice.studies.get_mut(&sid).unwrap().source_quiz = true;
     let card = &app.practice.cards[&cid];
-    let study = &app.practice.studies[&card.study_id];
-    if study.lesson && app.library.versions[&study.version_id].kind == Kind::OrderedList {
-        let sid = study.id.clone();
-        lesson_present(app, &sid, 0, true, now, seed)?;
-    } else {
-        app.practice.current = Some(make_ui_prompt(
-            app,
-            study,
-            vec![card],
-            Scope::Unit {
-                unit_id: card.unit_id.clone(),
-                position: card.unit_index + 1,
-            },
-            card.state.cue,
-            now,
-            seed,
-        ));
+    if card.direction == Direction::Reverse {
+        present_card(app, &cid, now, seed)?;
+        return Ok(());
     }
+    let (sid, index) = (card.study_id.clone(), card.unit_index);
+    lesson_present(app, &sid, index, false, now, seed)?;
     Ok(())
+}
+/// Present one Card on its own: a mapping pair in that Card's direction.
+fn present_card(app: &mut App, cid: &str, now: i64, seed: &str) -> AppResult<MutationResult> {
+    let card = app
+        .practice
+        .cards
+        .get(cid)
+        .ok_or_else(AppError::conflict)?
+        .clone();
+    let study = app.practice.studies[&card.study_id].clone();
+    let p = present(
+        app,
+        &study,
+        vec![&card],
+        Scope::Unit {
+            unit_id: card.unit_id.clone(),
+            position: card.unit_index + 1,
+        },
+        now,
+        seed,
+    );
+    hold(app, p)?;
+    Ok(response(None, held(app)?))
+}
+
+/// Study's selection, shared by Study and by Next with nothing named: hold
+/// the Prompt it chooses, or nothing when nothing is eligible. `start` lets
+/// it begin a Work not yet started.
+fn study_serve(
+    app: &mut App,
+    now: i64,
+    avoid: &BTreeSet<String>,
+    start: bool,
+    seed: &str,
+) -> AppResult<()> {
+    match continuous_choice(app, now, avoid, start) {
+        Some(choice) => continuous_present(app, choice, now, seed),
+        None => Ok(()),
+    }
 }
 
 fn mixed_next(
@@ -1272,10 +1839,12 @@ fn mixed_next(
     } else if !after.is_empty() || !leave.is_empty() {
         return Err(AppError::conflict());
     }
-    app.practice.current = None;
+    let avoid = answered_siblings(app, app.practice.current.as_ref());
+    let leaving = app.practice.current.take();
     app.practice.mixed_review = true;
-    if let Some(choice) = continuous_choice(app, now) {
-        continuous_present(app, choice, now, seed)?;
+    study_serve(app, now, &avoid, true, seed)?;
+    if app.practice.current.is_none() {
+        app.practice.current = leaving.filter(|p| held_awaits(app, p));
     }
     Ok(response(
         None,
@@ -1289,35 +1858,34 @@ fn mixed_next(
 fn can_introduce(app: &App, s: &Study, now: i64) -> bool {
     s.status == Status::Active
         && study_reviewable(app, s)
-        && app
-            .practice
-            .cards
-            .values()
-            .filter(|c| c.study_id == s.id && c.introduced_ms > now.saturating_sub(DAY_MS))
-            .count()
-            < if s.nato_all_letters {
-                26
-            } else {
-                s.pace.limit()
-            }
-        && app
-            .practice
-            .cards
-            .values()
-            .filter(|c| c.study_id == s.id)
-            .count()
-            < units(&app.library.versions[&s.version_id]).len()
-}
-/// Read-only availability uses the same pace and due conditions as scoped next.
-pub fn study_ready(app: &App, s: &Study, now: i64) -> bool {
-    s.status != Status::Dropped
-        && study_reviewable(app, s)
-        && (can_introduce(app, s, now)
+        && (whole_list(app, s)
             || app
                 .practice
                 .cards
                 .values()
-                .any(|c| c.study_id == s.id && c.state.schedule.due_ms <= now))
+                .filter(|c| {
+                    c.study_id == s.id
+                        && c.direction == Direction::Forward
+                        && c.introduced_ms > now.saturating_sub(DAY_MS)
+                })
+                .count()
+                < if s.nato_all_letters {
+                    26
+                } else {
+                    s.pace.limit()
+                })
+        && introduced(app, s) < units(&app.library.versions[&s.version_id]).len()
+}
+/// Read-only availability uses the same pace and due conditions as scoped next.
+pub fn study_ready(app: &App, s: &Study, now: i64) -> bool {
+    let waiting = awaiting_verdict(app);
+    s.status != Status::Dropped
+        && study_reviewable(app, s)
+        && !list_waits(app, s)
+        && (can_introduce(app, s, now)
+            || app.practice.cards.values().any(|c| {
+                c.study_id == s.id && c.state.schedule.due_ms <= now && !waiting.contains(&c.id)
+            }))
 }
 fn next(
     app: &mut App,
@@ -1333,11 +1901,6 @@ fn next(
             "Choose one Card or one Recitation scope.",
         ));
     }
-    let ui_phase = app
-        .practice
-        .current
-        .as_ref()
-        .is_some_and(|p| p.phase.is_some());
     app.practice.mixed_review = false;
     let after = field(fields, "after");
     if let Some(p) = &app.practice.current {
@@ -1387,7 +1950,13 @@ fn next(
             && field(fields, "recite").is_empty())
         .then(|| p.targets[0].card_id.clone())
     });
-    app.practice.current = None;
+    let siblings = if field(fields, "card_id").is_empty() && field(fields, "recite").is_empty() {
+        answered_siblings(app, app.practice.current.as_ref())
+    } else {
+        BTreeSet::new()
+    };
+    let leaving = app.practice.current.take();
+    let waiting = awaiting_verdict(app);
     let sid = field(fields, "study_id");
     if !sid.is_empty() {
         let study = app
@@ -1407,15 +1976,11 @@ fn next(
         if v.kind == Kind::KeyedMapping {
             return Err(AppError::new(
                 422,
-                "Mapping practice currently supports one key at a time, forward only.",
+                "A mapping is practised one pair at a time, never recited as a whole set.",
             ));
         }
-        let (scope, cue, ids) = match recite {
-            "whole" => (
-                Scope::Whole,
-                Cue::WholeTitle,
-                units(v).iter().map(|u| u.id.as_str()).collect::<Vec<_>>(),
-            ),
+        let (scope, scoped) = match recite {
+            "whole" => (Scope::Whole, units(v)),
             "section" => {
                 let s = v
                     .sections
@@ -1426,30 +1991,13 @@ fn next(
                     Scope::Section {
                         section_id: s.id.clone(),
                     },
-                    Cue::SectionHeading,
-                    s.units.iter().map(|u| u.id.as_str()).collect(),
+                    s.units.iter().collect(),
                 )
             }
             _ => return Err(AppError::new(422, "Use recite=whole|section.")),
         };
-        let cards = ids
-            .iter()
-            .map(|uid| {
-                app.practice
-                    .cards
-                    .values()
-                    .find(|c| c.study_id == sid && &c.unit_id == uid)
-                    .ok_or_else(|| {
-                        AppError::new(409, "Introduce every Unit in this scope before Recitation.")
-                    })
-            })
-            .collect::<AppResult<Vec<_>>>()?;
-        let build = if ui_phase || study.source_quiz || study.lesson || study.nato_all_letters {
-            make_ui_prompt
-        } else {
-            make_prompt
-        };
-        let presentation = build(app, study, cards, scope, cue, now, seed);
+        let cards = recitation_cards(app, sid, scoped.into_iter())?;
+        let presentation = present(app, study, cards, scope, now, seed);
         let expected_words = prompt_words(app, &presentation);
         if !fits_grading_capacity(
             expected_words,
@@ -1461,7 +2009,14 @@ fn next(
                 "This Recitation exceeds the 1,000,000-cell local grading capacity. Choose a smaller Section.",
             ));
         }
-        app.practice.current = Some(presentation);
+        hold(app, presentation)?;
+    } else if sid.is_empty() && field(fields, "card_id").is_empty() {
+        // Next with nothing named selects exactly as Study does. The letter
+        // or pair just answered is served only when nothing else is.
+        // Unlike Study, it never begins a Work not yet started. Practice
+        // kept to one Study names that Study.
+        let avoid = siblings.into_iter().chain(nato_previous).collect();
+        study_serve(app, now, &avoid, false, seed)?;
     } else {
         let explicit = field(fields, "card_id");
         let eligible = reviewable_studies(app);
@@ -1473,6 +2028,7 @@ fn next(
                 .ok_or_else(|| AppError::new(404, "Card not found."))?;
             if (!sid.is_empty() && card.study_id != sid)
                 || app.practice.studies[&card.study_id].status == Status::Dropped
+                || list_waits(app, &app.practice.studies[&card.study_id])
             {
                 return Err(AppError::conflict());
             }
@@ -1486,8 +2042,11 @@ fn next(
                     (sid.is_empty() || c.study_id == sid)
                         && app.practice.studies[&c.study_id].status != Status::Dropped
                         && eligible.contains(c.study_id.as_str())
+                        && !list_waits(app, &app.practice.studies[&c.study_id])
                         && c.state.schedule.due_ms <= now
                         && nato_previous.as_ref() != Some(&c.id)
+                        && !siblings.contains(&c.id)
+                        && !waiting.contains(&c.id)
                 })
                 .min_by_key(|c| {
                     (
@@ -1495,6 +2054,7 @@ fn next(
                         app.practice.studies[&c.study_id].created_ms,
                         &c.study_id,
                         c.unit_index,
+                        c.direction,
                     )
                 })
                 .map(|c| c.id.clone())
@@ -1507,49 +2067,49 @@ fn next(
                 .studies
                 .values()
                 .filter(|s| (sid.is_empty() || s.id == sid) && s.status == Status::Active)
-                .filter(|s| can_introduce(app, s, now))
+                .filter(|s| can_introduce(app, s, now) && !list_awaits(app, s, &waiting))
                 .min_by_key(|s| (s.created_ms, &s.id))
                 .cloned();
             study.map(|study| {
-                let index = app
-                    .practice
-                    .cards
-                    .values()
-                    .filter(|c| c.study_id == study.id)
-                    .count();
-                introduce_card(app, &study, index, now, seed)
+                let index = introduced(app, &study);
+                if whole_list(app, &study) {
+                    // The rest of the list is introduced with it when presented.
+                    introduce_card(app, &study, index, now, &format!("{seed}:unit:{index}"))
+                } else {
+                    introduce_card(app, &study, index, now, seed)
+                }
             })
         };
-        // If no other due/new work exists, a due missed letter may be retried.
+        // If no other due/new work exists, a due missed letter may be retried,
+        // and the other direction of the pair just answered may be asked.
         let chosen = chosen.or_else(|| {
-            nato_previous.filter(|id| {
-                let c = &app.practice.cards[id];
-                (sid.is_empty() || c.study_id == sid)
-                    && app.practice.studies[&c.study_id].status != Status::Dropped
-                    && c.state.schedule.due_ms <= now
-            })
+            nato_previous
+                .into_iter()
+                .chain(siblings)
+                .filter(|id| {
+                    let c = &app.practice.cards[id];
+                    (sid.is_empty() || c.study_id == sid)
+                        && app.practice.studies[&c.study_id].status != Status::Dropped
+                        && c.state.schedule.due_ms <= now
+                        && !waiting.contains(id)
+                })
+                .min_by_key(|id| {
+                    let c = &app.practice.cards[id];
+                    (c.state.schedule.due_ms, c.direction)
+                })
         });
         if let Some(cid) = chosen {
             let c = &app.practice.cards[&cid];
-            let study = &app.practice.studies[&c.study_id];
-            let build = if ui_phase || study.source_quiz || study.lesson || study.nato_all_letters {
-                make_ui_prompt
+            if c.direction == Direction::Reverse {
+                present_card(app, &cid, now, seed)?;
             } else {
-                make_prompt
-            };
-            app.practice.current = Some(build(
-                app,
-                study,
-                vec![c],
-                Scope::Unit {
-                    unit_id: c.unit_id.clone(),
-                    position: c.unit_index + 1,
-                },
-                c.state.cue,
-                now,
-                seed,
-            ));
+                let (study, index) = (c.study_id.clone(), c.unit_index);
+                lesson_present(app, &study, index, false, now, seed)?;
+            }
         }
+    }
+    if app.practice.current.is_none() {
+        app.practice.current = leaving.filter(|p| held_awaits(app, p));
     }
     let mut result = response(
         None,
@@ -1580,9 +2140,10 @@ fn grade_words(version: &Version, text: &str) -> Vec<String> {
 fn prompt_words(app: &App, p: &Presentation) -> usize {
     let v = &app.library.versions[&p.prompt.version_id];
     let all = units(v);
+    let direction = prompt_direction(app, &p.prompt, &p.targets);
     p.targets
         .iter()
-        .map(|t| grade_words(v, expected_unit(v, all[t.unit_index])).len())
+        .map(|t| grade_words(v, expected_answer(v, all[t.unit_index], direction)).len())
         .sum()
 }
 fn matching_siblings<'a>(
@@ -1640,6 +2201,17 @@ fn fits_grading_capacity(
             .all(|(_, text)| fits(grading::normalized_words(text).len()))
 }
 fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> AppResult<Grade> {
+    grade_under(app, p, answer, include_siblings, true)
+}
+/// The local grade, with the mapping year rule where `year` allows it. New
+/// answers allow it; replay follows the policy the Attempt recorded.
+fn grade_under(
+    app: &App,
+    p: &Presentation,
+    answer: &str,
+    include_siblings: bool,
+    year: bool,
+) -> AppResult<Grade> {
     let v = &app.library.versions[&p.prompt.version_id];
     let all = units(v);
     if v.kind == Kind::OrderedList {
@@ -1647,7 +2219,11 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
         let end = p.targets.last().unwrap().unit_index + 1;
         return crate::ordered::grade(v, start..end, answer);
     }
-    let texts = all.iter().map(|u| expected_unit(v, u)).collect::<Vec<_>>();
+    let direction = prompt_direction(app, &p.prompt, &p.targets);
+    let texts = all
+        .iter()
+        .map(|u| expected_answer(v, u, direction))
+        .collect::<Vec<_>>();
     let start = p.targets[0].unit_index;
     let end = p.targets.last().unwrap().unit_index + 1;
     let siblings = matching_siblings(app, p, include_siblings);
@@ -1676,14 +2252,21 @@ fn grade(app: &App, p: &Presentation, answer: &str, include_siblings: bool) -> A
         spelling_strict: v.spelling_strict,
     };
     let mut result = if v.kind == Kind::KeyedMapping {
-        grading::grade_mapping(version, start..end, answer)
+        // A safety-bearing answer states the practice itself, never a number
+        // with an era added; its question is never a year question.
+        if year && !v.safety_bearing.contains(&start) {
+            grading::grade_mapping_year(version, start..end, answer)
+        } else {
+            grading::grade_mapping(version, start..end, answer)
+        }
     } else {
         grading::grade(version, start..end, answer, &refs)
     }
     .map_err(|e| AppError::new(422, e.to_string()))?;
     // exact-v2 spans are relative to its input. Restore expected spans to the
     // immutable complete Unit; typed spans remain relative to the raw answer.
-    if v.kind == Kind::KeyedMapping {
+    // A reverse Card's expected key already starts the Unit.
+    if v.kind == Kind::KeyedMapping && direction == Direction::Forward {
         for diff in &mut result.diff {
             use grading::Change;
             let offset = crate::library::mapping_pair(&all[diff.unit_index].text)
@@ -1739,8 +2322,7 @@ fn lesson_start(
     let vid = if starter.is_empty() {
         supplied.to_string()
     } else {
-        app.library
-            .add(crate::lessons::input(starter)?, seed, None)?
+        starter_version(app, crate::lessons::input(starter)?, seed)?
     };
     let version = app
         .library
@@ -1748,21 +2330,6 @@ fn lesson_start(
         .get(&vid)
         .ok_or_else(|| AppError::new(404, "Version not found."))?;
     reviewable(version)?;
-    if version.kind == Kind::KeyedMapping
-        && !crate::library::is_nato(version)
-        && crate::lessons::mapping_route(version).is_none()
-    {
-        return Err(AppError::new(
-            422,
-            "Use normal Study practice for this mapping; lessons support text, ordered lists and the NATO starter.",
-        ));
-    }
-    if units(version).len() > 128 {
-        return Err(AppError::new(
-            422,
-            "Lessons support up to 128 meaningful phrases or items. Split longer material into separate Versions.",
-        ));
-    }
     let resume = app
         .practice
         .current
@@ -1789,7 +2356,6 @@ fn lesson_start(
     let sid = result.entity_id.expect("Study identity");
     let s = app.practice.studies.get_mut(&sid).unwrap();
     s.status = Status::Active;
-    s.source_quiz = true;
     s.lesson = app.library.versions[&vid].kind != Kind::KeyedMapping
         || crate::library::is_nato(&app.library.versions[&vid]);
     if crate::library::is_nato(&app.library.versions[&vid]) {
@@ -1804,43 +2370,56 @@ fn lesson_start(
         result.redirect = "/?practice=nato".into();
         return Ok(result);
     }
-    if let Some(route) = crate::lessons::mapping_route(&app.library.versions[&vid]) {
+    // A mapping lesson, starter or supplied, is introduced at its Pace.
+    if app.library.versions[&vid].kind == Kind::KeyedMapping {
         if resume.is_some() {
             return Ok(response(None, held(app)?));
         }
         app.practice.current = None;
-        let mut result = next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)?;
-        mark_current_ui(app);
-        if app.practice.current.is_some() {
-            result.data = Some(held(app)?);
-        }
-        result.redirect = route.into();
-        return Ok(result);
+        return next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed);
     }
     let s = s.clone();
     let count = units(&app.library.versions[&vid]).len();
-    let introduced = app
-        .practice
-        .cards
-        .values()
-        .filter(|c| c.study_id == sid)
-        .count();
-    for index in introduced..count {
+    for index in introduced(app, &s)..count {
         introduce_card(app, &s, index, now, &format!("{seed}:unit:{index}"));
     }
     if resume.is_some() {
         return Ok(response(None, held(app)?));
     }
+    // Begin at the first phrase whose answer is not still with Jev. Where
+    // every phrase, or the list, is waiting, nothing new is asked.
+    let waiting = awaiting_verdict(app);
+    let whole = app.library.versions[&vid].kind == Kind::OrderedList;
+    let first = if whole {
+        (!list_awaits(app, &s, &waiting)).then_some(0)
+    } else {
+        (0..count).find(|i| {
+            app.practice
+                .cards
+                .values()
+                .find(|c| c.study_id == sid && c.unit_index == *i)
+                .is_none_or(|c| !waiting.contains(&c.id))
+        })
+    };
+    let Some(first) = first else {
+        if app
+            .practice
+            .current
+            .as_ref()
+            .is_some_and(|p| held_awaits(app, p))
+        {
+            return Ok(response(None, held(app)?));
+        }
+        return Err(AppError::new(
+            409,
+            "Your answer in this lesson is still being checked. Its Verdict comes first.",
+        ));
+    };
     app.practice.current = None;
-    lesson_present(
-        app,
-        &sid,
-        0,
-        app.library.versions[&vid].kind == Kind::OrderedList,
-        now,
-        seed,
-    )
+    lesson_present(app, &sid, first, whole, now, seed)
 }
+/// Present one Unit, or the whole Version. An ordered list is always whole,
+/// however its Study was started: its remaining items are introduced with it.
 fn lesson_present(
     app: &mut App,
     sid: &str,
@@ -1853,20 +2432,25 @@ fn lesson_present(
         .practice
         .studies
         .get(sid)
-        .ok_or_else(AppError::conflict)?;
-    let v = &app.library.versions[&study.version_id];
-    if whole {
-        if v.kind == Kind::KeyedMapping {
+        .ok_or_else(AppError::conflict)?
+        .clone();
+    let kind = app.library.versions[&study.version_id].kind;
+    let p = if whole || kind == Kind::OrderedList {
+        if kind == Kind::KeyedMapping {
             return Err(AppError::new(422, "Mappings use individual key recall."));
         }
-        let mut cards = app
-            .practice
-            .cards
-            .values()
-            .filter(|c| c.study_id == sid)
-            .collect::<Vec<_>>();
-        cards.sort_by_key(|c| c.unit_index);
-        let p = make_ui_prompt(app, study, cards, Scope::Whole, Cue::WholeTitle, now, seed);
+        if kind == Kind::OrderedList {
+            let count = units(&app.library.versions[&study.version_id]).len();
+            for i in introduced(app, &study)..count {
+                introduce_card(app, &study, i, now, &format!("{seed}:unit:{i}"));
+            }
+            app.practice.studies.get_mut(sid).unwrap().lesson = true;
+        }
+        // A list has just been introduced whole. A text is recited whole only
+        // once every phrase has been: Units arrive at Pace, never as a side effect.
+        let version = &app.library.versions[&study.version_id];
+        let cards = recitation_cards(app, sid, units(version).into_iter())?;
+        let p = present(app, &study, cards, Scope::Whole, now, seed);
         if !fits_grading_capacity(
             prompt_words(app, &p),
             prompt_words(app, &p),
@@ -1877,27 +2461,29 @@ fn lesson_present(
                 "This lesson exceeds local grading capacity. Choose a shorter text.",
             ));
         }
-        app.practice.current = Some(p);
+        p
     } else {
         let card = app
             .practice
             .cards
             .values()
-            .find(|c| c.study_id == sid && c.unit_index == index)
+            .find(|c| {
+                c.study_id == sid && c.unit_index == index && c.direction == Direction::Forward
+            })
             .ok_or_else(AppError::conflict)?;
-        app.practice.current = Some(make_ui_prompt(
+        present(
             app,
-            study,
+            &study,
             vec![card],
             Scope::Unit {
                 unit_id: card.unit_id.clone(),
                 position: index + 1,
             },
-            card.state.cue,
             now,
             seed,
-        ));
-    }
+        )
+    };
+    hold(app, p)?;
     Ok(response(None, held(app)?))
 }
 fn lesson_next(
@@ -1927,19 +2513,26 @@ fn lesson_next(
     }
     let sid = p.prompt.study_id.clone();
     let study = &app.practice.studies[&sid];
-    if !study.lesson || study.status == Status::Dropped {
+    let mode = field(fields, "mode");
+    let v = &app.library.versions[&study.version_id];
+    // A guided retry of a missed phrase is offered wherever it was missed. A
+    // mapping lesson continues one pair at a time, however it was started.
+    if (!study.lesson && mode != "retry" && v.kind != Kind::KeyedMapping)
+        || study.status == Status::Dropped
+    {
         return Err(AppError::conflict());
     }
-    let v = &app.library.versions[&study.version_id];
     reviewable(v)?;
-    let mode = field(fields, "mode");
     if !matches!(mode, "" | "phrases" | "retry" | "join" | "whole" | "middle") {
         return Err(AppError::new(
             422,
             "Use phrases, retry, join, whole or middle lesson mode.",
         ));
     }
-    app.practice.mixed_review = false;
+    // The retry stays where it was asked for: under Study's mix or in the Lesson.
+    if mode != "retry" {
+        app.practice.mixed_review = false;
+    }
     if crate::library::is_nato(v) {
         if !matches!(mode, "" | "phrases") {
             return Err(AppError::new(
@@ -1959,6 +2552,26 @@ fn lesson_next(
         result.redirect = "/?practice=nato".into();
         return Ok(result);
     }
+    if v.kind == Kind::KeyedMapping {
+        if !matches!(mode, "" | "phrases") {
+            return Err(AppError::new(
+                422,
+                "Mapping practice is one pair at a time.",
+            ));
+        }
+        return next(
+            app,
+            &BTreeMap::from([
+                ("study_id".into(), sid),
+                ("after".into(), p.prompt.id.clone()),
+            ]),
+            now,
+            seed,
+        );
+    }
+    // A phrase, passage or list whose answer is still with Jev is not asked
+    // again: the held result stays, still being checked.
+    let waiting = awaiting_verdict(app);
     if mode == "retry" {
         if v.kind != Kind::Text || !matches!(p.prompt.scope, Scope::Unit { .. }) {
             return Err(AppError::new(422, "Retry is for one text phrase."));
@@ -1968,9 +2581,12 @@ fn lesson_next(
             .cards
             .get(&p.targets[0].card_id)
             .ok_or_else(AppError::conflict)?;
+        if waiting.contains(&card.id) {
+            return Ok(response(None, held(app)?));
+        }
         // Feedback has disclosed this phrase. Retry teaches the same phrase
         // with a visible cue, never relabels it as a fresh unaided test.
-        app.practice.current = Some(make_prompt(
+        let mut retry = make_prompt(
             app,
             study,
             vec![card],
@@ -1978,10 +2594,10 @@ fn lesson_next(
             Cue::Read,
             now,
             seed,
-        ));
-        let current = app.practice.current.as_mut().unwrap();
-        current.phase = Some(StudyPhase::Study);
-        current.revealed = true; // feedback was already shown before retry
+        );
+        retry.phase = Some(StudyPhase::Study);
+        retry.revealed = true; // feedback was already shown before retry
+        hold(app, retry)?;
         return Ok(response(None, held(app)?));
     }
     if mode == "join" && v.kind == Kind::Text {
@@ -1990,21 +2606,17 @@ fn lesson_next(
             .iter()
             .find(|s| s.units.iter().any(|u| u.id == p.targets[0].unit_id))
             .ok_or_else(AppError::conflict)?;
-        let mut cards = app
-            .practice
-            .cards
-            .values()
-            .filter(|c| c.study_id == sid && section.units.iter().any(|u| u.id == c.unit_id))
-            .collect::<Vec<_>>();
-        cards.sort_by_key(|c| c.unit_index);
-        let presentation = make_ui_prompt(
+        let cards = recitation_cards(app, &sid, section.units.iter())?;
+        if cards.iter().any(|c| waiting.contains(&c.id)) {
+            return Ok(response(None, held(app)?));
+        }
+        let presentation = present(
             app,
             study,
             cards,
             Scope::Section {
                 section_id: section.id.clone(),
             },
-            Cue::SectionHeading,
             now,
             seed,
         );
@@ -2018,12 +2630,13 @@ fn lesson_next(
                 "This joined passage exceeds local grading capacity.",
             ));
         }
-        app.practice.current = Some(presentation);
+        hold(app, presentation)?;
         return Ok(response(None, held(app)?));
     }
     let whole = v.kind == Kind::OrderedList || mode == "whole";
-    let index = if mode == "middle" {
-        units(v).len() / 2
+    let count = units(v).len();
+    let start = if mode == "middle" {
+        count / 2
     } else if matches!(p.prompt.scope, Scope::Whole) {
         0
     } else {
@@ -2032,15 +2645,74 @@ fn lesson_next(
             .expect("a held prompt has targets")
             .unit_index
             + 1)
-            % units(v).len()
+            % count
     };
-    lesson_present(app, &sid, index, whole, now, seed)
+    let in_study = |c: &&Card| c.study_id == sid;
+    let index = if whole {
+        (!app
+            .practice
+            .cards
+            .values()
+            .filter(in_study)
+            .any(|c| waiting.contains(&c.id)))
+        .then_some(start)
+    } else {
+        // The next phrase in order whose answer is not still with Jev.
+        (0..count).map(|step| (start + step) % count).find(|i| {
+            app.practice
+                .cards
+                .values()
+                .filter(in_study)
+                .find(|c| c.unit_index == *i)
+                .is_none_or(|c| !waiting.contains(&c.id))
+        })
+    };
+    // Under Study a text's phrases arrive at its Pace. Entering the lesson
+    // makes every phrase available; until then a phrase without a Card waits.
+    if let Some(index) = index.filter(|_| !whole)
+        && !app
+            .practice
+            .cards
+            .values()
+            .any(|c| c.study_id == sid && c.unit_index == index)
+    {
+        return Err(AppError::new(409, PHRASE_NOT_INTRODUCED));
+    }
+    match index {
+        Some(index) => lesson_present(app, &sid, index, whole, now, seed),
+        None => Ok(response(None, held(app)?)),
+    }
+}
+
+/// The checkpoint generation a save or discard expects. The enhanced page and
+/// agents name it. A native form names the notebook revision its page was
+/// drawn from instead: any write since then, another tab's save included, is a
+/// conflict, so a stale page never overwrites a newer draft or Prompt.
+fn expected_generation(app: &App, fields: &BTreeMap<String, String>) -> AppResult<u64> {
+    let required = || AppError::new(422, "A draft generation is required.");
+    if fields.contains_key("generation") {
+        return field(fields, "generation")
+            .parse::<u64>()
+            .map_err(|_| required());
+    }
+    let revision = field(fields, "revision")
+        .parse::<u64>()
+        .map_err(|_| required())?;
+    if revision != app.revision {
+        return Err(AppError::conflict());
+    }
+    Ok(app
+        .practice
+        .answer_checkpoint
+        .as_ref()
+        .map_or(0, |checkpoint| checkpoint.generation))
 }
 
 fn draft_text_valid(prompt: &Prompt, answer: &str) -> bool {
     answer.len() <= 32768
         && !answer.contains(['\r', '\0'])
-        && (prompt.cue_level != Cue::MappingKey || !answer.contains('\n'))
+        && (!matches!(prompt.cue_level, Cue::MappingKey | Cue::MappingValue)
+            || !answer.contains('\n'))
 }
 
 pub fn mutate(
@@ -2049,6 +2721,294 @@ pub fn mutate(
     fields: &BTreeMap<String, String>,
     now: i64,
     seed: &str,
+) -> AppResult<MutationResult> {
+    mutate_judged(app, path, fields, now, seed, Judging::default())
+}
+
+const ALLOWANCE_USED: &str = "Today's checking allowance is used. Your answer is saved and not graded. Check it again later.";
+const RESTORE_PAUSED: &str =
+    "Checks are paused in this restored notebook. Your answer is saved and not graded.";
+/// Why a check cannot be queued now, though paid judgment is on. Nothing is
+/// reserved or sent; the same test applies again when the check is claimed.
+fn check_blocked(app: &App, now: i64) -> Option<AppError> {
+    if app.restored_paused {
+        Some(AppError::new(409, RESTORE_PAUSED))
+    } else if app.spent(now).saturating_add(RESERVATION) > DAILY_ALLOWANCE {
+        Some(AppError::new(429, ALLOWANCE_USED))
+    } else {
+        None
+    }
+}
+fn queue_check(app: &mut App, attempt_id: &str, refused: Option<String>, now: i64, seed: &str) {
+    let cid = id(seed, "check");
+    app.practice.checks.insert(
+        cid.clone(),
+        Check {
+            id: cid,
+            attempt_id: attempt_id.into(),
+            sequence: app.revision + 1,
+            status: if refused.is_some() {
+                CheckStatus::Refused
+            } else {
+                CheckStatus::Queued
+            },
+            reason: refused,
+            lease: None,
+            started_ms: None,
+            created_ms: now,
+            acting_token: None,
+        },
+    );
+}
+/// What Jev is asked about one answer, from the frozen Version alone. Nothing
+/// outside the Prompt's own scope enters it.
+pub(crate) fn recall_input(app: &App, prompt: &Prompt, answer: &str) -> AppResult<RecallInput> {
+    let v = app
+        .library
+        .versions
+        .get(&prompt.version_id)
+        .ok_or_else(AppError::conflict)?;
+    let scoped = units(v)
+        .into_iter()
+        .enumerate()
+        .filter(|(_, u)| prompt.unit_ids.contains(&u.id))
+        .collect::<Vec<_>>();
+    let (first, unit) = scoped.first().copied().ok_or_else(AppError::conflict)?;
+    let scope = match &prompt.scope {
+        Scope::Unit { .. } => RecallScope::Unit {
+            position: first + 1,
+        },
+        Scope::Section { section_id } => {
+            let (index, section) = v
+                .sections
+                .iter()
+                .enumerate()
+                .find(|(_, s)| &s.id == section_id)
+                .ok_or_else(AppError::conflict)?;
+            RecallScope::Section {
+                position: index + 1,
+                heading: section.heading.clone(),
+            }
+        }
+        Scope::Whole => RecallScope::Whole,
+    };
+    let (kind, asked, expected_answer, aliases) = match v.kind {
+        Kind::KeyedMapping => {
+            let (key, value) =
+                crate::library::mapping_pair(&unit.text).ok_or_else(AppError::conflict)?;
+            if prompt.cue_level == Cue::MappingValue {
+                (
+                    RecallKind::MappingReverse,
+                    value.to_string(),
+                    key.to_string(),
+                    vec![],
+                )
+            } else {
+                (
+                    if v.safety_bearing.contains(&first) {
+                        RecallKind::MappingSafety
+                    } else {
+                        RecallKind::Mapping
+                    },
+                    key.to_string(),
+                    value.to_string(),
+                    vec![],
+                )
+            }
+        }
+        Kind::OrderedList => (
+            RecallKind::OrderedList,
+            prompt.title.clone(),
+            scoped
+                .iter()
+                .map(|(_, u)| u.text.trim())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            scoped
+                .iter()
+                .enumerate()
+                .filter_map(|(position, (index, u))| {
+                    Some(RecallAliases {
+                        position: position + 1,
+                        item: u.text.trim().into(),
+                        aliases: v.ordered_aliases.get(index)?.clone(),
+                    })
+                })
+                .collect(),
+        ),
+        Kind::Text => (
+            RecallKind::Text,
+            format!(
+                "{}, {}",
+                prompt.title,
+                match &scope {
+                    RecallScope::Unit { position } => format!("phrase {position}"),
+                    RecallScope::Section { position, heading } if heading.trim().is_empty() =>
+                        format!("section {position}"),
+                    RecallScope::Section { heading, .. } => format!("section: {}", heading.trim()),
+                    RecallScope::Whole => "whole text".into(),
+                }
+            ),
+            scoped.iter().map(|(_, u)| u.text.as_str()).collect(),
+            vec![],
+        ),
+    };
+    Ok(RecallInput {
+        kind,
+        prompt: asked,
+        scope,
+        expected_answer,
+        aliases,
+        answer: answer.into(),
+    })
+}
+/// A mismatch Jev may judge. An exact or alias match is already Good; on
+/// Spelling-strict content any other answer is Again; an empty answer is a
+/// miss; another Version's wording is Scry's own Again; and an answer too
+/// large to send is graded by the comparison alone.
+fn judgeable(app: &App, prompt: &Prompt, answer: &str, grade: &Grade) -> bool {
+    let version = &app.library.versions[&prompt.version_id];
+    grade.verdict == Verdict::Again
+        && grade.wrong_version_hint.is_none()
+        && !version.spelling_strict
+        && !answer.trim().is_empty()
+        // Exactly another pair's value, or in reverse its key, is the wrong
+        // key: Scry's own Again, never sent to be judged.
+        && !(version.kind == Kind::KeyedMapping
+            && prompt.unit_ids.first().is_some_and(|unit| {
+                let direction = if prompt.cue_level == Cue::MappingValue {
+                    Direction::Reverse
+                } else {
+                    Direction::Forward
+                };
+                other_pair(version, unit, direction, answer).is_some()
+            }))
+        && recall_input(app, prompt, answer).is_ok_and(|input| {
+            input.bytes() <= RECALL_LIMIT
+                // A year is graded by Scry as an exact number, and one before
+                // the common era as written: a year answer is never judged.
+                && !(matches!(input.kind, RecallKind::Mapping | RecallKind::MappingReverse)
+                    && grading::mapping_year_shaped(&input.expected_answer)
+                    && grading::mapping_year_shaped(answer))
+        })
+}
+/// Give an Attempt the Verdict Jev decided, once. Each Card is scheduled only
+/// if no later Attempt has touched it: the pending Attempt took one revision
+/// and left the state alone, and anything later took another.
+pub(crate) fn decide(
+    app: &mut App,
+    check_id: &str,
+    accept: bool,
+    model: &str,
+    now: i64,
+) -> AppResult<()> {
+    let aid = app
+        .practice
+        .checks
+        .get(check_id)
+        .ok_or_else(AppError::conflict)?
+        .attempt_id
+        .clone();
+    let a = app
+        .practice
+        .attempts
+        .get(&aid)
+        .ok_or_else(AppError::conflict)?
+        .clone();
+    let targets = &a
+        .judgment
+        .as_ref()
+        .filter(|j| j.decided.is_none())
+        .ok_or_else(AppError::conflict)?
+        .targets;
+    // Accepted: every Unit is Good. Rejected: the Units the comparison found
+    // mismatched are Again, and so is the Attempt.
+    let units = if accept {
+        targets
+            .iter()
+            .map(|t| UnitVerdict {
+                unit_index: t.unit_index,
+                verdict: Verdict::Good,
+            })
+            .collect()
+    } else {
+        a.grade.units.clone()
+    };
+    if units.len() != targets.len() {
+        return Err(AppError::conflict());
+    }
+    let mut effects = Vec::new();
+    for (t, u) in targets.iter().zip(&units) {
+        let c = app
+            .practice
+            .cards
+            .get_mut(&t.card_id)
+            .ok_or_else(AppError::conflict)?;
+        if c.revision != t.revision + 1 || c.state != t.before {
+            effects.push(superseded_effect(t, u.verdict, &a, &c.state, c.revision));
+            continue;
+        }
+        let e = late_effect(t, u.verdict, &a)?;
+        c.state = e.after.clone();
+        c.revision += 1;
+        // A Prompt held unanswered for this Card stays answerable.
+        if let Some(held) = app
+            .practice
+            .current
+            .as_mut()
+            .filter(|p| p.attempt_id.is_none())
+        {
+            for target in held.targets.iter_mut().filter(|h| h.card_id == t.card_id) {
+                target.revision = c.revision;
+                target.before = c.state.clone();
+            }
+        }
+        effects.push(e);
+    }
+    let sequence = app.revision + 1;
+    let attempt = app
+        .practice
+        .attempts
+        .get_mut(&aid)
+        .expect("checked Attempt");
+    attempt.effects = effects;
+    attempt.judgment.as_mut().expect("checked judgment").decided = Some(Decided {
+        check_id: check_id.into(),
+        sequence,
+        decided_ms: now,
+        verdict: if accept {
+            Verdict::Good
+        } else {
+            Verdict::Again
+        },
+        units,
+        authority: jev_authority(model),
+    });
+    app.practice
+        .checks
+        .get_mut(check_id)
+        .expect("checked Check")
+        .status = if accept {
+        CheckStatus::Accepted
+    } else {
+        CheckStatus::Rejected
+    };
+    Ok(())
+}
+fn jev_authority(model: &str) -> Authority {
+    Authority {
+        name: JEV_AUTHORITY.into(),
+        grader_version: format!("{RECALL_POLICY};model={model}"),
+    }
+}
+
+pub fn mutate_judged(
+    app: &mut App,
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+    judging: Judging,
 ) -> AppResult<MutationResult> {
     match path {
         "/practice/draft" => {
@@ -2067,15 +3027,12 @@ pub fn mutate(
             if current.phase == Some(StudyPhase::Study) {
                 return Err(AppError::conflict());
             }
-            let expected = field(fields, "generation")
-                .parse::<u64>()
-                .map_err(|_| AppError::new(422, "A draft generation is required."))?;
             let current_generation = app
                 .practice
                 .answer_checkpoint
                 .as_ref()
                 .map_or(0, |s| s.generation);
-            if expected != current_generation {
+            if expected_generation(app, fields)? != current_generation {
                 return Err(AppError::conflict());
             }
             let answer = fields
@@ -2103,11 +3060,12 @@ pub fn mutate(
             ))
         }
         "/practice/draft/discard" => {
+            // A native form also sends the text in its field; discarding ignores it.
             if fields.keys().any(|k| {
                 !matches!(
                     k.as_str(),
                     "csrf" | "operation_id" | "revision" | "prompt_id" | "generation"
-                )
+                ) && !(k == "answer" && !fields.contains_key("generation"))
             }) {
                 return Err(AppError::new(
                     422,
@@ -2115,9 +3073,7 @@ pub fn mutate(
                 ));
             }
             let current = active(app, fields, false)?;
-            let expected = field(fields, "generation")
-                .parse::<u64>()
-                .map_err(|_| AppError::new(422, "A draft generation is required."))?;
+            let expected = expected_generation(app, fields)?;
             let checkpoint = app
                 .practice
                 .answer_checkpoint
@@ -2160,7 +3116,7 @@ pub fn mutate(
             }
             // Engine applies this whole operation to a clone: a held different
             // Study or import conflict cannot leave a partial starter behind.
-            let vid = app.library.add(crate::library::nato_input()?, seed, None)?;
+            let vid = starter_version(app, crate::library::nato_input()?, seed)?;
             if !crate::library::is_nato(&app.library.versions[&vid]) {
                 return Err(AppError::new(
                     409,
@@ -2187,7 +3143,6 @@ pub fn mutate(
                 .get_mut(&sid)
                 .expect("learn retains its Study");
             study.status = Status::Active;
-            study.source_quiz = true;
             study.nato_all_letters = true;
             next(app, &BTreeMap::from([("study_id".into(), sid)]), now, seed)
         }
@@ -2222,6 +3177,14 @@ pub fn mutate(
             Ok(response(Some(study.id.clone()), json!({"study":study})))
         }
         "/practice/pause" | "/practice/resume" | "/practice/drop" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "study_id"
+                )
+            }) {
+                return Err(AppError::new(422, "Choose a Study only."));
+            }
             let sid = field(fields, "study_id");
             let s = app
                 .practice
@@ -2249,10 +3212,37 @@ pub fn mutate(
             }
             Ok(response(Some(sid.into()), json!({"study":study})))
         }
+        "/practice/pace" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "study_id" | "pace"
+                )
+            }) {
+                return Err(AppError::new(422, "Choose a Study and its Pace only."));
+            }
+            if field(fields, "pace").is_empty() {
+                return Err(AppError::new(422, "Use light, steady or intense Pace."));
+            }
+            let pace = Pace::parse(field(fields, "pace"))?;
+            let sid = field(fields, "study_id");
+            let s = app
+                .practice
+                .studies
+                .get_mut(sid)
+                .ok_or_else(|| AppError::new(404, "Study not found."))?;
+            // Pace limits new Units only: Cards and schedules are untouched.
+            s.pace = pace;
+            let study = s.clone();
+            let mut result = response(Some(sid.into()), json!({"study":study}));
+            result.redirect = format!("/library/versions/{}", study.version_id);
+            Ok(result)
+        }
         "/practice/next" => next(app, fields, now, seed),
         "/practice/reveal" => {
             let p = active(app, fields, false)?;
             reviewable(&app.library.versions[&p.prompt.version_id])?;
+            recordable(app, &p)?;
             let v = &app.library.versions[&p.prompt.version_id];
             let all = units(v);
             let expected = p
@@ -2291,6 +3281,7 @@ pub fn mutate(
                         algorithm: SchedulePolicy::Due.algorithm(),
                         schedule_policy: SchedulePolicy::Due,
                         effects,
+                        judgment: None,
                     },
                 );
                 for t in &mut app.practice.current.as_mut().unwrap().targets {
@@ -2311,6 +3302,7 @@ pub fn mutate(
         "/practice/answer" => {
             let p = active(app, fields, false)?;
             reviewable(&app.library.versions[&p.prompt.version_id])?;
+            recordable(app, &p)?;
             if p.phase == Some(StudyPhase::Study) {
                 return Err(AppError::new(
                     409,
@@ -2339,6 +3331,48 @@ pub fn mutate(
             }
             let grade = grade(app, &p, answer, true)?;
             let assisted = p.prompt.assisted || p.revealed;
+            if judging.capable
+                && judging.paid
+                && app.preferences.paid_judgment
+                && judgeable(app, &p.prompt, answer, &grade)
+            {
+                // The answer is saved with the comparison and no Verdict. Each
+                // Card takes a revision and keeps its state, so a Verdict that
+                // arrives later can tell whether a newer Attempt came first.
+                for t in &p.targets {
+                    app.practice.cards.get_mut(&t.card_id).unwrap().revision += 1;
+                }
+                let aid = id(seed, "attempt");
+                app.practice.attempts.insert(
+                    aid.clone(),
+                    Attempt {
+                        id: aid.clone(),
+                        sequence: app.revision + 1,
+                        prompt: p.prompt.clone(),
+                        version_id: p.prompt.version_id,
+                        version_hash: p.prompt.version_hash,
+                        raw_answer: answer.clone(),
+                        grade,
+                        acting_token: None,
+                        assisted,
+                        disclosure: false,
+                        revealed: p.revealed,
+                        created_ms: now,
+                        algorithm: SchedulePolicy::Due.algorithm(),
+                        schedule_policy: SchedulePolicy::Due,
+                        effects: Vec::new(),
+                        judgment: Some(Judgment {
+                            policy: RECALL_POLICY.into(),
+                            targets: p.targets,
+                            decided: None,
+                        }),
+                    },
+                );
+                let refused = check_blocked(app, now).map(|e| e.message);
+                queue_check(app, &aid, refused, now, seed);
+                app.practice.current.as_mut().unwrap().attempt_id = Some(aid.clone());
+                return Ok(response(Some(aid.clone()), json!({"attempt_id":aid})));
+            }
             let effects = p
                 .targets
                 .iter()
@@ -2369,10 +3403,89 @@ pub fn mutate(
                     algorithm: SchedulePolicy::Due.algorithm(),
                     schedule_policy: SchedulePolicy::Due,
                     effects,
+                    judgment: None,
                 },
             );
             app.practice.current.as_mut().unwrap().attempt_id = Some(aid.clone());
             Ok(response(Some(aid.clone()), json!({"attempt_id":aid})))
+        }
+        // A new, deliberate check of the same saved answer: never a second
+        // Attempt, never a Card change. Every refusal leaves nothing written.
+        "/practice/check" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "attempt_id"
+                )
+            }) {
+                return Err(AppError::new(
+                    422,
+                    "Choose only the saved answer to check again.",
+                ));
+            }
+            if !judging.paid {
+                return Err(crate::owner_token::paid_refusal());
+            }
+            let aid = field(fields, "attempt_id");
+            let a = app
+                .practice
+                .attempts
+                .get(aid)
+                .ok_or_else(|| AppError::new(404, "Attempt not found."))?;
+            let judgment = a.judgment.as_ref().ok_or_else(|| {
+                AppError::new(409, "Scry graded this answer. It has no check to repeat.")
+            })?;
+            if !judging.capable || !app.preferences.paid_judgment {
+                return Err(AppError::new(
+                    409,
+                    "Paid judgment is off. Your answer stays saved and not graded.",
+                ));
+            }
+            // The saved answer and its comparison are answer-bearing.
+            if app.practice.protected() {
+                return Err(AppError::new(
+                    409,
+                    "Answer the held Prompt before checking an earlier answer again.",
+                ));
+            }
+            if let Some(blocked) = check_blocked(app, now) {
+                return Err(blocked);
+            }
+            let checks = app
+                .practice
+                .checks
+                .values()
+                .filter(|c| c.attempt_id == aid)
+                .collect::<Vec<_>>();
+            if checks.iter().any(|c| c.status.open()) {
+                return Err(AppError::new(409, "This answer is already being checked."));
+            }
+            if judgment.decided.is_some() {
+                return Err(AppError::new(409, "This answer already has its Verdict."));
+            }
+            if app.practice.studies[&a.prompt.study_id].status == Status::Dropped {
+                return Err(AppError::new(
+                    409,
+                    "This Study was dropped. Its saved answer stays not graded.",
+                ));
+            }
+            if checks.len() >= CHECK_LIMIT {
+                return Err(AppError::new(
+                    422,
+                    "Three checks are saved for this answer. It stays saved and not graded.",
+                ));
+            }
+            let held = app
+                .practice
+                .current
+                .as_ref()
+                .is_some_and(|p| p.attempt_id.as_deref() == Some(aid));
+            queue_check(app, aid, None, now, seed);
+            let mut result = response(Some(aid.into()), json!({"attempt_id":aid}));
+            if !held {
+                result.redirect = "/history".into();
+            }
+            Ok(result)
         }
         "/practice/correct" => {
             let p = active(app, fields, true)?;
@@ -2387,6 +3500,9 @@ pub fn mutate(
                 return Err(AppError::conflict());
             }
             let a = &app.practice.attempts[aid];
+            if a.judgment.is_some() {
+                return Err(AppError::new(422, "A Verdict from Jev is not self-graded."));
+            }
             let uid = field(fields, "unit_id");
             let e = a
                 .effects
@@ -2455,6 +3571,11 @@ pub fn attribute(app: &mut App, previous: &App, actor: Option<String>) {
             c.acting_token = actor.clone();
         }
     }
+    for (id, c) in &mut app.practice.checks {
+        if !previous.practice.checks.contains_key(id) {
+            c.acting_token = actor.clone();
+        }
+    }
 }
 pub fn due(app: &App, now: i64) -> Value {
     let eligible = reviewable_studies(app);
@@ -2468,26 +3589,37 @@ pub fn due(app: &App, now: i64) -> Value {
         })
         .collect::<Vec<_>>();
     cards.sort_by_key(|c| (c.state.schedule.due_ms, &c.study_id, c.unit_index));
-    json!({"cards":cards,"due":cards.iter().filter(|c|c.state.schedule.due_ms<=now).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":cards.iter().map(|c|c.state.schedule.due_ms).min()})
-}
-/// The Stream presents through the same selection policy as API `next`.
-/// Reads retain an existing Prompt/result and never advance it.
-pub fn ensure_stream(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
-    if app.practice.current.is_none() {
-        let previous = app.practice.clone();
-        if app.practice.mixed_review {
-            // Continuous admission is an explicit Study/Next write, never GET.
-            return Ok(());
-        }
-        next(app, &BTreeMap::new(), now, seed)?;
-        if app.practice != previous {
-            app.revision += 1;
-        }
+    // Due is what Study will serve. A list that waits to be resumed serves nothing.
+    let waits = app
+        .practice
+        .studies
+        .values()
+        .filter(|s| list_waits(app, s))
+        .map(|s| s.id.as_str())
+        .collect::<BTreeSet<_>>();
+    // An introduction never answered is new learning, not a due review. A
+    // Card answered but not yet reviewed (only with help, or left ungraded)
+    // is unfinished learning, which Study serves from an Active Study only.
+    let served = cards
+        .iter()
+        .filter(|c| {
+            !waits.contains(c.study_id.as_str())
+                && practised(app, c)
+                && (c.state.schedule.last_review_ms.is_some()
+                    || app.practice.studies[&c.study_id].status == Status::Active)
+        })
+        .collect::<Vec<_>>();
+    // A Card whose answer is still with Jev is not served until it has a
+    // Verdict or is left not graded. It is named apart, only where one exists.
+    let waiting = awaiting_verdict(app);
+    let mut due = json!({"cards":cards,"due":served.iter().filter(|c|c.state.schedule.due_ms<=now&&!waiting.contains(&c.id)).map(|c|&c.id).collect::<Vec<_>>(),"next_due_ms":served.iter().map(|c|c.state.schedule.due_ms).min()});
+    if !waiting.is_empty() {
+        due["checking"] = json!(waiting);
     }
-    Ok(())
+    due
 }
 pub fn history(app: &App) -> AppResult<Value> {
-    if app.practice.protected() || app.protected_goal().is_some() {
+    if app.practice.protected() {
         return Err(AppError::new(
             409,
             "Record assistance or answer before history or export.",
@@ -2499,9 +3631,11 @@ pub fn history(app: &App) -> AppResult<Value> {
         .values()
         .map(|s| (&s.version_id, &app.library.versions[&s.version_id]))
         .collect::<BTreeMap<_, _>>();
-    Ok(
-        json!({"studies":app.practice.studies,"cards":app.practice.cards,"attempts":app.practice.attempts,"corrections":app.practice.corrections,"versions":versions,"operations":app.operations}),
-    )
+    let mut history = json!({"studies":app.practice.studies,"cards":app.practice.cards,"attempts":app.practice.attempts,"corrections":app.practice.corrections,"versions":versions,"operations":app.operations});
+    if !app.practice.checks.is_empty() {
+        history["checks"] = json!(app.practice.checks);
+    }
+    Ok(history)
 }
 pub fn receipt_entity(app: &App, r: &Receipt, id: &str) -> bool {
     r.path
@@ -2576,17 +3710,34 @@ pub fn validate(app: &App) -> AppResult<()> {
         {
             return Err(fail());
         }
-        let mut cards = p
+        let (mut cards, reverse): (Vec<&Card>, Vec<&Card>) = p
             .cards
             .values()
             .filter(|c| &c.study_id == sid)
-            .collect::<Vec<_>>();
+            .partition(|c| c.direction == Direction::Forward);
         cards.sort_by_key(|c| c.unit_index);
         let all = units(v);
         for (i, c) in cards.iter().enumerate() {
             if c.unit_index != i
                 || all.get(i).is_none_or(|u| u.id != c.unit_id)
                 || c.introduced_ms < s.created_ms
+            {
+                return Err(fail());
+            }
+        }
+        // A Version practised both ways introduces each Unit's reverse Card
+        // with its forward Card; any other Version has none.
+        let both =
+            v.kind == Kind::KeyedMapping && v.direction == crate::library::MappingDirection::Both;
+        let mut paired = BTreeSet::new();
+        if (both && reverse.len() != cards.len()) || (!both && !reverse.is_empty()) {
+            return Err(fail());
+        }
+        for c in reverse {
+            if cards
+                .get(c.unit_index)
+                .is_none_or(|f| f.unit_id != c.unit_id || f.introduced_ms != c.introduced_ms)
+                || !paired.insert(c.unit_index)
             {
                 return Err(fail());
             }
@@ -2603,6 +3754,7 @@ pub fn validate(app: &App) -> AppResult<()> {
                 initial(
                     c.introduced_ms,
                     app.library.versions[&p.studies[&c.study_id].version_id].kind,
+                    c.direction,
                 ),
                 0u64,
             ),
@@ -2615,6 +3767,8 @@ pub fn validate(app: &App) -> AppResult<()> {
     enum Entry<'a> {
         Attempt(&'a Attempt),
         Correction(&'a Correction),
+        /// The moment Jev's Verdict was recorded on an Attempt left for it.
+        Decision(&'a Attempt),
     }
     let mut entries = Vec::new();
     for (aid, a) in &p.attempts {
@@ -2630,28 +3784,37 @@ pub fn validate(app: &App) -> AppResult<()> {
             return Err(fail());
         }
         let v = app.library.versions.get(&a.version_id).ok_or_else(fail)?;
-        if v.normalized_hash != a.version_hash
-            || a.effects.is_empty()
-            || a.prompt.unit_ids
-                != a.effects
-                    .iter()
-                    .map(|e| e.unit_id.clone())
-                    .collect::<Vec<_>>()
-        {
-            return Err(fail());
-        }
-        let targets = a
-            .effects
-            .iter()
-            .map(|e| Target {
-                card_id: e.card_id.clone(),
-                unit_id: e.unit_id.clone(),
-                unit_index: e.unit_index,
-                cue: e.cue_level,
-                revision: e.revision_before,
-                before: e.before.clone(),
-            })
-            .collect::<Vec<_>>();
+        // An Attempt left for Jev froze its targets itself: it has no effect
+        // until a Verdict arrives, and a late effect may describe a newer state.
+        let targets = if let Some(judgment) = &a.judgment {
+            if v.normalized_hash != a.version_hash || source_only(v, &a.prompt) {
+                return Err(fail());
+            }
+            judgment.targets.clone()
+        } else {
+            if v.normalized_hash != a.version_hash
+                || a.effects.is_empty()
+                || (!a.disclosure && source_only(v, &a.prompt))
+                || a.prompt.unit_ids
+                    != a.effects
+                        .iter()
+                        .map(|e| e.unit_id.clone())
+                        .collect::<Vec<_>>()
+            {
+                return Err(fail());
+            }
+            a.effects
+                .iter()
+                .map(|e| Target {
+                    card_id: e.card_id.clone(),
+                    unit_id: e.unit_id.clone(),
+                    unit_index: e.unit_index,
+                    cue: e.cue_level,
+                    revision: e.revision_before,
+                    before: e.before.clone(),
+                })
+                .collect::<Vec<_>>()
+        };
         validate_targets(app, &a.prompt, &targets)?;
         // Sibling Versions can be added later. The deterministic base grade is
         // immutable; hints retain the sibling name even if that unused Version
@@ -2664,7 +3827,13 @@ pub fn validate(app: &App) -> AppResult<()> {
             revealed: a.revealed,
             attempt_id: Some(aid.clone()),
         };
-        let actual = grade(app, &pres, &a.raw_answer, false)?;
+        let actual = grade_under(
+            app,
+            &pres,
+            &a.raw_answer,
+            false,
+            a.grade.authority.grader_version == grading::MAPPING_YEAR_GRADER_VERSION,
+        )?;
         let mut expected = a.grade.clone();
         expected.wrong_version_hint = actual.wrong_version_hint.clone();
         if expected != actual
@@ -2674,6 +3843,12 @@ pub fn validate(app: &App) -> AppResult<()> {
             return Err(fail());
         }
         entries.push((a.sequence, Entry::Attempt(a)));
+        if let Some(judgment) = &a.judgment {
+            validate_judgment(app, a, judgment, v).ok_or_else(fail)?;
+            if let Some(decided) = &judgment.decided {
+                entries.push((decided.sequence, Entry::Decision(a)));
+            }
+        }
     }
     for (cid, c) in &p.corrections {
         if cid != &c.id
@@ -2696,6 +3871,43 @@ pub fn validate(app: &App) -> AppResult<()> {
         }
         last = Some(seq);
         match entry {
+            // Saved for Jev: each Card takes a revision and keeps its state.
+            Entry::Attempt(a) if a.judgment.is_some() => {
+                for t in &a.judgment.as_ref().unwrap().targets {
+                    let c = p.cards.get(&t.card_id).ok_or_else(fail)?;
+                    let (state, revision) = projection.get_mut(&t.card_id).ok_or_else(fail)?;
+                    if c.study_id != a.prompt.study_id
+                        || *state != t.before
+                        || *revision != t.revision
+                        || a.created_ms < c.introduced_ms
+                    {
+                        return Err(fail());
+                    }
+                    *revision += 1;
+                }
+            }
+            // Jev's Verdict: scheduled where no later Attempt touched the Card,
+            // otherwise recorded as superseded against the Card as it then was.
+            Entry::Decision(a) => {
+                let judgment = a.judgment.as_ref().unwrap();
+                let decided = judgment.decided.as_ref().unwrap();
+                for ((t, e), u) in judgment.targets.iter().zip(&a.effects).zip(&decided.units) {
+                    let (state, revision) = projection.get_mut(&t.card_id).ok_or_else(fail)?;
+                    let unchanged = *state == t.before && *revision == t.revision + 1;
+                    let expected = if unchanged {
+                        late_effect(t, u.verdict, a)?
+                    } else {
+                        superseded_effect(t, u.verdict, a, state, *revision)
+                    };
+                    if expected != *e {
+                        return Err(fail());
+                    }
+                    if unchanged {
+                        *state = e.after.clone();
+                        *revision += 1;
+                    }
+                }
+            }
             Entry::Attempt(a) => {
                 seen.insert(&a.id);
                 if a.effects.len() != a.grade.units.len() {
@@ -2738,7 +3950,9 @@ pub fn validate(app: &App) -> AppResult<()> {
             }
             Entry::Correction(c) => {
                 let a = p.attempts.get(&c.attempt_id).ok_or_else(fail)?;
-                if app.library.versions[&a.version_id].kind == Kind::KeyedMapping {
+                if app.library.versions[&a.version_id].kind == Kind::KeyedMapping
+                    || a.judgment.is_some()
+                {
                     return Err(fail());
                 }
                 let e = a
@@ -2776,6 +3990,56 @@ pub fn validate(app: &App) -> AppResult<()> {
             return Err(fail());
         }
     }
+    let mut open = BTreeSet::new();
+    let mut checked = BTreeMap::<&str, usize>::new();
+    for (cid, c) in &p.checks {
+        let a = p.attempts.get(&c.attempt_id).ok_or_else(fail)?;
+        let judgment = a.judgment.as_ref().ok_or_else(fail)?;
+        let sent = c.lease.is_some();
+        let count = checked.entry(c.attempt_id.as_str()).or_default();
+        *count += 1;
+        if cid != &c.id
+            || !valid_id(cid)
+            || !valid_actor(&c.acting_token)
+            || c.sequence < a.sequence
+            || c.sequence > app.revision
+            || *count > CHECK_LIMIT
+            || sent != c.started_ms.is_some()
+            // A sent check holds exactly one reservation; an unsent one, none.
+            || app.spend.iter().filter(|s| s.work_id == c.id).count() != usize::from(sent)
+            || (sent && check_spend(app, c).is_none())
+            || match c.status {
+                CheckStatus::Queued => sent || c.reason.is_some(),
+                CheckStatus::Sent => !sent || c.reason.is_some(),
+                CheckStatus::Accepted | CheckStatus::Rejected => {
+                    !sent
+                        || judgment
+                            .decided
+                            .as_ref()
+                            .is_none_or(|d| d.check_id != c.id)
+                }
+                CheckStatus::Unsure | CheckStatus::Failed | CheckStatus::Unknown => {
+                    !sent || c.reason.is_none()
+                }
+                CheckStatus::Refused => sent || c.reason.is_none(),
+                CheckStatus::Superseded => c.reason.is_none(),
+            }
+            // A decided Attempt has no open check and none created afterwards.
+            || judgment
+                .decided
+                .as_ref()
+                .is_some_and(|d| c.status.open() || c.sequence >= d.sequence)
+            || (c.status.open() && !open.insert(c.attempt_id.as_str()))
+        {
+            return Err(fail());
+        }
+    }
+    if p.attempts
+        .values()
+        .any(|a| a.judgment.is_some() && !checked.contains_key(a.id.as_str()))
+    {
+        return Err(fail());
+    }
     if let Some(current) = &p.current {
         if (current.phase == Some(StudyPhase::Study)
             && (current.attempt_id.is_some() || (!current.prompt.assisted && !current.revealed)))
@@ -2785,6 +4049,14 @@ pub fn validate(app: &App) -> AppResult<()> {
             return Err(fail());
         }
         validate_targets(app, &current.prompt, &current.targets)?;
+        if current.phase != Some(StudyPhase::Study)
+            && source_only(
+                &app.library.versions[&current.prompt.version_id],
+                &current.prompt,
+            )
+        {
+            return Err(fail());
+        }
         if p.studies[&current.prompt.study_id].status == Status::Dropped
             || current.created_ms < p.studies[&current.prompt.study_id].created_ms
         {
@@ -2811,6 +4083,59 @@ pub fn validate(app: &App) -> AppResult<()> {
     }
     Ok(())
 }
+/// The one reservation a sent Check holds in the Spend ledger.
+fn check_spend<'a>(app: &'a App, check: &Check) -> Option<&'a Spend> {
+    let lease = check.lease.as_ref()?;
+    app.spend
+        .iter()
+        .find(|s| &s.id == lease && s.work_id == check.id)
+}
+/// An Attempt left for Jev, beyond its targets and its comparison, which are
+/// checked as every Attempt's are. A stored decision is never judged again:
+/// its saved raw response must still read as the Verdict that was recorded.
+fn validate_judgment(app: &App, a: &Attempt, judgment: &Judgment, v: &Version) -> Option<()> {
+    let sendable = recall_input(app, &a.prompt, &a.raw_answer)
+        .is_ok_and(|input| input.bytes() <= RECALL_LIMIT);
+    if judgment.policy != RECALL_POLICY
+        || a.disclosure
+        || v.spelling_strict
+        || a.grade.verdict != Verdict::Again
+        || a.schedule_policy != SchedulePolicy::Due
+        || a.raw_answer.trim().is_empty()
+        || !sendable
+    {
+        return None;
+    }
+    let Some(decided) = &judgment.decided else {
+        return a.effects.is_empty().then_some(());
+    };
+    let good = decided.verdict == Verdict::Good;
+    let check = app.practice.checks.get(&decided.check_id)?;
+    let spend = check_spend(app, check)?;
+    let read = crate::generation::short_decision(spend.raw_response.as_deref()?).ok()?;
+    (a.effects.len() == judgment.targets.len()
+        && decided.units.len() == judgment.targets.len()
+        && a.sequence < decided.sequence
+        && decided.sequence <= app.revision
+        && judgment
+            .targets
+            .iter()
+            .zip(&decided.units)
+            .all(|(t, u)| t.unit_index == u.unit_index && (!good || u.verdict == Verdict::Good))
+        && (good || decided.units == a.grade.units)
+        && check.attempt_id == a.id
+        && check.status
+            == if good {
+                CheckStatus::Accepted
+            } else {
+                CheckStatus::Rejected
+            }
+        && spend.response_outcome.as_deref() == Some("received")
+        && read.applied
+        && (read.outcome == "correct") == good
+        && decided.authority == jev_authority(spend.response_model.as_deref()?))
+    .then_some(())
+}
 fn target_from_effect(e: &Effect) -> Target {
     Target {
         card_id: e.card_id.clone(),
@@ -2827,6 +4152,11 @@ fn valid_id(id: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
+/// The source of a mapping pair or a whole list is only ever studied: no older
+/// record answered beside one, and Scry refuses an answer against it.
+fn source_only(v: &Version, p: &Prompt) -> bool {
+    p.cue_level == Cue::Read && (v.kind == Kind::KeyedMapping || p.scope == Scope::Whole)
+}
 fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> {
     let fail = || AppError::new(422, "Invalid frozen Study Prompt.");
     let s = app.practice.studies.get(&p.study_id).ok_or_else(fail)?;
@@ -2837,7 +4167,14 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
         || p.version_hash != v.normalized_hash
         || targets.is_empty()
         || p.assisted != p.cue_level.assisted()
-        || (v.kind == Kind::KeyedMapping) != (p.cue_level == Cue::MappingKey)
+        // A pair is quizzed from its key, or a reverse Card from its value,
+        // and studied from its supplied Unit.
+        || match v.kind {
+            Kind::KeyedMapping => {
+                !matches!(p.cue_level, Cue::MappingKey | Cue::MappingValue | Cue::Read)
+            }
+            _ => matches!(p.cue_level, Cue::MappingKey | Cue::MappingValue),
+        }
         || p.unit_ids
             != targets
                 .iter()
@@ -2852,6 +4189,11 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
             || c.unit_id != t.unit_id
             || c.unit_index != t.unit_index
             || t.cue != p.cue_level
+            || match p.cue_level {
+                Cue::MappingKey => c.direction != Direction::Forward,
+                Cue::MappingValue => c.direction != Direction::Reverse,
+                _ => false,
+            }
             || all.get(t.unit_index).is_none_or(|u| u.id != t.unit_id)
             || (i > 0 && t.unit_index != targets[i - 1].unit_index + 1)
         {
@@ -2870,6 +4212,7 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
     };
     if &p.cue != expected_cue
         || p.context != rendered.prompt.context
+        || p.safety_bearing != rendered.prompt.safety_bearing
         || p.title.trim().is_empty()
         || p.title.len() > 240
     {
@@ -2882,7 +4225,8 @@ fn validate_targets(app: &App, p: &Prompt, targets: &[Target]) -> AppResult<()> 
         Scope::Whole
             if first == 0
                 && targets.len() == all.len()
-                && p.cue_level == Cue::WholeTitle
+                && (p.cue_level == Cue::WholeTitle
+                    || (p.cue_level == Cue::Read && v.kind == Kind::OrderedList))
                 && p.context.is_none() => {}
         Scope::Section { section_id }
             if v.sections.iter().any(|s| {

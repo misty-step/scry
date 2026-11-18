@@ -1,7 +1,7 @@
 # Owner API and CLI
 
 Current policy: external agents author content; Scry grades answers natively.
-Under the [2026-10-27 retirement amendment](../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406),
+Because generation and self-grading are [SPEC non-goals](../SPEC.md#purpose-and-non-goals),
 native content-generation and learner-supplied Verdict/Correction writes return
 410, regardless of paid permission. Existing material, Attempts, Corrections,
 receipts and usage remain readable under the unchanged assistance/auth boundaries.
@@ -12,8 +12,20 @@ cannot recover it. An optional expiry is a Unix timestamp in milliseconds.
 Paid permission defaults to off. Any Owner token holder can mint, list and
 revoke ordinary tokens. Granting paid permission requires the Access owner or
 an Owner token that already has paid permission; an unpaid grant attempt is
-refused before creating a token or operation receipt. Owner tokens do not
+refused before creating a token or operation receipt. A token that expires
+cannot mint one that outlives it: the new token needs an `expires_ms` no later
+than its own, and a request without one, or with a later one, answers 403
+`This Owner token expires, so a token it creates must expire no later than it
+does. Nothing was created.` before anything is written. A token without an
+expiry, and the signed-in Owner, may set any expiry or none. Owner tokens do not
 authorize operator backup or restore.
+
+Every mutation, from the API or the browser, is refused with 413 `Storage is
+full. This would make the notebook too large for one complete backup, so
+nothing was saved.` when what it changed would pass the 16 MiB complete-archive
+limit; revoking a token and a replay of a committed operation are never refused
+for capacity. A notebook past the full limit answers
+`GET /api/v1/export` with 413 and stays readable through every other read.
 
 ## Use the CLI
 
@@ -60,8 +72,8 @@ including malformed credentials. Tokens are never accepted in query strings.
 | POST | `/api/v1/tokens` | `operation_id`, `name`, optional `expires_ms`, `paid` |
 | POST | `/api/v1/tokens/revoke` | `operation_id`, `token_id` |
 | GET | `/api/v1/history` | Operation receipts with `acting_token`, path and time |
-| GET | `/api/v1/export` | Complete existing archive, including token verifiers; assistance gate retained |
-| POST | `/api/v1/settings` | `operation_id`, `pace`; same engine as Settings |
+| GET | `/api/v1/export` | Complete existing archive, including token verifiers; refused (409) only while a Study Prompt awaits an unaided answer |
+| POST | `/api/v1/settings` | Retired with the earlier concept notebook's pace: 410 before receipts or writes; a stored pace stays in export |
 | POST | `/api/v1/create` | Retired: 410 before jobs, reservations, provider calls or receipts |
 
 Mutation results contain `result`, `replayed`, and token metadata for creation.
@@ -117,13 +129,29 @@ The numbers above illustrate successive revisions, not values to reuse blindly.
 `--clear-aliases` removes them. Omitted title, aliases, and context stay unchanged.
 Kind belongs to the Work and is fixed; Version text and metadata are immutable.
 Supersede takes the same draft flags as add, with an existing Version ID and
-its Work revision. A correction to wording that already exists conflicts.
+its Work revision. A correction always creates a new Version that supersedes
+the old one, even when only case, punctuation or spacing changed; the old
+Version and every Attempt against it stay unchanged. A correction identical in
+every field is refused (422) and stores nothing. A Version is corrected once:
+correct the newer Version instead (409).
 
 Version flags include `--rights private_only|public_domain|licensed`,
-`--spelling-strict`, `--sections-file PATH`, and `--ordered-aliases-file PATH`. Rights default to private-only
-and Provenance is always supplied. Sources are optional and never fetched.
+`--provenance supplied|model_from_memory|checked_against_sources`,
+`--part-of WORK`, `--related-to WORK`,
+`--spelling-strict`, `--sections-file PATH`, and `--ordered-aliases-file PATH`. Rights default to private-only.
+Provenance says how the text was obtained: supplied by the Owner or his agent
+(the default), written by a model from memory, or checked against the cited
+sources, which then need at least one `--source`. Scry records the claim; it
+never checks or fetches a source.
+`--part-of` and `--related-to` repeat and name a Work already in the Library by
+its title or alias. A missing, repeated or self-naming Work refuses the whole
+add (422), as does a part-of that would make a Work part of itself. A Relation
+appears on both Works it links; one that already exists is not repeated.
 `--kind` accepts `text`, `ordered_list`, and `keyed_mapping`. Authored ordered-list
-lessons and supplied forward mappings are described below. Text files must be UTF-8, at most 256 KiB.
+lessons and supplied keyed mappings are described below. For `keyed_mapping`,
+`--direction forward|both` and `--safety-bearing PAIR_POSITION` (zero-based,
+repeatable) declare what the mapping manifest's `direction` and pair
+`safety_bearing` declare. Text files must be UTF-8, at most 256 KiB.
 Each Version also allows at most 4,096 Sections and 8,192 Units in total,
 including caller-supplied Sections. Default Sections follow lines, with clauses
 as Units, so text below the byte limit can still exceed either count limit.
@@ -154,18 +182,36 @@ with `Version Units must join to the submitted text exactly.` for a join mismatc
 `A Version supports at most 8192 Units.` for excess Units. These refusals store
 nothing. Supplied Sections must satisfy the same limits and exact byte join;
 they do not bypass capacity checks. The CLI reports these refusals as
-`API request failed.` with a nonzero exit. Case, punctuation,
-and spacing differences return the existing Version, preserving its original
-bytes and metadata. Titles and aliases resolve one Work; ambiguous names conflict.
-Search matches titles, aliases, and the first 240 characters of each Version.
-An empty query lists the Library. No matches returns
+`API request failed.` with a nonzero exit. A text that equals an existing
+Version, ignoring case, punctuation and spacing, returns that Version and
+creates nothing, whatever Work the supplied title or aliases name; its
+original bytes, metadata and Relations are kept, and the draft's edition name,
+sources, Rights status, Provenance and Relations are not recorded. The response
+then carries `"existing": true` (`false` for a new Version), and the CLI's
+human output adds `That text was already in the Library. Nothing was added.`
+The same text with a different Kind, Units, ordered aliases, mapping pairs or
+Spelling-strict setting is refused (409) with nothing written, and the message
+names what differs, for example `That text is already in the Library in a
+Version with different Units. Nothing was saved; to change that Version,
+correct it.` Text supplied without Sections matches a stored text Version
+whatever its Units, since Scry divides such text itself.
+That refusal applies to what the Owner or an agent adds, never to the Starter
+shelf, which is always startable. A lesson, NATO or Study entry for a starter
+uses a stored Version the same as the starter's manifest, preferring one with a
+Study; otherwise a Version with the same text in any structure that already
+has a Study of any status (NATO keeps only one it can practise as the
+alphabet), which a lesson start resumes and Study never bypasses; otherwise
+the starter's own Version, added beside any copy, which stays unchanged. A new text attaches to
+the Work its title or alias names; names that point to different Works conflict.
+Search matches titles, aliases, and the first 240 characters of each Version,
+and lists matching Works by title. An empty query lists the Library. No matches returns
 `{"matches":[],"empty":true,"message":"Nothing matches."}`.
 
 | Method | Route | Payload / result |
 | --- | --- | --- |
-| GET | `/api/v1/library/search?q=QUERY` | Matching Works with Versions and Relations, explicit empty result |
+| GET | `/api/v1/library/search?q=QUERY` | Matching Works by title, with Versions and Relations, explicit empty result |
 | GET | `/api/v1/library/works/ID` | Work metadata, Versions with Sections and Units, Relations |
-| GET | `/api/v1/library/versions/ID` | Version, owning Work, incoming and outgoing Relations |
+| GET | `/api/v1/library/versions/ID` | Version, owning Work, its version-of and supersedes Relations and its Work's part-of and related-to Relations |
 | GET | `/api/v1/library/export` | Only `works`, `versions`, and `relations` |
 | POST | `/api/v1/library/versions` | `operation_id`, `data` Version draft |
 | POST | `/api/v1/library/versions/supersede` | `operation_id`, `version_id`, Work `revision`, `data` Version draft |
@@ -174,11 +220,13 @@ An empty query lists the Library. No matches returns
 | POST | `/api/v1/library/works/delete` | `operation_id`, `work_id`, `revision` |
 
 The Version draft is an object with `title`, `kind`, `text`, optional `name`,
-`aliases`, `context`, `sources`, `rights`, `spelling_strict`, and `sections`.
+`aliases`, `context`, `sources`, `rights`, `provenance`, `relations`,
+`spelling_strict`, and `sections`. `relations` is an array of at most 32
+`{"kind":"part_of"|"related_to","work":"TITLE OR ALIAS"}`.
 Each Section has `heading` and an ordered `units` array of exact strings.
 Only Library `data` supports nested JSON; other foundation API fields remain
 scalar. Mutations return the shared `result.entity_id`, `redirect`, and
-`replayed` fields. Show the returned identity to read the committed content.
+`replayed` fields; Version and mapping adds also return `existing`. Show the returned identity to read the committed content.
 Every Library mutation retains token attribution in private history and complete
 export. The Library-only export excludes that attribution and all study state.
 
@@ -215,11 +263,18 @@ start its Study:
 
 This short example is not the complete alphabet; `examples/nato-alphabet.json`
 contains all 26 official words and source links. Manifest optional fields are
-`name`, `aliases`, `context`, `sources`, `rights`, and `spelling_strict` (defaults
-to true). Rights default to private-only. Sources are retained, not fetched.
-The only accepted direction is the explicitly declared `forward`. Unknown
-fields (including generation, grades and media) are refused rather than silently
-ignored. The CLI reads at most 1 MiB of manifest JSON; the stored Version retains
+`name`, `aliases`, `context`, `sources`, `rights`, `provenance`, `relations`
+and `spelling_strict` (defaults to true), with the same meaning as for a
+Version draft. Rights default to private-only. Sources are retained, not fetched.
+`direction` is required: `forward` asks each pair from its key, and `both`
+also asks it in reverse, showing the value and asking for its key. With `both`,
+values must be unique too (each value is then a question), and no pair may be
+safety-bearing. A pair may carry `"safety_bearing": true`, its author's flag
+that the value is a safe practice the answer must state itself; keep the
+critical safety condition in the key. Unknown fields (including generation,
+grades and media) are refused rather than silently ignored. A raw
+`keyed_mapping` Version draft declares the same with `direction` and
+`safety_bearing` (zero-based pair positions); other Kinds refuse both. The CLI reads at most 1 MiB of manifest JSON; the stored Version retains
 the existing 256 KiB text and 8,192 Unit bounds.
 
 **Bundled starter, explicit action only.** Library offers **Add NATO alphabet**,
@@ -259,6 +314,45 @@ Version. Existing historical metadata-only mappings remain readable/exportable;
 malformed pair content cannot start a Study.
 
 Forward practice presents the key and grades only the value on the server.
+Each pair has one Card per declared direction, introduced together: the Pace
+counts the pair once, as one Unit. A reverse Card has its own Source study,
+then a Quiz whose Prompt has `cue_level: "mapping_value"`, the value as `cue`
+and the title `Recall the matching key`; its answer is graded against the key.
+The other direction of the pair just answered is served only when nothing else
+is eligible. A Prompt for a safety-bearing pair carries `safety_bearing: true`.
+After an answer, `mapping_feedback` names `kind` (`correct`, `wrong_key`,
+`spelling`, `mismatch` or `ungraded`), `key` and `expected`. An answer that
+is another pair's value is `wrong_key` with `answered_key`; in reverse, another
+pair's key is `wrong_key` with `answered_value` and `direction: "reverse"`.
+Such an answer is the wrong key, decided by Scry at once whether paid judgment
+is on or off: Verdict Again under `exact-v2`, the Card scheduled from it like any
+other local miss, and no Check, reservation or request.
+
+A value that is a year (one to four digits, alone or with AD or CE before or
+after, with or without stops) accepts the same digits with or without AD or CE.
+A year as typed is one to four digits, alone or with one AD, CE, BC or BCE
+marker before or after them, and nothing else but whitespace and stops inside
+or directly after the marker (`1066`, `AD 1066`, `1066 c.e.`, `44 B.C.`). That
+one definition decides both whether the year rule may grade a text and whether
+an answer is graded by Scry alone. A year is graded by Scry as an exact number,
+and a year before the common era (`44 BC`) is graded as written: `44` or
+`44 BCE` is a miss for it. An answer that is a year as typed, to a value that
+is one, is never sent to Jev, whether paid judgment is on or off. Anything else
+(`1066.`, `1066,`, `(1066)`, `-1066`, `in 1066`, `1066 to 1087`) is an
+ordinary answer, and a value such as `1066.` is an ordinary value: the
+ordinary comparison decides, and with paid judgment on a mismatch to content
+that is not Spelling-strict is judged. The year rule is recorded only where it turns a miss
+into Good: that Attempt records grader version
+`1;unicode=17.0.0;mapping=1;year=1` with a Diff comparing the numbers. Every
+other mapping Attempt, a year miss included, is stored exactly as `;mapping=1`
+stores it, and replay regrades each under the version it recorded. Neither the
+year rule nor its never-sent guarantee applies to a safety-bearing pair: there
+`1990 AD` for `1990` is an ordinary mismatch, and with paid judgment on it is
+judged. With a Version declared `both`, values that are the same year (`1066`
+and `AD 1066`) count as the same value and are refused. With paid judgment on, Jev judges
+a safety-bearing pair against an objective that asks for the same safe
+practice and rejects a dangerous alternative, a negation, a reversal, an
+incomplete practice or added unsafe words.
 Supplied titles can contain answers, so active mapping Prompts use a neutral
 label in JSON and HTML; the original metadata remains in Library/history.
 Held restored Prompts are displayed safely without rewriting their saved title,
@@ -270,15 +364,17 @@ agree, but `Xray` and `a.l.f.a` are not accepted as `X-ray` or `Alfa`.
 Clients submit an answer, never a grade. Native reveal records assistance before
 showing the value; a subsequently copied answer cannot advance the schedule as
 unaided recall. Mapping verdict corrections/self-rating are refused. Historical
-text Corrections remain preserved under their original contract. Reverse/year/
-whole-set exercises, media and MCP are not provided by this mapping import.
+text Corrections remain preserved under their original contract. A mapping is
+never recited as a whole set: `next --recite` and the join, whole and middle
+lesson modes refuse a mapping. Media are not provided.
 Hosted Owner-token admission is still separately unverified (#335).
 
 ## Authored sequence and phrase lessons
 
 Lessons reuse immutable supplied Versions and native grading. No content is
-created by an AI service. Import a Version through `version add` or
-`POST /api/v1/library/versions`, then deliberately start it:
+created by an AI service. Any supplied Version can be a lesson: a text, an
+ordered list or a mapping, of any length the Library admits. Import a Version
+through `version add`, `mapping add` or their routes, then deliberately start it:
 
 ```sh
 ./target/debug/scry lesson start --version VERSION_ID \
@@ -304,6 +400,12 @@ its saved attempts are replaced or transferred to the new edition.
 | `POST /api/v1/lessons/start` | Exactly one `starter` or `version_id`; optional `after` **or** `leave` |
 | `POST /api/v1/lessons/next` | Required `after`; optional `mode`: `phrases`, `retry`, `join`, `whole`, `middle` |
 
+`lesson next --mode phrases` serves the next phrase in order. A text that Study's
+mix reached first, and whose lesson has not been entered, introduces its
+phrases at its Pace: a next phrase without a Card is refused (409, `That phrase
+has not been introduced yet.`) with nothing written; use `next` or `mix`, or
+start the lesson, which makes every phrase available.
+
 `after` must identify the currently held **answered** Prompt. Switching away
 from an unanswered Prompt requires explicit `leave` with that exact Prompt ID
 (CLI `--leave PROMPT_ID`). This abandons the unsent draft, not the learner's
@@ -312,23 +414,31 @@ leave from browsing the lesson shelf. Do not supply both `after` and `leave`.
 Same-Version start resumes the held Prompt; stale identifiers conflict.
 
 Text starts with a meaningful authored phrase. `phrases` cycles the clauses;
-`retry` repeats the current individual text phrase with a visible cue and assisted
-evidence; it creates a new Prompt but no Attempt until an answer is submitted.
+`retry` shows the missed phrase again as source study, with its help recorded;
+it creates a new Prompt but no Attempt until the Quiz that follows is answered.
 `join` checks the current phrase's authored Section; `whole` checks the complete
-Version from a cold cue; `middle` starts a later phrase. Author Sections around
+Version from its title alone; `middle` starts a later phrase. Author Sections around
 meaningful groups, not screen-width line wraps; their Unit strings must
 concatenate to the exact Version text. Learning is typed-text recall only, not
 speech recognition or pronunciation assessment. Keep language, edition/version,
 source citations and rights explicit in the existing `name`, `context`,
 `sources` and `rights` metadata. Do not silently blend translations.
 
-A lesson deliberately introduces up to 128 Units without changing retained
-Pace or rewriting past schedules. Existing local grading/storage bounds still
-apply. Guided cues fade after actual successful practice, but assistance never
-counts as unaided recall or changes the due schedule. Phrase, joined-Section
+A text or list lesson deliberately introduces every Unit at once without
+changing retained Pace or rewriting past schedules; a mapping lesson, starter or
+supplied, introduces its pairs at the Study's Pace and `lesson next` continues
+it one pair at a time (`mode` `phrases` or none). Existing local grading and
+storage bounds still apply: a lesson too large for the archive is refused
+before it commits. Assistance never counts as unaided recall or changes the due schedule.
+Phrase, joined-Section
 and whole-text Attempts retain their different scopes. Isolated phrase success
 does not establish complete-text recall.
 
+An `ordered_list` Version holds 1–128 items; a longer list is refused when it
+is added or learned. The whole sequence is one answer of at most 32 KiB and
+at most 256 lines, and one Attempt records feedback for every item, so the
+bound keeps answers, grading and stored Attempts bounded. An older archive
+with a longer unpractised list stays readable but cannot be learned.
 An `ordered_list` lesson presents the complete sequence. Submit one item per
 line; Scry checks item identity and order, not a caller-supplied rating. Optional
 `ordered_aliases` maps zero-based flattened Unit positions to explicitly
@@ -369,6 +479,19 @@ Saving does not grade or advance. Only acknowledged text can be relied on as
 durable; a lost response may follow a commit. Typing or editing alone is not
 saved automatically.
 
+In the app, Save draft is also a native form: without JavaScript it posts the
+answer form with no `generation`, and the form's notebook `revision` stands in
+for it, so any write since the page was drawn is a conflict. A native discard
+may carry the field's text, which is ignored. With JavaScript the page also
+saves quietly; the notebook keeps operation receipts for only its newest 512
+automatic saves, dropping the oldest to make room. A replay of a dropped
+automatic save names an older generation and is refused as a conflict, never
+applied twice. Agent and manual saves keep their receipts.
+
+Pause, resume, drop and Pace accept only `study_id` (and Pace its `pace`)
+beside `operation_id`; any other field is refused with 422 and nothing is
+written.
+
 ```sh
 ./target/debug/scry learn VERSION --pace steady --json
 ./target/debug/scry study list --json
@@ -389,10 +512,11 @@ practice after the held result is released. `--text-stdin` accepts an answer
 without an input file. Empty answers count as misses. Dictated text uses the
 same answer field and grader.
 
-`reveal PROMPT` saves assistance before returning the target Units. A cued
-Prompt already records assistance. Lower-help Prompt JSON contains only its
-allowed cue and context. History, complete export, and Library reads refuse
-while an unanswered Free recall Prompt protects its target. Due and Study list
+`reveal PROMPT` saves assistance before returning the target Units. The revealed
+Prompt becomes source study: `quiz PROMPT` hides it again and the answer that
+follows is assisted. A Quiz Prompt's JSON carries its title, section heading or
+mapping key and nothing answer-bearing. History, complete export, and Library
+reads refuse while an unanswered Free recall Prompt protects its target. Due and Study list
 remain available. These reads never record help or consume a Prompt.
 
 ```sh
@@ -404,12 +528,43 @@ remain available. These reads never record help or consume a Prompt.
 ./target/debug/scry study pause STUDY --json
 ./target/debug/scry study resume STUDY --json
 ./target/debug/scry study drop STUDY --json
+./target/debug/scry study pace STUDY --pace light --json
 ```
+
+`study pace` chooses an existing Study's Pace: `light` (3 new Units per
+rolling day), `steady` (6, where every Study starts) or `intense` (12). It
+changes only how many new Units arrive; Cards, schedules and status are
+unchanged, and a dropped or paused Study keeps the chosen Pace for when it is
+resumed. `pace` is required; an unknown value or any other field is refused
+(422).
+
+### Study's mix
+
+The app's **Study** and **Next** serve Study's mix: genuinely due, previously
+practised material first, interleaved across Studies by least recent service,
+then unfinished Studies and Works not yet started. Agents take the same action:
+
+```sh
+./target/debug/scry mix --operation-id RETAINED_OPERATION_ID --json
+./target/debug/scry mix --after ANSWERED_PROMPT --json
+./target/debug/scry mix --leave UNANSWERED_PROMPT --json
+```
+
+Without `--after` or `--leave` it returns the held Prompt or result, without
+choosing another. `next` and `lesson next`, except a phrase retry, leave the
+mix, as choosing a Study or a Lesson does in the app. `--after`
+releases the answered Prompt; `--leave` closes the identified unanswered Prompt
+without a grade. When it is the turn of a Work not yet started, the mix starts
+that one Study and nothing else. With nothing eligible it returns
+`{"prompt":null,"due":...}`. `due`, `study list` and Library reads never
+start it. Responses carry the same `practice` as `next`, under the same
+assistance fence.
 
 Recitations require every Unit in the selected scope to have been introduced.
 Section prompts contain the heading alone. Whole prompts contain the title
 alone. Each target Unit gets its own Verdict and schedule effect.
-New `scry correct` and `/api/v1/correct` submissions are retired and return 410.
+A Verdict cannot be overturned: `/api/v1/correct` is retired and returns 410
+before any receipt or write, and the CLI has no `correct` command.
 Historical Corrections retain their original meaning: an Owner override for the
 held Attempt, recomputed from the original Card state and answer time, without
 changing the original Attempt. Read them through history/export; no new
@@ -420,29 +575,47 @@ learner-supplied Verdict is accepted.
 | POST | `/api/v1/learn` | `operation_id`, `version_id`, optional `pace` |
 | GET | `/api/v1/studies` | All Studies, including paused and dropped |
 | POST | `/api/v1/studies/pause`, `/api/v1/studies/resume`, `/api/v1/studies/drop` | `operation_id`, `study_id` |
+| POST | `/api/v1/studies/pace` | `operation_id`, `study_id`, `pace`: `light`, `steady` or `intense` |
+| POST | `/api/v1/mix` | `operation_id`, optional `after` **or** `leave`; Study's mix |
 | POST | `/api/v1/next` | `operation_id`, optional `after`, `study_id`, `card_id`, `recite`, `section_id` |
 | POST | `/api/v1/answer` | `operation_id`, `prompt_id`, raw `answer` |
 | POST | `/api/v1/reveal` | `operation_id`, `prompt_id` |
 | POST | `/api/v1/quiz` | `operation_id`, `prompt_id`; explicitly hide source and begin a memory quiz |
 | POST | `/api/v1/correct` | Retired: 410; existing Corrections remain readable through history/export |
-| GET | `/api/v1/due` | Presented and upcoming Card schedules, due identities and next due time |
+| POST | `/api/v1/check` | `operation_id`, `attempt_id`; one more paid check of a saved answer that has no Verdict |
+| GET | `/api/v1/due` | Presented and upcoming Card schedules, due identities and next due time; `checking` names Cards whose answer is still with Jev |
 | GET | `/api/v1/history` | Studies, Cards, immutable Attempts and Corrections, referenced Versions and operation receipts |
 | GET | `/api/v1/export` | Complete compatible private archive, including the understanding notebook and historical custody |
 
-New lesson/app prompts distinguish `practice.phase: "study"` (visible source,
-no answer form or grade) from `"quiz"` (hidden source, raw answer graded natively).
-POST `/api/v1/quiz` with the source `prompt_id` creates a separately fenced quiz
-with the same Units and scope, without creating an Attempt or changing schedules.
-Source-phase answers are rejected server-side, including requests from older
-clients. Revealing a quiz records help; returning to quiz preserves that help.
-The generic API's legacy absent-phase guided-cue behavior remains compatible;
-clients can explicitly opt into quiz from a visible source cue. Existing Attempts
-and their original assistance/schedule evidence are never reinterpreted.
+Practice has two forms for every Study and every client, however the Study
+was started: `practice.phase: "study"` (source study: the supplied material,
+no answer and no grade) and `"quiz"` (source hidden, raw answer graded
+natively). A Unit not yet practised is presented as study first, whatever its
+Kind; one already answered is presented as a Quiz. An ordered list is always
+presented whole, however many of its Cards exist.
 
-Rollback safety: app Studies retain `source_quiz` even when no Prompt is held.
-Their archives use the phase-v3 format and older readers must refuse them. This
-archive fence does not make an older binary safe against the same live SQLite
-store: do not downgrade that store to a pre-phase runtime.
+In study, `prompt.cue_level` is `read` and `prompt.cue` is the supplied text of
+the Units in scope: a text phrase, a mapping pair as its key, a tab and its
+value, or every item of an ordered list on its own line. POST `/api/v1/quiz`
+with that `prompt_id` creates a separately fenced Quiz of the same Units and
+scope, without creating an Attempt or changing schedules. An answer or a draft
+sent against a study Prompt is refused with 409 from every client. Revealing a
+Quiz records help and returns it to study; returning to Quiz preserves that
+help, so the answer is assisted.
+
+Scry never fades cues, shows first letters or uses a Card's stored cue level
+to choose a Prompt. Cue levels appear only in records made before this rule.
+A Prompt such a record still holds, with `practice.phase` absent, can be
+answered once and is recorded as it would have been; `quiz` also applies to
+its visible source. Every Prompt after it has a phase. Existing Attempts and
+their original assistance and schedule evidence are never reinterpreted.
+
+Rollback safety: a Study keeps `source_quiz` once one of its Prompts has been
+held, even when no Prompt is held now. Its archives use the phase-v3 format and
+older readers must refuse them. A held study Prompt for a mapping pair or a
+whole list is also refused by any earlier build's validation. This archive
+fence does not make an older binary safe against the same live SQLite store:
+do not downgrade that store to an earlier runtime.
 
 Practice mutations return `practice` beside the shared `result` and `replayed`
 fields. The engine receipt freezes each response reference. Reconcile an
@@ -455,10 +628,89 @@ current Prompt before reading earlier Attempts through history; do not create
 a new operation to recover a response that may already have committed. Changed
 payload under an operation ID conflicts. Every new Attempt names `exact-v2`
 and its grader version, the acting token, Version identity and normalized hash,
-actual Cue, raw answer, Diff, Verdict and per-Card scheduling effects.
+the Prompt as presented, raw answer, Diff, Verdict and per-Card scheduling effects.
+
+An Attempt whose answer was left for Jev also carries `judgment`. Its `grade`
+is then the local comparison only: the Diff, never the Verdict. The Verdict and
+its Authority are `judgment.decided`, absent while the answer is being checked
+or is saved and not graded, and an Attempt with no Verdict has no scheduling
+effect. Each check of that answer is a `checks` record in history and export. A
+practice response that names such an Attempt adds `practice.judgment`: `state`
+(`checking`, `ungraded` or `decided`), `verdict`, `authority`, `reason` and
+`check_id`. An archive that holds any of these records is named
+`scry-rust-durable-sqlite-study-judged-v4`, and earlier readers refuse it.
+A notebook whose Library holds a Provenance other than supplied, or a
+correction whose normalized text equals another Version's, is named
+`scry-rust-durable-sqlite-library-v5` instead, which every earlier reader
+refuses.
+
+### Paid judgment (Jev)
+
+Paid judgment is off in every notebook until the signed-in Owner turns it on in
+Settings. That switch is a browser form (`POST /settings/judgment`); no API
+route, CLI command or tool reaches it, and an Owner token is refused whatever
+permission it carries. Asking for the setting it already has is refused with
+nothing written (409). Settings offers it only where this Scry has Jev's key,
+model and endpoint bound and holds model authority for that endpoint; elsewhere
+it says paid judgment is not available. Only production holds model authority.
+A preview reaches Jev only at a host under `.invalid`, which never resolves
+(the controlled egress of `qa/judgment.test.mjs`), so a real key bound to a
+preview sends nothing; development, restore and synthetic previews send nothing
+at all.
+
+An answer leaves Scry to be judged only when all three hold: this Scry can
+reach Jev, the switch is on, and the request carries paid permission (the
+signed-in Owner, or an Owner token created with `--paid`). Otherwise it is
+graded by the local comparison exactly as before and nothing is sent or
+reserved. An exact or alias match, an empty answer, any answer to
+Spelling-strict content and an answer too large to send (32 KiB with its
+expected content) are always graded locally. So are an answer to a keyed
+mapping that is exactly another pair's value (or, in reverse, its key) and,
+except for a safety-bearing pair, a year answer to a year value.
+
+One check is one request to Jev. Besides the model name it carries, for that
+answer only: the answer as typed; the expected content of the Prompt's scope;
+what names the question (the Work's title and the place in it, a mapping's
+key or, for a reverse Card, its value, or a Section's heading); the Learning objective; and, for an ordered
+list, the authored aliases of its items. It carries no identifier, no other
+content of the Library, no token and nothing that identifies the Owner.
+Settings says the same before the Owner turns the switch on.
+
+When an answer is left for Jev, `answer` returns at once with
+`practice.judgment.state: "checking"` and `scry answer` exits 0: the answer is
+saved, it has no Verdict yet and its Card is unchanged. One request is sent,
+about a second later. Read the outcome by repeating the same operation, or from
+history:
+
+| `state` | Meaning |
+| --- | --- |
+| `checking` | A Check is queued or sent. `verdict` and `authority` are null. |
+| `decided` | Jev accepted (`Good`) or rejected (`Again`). `authority.name` is `jev`. |
+| `ungraded` | Saved, not graded. `reason` says why: Jev was unsure, failed, was refused, could not be reached, or the allowance was used. |
+
+An ungraded answer keeps its Card due, so Next serves that Card again. While a
+Check is queued or sent, `next`, a lesson's Next and Study do not choose that
+Card (`due.checking` lists it and `due.due` omits it); when nothing else is
+eligible they return the held result still being checked. A Card or Recitation
+named outright (`--card`, `--recite`) is still presented; a Verdict that then
+arrives for the earlier answer is recorded with `superseded: true` on its
+effect and leaves the schedule as the newer Attempt set it.
+
+```sh
+./target/debug/scry check ATTEMPT --json
+```
+
+`check` asks for one more check of the same saved answer. It never creates a
+second Attempt. It needs paid permission (403 without), and is refused with
+nothing written when Scry graded the answer itself (409), the switch is off or
+Jev is not reachable (409), a check is already open (409), the answer already has its Verdict (409), the Study was
+dropped (409), the daily allowance is used (429) or three checks are already
+saved for that answer (422). Each Check is sent at most once. A send that is
+interrupted becomes `ungraded` with its 0.50 reservation kept as unknown spend;
+Scry never retries by itself.
 
 Free recall schedules once per UTC calendar day. Extra practice records an
-Attempt and can change cues, but leaves FSRS unchanged. New introductions use
+Attempt but leaves FSRS unchanged. New introductions use
 a rolling 24-hour window. The existing FSRS adapter identity remains pinned;
 its historical `ALGORITHM` string includes `exact-v1`, while the Attempt's
 separate `grade.authority` names the actual `exact-v2` grader.
@@ -477,7 +729,12 @@ physical-phone behavior, private Missal wording or independent hosted recovery.
 
 ### Mapping history and rollback
 
-Mappings use the existing Library/Study archive families. Their manifest
+Mappings use the existing Library/Study archive families. A notebook that
+holds a Version declared `both` or with safety-bearing pairs, a reverse Card,
+or an Attempt the year rule decided is written with the row
+`mapping_compatibility/v1` and archived as
+`scry-rust-durable-sqlite-mapping-v6`, which earlier Workers refuse; a notebook
+using none of these keeps its exact rows and archive. Their manifest
 operation receipt and `mapping_key` Cue are not understood by v0.8.1. A retained
 older build must refuse these records rather than drop keys, regrade values as
 whole text, discard history or write a truncated snapshot. After a mapping is

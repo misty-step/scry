@@ -11,6 +11,10 @@ fn act(app: &mut App, path: &str, extras: &[(&str, String)], tag: &str) {
     fields.extend(extras.iter().map(|(k, v)| (k.to_string(), v.clone())));
     engine::mutate(app, path, &fields, NOW, tag).unwrap();
 }
+fn try_from_memory(app: &mut App, tag: &str) {
+    let id = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    act(app, "/practice/quiz", &[("prompt_id", id)], tag);
+}
 fn page(app: &App) -> String {
     web::render(
         app,
@@ -42,6 +46,14 @@ fn empty_progress_has_all_letters_and_no_invented_accuracy() {
 fn progress_during_recall_never_leaks_words_and_cannot_mutate_state() {
     let mut app = App::new("synthetic-progress-web-csrf-32chars".into());
     act(&mut app, "/practice/nato/start", &[], "start");
+    // A new letter is studied with its word, then quizzed with nothing shown.
+    let study = page(&app);
+    assert!(study.contains("Alfa") && study.contains("Try from memory"));
+    assert!(!study.contains("id=\"answer\""));
+    for word in ["Bravo", "Charlie", "Zulu", "Alphabet reference"] {
+        assert!(!study.contains(word), "{word}");
+    }
+    try_from_memory(&mut app, "quiz-a");
     let before = app.clone();
     let html = page(&app);
     for word in ["Alfa", "Bravo", "Charlie", "Zulu", "Alphabet reference"] {
@@ -74,6 +86,10 @@ fn progress_during_recall_never_leaks_words_and_cannot_mutate_state() {
         &[("after", p.id), ("study_id", p.study_id)],
         "next",
     );
+    let study = page(&app);
+    assert!(study.contains("Letter B") && study.contains("Bravo"));
+    assert!(!study.contains("Alfa"));
+    try_from_memory(&mut app, "quiz-b");
     let next = page(&app);
     assert!(next.contains("Letter B"));
     assert!(!next.contains("Alfa"));
@@ -86,6 +102,7 @@ fn progress_during_recall_never_leaks_words_and_cannot_mutate_state() {
 fn reveal_and_helped_answer_are_not_an_unaided_failure() {
     let mut app = App::new("synthetic-progress-web-csrf-32chars".into());
     act(&mut app, "/practice/nato/start", &[], "start");
+    try_from_memory(&mut app, "first-quiz");
     let p = app.practice.current.as_ref().unwrap().prompt.clone();
     act(
         &mut app,

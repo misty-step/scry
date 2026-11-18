@@ -1,5 +1,5 @@
 //! The private, server-rendered notebook. All authored and generated text is escaped.
-use crate::learning::{Attempt, ConceptState, QuestionEvidence, compute_concept_state};
+use crate::learning::{Attempt, ConceptState, compute_concept_state};
 use crate::model::*;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -94,13 +94,14 @@ struct View<'a> {
     now: i64,
 }
 
+/// What `/notebook` leads with when no question is held: nothing, or where
+/// the notebook's saved generation requests stopped.
 #[derive(Clone, Copy)]
 enum EmptyState<'a> {
-    FirstRun,
+    Nothing,
     Preparing,
     Paused,
     Stopped(&'a Goal),
-    CaughtUp,
 }
 
 impl View<'_> {
@@ -142,21 +143,12 @@ impl View<'_> {
             job.and_then(|j| j.error.as_deref()),
         )
     }
-    fn check_paused(&self, occurrence: &Occurrence) -> bool {
-        self.effective_phase(
-            occurrence
-                .assessment_id
-                .as_ref()
-                .and_then(|id| self.app.assessments.get(id))
-                .map(|assessment| assessment.status.as_str())
-                .unwrap_or("queued"),
-            None,
-        ) == "notebook-paused"
-    }
-    fn resume_link(&self) -> &'static str {
-        "<a class=\"text-link\" href=\"/settings#preparation\">Resume meaning checks →</a>"
-    }
     fn saved_answer(&self, prompt_id: &str) -> &str {
+        if self.query.get("__typed_prompt").map(String::as_str) == Some(prompt_id)
+            && let Some(typed) = self.query.get("__typed")
+        {
+            return typed;
+        }
         self.app
             .practice
             .answer_checkpoint
@@ -206,41 +198,11 @@ impl View<'_> {
             hidden("revision", &self.app.revision.to_string())
         )
     }
-    fn review_form(
-        &self,
-        action: &str,
-        suffix: &str,
-        class: &str,
-        extra: &str,
-        body: &str,
-    ) -> String {
-        let id = self
-            .app
-            .occurrence
-            .as_ref()
-            .map(|o| o.id.as_str())
-            .unwrap_or("");
-        self.form(
-            &format!("/review/{action}"),
-            suffix,
-            class,
-            extra,
-            &format!("{}{body}", hidden("occurrence_id", id)),
-        )
-    }
     fn goal_title(&self, goal: &Goal) -> String {
-        if self.app.protected_goal() == Some(goal.id.as_str()) {
-            "Current study".to_string()
-        } else {
-            escape(&goal.title)
-        }
+        escape(&goal.title)
     }
     fn concept_name(&self, concept: &Concept) -> String {
-        if self.app.protected_concept(&concept.id) {
-            "Current idea".into()
-        } else {
-            escape(&idea_title(self.app, concept))
-        }
+        escape(&idea_title(self.app, concept))
     }
     fn active_concept(&self, concept: &Concept) -> bool {
         !concept.archived
@@ -255,7 +217,7 @@ impl View<'_> {
     fn study_chip(&self, concept: &Concept) -> (String, String) {
         let goal = self.app.goals.get(&concept.goal_id);
         match goal {
-            Some(g) if legacy_idea(concept) && !self.app.protected_concept(&concept.id) => {
+            Some(g) if legacy_idea(concept) => {
                 (self.goal_title(g), format!("/goals/{}", escape(&g.id)))
             }
             _ => (
@@ -274,46 +236,6 @@ impl View<'_> {
         } else {
             format!("<p class=\"{class}\">{}</p>", escape(summary))
         }
-    }
-    fn gate(&self, destination: &str) -> String {
-        if self
-            .app
-            .occurrence
-            .as_ref()
-            .is_some_and(|occurrence| occurrence.phase == "checking")
-        {
-            if self
-                .app
-                .occurrence
-                .as_ref()
-                .is_some_and(|o| self.check_paused(o))
-            {
-                return format!(
-                    "<section class=\"empty-stage gate\" data-state=\"checking-paused\"><p class=\"eyebrow\">Your answer is saved</p><h1>Your meaning check is paused.</h1><p class=\"lede\">Resume meaning checks in Settings to continue. Your answer stays ungraded and this reference stays protected.</p>{}</section>",
-                    self.resume_link()
-                );
-            }
-            return format!(
-                "<section class=\"empty-stage gate\" data-state=\"checking-reference\" data-poll>{}<p class=\"eyebrow\">Your answer is saved</p><h1>Your check is still in progress.</h1><p class=\"lede\">This reference may contain the answer. It will be available after the check finishes.</p><div class=\"actions\"><a class=\"button primary\" href=\"{}\">Return to your saved answer →</a></div></section>",
-                emblem("large"),
-                legacy_home(self.app)
-            );
-        }
-        let action = self.review_form(
-            "help",
-            "reference",
-            "",
-            "",
-            &format!(
-                "{}<button class=\"button primary\">Look it up</button>",
-                hidden("return_to", destination)
-            ),
-        );
-        format!(
-            "<section class=\"empty-stage gate\" data-state=\"gate\">{}<p class=\"eyebrow\">A little help is part of learning</p><h1>Open your reference?</h1><p class=\"lede\">Your notes may contain the answer. Opening them records this attempt as helped practice.</p><div class=\"actions\">{action}<a class=\"button quiet\" href=\"{}\">Keep trying</a></div></section>",
-            emblem("large"),
-            legacy_home(self.app)
-        )
     }
     fn pending(&self) -> String {
         let mut out = String::new();
@@ -336,6 +258,103 @@ impl View<'_> {
         } else {
             format!("<aside class=\"preparations\" aria-label=\"Saved preparations\">{out}</aside>")
         }
+    }
+    /// Review evidence exists for a Card only once it has an unaided Attempt.
+    fn attempted_unaided(&self, card_id: &str) -> bool {
+        self.app
+            .practice
+            .attempts
+            .values()
+            .any(|a| !a.disclosure && !a.assisted && a.card_ids().any(|id| id == card_id))
+    }
+    /// A due review asks only for Units answered unaided before and due when asked.
+    fn due_review(&self, p: &crate::study::Presentation) -> bool {
+        p.targets
+            .iter()
+            .all(|t| t.before.schedule.due_ms <= p.created_ms && self.attempted_unaided(&t.card_id))
+    }
+    /// Whether a previously answered Card of an in-scope Study is due now.
+    fn review_due(&self, in_scope: impl Fn(&crate::study::Study) -> bool) -> bool {
+        self.app.practice.cards.values().any(|c| {
+            c.state.schedule.due_ms <= self.now
+                && self
+                    .app
+                    .practice
+                    .studies
+                    .get(&c.study_id)
+                    .is_some_and(|s| s.status != crate::study::Status::Dropped && in_scope(s))
+                && self.attempted_unaided(&c.id)
+        })
+    }
+    /// A mapping pair's authored question: its key, in study and in Quiz alike.
+    fn mapping_question(&self, prompt: &crate::study::Prompt) -> Option<&str> {
+        self.mapping_question_in(prompt, crate::study::Direction::Forward)
+    }
+    /// A pair's question in a Card's direction: its key forward, its value in reverse.
+    fn mapping_question_in(
+        &self,
+        prompt: &crate::study::Prompt,
+        direction: crate::study::Direction,
+    ) -> Option<&str> {
+        let v = self.app.library.versions.get(&prompt.version_id)?;
+        if v.kind != crate::library::Kind::KeyedMapping {
+            return None;
+        }
+        v.sections
+            .iter()
+            .flat_map(|s| &s.units)
+            .find(|u| prompt.unit_ids.first() == Some(&u.id))
+            .and_then(|u| crate::library::mapping_pair(&u.text))
+            .map(|(key, value)| {
+                if direction == crate::study::Direction::Reverse {
+                    value
+                } else {
+                    key
+                }
+            })
+    }
+    /// The authored safety flag, said before the answer, in study and Quiz alike.
+    fn safety_cue(prompt: &crate::study::Prompt) -> &'static str {
+        if prompt.safety_bearing {
+            "<p class=\"fineprint safety-cue\">Safety practice: answer with the safe practice itself.</p>"
+        } else {
+            ""
+        }
+    }
+    /// Which other pair a mapping miss belongs to, if any.
+    fn wrong_pair(feedback: &crate::study::MappingFeedback) -> String {
+        if let Some(key) = &feedback.answered_key {
+            format!(
+                "<p class=\"fineprint\">That answer belongs to key {}.</p>",
+                escape(key)
+            )
+        } else if let Some(value) = &feedback.answered_value {
+            format!(
+                "<p class=\"fineprint\">That answer is the key for {}.</p>",
+                escape(value)
+            )
+        } else {
+            String::new()
+        }
+    }
+    /// Context for a phrase Quiz: closed until asked for, and never the answer.
+    fn previous_phrase(&self, p: &crate::study::Presentation) -> String {
+        let v = &self.app.library.versions[&p.prompt.version_id];
+        if v.kind != crate::library::Kind::Text
+            || !matches!(p.prompt.scope, crate::study::Scope::Unit { .. })
+        {
+            return String::new();
+        }
+        p.targets[0]
+            .unit_index
+            .checked_sub(1)
+            .and_then(|i| v.sections.iter().flat_map(|s| &s.units).nth(i))
+            .map_or(String::new(), |u| {
+                format!(
+                    "<details class=\"lesson-context\"><summary>Previous phrase</summary><p>{}</p></details>",
+                    escape(&u.text)
+                )
+            })
     }
     fn practice_form(&self, action: &str, suffix: &str, extra: &str, body: &str) -> String {
         let id = self
@@ -415,7 +434,8 @@ impl View<'_> {
             for item in found.matches {
                 let _ = write!(
                     out,
-                    "<section class=\"library-work\"><h2>{}</h2>",
+                    "<section class=\"library-work\"><h2><a href=\"/library/works/{}\">{}</a></h2>",
+                    escape(&item.work.id),
                     escape(&item.work.title)
                 );
                 if !item.work.aliases.is_empty() {
@@ -425,18 +445,9 @@ impl View<'_> {
                         escape(&item.work.aliases.join(" · "))
                     );
                 }
-                out.push_str("<ul class=\"library-versions\">");
-                for v in item.versions {
-                    let _ = write!(
-                        out,
-                        "<li><a class=\"version-link\" href=\"/library/versions/{}\">{}</a><p class=\"fineprint\">{}</p>{}</li>",
-                        escape(&v.id),
-                        escape(version_name(v)),
-                        version_metadata(v),
-                        self.study_status(&v.id)
-                    );
-                }
-                out.push_str("</ul></section>");
+                out.push_str(&self.work_relations(&item.work.id));
+                out.push_str(&self.version_list(&item.versions, false));
+                out.push_str("</section>");
             }
             out.push_str("</div>");
         }
@@ -473,6 +484,146 @@ impl View<'_> {
             )
         )
     }
+    fn work_link(&self, id: &str) -> String {
+        let title = self
+            .app
+            .library
+            .works
+            .get(id)
+            .map_or("", |w| w.title.as_str());
+        format!(
+            "<a class=\"text-link\" href=\"/library/works/{}\">{}</a>",
+            escape(id),
+            escape(title)
+        )
+    }
+    fn version_link(&self, id: &str) -> String {
+        let name = self.app.library.versions.get(id).map_or("", version_name);
+        format!(
+            "<a class=\"text-link\" href=\"/library/versions/{}\">{}</a>",
+            escape(id),
+            escape(name)
+        )
+    }
+    /// The Relations of a Work, shown on both Works each one links.
+    fn work_relations(&self, id: &str) -> String {
+        use crate::library::Relation;
+        let mut out = String::new();
+        for relation in self.app.library.relations.values() {
+            let (label, other) = match relation {
+                Relation::PartOf {
+                    work_id,
+                    parent_work_id,
+                } if work_id == id => ("Part of", parent_work_id),
+                Relation::PartOf {
+                    work_id,
+                    parent_work_id,
+                } if parent_work_id == id => ("Includes", work_id),
+                Relation::RelatedTo {
+                    work_id,
+                    related_work_id,
+                } if work_id == id => ("Related to", related_work_id),
+                Relation::RelatedTo {
+                    work_id,
+                    related_work_id,
+                } if related_work_id == id => ("Related to", work_id),
+                _ => continue,
+            };
+            let _ = write!(
+                out,
+                "<p class=\"fineprint library-relation\">{label} {}</p>",
+                self.work_link(other)
+            );
+        }
+        out
+    }
+    /// A correction and the Version it supersedes each name the other.
+    fn version_relations(&self, id: &str) -> String {
+        use crate::library::Relation;
+        let mut out = String::new();
+        for relation in self.app.library.relations.values() {
+            if let Relation::Supersedes {
+                version_id,
+                previous_id,
+            } = relation
+            {
+                if version_id == id {
+                    let _ = write!(
+                        out,
+                        "<p class=\"fineprint library-relation\">Corrects {}</p>",
+                        self.version_link(previous_id)
+                    );
+                } else if previous_id == id {
+                    let _ = write!(
+                        out,
+                        "<p class=\"fineprint library-relation\" data-superseded>Corrected by {}</p>",
+                        self.version_link(version_id)
+                    );
+                }
+            }
+        }
+        out
+    }
+    /// With `detail`, each Version also shows its Provenance and Rights status.
+    fn version_list(&self, versions: &[&crate::library::Version], detail: bool) -> String {
+        let mut out = String::from("<ul class=\"library-versions\">");
+        for v in versions {
+            let _ = write!(
+                out,
+                "<li><a class=\"version-link\" href=\"/library/versions/{}\">{}</a><p class=\"fineprint\">{}{}</p>{}{}</li>",
+                escape(&v.id),
+                escape(version_name(v)),
+                version_metadata(v),
+                if detail {
+                    format!(
+                        "<br>{} · {}",
+                        provenance_label(v.provenance),
+                        rights_label(v.rights)
+                    )
+                } else {
+                    String::new()
+                },
+                self.version_relations(&v.id),
+                self.study_status(&v.id)
+            );
+        }
+        out.push_str("</ul>");
+        out
+    }
+    fn library_work(&self, id: &str) -> String {
+        if self.app.practice.protected() {
+            return self.library_gate();
+        }
+        let Ok(item) = self.app.library.show_work(id) else {
+            return self.not_found();
+        };
+        let mut out = format!(
+            "<section class=\"library-page\" data-state=\"library-work\"><a class=\"text-link\" href=\"/library\">Back to Library</a><h1>{}</h1>",
+            escape(&item.work.title)
+        );
+        if !item.work.aliases.is_empty() {
+            let _ = write!(
+                out,
+                "<p class=\"fineprint\">Also known as {}</p>",
+                escape(&item.work.aliases.join(" · "))
+            );
+        }
+        if !item.work.context.is_empty() {
+            let _ = write!(
+                out,
+                "<p class=\"fineprint source-context\">{}</p>",
+                escape(&item.work.context)
+            );
+        }
+        out.push_str(&self.work_relations(id));
+        if item.versions.is_empty() {
+            out.push_str("<p class=\"lede\">This Work has no Versions.</p>");
+        } else {
+            out.push_str(&self.version_list(&item.versions, true));
+        }
+        out.push_str("</section>");
+        out
+    }
     fn study_status(&self, version_id: &str) -> String {
         self.app
             .practice
@@ -502,6 +653,21 @@ impl View<'_> {
             escape(version_name(v)),
             version_metadata(v)
         );
+        if self.query.get("existing").is_some_and(|v| v == "1") {
+            out = out.replacen(
+                "data-state=\"library-version\">",
+                "data-state=\"library-version\"><p class=\"notice\" role=\"status\">That text was already in the Library. Nothing was added.</p>",
+                1,
+            );
+        }
+        let corrections = self.version_relations(id);
+        if !corrections.is_empty() {
+            out = out.replacen(
+                "<details class=\"library-details version-details\">",
+                &format!("{corrections}<details class=\"library-details version-details\">"),
+                1,
+            );
+        }
         if !v.sources.is_empty() {
             let _ = write!(
                 out,
@@ -516,16 +682,22 @@ impl View<'_> {
                 escape(&item.work.context)
             );
         }
-        let rights = match v.rights {
-            crate::library::Rights::PrivateOnly => "Private only",
-            crate::library::Rights::Licensed => "Licensed",
-            crate::library::Rights::PublicDomain => "Public domain",
-        };
+        let rights = rights_label(v.rights);
         let _ = write!(
             out,
-            "<p class=\"fineprint\">Supplied text · {rights}</p></details>"
+            "<p class=\"fineprint\">{} · {rights}</p>{}<a class=\"text-link\" href=\"/library/works/{}\">Every Version of {}</a></details>",
+            provenance_label(v.provenance),
+            self.work_relations(&item.work.id),
+            escape(&item.work.id),
+            escape(&item.work.title)
         );
         let reviewable = crate::study::reviewable(v).is_ok();
+        // A text's Units are its phrases.
+        let units = if v.kind == crate::library::Kind::Text {
+            "phrases"
+        } else {
+            "Units"
+        };
         if !reviewable && v.kind == crate::library::Kind::Text {
             let _ = write!(
                 out,
@@ -541,7 +713,10 @@ impl View<'_> {
             .find(|s| s.version_id == id)
         {
             out.push_str(&self.study_status(id));
-            out.push_str("<div class=\"actions\"><a class=\"button primary\" href=\"/recall\">Return to practice</a></div><details class=\"library-details\"><summary>Manage Study</summary><p class=\"fineprint\">Pause stops new Units; due practice remains. Drop stops this Study. Both keep its history.</p><div class=\"actions\">");
+            let _ = write!(
+                out,
+                "<div class=\"actions\"><a class=\"button primary\" href=\"/recall\">Return to practice</a></div><details class=\"library-details\"><summary>Manage Study</summary><p class=\"fineprint\">Pause stops new {units}; due practice remains. Drop stops this Study. Both keep its history.</p><div class=\"actions\">"
+            );
             let (action, label) = if study.status == crate::study::Status::Active {
                 ("pause", "Pause")
             } else {
@@ -569,10 +744,33 @@ impl View<'_> {
                     ),
                 ));
             }
-            out.push_str("</div></details>");
+            out.push_str("</div>");
+            let mut paces = String::new();
+            for (value, label, pace) in [
+                ("light", "3 · Light", crate::study::Pace::Light),
+                ("steady", "6 · Steady", crate::study::Pace::Steady),
+                ("intense", "12 · Intense", crate::study::Pace::Intense),
+            ] {
+                let _ = write!(
+                    paces,
+                    "<label><input type=\"radio\" name=\"pace\" value=\"{value}\"{}> {label}</label>",
+                    if study.pace == pace { " checked" } else { "" }
+                );
+            }
+            out.push_str(&self.form(
+                "/practice/pace",
+                "pace",
+                "",
+                "",
+                &format!(
+                    "{}<fieldset><legend>Pace · new {units} each day</legend>{paces}</fieldset><button class=\"button quiet\">Set Pace</button>",
+                    hidden("study_id", &study.id)
+                ),
+            ));
+            out.push_str("</details>");
         } else if reviewable {
             let body = format!(
-                "{}<details class=\"library-details\"><summary>Pace: 6 new Units a day</summary><fieldset><legend>New Units each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
+                "{}<details class=\"library-details\"><summary>Pace: 6 new {units} a day</summary><fieldset><legend>New {units} each day</legend><label><input type=\"radio\" name=\"pace\" value=\"light\"> 3 · Light</label><label><input type=\"radio\" name=\"pace\" value=\"steady\" checked> 6 · Steady</label><label><input type=\"radio\" name=\"pace\" value=\"intense\"> 12 · Intense</label></fieldset></details><button class=\"button primary\">Learn</button>",
                 hidden("version_id", id)
             );
             out.push_str(&self.form("/practice/study/start", "learn", "library-learn", "", &body));
@@ -581,7 +779,11 @@ impl View<'_> {
         }
         let mapping = v.kind == crate::library::Kind::KeyedMapping
             && crate::library::validate_mapping(v).is_ok();
+        if mapping && v.direction == crate::library::MappingDirection::Both {
+            out.push_str("<p class=\"fineprint\">Practised both ways: from each key to its value, and from each value to its key.</p>");
+        }
         out.push_str("<div class=\"library-text\" aria-label=\"Saved text\">");
+        let mut position = 0;
         for section in &v.sections {
             let _ = write!(out, "<section><h2>{}</h2>", escape(&section.heading));
             if mapping {
@@ -590,10 +792,16 @@ impl View<'_> {
                     let (key, value) = crate::library::mapping_pair(&unit.text).unwrap();
                     let _ = write!(
                         out,
-                        "<div><dt>{}</dt><dd>{}</dd></div>",
+                        "<div><dt>{}</dt><dd>{}{}</dd></div>",
                         escape(key),
-                        escape(value)
+                        escape(value),
+                        if v.safety_bearing.contains(&position) {
+                            " <span class=\"fineprint\">· Safety practice</span>"
+                        } else {
+                            ""
+                        }
                     );
+                    position += 1;
                 }
                 out.push_str("</dl>");
             } else {
@@ -632,33 +840,31 @@ impl View<'_> {
                 .min()
         });
         let ready = study.is_none_or(|s| crate::study::study_ready(self.app, s, self.now));
-        let timing = next.map_or_else(
-            || "Start with a few short questions.".into(),
-            |at| {
-                if at <= self.now {
-                    "Ready to review.".into()
-                } else {
-                    format!("Next review {} (UTC).", date(at))
-                }
-            },
-        );
+        if !ready {
+            let sid = study.map(|s| s.id.as_str());
+            return self.rest(&lesson.input.title, |s| Some(s.id.as_str()) == sid, "");
+        }
+        let sid = study.map(|s| s.id.as_str());
+        let timing = match next {
+            Some(at) if at > self.now => next_review_line(at),
+            Some(_) if self.review_due(|s| Some(s.id.as_str()) == sid) => "Ready to review.".into(),
+            _ => "Start with a few short questions.".into(),
+        };
         let mut out = format!(
             "<section class=\"nato-screen\" data-state=\"mapping-starter-home\"><h1>{}</h1><p>{}</p>",
             escape(&lesson.input.title),
             escape(&timing)
         );
-        if ready {
-            out.push_str(&self.form(
-                "/practice/lesson/start",
-                "mapping-starter-start",
-                "",
-                "",
-                &format!(
-                    "{}<button class=\"button primary\">Continue</button>",
-                    hidden("starter", starter)
-                ),
-            ));
-        }
+        out.push_str(&self.form(
+            "/practice/lesson/start",
+            "mapping-starter-start",
+            "",
+            "",
+            &format!(
+                "{}<button class=\"button primary\">Continue</button>",
+                hidden("starter", starter)
+            ),
+        ));
         out.push_str(&self.lesson_picker(false));
         out.push_str("</section>");
         out
@@ -710,16 +916,7 @@ impl View<'_> {
     fn exact_stream(&self) -> String {
         use crate::study::Status;
         let Some(p) = &self.app.practice.current else {
-            let due = crate::study::due(self.app, self.now);
-            let next = due["next_due_ms"].as_i64();
-            let message = next.map_or_else(
-                || "No next due time is scheduled. Resume a Study to introduce more Units.".into(),
-                |at| format!("Next due at {} (UTC).", date(at)),
-            );
-            return format!(
-                "<section class=\"empty-stage exact-study\" data-state=\"exact-caught-up\"><p class=\"eyebrow\">Exact recall</p><h1>A good place to pause.</h1><p class=\"lede\">No Unit is due. {}</p><a class=\"button primary\" href=\"/library\">Open Library</a></section>",
-                escape(&message)
-            );
+            return self.mixed_home();
         };
         if crate::study::reviewable(&self.app.library.versions[&p.prompt.version_id]).is_err() {
             return self.unavailable_practice(p);
@@ -729,40 +926,94 @@ impl View<'_> {
             .attempt_id
             .as_ref()
             .and_then(|id| self.app.practice.attempts.get(id));
+        let judged = attempt.and_then(|a| self.judged_state(a));
         let state = if attempt.is_some() {
-            "exact-result"
+            judged.unwrap_or("exact-result")
         } else {
             "exact-prompt"
         };
         let readiness = crate::lessons::catalog().into_iter().find(|l| {
             l.id.starts_with("baby-") && l.matches(&self.app.library.versions[&prompt.version_id])
         });
+        let direction = crate::study::prompt_direction(self.app, prompt, &p.targets);
+        let question = self.mapping_question_in(prompt, direction);
         let mut out = format!(
-            "<section class=\"study exact-study{}\" data-state=\"{state}\" data-prompt-id=\"{}\">",
+            "<section class=\"study exact-study{}\" data-state=\"{state}\" data-prompt-id=\"{}\"{}>",
             if readiness.is_some() {
                 " mapping-study readiness-study"
-            } else if prompt.cue_level == crate::study::Cue::MappingKey {
+            } else if question.is_some() {
                 " mapping-study"
             } else {
                 ""
             },
-            escape(&prompt.id)
+            escape(&prompt.id),
+            Self::judged_poll(judged)
         );
-        if self.app.practice.mixed_review {
-            out.push_str("<p class=\"eyebrow\">All subjects</p>");
-        }
-        if let Some(a) = attempt {
+        if let Some(a) = attempt.filter(|_| judged.is_some()) {
+            let retry = self.form(
+                "/practice/lesson/next",
+                "exact-retry",
+                "exact-form",
+                "data-next",
+                &format!(
+                    "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                    hidden("after", &a.prompt.id),
+                    hidden("mode", "retry")
+                ),
+            );
+            let (body, actions) = self.judged_result(a, &retry, |secondary| {
+                self.form(
+                    if self.app.practice.mixed_review {
+                        "/practice/review/next"
+                    } else {
+                        "/practice/next"
+                    },
+                    "exact-next",
+                    "exact-form",
+                    if secondary { "" } else { "data-next" },
+                    &format!(
+                        "{}{}<button class=\"{}\">Next</button>",
+                        hidden("after", &a.prompt.id),
+                        // A focused mapping lesson stays in its own Study.
+                        if !self.app.practice.mixed_review
+                            && crate::lessons::mapping_route(
+                                &self.app.library.versions[&a.version_id]
+                            )
+                            .is_some()
+                        {
+                            hidden("study_id", &a.prompt.study_id)
+                        } else {
+                            String::new()
+                        },
+                        if secondary {
+                            "text-button"
+                        } else {
+                            "button primary"
+                        }
+                    ),
+                )
+            });
+            let _ = write!(out, "{body}<div class=\"result-actions\">{actions}</div>");
+        } else if let Some(a) = attempt {
             out.push_str(&self.exact_result(a));
         } else if p.source_visible() {
-            let _ = write!(
-                out,
-                "<h1>{}</h1>",
-                escape(if prompt.cue_level == crate::study::Cue::MappingKey {
-                    &prompt.cue
-                } else {
-                    crate::study::visible_prompt_title(prompt)
-                })
-            );
+            // A pair is studied under its authored question, safety cue included,
+            // set as its Quiz sets it.
+            if let (Some(lesson), Some(question)) = (&readiness, question) {
+                let _ = write!(
+                    out,
+                    "<p class=\"eyebrow\">{}</p><div class=\"exact-cue\"><h1 class=\"reading\">{}</h1></div>",
+                    escape(&lesson.input.title),
+                    escape(question)
+                );
+            } else {
+                let _ = write!(
+                    out,
+                    "<h1>{}</h1>",
+                    escape(question.unwrap_or_else(|| crate::study::visible_prompt_title(prompt)))
+                );
+            }
+            out.push_str(Self::safety_cue(prompt));
             out.push_str(&self.source_study(p));
         } else {
             out.push_str("<span data-study-phase=\"quiz\" hidden></span>");
@@ -779,17 +1030,35 @@ impl View<'_> {
                     "<p class=\"eyebrow\">Exact recall</p><h1>{}</h1>",
                     escape(crate::study::visible_prompt_title(prompt))
                 );
-                out.push_str(&Self::exact_prompt_context(prompt));
+                out.push_str(&self.exact_prompt_context(prompt));
+                if prompt.context.is_none() {
+                    out.push_str(&self.previous_phrase(p));
+                }
             }
+            out.push_str(Self::safety_cue(prompt));
             if prompt.assisted || p.revealed {
                 out.push_str("<p class=\"helped-label\">Assisted practice · the schedule stays unchanged.</p>");
             }
             if p.revealed && p.phase != Some(crate::study::StudyPhase::Quiz) {
-                out.push_str("<section class=\"exact-disclosure\"><h2>The Unit</h2><p class=\"fineprint\">Assistance is recorded.</p>");
+                // A text's Unit is a phrase, as its lessons call it.
+                let unit = if self.app.library.versions[&prompt.version_id].kind
+                    == crate::library::Kind::Text
+                {
+                    "The phrase"
+                } else {
+                    "The Unit"
+                };
+                let _ = write!(
+                    out,
+                    "<section class=\"exact-disclosure\"><h2>{unit}</h2><p class=\"fineprint\">Assistance is recorded.</p>"
+                );
                 out.push_str(&self.exact_expected());
                 out.push_str("</section>");
             }
-            let mapping = prompt.cue_level == crate::study::Cue::MappingKey;
+            let mapping = matches!(
+                prompt.cue_level,
+                crate::study::Cue::MappingKey | crate::study::Cue::MappingValue
+            );
             let saved = escape(self.saved_answer(&prompt.id));
             let answer = if mapping {
                 format!(
@@ -797,7 +1066,13 @@ impl View<'_> {
                 )
             } else {
                 format!(
-                    "<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\">\n{saved}</textarea>"
+                    "<label class=\"answer-label\" for=\"answer\">Your answer</label><textarea id=\"answer\" name=\"answer\" rows=\"4\" maxlength=\"32768\" enterkeyhint=\"done\" spellcheck=\"false\" autocapitalize=\"sentences\"{}>\n{saved}</textarea>",
+                    // Enter starts a new line in an answer of several Units.
+                    if matches!(prompt.scope, crate::study::Scope::Unit { .. }) {
+                        ""
+                    } else {
+                        " data-multiline"
+                    }
                 )
             };
             out.push_str(&self.form(
@@ -806,7 +1081,7 @@ impl View<'_> {
                 "answer-form exact-answer-form",
                 "data-answer-limit=\"32768\"",
                 &format!(
-                    "{}{answer}<button class=\"button primary\">Check my answer</button>",
+                    "{}{answer}<button class=\"button primary\">Check</button>",
                     hidden("prompt_id", &prompt.id)
                 ),
             ));
@@ -830,13 +1105,16 @@ impl View<'_> {
                 );
             }
             out.push_str(&self.lesson_picker(false));
-        } else if self
-            .app
-            .practice
-            .studies
-            .values()
-            .any(|s| s.status != Status::Dropped)
+        } else if self.app.library.versions[&prompt.version_id].kind != crate::library::Kind::Text
+            && self
+                .app
+                .practice
+                .studies
+                .values()
+                .any(|s| s.status != Status::Dropped)
         {
+            // A text's stream leaves the earlier notebook to the Menu. Other
+            // streams keep this link: their pages are pinned byte for byte.
             out.push_str(
                 "<a class=\"text-link exact-notebook\" href=\"/notebook\">Concept practice →</a>",
             );
@@ -862,18 +1140,25 @@ impl View<'_> {
         out.push_str("</section>");
         out
     }
-    fn exact_prompt_context(prompt: &crate::study::Prompt) -> String {
+    fn exact_prompt_context(&self, prompt: &crate::study::Prompt) -> String {
         use crate::study::Cue;
+        let text = self
+            .app
+            .library
+            .versions
+            .get(&prompt.version_id)
+            .is_some_and(|v| v.kind == crate::library::Kind::Text);
         let mut out = String::new();
         if let Some(context) = &prompt.context {
             let _ = write!(
                 out,
-                "<div class=\"exact-context\"><p class=\"eyebrow\">Previous Unit</p><p class=\"reading\">{}</p></div>",
+                "<div class=\"exact-context\"><p class=\"eyebrow\">Previous phrase</p><p class=\"reading\">{}</p></div>",
                 escape(context)
             );
         }
         if !prompt.cue.is_empty() {
             let label = match prompt.cue_level {
+                Cue::Read if text => "Read the phrase",
                 Cue::Read => "Read the Unit",
                 Cue::FirstLetters => "First letters",
                 Cue::FirstLetter => "First letter",
@@ -881,6 +1166,7 @@ impl View<'_> {
                 Cue::SectionHeading => "Section",
                 Cue::WholeTitle => "Title",
                 Cue::MappingKey => "Key",
+                Cue::MappingValue => "Value",
             };
             let _ = write!(
                 out,
@@ -895,6 +1181,7 @@ impl View<'_> {
             return String::new();
         };
         let version = &self.app.library.versions[&p.prompt.version_id];
+        let direction = crate::study::prompt_direction(self.app, &p.prompt, &p.targets);
         version
             .sections
             .iter()
@@ -903,49 +1190,51 @@ impl View<'_> {
             .map(|u| {
                 format!(
                     "<p class=\"reading exact-expected\">{}</p>",
-                    escape(crate::study::expected_unit(version, u))
+                    escape(crate::study::expected_answer(version, u, direction))
                 )
             })
             .collect()
     }
     fn exact_result(&self, a: &crate::study::Attempt) -> String {
         use crate::grading::{Change, Verdict};
-        let good = a.grade.verdict == Verdict::Good;
+        let good = a.verdict() == Some(Verdict::Good);
         let verdict = if good { "Good" } else { "Again" };
         let mut out = format!(
             "<div class=\"feedback feedback-{}\" role=\"status\"><h1 data-verdict=\"{verdict}\">{verdict}.</h1></div>",
             if good { "correct" } else { "miss" },
         );
-        let mapping = a.prompt.cue_level == crate::study::Cue::MappingKey;
+        let mapping = matches!(
+            a.prompt.cue_level,
+            crate::study::Cue::MappingKey | crate::study::Cue::MappingValue
+        );
         if mapping {
             let _ = write!(
                 out,
                 "<p class=\"mapping-result\"><span>{}</span> <span aria-hidden=\"true\">→</span> <strong>{}</strong></p>",
                 escape(&a.prompt.cue),
-                escape(crate::study::expected_unit(
+                escape(crate::study::expected_answer(
                     &self.app.library.versions[&a.version_id],
                     self.app.library.versions[&a.version_id]
                         .sections
                         .iter()
                         .flat_map(|s| &s.units)
                         .find(|u| u.id == a.prompt.unit_ids[0])
-                        .unwrap()
+                        .unwrap(),
+                    crate::study::attempt_direction(self.app, a)
                 ))
             );
             if let Some(feedback) = crate::study::mapping_feedback(self.app, a) {
-                if let Some(answered_key) = feedback.answered_key {
-                    let _ = write!(
-                        out,
-                        "<p class=\"fineprint\">That answer belongs to key {}.</p>",
-                        escape(&answered_key)
-                    );
+                if feedback.kind == "wrong_key" {
+                    out.push_str(&Self::wrong_pair(&feedback));
                 } else if feedback.kind == "spelling" {
                     out.push_str(
                         "<p class=\"fineprint\">Spelling mismatch: use the answer shown above.</p>",
                     );
                 }
             }
-            if !good && self.app.library.versions[&a.version_id].spelling_strict {
+            if !good && a.prompt.safety_bearing {
+                out.push_str("<p class=\"fineprint\">A safety answer states the safe practice itself: no other practice, negation or added words.</p>");
+            } else if !good && self.app.library.versions[&a.version_id].spelling_strict {
                 out.push_str(if crate::lessons::mapping_route(&self.app.library.versions[&a.version_id]).is_some() { "<p class=\"fineprint\">Use the short answer shown above.</p>" } else { "<p class=\"fineprint\">Official spelling matters. Scry checks your answer; no self-rating.</p>" });
             }
         }
@@ -969,6 +1258,17 @@ impl View<'_> {
                 escape(&hint.name)
             );
         }
+        // A missed phrase shows its expected wording at once and offers a guided retry.
+        let retry = !good
+            && self.app.library.versions[&a.version_id].kind == crate::library::Kind::Text
+            && matches!(a.prompt.scope, crate::study::Scope::Unit { .. });
+        if retry {
+            let _ = write!(
+                out,
+                "<div class=\"lesson-target\"><h2>The phrase to practise</h2>{}</div>",
+                self.exact_expected()
+            );
+        }
         if a.assisted {
             out.push_str(
                 "<p class=\"helped-label\">Assisted practice · the schedule stayed unchanged.</p>",
@@ -980,7 +1280,7 @@ impl View<'_> {
             out,
             "<details class=\"exact-full-answer\"><summary>Full answer</summary><h2>{}</h2>{}<div class=\"answer-pair\"><span>You answered</span><p>{}</p></div><h2>Expected text</h2>{}<h2>Word by word</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
             escape(&a.prompt.title),
-            Self::exact_prompt_context(&a.prompt),
+            self.exact_prompt_context(&a.prompt),
             escape(&a.raw_answer),
             self.exact_expected()
         );
@@ -995,6 +1295,19 @@ impl View<'_> {
         );
         out.push_str(&self.result_progress(a));
         out.push_str("<div class=\"result-actions\">");
+        if retry {
+            out.push_str(&self.form(
+                "/practice/lesson/next",
+                "exact-retry",
+                "exact-form",
+                "data-next",
+                &format!(
+                    "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                    hidden("after", &a.prompt.id),
+                    hidden("mode", "retry")
+                ),
+            ));
+        }
         out.push_str(&self.form(
             if self.app.practice.mixed_review {
                 "/practice/review/next"
@@ -1003,9 +1316,9 @@ impl View<'_> {
             },
             "exact-next",
             "exact-form",
-            "data-next",
+            if retry { "" } else { "data-next" },
             &format!(
-                    "{}{}<button class=\"button primary\">Next</button>",
+                    "{}{}<button class=\"{}\">Next</button>",
                     hidden("after", &a.prompt.id),
                     if !self.app.practice.mixed_review
                         && crate::lessons::mapping_route(&self.app.library.versions[&a.version_id])
@@ -1014,7 +1327,8 @@ impl View<'_> {
                         hidden("study_id", &a.prompt.study_id)
                     } else {
                         String::new()
-                    }
+                    },
+                    if retry { "text-button" } else { "button primary" }
                 ),
         ));
         for e in &a.effects {
@@ -1042,6 +1356,219 @@ impl View<'_> {
         }
         out.push_str("</div>");
         out
+    }
+    /// The `data-state` of a result whose answer was left for Jev to judge.
+    fn judged_state(&self, a: &crate::study::Attempt) -> Option<&'static str> {
+        use crate::study::JudgmentState;
+        Some(match crate::study::judgment_view(self.app, a)?.state {
+            JudgmentState::Checking => "exact-checking",
+            JudgmentState::Ungraded => "exact-ungraded",
+            JudgmentState::Decided => "exact-result",
+        })
+    }
+    /// Only a result still being checked asks the page to look again.
+    fn judged_poll(state: Option<&str>) -> &'static str {
+        if state == Some("exact-checking") {
+            " data-poll"
+        } else {
+            ""
+        }
+    }
+    /// The local comparison of an answer left for Jev. It is evidence beside
+    /// the judgment and is always labelled as not the Verdict.
+    fn judged_comparison(&self, a: &crate::study::Attempt, expected: &str) -> String {
+        let mut out = format!("<h2>Expected text</h2>{expected}");
+        let version = &self.app.library.versions[&a.version_id];
+        if version.kind == crate::library::Kind::OrderedList
+            && let Some(judgment) = &a.judgment
+        {
+            // The same items the comparison graded: the Prompt's own scope,
+            // which a Section of a longer list does not start at its first item.
+            let count = judgment.targets.len();
+            let start = judgment.targets[0].unit_index;
+            if let Ok(feedback) =
+                crate::ordered::feedback(version, start..start + count, &a.raw_answer)
+            {
+                let _ = write!(
+                    out,
+                    "<h2>Item-by-item comparison, not the Verdict</h2><p class=\"fineprint\">{} of {count} items matched · {} in order.</p>",
+                    feedback.recalled, feedback.in_order
+                );
+            }
+        } else {
+            out.push_str(
+                "<h2>Word-by-word comparison, not the Verdict</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
+            );
+            for d in &a.grade.diff {
+                out.push_str(&Self::exact_diff_word(d, false, a.grade.units.len() > 1));
+            }
+            out.push_str("</ol>");
+        }
+        let _ = write!(
+            out,
+            "<p class=\"fineprint exact-authority\">{} · {} · comparison only, not the Verdict</p>",
+            escape(&a.grade.authority.name),
+            escape(&a.grade.authority.grader_version)
+        );
+        out
+    }
+    /// "Judged by Jev (recall-v1; model)".
+    fn judged_by(decided: &crate::study::Decided) -> String {
+        format!(
+            "Judged by Jev ({})",
+            escape(&decided.authority.grader_version.replace(";model=", "; "))
+        )
+    }
+    /// A deliberate, paid action: it says what it reserves.
+    fn check_again(&self, a: &crate::study::Attempt, class: &str) -> String {
+        format!(
+            "{}<p class=\"fineprint\">Check again asks Jev once more. It reserves ${:.2} of today's allowance.</p>",
+            self.form(
+                "/practice/check",
+                &format!("check-{}", a.id),
+                class,
+                "",
+                &format!(
+                    "{}<button class=\"button secondary\">Check again</button>",
+                    hidden("attempt_id", &a.id)
+                ),
+            ),
+            RESERVATION as f64 / 1_000_000.0
+        )
+    }
+    /// The held result of an answer left for Jev, in each of its states: being
+    /// checked, saved and not graded, or decided. Returns the result and its
+    /// actions; `next(secondary)` is the caller's own way onward. An answer
+    /// with no Verdict is never styled or counted as a miss or a success.
+    fn judged_result(
+        &self,
+        a: &crate::study::Attempt,
+        retry: &str,
+        next: impl Fn(bool) -> String,
+    ) -> (String, String) {
+        use crate::grading::{Change, Verdict};
+        use crate::study::JudgmentState;
+        let view = crate::study::judgment_view(self.app, a).expect("an answer left for Jev");
+        let version = &self.app.library.versions[&a.version_id];
+        let answer = format!(
+            "<div class=\"answer-pair\"><span>You answered</span><p>{}</p></div>",
+            escape(&a.raw_answer)
+        );
+        let full = |summary: &str, answer: &str| {
+            format!(
+                "<details class=\"exact-full-answer\"><summary>{summary}</summary><h2>{}</h2>{}{answer}{}</details>",
+                escape(&a.prompt.title),
+                self.exact_prompt_context(&a.prompt),
+                self.judged_comparison(a, &self.exact_expected())
+            )
+        };
+        let Some(decided) = view.decided else {
+            if view.state == JudgmentState::Checking {
+                return (
+                    format!(
+                        "<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h1>Checking it.</h1><p>Jev is judging your answer. You can leave and come back; it stays here.</p></div>{answer}"
+                    ),
+                    format!(
+                        "<a class=\"text-link\" href=\"{}\">Refresh</a>{}",
+                        escape(self.path),
+                        next(false)
+                    ),
+                );
+            }
+            // While checks are paused, asking again would only be refused.
+            let again = if self.app.restored_paused {
+                String::new()
+            } else if view.checks_left {
+                self.check_again(a, "exact-form")
+            } else {
+                "<p class=\"fineprint\">Three checks are saved for this answer. It stays saved and not graded.</p>".into()
+            };
+            return (
+                format!(
+                    "<div class=\"feedback feedback-self\" role=\"status\"><h1>Saved, not graded.</h1></div><p class=\"notice\">{}{}</p><p class=\"fineprint\">This answer has no Verdict and its schedule is unchanged.</p>{answer}{}",
+                    escape(
+                        view.check
+                            .and_then(|c| c.reason.as_deref())
+                            .unwrap_or("Jev did not judge this answer.")
+                    ),
+                    // Checks stay paused in a restored notebook until the
+                    // Owner resumes them, which is done in Settings.
+                    if self.app.restored_paused {
+                        " <a href=\"/settings#preparation\">Resume checks in Settings</a>"
+                    } else {
+                        ""
+                    },
+                    full("Expected text and comparison", "")
+                ),
+                format!("{again}{}", next(false)),
+            );
+        };
+        let good = decided.verdict == Verdict::Good;
+        let verdict = if good { "Good" } else { "Again" };
+        let mut out = format!(
+            "<div class=\"feedback feedback-{}\" role=\"status\"><h1 data-verdict=\"{verdict}\">{verdict}.</h1></div><p class=\"fineprint exact-authority\" data-authority=\"jev\">{}</p>",
+            if good { "correct" } else { "miss" },
+            Self::judged_by(decided)
+        );
+        if matches!(
+            a.prompt.cue_level,
+            crate::study::Cue::MappingKey | crate::study::Cue::MappingValue
+        ) && let Some(feedback) = crate::study::mapping_feedback(self.app, a)
+        {
+            let _ = write!(
+                out,
+                "<p class=\"mapping-result\"><span>{}</span> <span aria-hidden=\"true\">→</span> <strong>{}</strong></p>",
+                escape(&a.prompt.cue),
+                escape(&feedback.expected)
+            );
+            out.push_str(&Self::wrong_pair(&feedback));
+        }
+        if good
+            && (version.kind == crate::library::Kind::OrderedList
+                || a.grade
+                    .diff
+                    .iter()
+                    .any(|d| !matches!(d.change, Change::Correct { .. })))
+        {
+            out.push_str("<p class=\"fineprint\">Jev accepted this answer as the same recall, though it differs from the expected text in the comparison below.</p>");
+        }
+        if let Some(hint) = &a.grade.wrong_version_hint {
+            let _ = write!(
+                out,
+                "<p class=\"notice\">Your answer is closer to Version {}.</p>",
+                escape(&hint.name)
+            );
+        }
+        // A missed phrase shows its expected wording at once and offers a guided retry.
+        let retry_offered = !good
+            && version.kind == crate::library::Kind::Text
+            && matches!(a.prompt.scope, crate::study::Scope::Unit { .. });
+        if retry_offered {
+            let _ = write!(
+                out,
+                "<div class=\"lesson-target\"><h2>The phrase to practise</h2>{}</div>",
+                self.exact_expected()
+            );
+        }
+        if a.effects.iter().any(|e| e.superseded) {
+            out.push_str("<p class=\"fineprint\" data-schedule-effect=\"superseded\">A newer answer was already recorded; schedule unchanged.</p>");
+        } else if a.assisted {
+            out.push_str(
+                "<p class=\"helped-label\">Assisted practice · the schedule stayed unchanged.</p>",
+            );
+        } else if a.effects.iter().all(|e| e.extra_practice) {
+            out.push_str("<p class=\"fineprint\">Extra practice · schedule unchanged.</p>");
+        }
+        out.push_str(&full("Full answer", &answer));
+        out.push_str(&self.result_progress(a));
+        (
+            out,
+            format!(
+                "{}{}",
+                if retry_offered { retry } else { "" },
+                next(retry_offered)
+            ),
+        )
     }
     fn exact_diff_word(d: &crate::grading::Diff, summary: bool, multiple_units: bool) -> String {
         use crate::grading::Change;
@@ -1092,133 +1619,94 @@ impl View<'_> {
             d.unit_index
         )
     }
-    fn study(&self) -> String {
+    /// The earlier concept notebook's held question, as it was left. It is
+    /// history: nothing here is a form, and no state of it asks to be polled.
+    fn earlier(&self) -> String {
         let Some(o) = self.app.occurrence.as_ref() else {
-            return self.empty();
+            return self.earlier_empty();
         };
-        let concept = self.app.concepts.get(&o.concept_id);
-        if o.phase == "intro" {
-            let mut out = format!(
-                "<section class=\"study intro\" data-state=\"intro\"><p class=\"eyebrow\"><span class=\"small-star\" aria-hidden=\"true\">✦</span> A new idea</p><h1>{}</h1>",
-                concept
-                    .map(|c| self.concept_name(c))
-                    .unwrap_or_else(|| "A useful starting point".into())
-            );
-            if let Some(c) = concept {
-                out.push_str(&self.lede("lede", c));
-                out.push_str(&self.notes(c));
-            }
-            out.push_str("<div class=\"thumb-actions\">");
-            out.push_str(&self.review_form("intro", "read", "", "", &format!("{}<button class=\"button primary\">Start practicing <span aria-hidden=\"true\">→</span></button>",hidden("known","false"))));
-            out.push_str(&self.review_form(
-                "intro",
-                "known",
-                "",
-                "",
-                &format!(
-                    "{}<button class=\"text-button\">I know this already</button>",
-                    hidden("known", "true")
-                ),
-            ));
-            out.push_str("</div><p class=\"fineprint\">Reading is a starting point. Your practice tells us what to revisit.</p></section>");
-            return format!("{}{out}", self.pending());
-        }
-        let mut out = String::from("<section class=\"study\"");
-        let _ = write!(out, " data-state=\"{}\">", escape(&o.phase));
-        if let Some(c) = concept {
+        let state = if o.phase == "result" && o.result.is_some() {
+            "earlier-result"
+        } else if o.answer.is_some() {
+            "earlier-ungraded"
+        } else {
+            "earlier-unanswered"
+        };
+        let mut out = format!("<section class=\"study\" data-state=\"{state}\">");
+        if let Some(c) = self.app.concepts.get(&o.concept_id) {
             let (label, href) = self.study_chip(c);
-            if o.phase == "result" || o.assisted {
-                let _ = write!(
-                    out,
-                    "<a class=\"concept-chip\" href=\"{href}\"><span aria-hidden=\"true\">✦</span>{label}</a>"
-                );
-            } else {
-                let _ = write!(
-                    out,
-                    "<span class=\"concept-chip\"><span aria-hidden=\"true\">✦</span>{label}</span>"
-                );
-            }
+            let _ = write!(
+                out,
+                "<a class=\"concept-chip\" href=\"{href}\"><span aria-hidden=\"true\">✦</span>{label}</a>"
+            );
         }
         let _ = write!(
             out,
             "<h1 class=\"question\">{}</h1>",
             escape(&o.presentation.prompt)
         );
-        match o.phase.as_str() {
-            "result" => out.push_str(&self.result(o)),
-            "self" | "self-check" => out.push_str(&self.self_check(o)),
-            "checking" | "pending" => {
-                if self.check_paused(o) {
-                    out.push_str("<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h2>Your meaning check is paused.</h2><p>Resume meaning checks in Settings to continue. Your answer stays ungraded.</p></div>");
-                } else {
-                    out.push_str("<div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h2>Checking your meaning.</h2><p>You can leave and come back. Your question will stay here.</p></div>");
-                }
-                if let Some(answer) = &o.answer {
-                    let _ = write!(
-                        out,
-                        "<div class=\"answer-pair\"><span>You answered</span><p>{}</p></div>",
-                        escape(answer)
-                    );
-                }
-                if self.check_paused(o) {
-                    out.push_str(self.resume_link());
-                } else {
-                    let _ = write!(
-                        out,
-                        "<a class=\"text-link\" href=\"{}\">Check again</a>",
-                        legacy_home(self.app)
-                    );
-                }
-            }
-            _ => out.push_str(&self.question(o)),
-        }
+        out.push_str(&match state {
+            "earlier-result" => self.earlier_result(o),
+            "earlier-ungraded" => self.earlier_ungraded(o),
+            _ => self.earlier_unanswered(o),
+        });
         out.push_str("</section>");
         format!("{}{out}", self.pending())
     }
-    fn question(&self, o: &Occurrence) -> String {
+    fn earlier_unanswered(&self, o: &Occurrence) -> String {
         let mut out = String::new();
-        if o.assisted {
-            out.push_str(
-                "<p class=\"helped-label\">Helped practice · the reference was opened</p>",
-            );
-        }
-        if o.presentation.kind == "choice" || o.presentation.kind == "mcq" {
-            let mut choices = String::from(
-                "<fieldset class=\"choice-fieldset\"><legend class=\"sr-only\">Choose an answer</legend>",
-            );
-            for (index, choice) in o.presentation.choices.iter().enumerate() {
-                let _ = write!(
-                    choices,
-                    "<button class=\"choice\" name=\"answer\" value=\"{}\" data-choice=\"{}\"><span class=\"choice-key\" aria-hidden=\"true\">{}</span><span>{}</span><span class=\"choice-arrow\" aria-hidden=\"true\">↗</span></button>",
-                    escape(choice),
-                    index + 1,
-                    index + 1,
-                    escape(choice)
-                );
+        if !o.presentation.choices.is_empty() {
+            out.push_str("<ol class=\"reading earlier-choices\">");
+            for choice in &o.presentation.choices {
+                let _ = write!(out, "<li>{}</li>", escape(choice));
             }
-            choices.push_str("</fieldset>");
-            out.push_str(&self.review_form(
-                "answer",
-                "answer",
-                "answer-form choice-form",
-                "",
-                &choices,
-            ));
-            out.push_str("<p class=\"control-hint\">Choose one answer. <span class=\"keyboard-hint\">Or press its number.</span></p>");
-        } else {
-            let field = format!(
-                "<label class=\"answer-label\" for=\"answer\">{}<span>Take a moment. Say it your way.</span></label><textarea id=\"answer\" name=\"answer\" rows=\"3\" maxlength=\"4000\" placeholder=\"Your answer, from memory…\" required autocomplete=\"off\" spellcheck=\"false\">{}</textarea><div class=\"thumb-actions answer-actions\"><button class=\"button primary\">Check my answer <span aria-hidden=\"true\">→</span></button></div>",
-                if o.presentation.kind == "explain" {
-                    "Explain your thinking"
-                } else {
-                    "What comes to mind?"
-                },
-                escape(o.answer.as_deref().unwrap_or(""))
-            );
-            out.push_str(&self.review_form("answer", "answer", "answer-form", "", &field));
+            out.push_str("</ol>");
         }
-        out.push_str(&self.more(o));
+        out.push_str("<div class=\"feedback feedback-self\"><div><h2>Not answered.</h2><p>Scry no longer serves or grades the earlier concept notebook.</p></div></div>");
+        if o.assisted {
+            out.push_str("<p class=\"helped-label\">The reference had been opened.</p>");
+        }
         out
+    }
+    /// A saved answer with no Verdict. The check is named by its stored
+    /// status alone; the message stored with it stays in export.
+    fn earlier_ungraded(&self, o: &Occurrence) -> String {
+        let status = o
+            .assessment_id
+            .as_ref()
+            .and_then(|id| self.app.assessments.get(id))
+            .map(|check| check.status.as_str());
+        let (name, label) = status.map_or(("none", "No check was recorded."), check_label);
+        format!(
+            "<div class=\"feedback feedback-self\"><div><h2>Your answer is saved, not graded.</h2><p data-check=\"{name}\">{label}</p></div></div>{}",
+            self.answer_pair(o)
+        )
+    }
+    fn earlier_result(&self, o: &Occurrence) -> String {
+        let Some(result) = &o.result else {
+            return String::new();
+        };
+        let helped = o.assisted || result.outcome == "helped" || result.authority == "reveal";
+        let correct = matches!(
+            result.outcome.as_str(),
+            "correct" | "success" | "recalled" | "warm_correct"
+        );
+        let (class, icon, title) = if helped {
+            ("helped", "◉", "With help.")
+        } else if correct {
+            ("correct", "✓", "Recalled.")
+        } else {
+            ("miss", "×", "Missed.")
+        };
+        let authority = if result.corrected {
+            "Your Correction"
+        } else {
+            authority_label(&result.authority)
+        };
+        format!(
+            "<div class=\"feedback feedback-{class}\"><span class=\"result-mark\" aria-hidden=\"true\">{icon}</span><div><h2>{title}</h2><p>{authority}</p></div></div>{}",
+            self.answer_pair(o)
+        )
     }
     fn answer_pair(&self, o: &Occurrence) -> String {
         format!(
@@ -1234,133 +1722,18 @@ impl View<'_> {
             provenance(&o.presentation.basis, &o.presentation.quotes)
         )
     }
-    fn result(&self, o: &Occurrence) -> String {
-        let Some(result) = &o.result else {
-            return "<p role=\"status\">Your result is being reconciled. Refresh to see the saved outcome.</p>".into();
-        };
-        let helped = o.assisted || result.outcome == "helped" || result.authority == "reveal";
-        let correct = matches!(
-            result.outcome.as_str(),
-            "correct" | "success" | "recalled" | "warm_correct"
-        );
-        let (class, icon, title) = if helped {
-            ("helped", "◉", "With a little help.")
-        } else if correct {
-            ("correct", "✓", "You recalled it.")
-        } else {
-            ("miss", "×", "Not quite yet.")
-        };
-        let authority = if result.corrected {
-            "You corrected this grade"
-        } else {
-            match result.authority.as_str() {
-                "exact" => "Matched the saved answer",
-                "jev" => "Checked the meaning",
-                "learner" => "You checked your answer",
-                "reveal" => "You chose to see the answer",
-                _ => "Saved learning record",
-            }
-        };
-        let mut out = format!(
-            "<div class=\"feedback feedback-{class}\" role=\"status\" aria-live=\"polite\" aria-atomic=\"true\"><span class=\"result-mark\" aria-hidden=\"true\">{icon}</span><div><h2>{title}</h2><p>{authority}{}</p></div></div>{}",
-            if helped {
-                " · recorded as helped practice"
-            } else {
-                ""
-            },
-            self.answer_pair(o)
-        );
-        out.push_str("<div class=\"thumb-actions result-actions\">");
-        out.push_str(&self.review_form("next","next","","data-next", "<button class=\"button primary\">Next question <span aria-hidden=\"true\">→</span></button>"));
-        out.push_str("</div>");
-        if let Some(c) = self.app.concepts.get(&o.concept_id) {
-            let _ = write!(
-                out,
-                "<a class=\"text-link reference-link\" href=\"/concepts/{}\">Read the explanation for this idea <span aria-hidden=\"true\">↗</span></a>",
-                escape(&c.id)
-            );
-        }
-        out.push_str(&self.more(o));
-        out
-    }
-    fn self_check(&self, o: &Occurrence) -> String {
-        let assessment = o
-            .assessment_id
-            .as_ref()
-            .and_then(|id| self.app.assessments.get(id));
-        let mut out = format!(
-            "<div class=\"feedback feedback-self\" role=\"status\"><h2>Your answer is saved, not graded.</h2><p>A native verdict is unavailable for this earlier activity. Self-grading is retired; your answer, history and schedule are unchanged.</p></div>{}<p><a class=\"text-link\" href=\"/\">Return to native review</a></p>",
-            self.answer_pair(o)
-        );
-        if self.check_paused(o) {
-            out.push_str(self.resume_link());
-        } else if assessment
-            .is_some_and(|a| matches!(a.status.as_str(), "failed" | "unknown" | "superseded"))
-        {
-            out.push_str(&self.review_form(
-                "retry",
-                "retry",
-                "",
-                "",
-                "<button class=\"text-button\">Retry native check</button>",
-            ));
-        }
-        out
-    }
-    fn more(&self, o: &Occurrence) -> String {
-        let mut out = String::from(
-            "<details class=\"overflow\"><summary>More <span aria-hidden=\"true\">＋</span></summary><div class=\"overflow-menu\">",
-        );
-        if o.phase == "question" {
-            out.push_str(&self.review_form(
-                "reveal",
-                "reveal",
-                "",
-                "",
-                "<button>Show me the answer</button>",
-            ));
-            let _ = write!(
-                out,
-                "<a href=\"/gate?concept={}\">Look it up in my notes</a>",
-                escape(&o.concept_id)
-            );
-        }
-        let _ = write!(
-            out,
-            "<a href=\"/questions/{}/edit\">Edit this question</a>",
-            escape(&o.question_id)
-        );
-        out.push_str(&self.form(&format!("/questions/{}/dispute",o.question_id),"dispute","","",&format!("{}<details class=\"dispute-fields\"><summary>Flag faulty material</summary><label for=\"dispute-text\">What needs fixing?</label><textarea id=\"dispute-text\" name=\"text\" rows=\"2\" maxlength=\"4000\" required></textarea><label class=\"checkbox-label\"><input type=\"checkbox\" name=\"reset\" value=\"true\"> Reset this question’s schedule</label><button>Save the concern</button></details>",format_args!("{}{}",hidden("content_version",&o.presentation.version.to_string()),hidden("schedule_version",&self.app.questions.get(&o.question_id).map(|q|q.schedule_version).unwrap_or(o.schedule_version).to_string())))));
-        out.push_str(&self.form(
-            &format!("/questions/{}/archive", o.question_id),
-            "archive",
-            "",
-            "",
-            "<button class=\"danger\">Archive this question</button>",
-        ));
-        out.push_str("</div></details>");
-        out
-    }
     fn empty_state(&self) -> EmptyState<'_> {
-        let mut state = EmptyState::FirstRun;
+        let mut state = EmptyState::Nothing;
         for goal in self.app.goals.values().filter(|g| !g.archived) {
             if goal.paused {
-                if matches!(state, EmptyState::FirstRun) {
-                    state = EmptyState::CaughtUp;
-                }
                 continue;
             }
-            let phase = self.goal_phase(goal);
-            match phase {
+            match self.goal_phase(goal) {
                 "notebook-paused" => return EmptyState::Paused,
                 "queued" | "candidates" | "sent" | "critic-sent" | "preparing" => {
                     return EmptyState::Preparing;
                 }
-                "ready" | "partial" | "imported-unfinished" => {
-                    if matches!(state, EmptyState::FirstRun) {
-                        state = EmptyState::CaughtUp;
-                    }
-                }
+                "ready" | "partial" | "imported-unfinished" => {}
                 _ => {
                     if !matches!(state, EmptyState::Stopped(previous) if previous.created_ms >= goal.created_ms)
                     {
@@ -1371,60 +1744,54 @@ impl View<'_> {
         }
         state
     }
-    fn empty(&self) -> String {
-        let state = self.empty_state();
-        let any = !matches!(state, EmptyState::FirstRun);
-        let due = self
-            .app
-            .questions
-            .values()
-            .filter(|q| !q.archived)
-            .map(|q| q.card.due_ms)
-            .filter(|d| *d > self.now)
-            .min();
-        let demo = if !any && self.query.get("__synthetic").is_some_and(|v| v == "true") {
-            self.form(
-                "/__fixture",
-                "fixture",
-                "demo-form",
-                "",
-                "<button class=\"text-button\">Explore an authored demo</button>",
-            )
-        } else {
-            String::new()
-        };
-        let (state_name, title, desc) = match state {
-            EmptyState::FirstRun => ("empty","Follow your curiosity.","Choose externally authored material from Library. Scry helps you remember it with native answer grading.".to_string()),
-            EmptyState::Preparing => ("preparing","Your saved request is preserved.","Native content generation is retired. Your request and any existing material remain available.".to_string()),
-            EmptyState::Paused => ("preparation-paused","Preparation is paused.","Your requests are saved. Native content generation is retired. Meaning checks can resume separately in Settings. Your existing notes and practice are still available.".to_string()),
-            EmptyState::Stopped(_) => ("preparation-stopped","Your request needs attention.","Your input is saved, but preparation is not running. Open the request to see what stopped it and choose what to do next.".to_string()),
-            EmptyState::CaughtUp => ("caught-up","A good place to pause.",due.map(|d|format!("You're caught up for now. Your next practice is {}.",relative(d,self.now))).unwrap_or_else(||"You have no eligible questions right now. Read your saved notes or choose material from Library.".into())),
-        };
-        let (destination, action) = match state {
-            EmptyState::Paused => ("/settings#preparation".into(), "Resume meaning checks"),
+    /// Nothing is held and nothing is selected: the notebook is history. A
+    /// saved generation request still says where it stopped, as before.
+    fn earlier_empty(&self) -> String {
+        let saved = !self.app.goals.is_empty() || !self.app.events.is_empty();
+        let (state_name, title, desc, destination, action) = match self.empty_state() {
+            EmptyState::Nothing => {
+                let lede = if saved {
+                    "No question is held. Scry no longer serves or grades this notebook; everything saved is on the Map and in History."
+                } else {
+                    "Nothing is saved in the earlier concept notebook."
+                };
+                return format!(
+                    "{}<section class=\"empty-stage\" data-state=\"earlier-empty\">{}<h1>Earlier practice</h1><p class=\"lede\">{lede}</p></section>",
+                    self.pending(),
+                    emblem("large")
+                );
+            }
+            EmptyState::Preparing => (
+                "preparing",
+                "Your saved request is preserved.",
+                "Native content generation is retired. Your request and any existing material remain available.",
+                "/library".to_string(),
+                "Browse Library",
+            ),
+            EmptyState::Paused => (
+                "preparation-paused",
+                "Preparation is paused.",
+                "Your requests are saved. Native content generation is retired. Meaning checks can resume separately in Settings. Your existing notes and history are still available.",
+                "/settings#preparation".to_string(),
+                "Resume meaning checks",
+            ),
             EmptyState::Stopped(goal) => (
+                "preparation-stopped",
+                "Your request needs attention.",
+                "Your input is saved, but preparation is not running. Open the request to see what stopped it and choose what to do next.",
                 format!("/goals/{}", escape(&goal.id)),
                 "Review your saved request",
             ),
-            _ => ("/library".into(), "Browse Library"),
         };
         format!(
-            "{demo}{}<section class=\"empty-stage\" data-state=\"{state_name}\">{}<p class=\"eyebrow\">A private space for understanding</p><h1>{title}</h1><p class=\"lede\">{desc}</p><div class=\"actions\"><a class=\"button primary\" href=\"{destination}\">{action} <span aria-hidden=\"true\">→</span></a>{}</div><div class=\"notebook-margin\"><span>01 / Curiosity</span><span>Understanding starts with a question.</span></div></section>",
+            "{}<section class=\"empty-stage\" data-state=\"{state_name}\">{}<p class=\"eyebrow\">A private space for understanding</p><h1>{title}</h1><p class=\"lede\">{desc}</p><div class=\"actions\"><a class=\"button primary\" href=\"{destination}\">{action} <span aria-hidden=\"true\">→</span></a><a class=\"text-link\" href=\"/map\">Explore your map ↗</a></div><div class=\"notebook-margin\"><span>01 / Curiosity</span><span>Understanding starts with a question.</span></div></section>",
             self.pending(),
-            emblem("large"),
-            if any {
-                "<a class=\"text-link\" href=\"/map\">Explore your map ↗</a>"
-            } else {
-                ""
-            }
+            emblem("large")
         )
     }
     fn nato_reference(&self) -> String {
         // A reference must never disclose an answer behind a protected prompt.
-        if self.app.practice.protected()
-            || self.app.protected_goal().is_some()
-            || self.app.occurrence.is_some()
-        {
+        if self.app.practice.protected() {
             return String::new();
         }
         let input = crate::library::nato_input().expect("bundled NATO content is valid");
@@ -1669,7 +2036,7 @@ impl View<'_> {
             .practice
             .attempts
             .values()
-            .filter(|a| a.version_id == version.id && !a.disclosure)
+            .filter(|a| a.version_id == version.id && !a.disclosure && a.verdict().is_some())
             .collect::<Vec<_>>();
         let whole = attempts
             .iter()
@@ -1677,7 +2044,7 @@ impl View<'_> {
             .collect::<Vec<_>>();
         let correct = whole
             .iter()
-            .filter(|a| a.grade.verdict == crate::grading::Verdict::Good)
+            .filter(|a| a.verdict() == Some(crate::grading::Verdict::Good))
             .count();
         let phrases = attempts
             .iter()
@@ -1730,23 +2097,77 @@ impl View<'_> {
             format!("Phrase {} / {}", p.targets[0].unit_index + 1, all.len())
         };
         let mut extras = String::new();
+        let judged = a.and_then(|a| self.judged_state(a));
         let mut out = format!(
-            "<section class=\"nato-screen lesson-screen\" data-state=\"lesson-home\"><header class=\"practice-heading\"><div><h1>{}</h1><p class=\"practice-edition\">{}</p></div><p class=\"lesson-position\">{}</p></header><div class=\"lesson-stage\" data-state=\"{}\" data-prompt-id=\"{}\">",
+            "<section class=\"nato-screen lesson-screen\" data-state=\"lesson-home\"><header class=\"practice-heading\"><div><h1>{}</h1><p class=\"practice-edition\">{}</p></div><p class=\"lesson-position\">{}</p></header><div class=\"lesson-stage\" data-state=\"{}\" data-prompt-id=\"{}\"{}>",
             escape(&work.title),
             escape(&v.name),
             escape(&scope),
             if a.is_some() {
-                "exact-result"
+                judged.unwrap_or("exact-result")
             } else {
                 "exact-prompt"
             },
-            escape(&p.prompt.id)
+            escape(&p.prompt.id),
+            Self::judged_poll(judged)
         );
-        if self.app.practice.mixed_review {
-            out.push_str("<p class=\"eyebrow\">All subjects</p>");
-        }
-        if let Some(a) = a {
-            let good = a.grade.verdict == Verdict::Good;
+        if let Some(a) = a.filter(|_| judged.is_some()) {
+            let retry = self.form(
+                "/practice/lesson/next",
+                "lesson-retry",
+                "lesson-action",
+                "data-next",
+                &format!(
+                    "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                    hidden("after", &p.prompt.id),
+                    hidden("mode", "retry")
+                ),
+            );
+            let (body, actions) = self.judged_result(a, &retry, |secondary| {
+                let class = if secondary {
+                    "text-button"
+                } else {
+                    "button primary"
+                };
+                let extra = if secondary { "" } else { "data-next" };
+                if self.app.practice.mixed_review {
+                    self.form(
+                        "/practice/review/next",
+                        "mixed-next",
+                        "lesson-action",
+                        extra,
+                        &format!(
+                            "{}<button class=\"{class}\">Next</button>",
+                            hidden("after", &p.prompt.id)
+                        ),
+                    )
+                } else {
+                    self.form(
+                        "/practice/lesson/next",
+                        "lesson-next",
+                        "lesson-action",
+                        extra,
+                        &format!(
+                            "{}{}<button class=\"{class}\">{}</button>",
+                            hidden("after", &p.prompt.id),
+                            hidden("mode", if ordered { "whole" } else { "phrases" }),
+                            if ordered {
+                                "Try the sequence again"
+                            } else if whole {
+                                "Practise phrases"
+                            } else if secondary {
+                                "Continue to next phrase"
+                            } else {
+                                "Next phrase"
+                            }
+                        ),
+                    )
+                }
+            });
+            out.push_str(&body);
+            out.push_str(&actions);
+        } else if let Some(a) = a {
+            let good = a.verdict() == Some(Verdict::Good);
             let label = if !good {
                 "Not quite"
             } else if a.assisted {
@@ -1835,36 +2256,67 @@ impl View<'_> {
                     out.push_str(&Self::exact_diff_word(d, true, a.grade.units.len() > 1));
                 }
                 out.push_str("</ol></details>");
+            } else if a
+                .grade
+                .diff
+                .iter()
+                .any(|d| !matches!(d.change, crate::grading::Change::Correct { .. }))
+            {
+                // An accepted Slip is still shown.
+                out.push_str(
+                    "<ol class=\"exact-diff exact-changes\" aria-label=\"Words to revisit\">",
+                );
+                for d in a
+                    .grade
+                    .diff
+                    .iter()
+                    .filter(|d| !matches!(d.change, crate::grading::Change::Correct { .. }))
+                {
+                    out.push_str(&Self::exact_diff_word(d, true, a.grade.units.len() > 1));
+                }
+                out.push_str("</ol>");
+            }
+            if let Some(hint) = a.grade.wrong_version_hint.as_ref().filter(|_| !ordered) {
+                let _ = write!(
+                    out,
+                    "<p class=\"notice\">Your answer is closer to Version {}.</p>",
+                    escape(&hint.name)
+                );
             }
             if a.assisted {
                 out.push_str("<p class=\"lesson-note\">With help · schedule unchanged.</p>");
             }
             out.push_str(&self.result_progress(a));
+            if phrase && !good {
+                out.push_str(&self.form(
+                    "/practice/lesson/next",
+                    "lesson-retry",
+                    "lesson-action",
+                    "data-next",
+                    &format!(
+                        "{}{}<button class=\"button primary\">Try this phrase again</button>",
+                        hidden("after", &p.prompt.id),
+                        hidden("mode", "retry")
+                    ),
+                ));
+            }
             if self.app.practice.mixed_review {
                 out.push_str(&self.form(
                     "/practice/review/next",
                     "mixed-next",
                     "lesson-action",
-                    "data-next",
+                    if phrase && !good { "" } else { "data-next" },
                     &format!(
-                        "{}<button class=\"button primary\">Next</button>",
-                        hidden("after", &p.prompt.id)
+                        "{}<button class=\"{}\">Next</button>",
+                        hidden("after", &p.prompt.id),
+                        if phrase && !good {
+                            "text-button"
+                        } else {
+                            "button primary"
+                        }
                     ),
                 ));
             } else {
-                if phrase && !good {
-                    out.push_str(&self.form(
-                        "/practice/lesson/next",
-                        "lesson-retry",
-                        "lesson-action",
-                        "data-next",
-                        &format!(
-                            "{}{}<button class=\"button primary\">Try this phrase again</button>",
-                            hidden("after", &p.prompt.id),
-                            hidden("mode", "retry")
-                        ),
-                    ));
-                }
                 out.push_str(&self.form(
                     "/practice/lesson/next",
                     "lesson-next",
@@ -1945,15 +2397,24 @@ impl View<'_> {
             } else if good {
                 let _ = write!(
                     out,
-                    "<details class=\"lesson-answer\"><summary>Compare the text</summary><h2>Your answer</h2><p class=\"reading\">{}</p><h2>Selected wording</h2>{}</details>",
+                    "<details class=\"lesson-answer\"><summary>Compare the text</summary><h2>Your answer</h2><p class=\"reading\">{}</p><h2>Selected wording</h2>{}<h2>Word by word</h2><ol class=\"exact-diff\" aria-label=\"Diff\">",
                     escape(&a.raw_answer),
                     self.exact_expected()
                 );
+                for d in &a.grade.diff {
+                    out.push_str(&Self::exact_diff_word(d, false, a.grade.units.len() > 1));
+                }
+                out.push_str("</ol></details>");
             }
         } else if p.source_visible() {
             out.push_str(&self.source_study(p));
         } else {
-            out.push_str("<p class=\"eyebrow\" data-study-phase=\"quiz\">Review</p>");
+            // An introduction is never labelled as review.
+            let _ = write!(
+                out,
+                "<p class=\"eyebrow\" data-study-phase=\"quiz\">{}</p>",
+                if self.due_review(p) { "Review" } else { "Quiz" }
+            );
             if ordered {
                 let _ = write!(
                     out,
@@ -1962,25 +2423,25 @@ impl View<'_> {
                 );
             } else if whole {
                 out.push_str("<p class=\"lesson-instruction\">Type the full text from memory.</p>");
-            } else if matches!(p.prompt.scope, Scope::Section { .. }) {
+            } else if let Scope::Section { section_id } = &p.prompt.scope {
                 out.push_str(
                     "<p class=\"lesson-instruction\">Join these phrases from memory, in order.</p>",
                 );
-            } else {
-                if let Some(context) = &p.prompt.context {
+                // A Section Recitation is prompted by its heading.
+                if let Some(section) = v
+                    .sections
+                    .iter()
+                    .find(|s| &s.id == section_id && !s.heading.trim().is_empty())
+                {
                     let _ = write!(
                         out,
-                        "<details class=\"lesson-context\"><summary>Previous phrase</summary><p>{}</p></details>",
-                        escape(context)
+                        "<p class=\"lesson-cue\">{}</p>",
+                        escape(&section.heading)
                     );
                 }
-                let cue_label = match p.prompt.cue_level {
-                    Cue::Read => "Study",
-                    Cue::FirstLetters => "Type this phrase using the initials",
-                    Cue::FirstLetter => "Type this phrase using the first initial",
-                    _ => "Type this phrase from memory",
-                };
-                let _ = write!(out, "<p class=\"lesson-instruction\">{cue_label}</p>");
+            } else {
+                out.push_str(&self.previous_phrase(p));
+                out.push_str("<p class=\"lesson-instruction\">Type this phrase from memory</p>");
                 if !p.prompt.cue.is_empty() && p.prompt.cue_level != Cue::WholeTitle {
                     let _ = write!(out, "<p class=\"lesson-cue\">{}</p>", escape(&p.prompt.cue));
                 }
@@ -1993,10 +2454,8 @@ impl View<'_> {
             if p.prompt.assisted || p.revealed {
                 out.push_str("<p class=\"lesson-note\">Guided · with help</p>");
             }
-            out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus>\n{}</textarea><button class=\"button primary\">Check answer</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""},escape(self.saved_answer(&p.prompt.id)) )));
-            if (!p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz))
-                && !matches!(p.prompt.cue_level, Cue::Read)
-            {
+            out.push_str(&self.form("/practice/answer","lesson-answer","answer-form lesson-answer-form","data-answer-limit=\"32768\"",&format!("{}<label class=\"visually-hidden\" for=\"answer\">{}</label><textarea id=\"answer\" name=\"answer\" rows=\"{}\" maxlength=\"32768\" spellcheck=\"false\" autocapitalize=\"sentences\" autocomplete=\"off\" {} autofocus>\n{}</textarea><button class=\"button primary\">Check</button>",hidden("prompt_id",&p.prompt.id),if ordered{"Items in order"}else{"Your typed answer"},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){5}else{3},if ordered||whole||matches!(p.prompt.scope,Scope::Section{..}){"data-multiline"}else{""},escape(self.saved_answer(&p.prompt.id)) )));
+            if !p.revealed || p.phase == Some(crate::study::StudyPhase::Quiz) {
                 out.push_str(&self.practice_form(
                     "reveal",
                     "lesson-reveal",
@@ -2014,8 +2473,17 @@ impl View<'_> {
         if !self.app.practice.protected() {
             let _ = write!(
                 out,
-                "<details name=\"practice-tools\" class=\"lesson-edition\"><summary>More</summary><p><strong>{}</strong></p><p>Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment.</p><ul>",
-                escape(&v.name)
+                "<details name=\"practice-tools\" class=\"lesson-edition\"><summary>More</summary><p><strong>{}</strong></p><p>{}</p><ul>",
+                escape(&v.name),
+                // Only where Jev is reachable and would be asked about this text.
+                if self.app.preferences.paid_judgment
+                    && !v.spelling_strict
+                    && self.query.get("__judgment").is_some_and(|c| c == "true")
+                {
+                    "Scry checks the typed wording, ignoring case and punctuation, and Jev checks an answer Scry cannot match. No pronunciation assessment."
+                } else {
+                    "Typed wording is checked locally. Case and punctuation do not matter; words and order do. Accents remain significant; the supplied Latin edition uses unaccented spelling. No pronunciation assessment."
+                }
             );
             for source in &v.sources {
                 let absolute_http = source
@@ -2062,7 +2530,10 @@ impl View<'_> {
             crate::study::Scope::Whole => "Full text",
             crate::study::Scope::Section { .. } => "This passage",
             crate::study::Scope::Unit { .. }
-                if a.prompt.cue_level == crate::study::Cue::MappingKey =>
+                if matches!(
+                    a.prompt.cue_level,
+                    crate::study::Cue::MappingKey | crate::study::Cue::MappingValue
+                ) =>
             {
                 if self
                     .app
@@ -2088,7 +2559,7 @@ impl View<'_> {
         } else {
             "Unaided correct"
         };
-        let multi = a.effects.len() > 1;
+        let multi = a.card_units().len() > 1;
         let (due, exact) = if !evidence.active {
             ("Not active".to_string(), "Study dropped".to_string())
         } else if let Some(ms) = evidence.next_due_ms {
@@ -2258,11 +2729,7 @@ impl View<'_> {
             "<section class=\"nato-screen study-home\" data-state=\"mixed-home\"><div class=\"study-entry\">",
         );
         if let Some(subject) = preview {
-            let _ = write!(
-                out,
-                "<p class=\"study-context\">All subjects</p><h1>{}</h1>",
-                escape(&subject)
-            );
+            let _ = write!(out, "<h1>{}</h1>", escape(&subject));
             out.push_str(&self.form(
                 "/practice/review/start",
                 "mixed-start",
@@ -2271,14 +2738,78 @@ impl View<'_> {
                 "<button class=\"button primary\"><span>Study</span><span aria-hidden=\"true\">→</span></button>",
             ));
         } else {
-            out.push_str("<p class=\"study-context\">All subjects</p><h1>Rest for now</h1>");
+            return self.rest("Study", |_| true, "");
         }
         out.push_str("</div>");
-        out.push_str(&self.lesson_picker(false).replacen(
+        out.push_str(&self.browse());
+        out.push_str("</section>");
+        out
+    }
+    fn browse(&self) -> String {
+        let mut out = self.lesson_picker(false).replacen(
             "<summary><span>Lessons</span>",
             "<summary><span>Browse</span>",
             1,
-        ));
+        );
+        // Browse opens the Library as well as the lesson shelf.
+        out.insert_str(
+            out.len() - "</details>".len(),
+            "<a class=\"text-link\" href=\"/library\">Library</a>",
+        );
+        out
+    }
+    /// The earliest future review among Studies that still serve reviews.
+    fn next_review(&self, in_scope: impl Fn(&crate::study::Study) -> bool) -> Option<i64> {
+        self.app
+            .practice
+            .cards
+            .values()
+            .filter(|c| {
+                c.state.schedule.due_ms > self.now
+                    && self.app.practice.studies.get(&c.study_id).is_some_and(|s| {
+                        s.status != crate::study::Status::Dropped
+                            && crate::study::reviewable(&self.app.library.versions[&s.version_id])
+                                .is_ok()
+                            && in_scope(s)
+                    })
+            })
+            .map(|c| c.state.schedule.due_ms)
+            .min()
+    }
+    /// The one nothing-due state, under Study and inside a focused lesson.
+    /// `tools` are the lesson's own disclosures, shown after Browse. While an
+    /// answer in scope is still with Jev there is nothing to rest from yet: the
+    /// page says the answer is being checked and looks again by itself.
+    fn rest(
+        &self,
+        context: &str,
+        in_scope: impl Fn(&crate::study::Study) -> bool,
+        tools: &str,
+    ) -> String {
+        if let Some(a) = crate::study::checking_attempt(self.app, &in_scope) {
+            return format!(
+                "<section class=\"nato-screen study-home\" data-state=\"exact-checking\" data-poll><div class=\"study-entry\"><p class=\"study-context\">{}</p><div class=\"checking\" role=\"status\"><p class=\"eyebrow\">Your answer is saved</p><h1>Checking it.</h1><p>Jev is judging your answer. Nothing else is due until it has a Verdict.</p></div><div class=\"answer-pair\"><span>You answered</span><p>{}</p></div><a class=\"text-link\" href=\"{}\">Refresh</a> <a class=\"text-link\" href=\"/history\">History</a></div>{}{tools}</section>",
+                escape(context),
+                escape(&a.raw_answer),
+                escape(self.path),
+                self.browse()
+            );
+        }
+        let next_review = self.next_review(&in_scope);
+        let mut out = format!(
+            "<section class=\"nato-screen study-home\" data-state=\"rest\"><div class=\"study-entry\"><p class=\"study-context\">{}</p><h1>Rest for now</h1>",
+            escape(context)
+        );
+        if let Some(at) = next_review {
+            let _ = write!(
+                out,
+                "<p class=\"study-context\" data-next-review>{}</p>",
+                escape(&next_review_line(at))
+            );
+        }
+        out.push_str("</div>");
+        out.push_str(&self.browse());
+        out.push_str(tools);
         out.push_str("</section>");
         out
     }
@@ -2305,9 +2836,6 @@ impl View<'_> {
         let mut out = format!(
             "<section class=\"nato-screen\" data-state=\"nato-home\"><div class=\"nato-meta\"><span><i class=\"signal-dot\" aria-hidden=\"true\"></i>NATO alphabet</span><span title=\"Unique letters answered without revealing the answer; not a mastery score\">{practiced}<span class=\"nato-muted\"> / 26 practiced</span></span></div>"
         );
-        if self.app.practice.mixed_review {
-            out.push_str("<p class=\"eyebrow\">All subjects</p>");
-        }
         if let Some(p) = self.app.practice.current.as_ref().filter(|p| {
             self.app
                 .library
@@ -2325,15 +2853,16 @@ impl View<'_> {
             } else {
                 "exact-prompt"
             };
+            let letter = self.mapping_question(prompt).unwrap_or(&prompt.cue);
             let _ = write!(
                 out,
                 "<div class=\"nato-stage\" data-state=\"{state}\" data-prompt-id=\"{}\"><div class=\"nato-cue-panel\"><h1 class=\"nato-letter\" id=\"nato-letter\" aria-label=\"Letter {}\">{}</h1></div><div class=\"nato-response-panel\">",
                 escape(&prompt.id),
-                escape(&prompt.cue),
-                escape(&prompt.cue)
+                escape(letter),
+                escape(letter)
             );
             if let Some(a) = attempt {
-                let good = a.grade.verdict == crate::grading::Verdict::Good;
+                let good = a.verdict() == Some(crate::grading::Verdict::Good);
                 let version = &self.app.library.versions[&a.version_id];
                 let word = version
                     .sections
@@ -2418,18 +2947,14 @@ impl View<'_> {
             });
             let other_prompt = self.app.practice.current.is_some();
             out.push_str("<div class=\"nato-stage nato-welcome\">");
-            if !other_prompt && self.app.protected_goal().is_none() && self.app.occurrence.is_none()
-            {
+            if !other_prompt {
                 out.push_str(
                     "<div class=\"nato-specimen\" aria-hidden=\"true\">Aa<span>Alfa</span></div>",
                 );
             }
             if other_prompt {
-                out.push_str("<h1>Your review is waiting.</h1><p>Finish your saved question before starting NATO.</p><a class=\"button primary\" href=\"/recall\">Resume review</a>");
-            } else if has_study
-                && (self.path == "/recall"
-                    || self.query.get("practice").is_some_and(|v| v == "nato"))
-            {
+                out.push_str("<h1>Another Prompt is open.</h1><p>Finish your saved question before starting NATO.</p><a class=\"button primary\" href=\"/recall\">Resume practice</a>");
+            } else if has_study && self.query.get("practice").is_some_and(|v| v == "nato") {
                 let has_eligible = self.app.practice.studies.values().any(|s| {
                     nato_versions.contains(s.version_id.as_str())
                         && s.status != crate::study::Status::Dropped
@@ -2450,7 +2975,14 @@ impl View<'_> {
                                     < 26))
                 });
                 if has_eligible {
-                    out.push_str("<h1>Ready to review.</h1>");
+                    // Only answered letters that are due again are review.
+                    out.push_str(
+                        if self.review_due(|s| nato_versions.contains(s.version_id.as_str())) {
+                            "<h1>Ready to review.</h1>"
+                        } else {
+                            "<h1>From Alfa to Zulu.</h1>"
+                        },
+                    );
                     out.push_str(&self.form(
                         "/practice/nato/start",
                         "nato-continue",
@@ -2459,35 +2991,22 @@ impl View<'_> {
                         "<button class=\"button primary\">Continue practice</button>",
                     ));
                 } else {
-                    let next_due = self
-                        .app
-                        .practice
-                        .cards
-                        .values()
-                        .filter(|c| {
-                            self.app.practice.studies.get(&c.study_id).is_some_and(|s| {
-                                s.status != crate::study::Status::Dropped
-                                    && nato_versions.contains(s.version_id.as_str())
-                            }) && c.state.schedule.due_ms > self.now
-                        })
-                        .map(|c| c.state.schedule.due_ms)
-                        .min();
-                    out.push_str("<h1>All set for now.</h1>");
-                    if let Some(ms) = next_due {
-                        let _ = write!(out, "<p>Next review {}.</p>", relative(ms, self.now));
-                    }
-                    out.push_str("<a class=\"text-link\" href=\"/\">Back to start</a>");
+                    return self.rest(
+                        "NATO alphabet",
+                        |s| nato_versions.contains(s.version_id.as_str()),
+                        &format!(
+                            "<div class=\"practice-tools\">{}{}</div>",
+                            self.nato_progress(),
+                            self.nato_reference()
+                        ),
+                    );
                 }
             } else {
                 let (title, desc, action) = if has_study {
-                    ("A little, often.", "", "Continue practice")
+                    ("From Alfa to Zulu.", "", "Continue practice")
                 } else {
                     (
-                        if self.app.occurrence.is_some() || self.app.protected_goal().is_some() {
-                            "Learn the alphabet."
-                        } else {
-                            "From Alfa to Zulu."
-                        },
+                        "From Alfa to Zulu.",
                         "26 code words. One answer at a time.",
                         "Start practice",
                     )
@@ -2536,87 +3055,69 @@ impl View<'_> {
         )
     }
     fn map(&self) -> String {
-        let mut goals: Vec<_> = self.app.goals.values().filter(|g| !g.archived).collect();
-        goals.sort_by_key(|g| (g.paused, !g.focused, g.created_ms));
+        // Live Goals first, as before; archived ones after them, labelled.
+        let mut goals: Vec<_> = self.app.goals.values().collect();
+        goals.sort_by_key(|g| (g.archived, g.paused, !g.focused, g.created_ms));
         let mut out = String::from(
-            "<section class=\"map-page\" data-state=\"map\"><div class=\"page-heading\"><p class=\"eyebrow\">Your growing understanding</p><h1>A map of ideas.</h1><p class=\"lede\">Follow the connections. Revisit a note. Give the ideas that matter a little more attention.</p></div>",
+            "<section class=\"map-page\" data-state=\"map\"><div class=\"page-heading\"><p class=\"eyebrow\">Earlier concept notebook</p><h1>A map of ideas.</h1><p class=\"lede\">Every Goal and Concept saved before Study, as it was left.</p></div>",
         );
         if goals.is_empty() {
-            out.push_str("<div class=\"quiet-empty\"><p>Your map begins with one curiosity.</p><a class=\"button primary\" href=\"/library\">Open Library →</a></div>");
+            out.push_str(
+                "<p class=\"quiet-empty\">Nothing is saved in the earlier concept notebook.</p>",
+            );
         }
         for (index, goal) in goals.iter().enumerate() {
-            let concepts: Vec<_> = goal
+            let all: Vec<_> = goal
                 .concept_ids
                 .iter()
                 .filter_map(|id| self.app.concepts.get(id))
-                .filter(|c| !c.archived)
                 .collect();
+            let live: Vec<_> = all.iter().copied().filter(|c| !c.archived).collect();
             let _ = write!(
                 out,
-                "<article class=\"goal-map {}\"><div class=\"goal-map-heading\"><span class=\"folio\">{:02}</span><div><h2><a href=\"/goals/{}\">{}</a></h2><p class=\"goal-meta\">{} ideas{}{} · {}</p></div></div>",
-                if goal.paused { "paused" } else { "" },
+                "<article class=\"goal-map {}\"><div class=\"goal-map-heading\"><span class=\"folio\">{:02}</span><div><h2><a href=\"/goals/{}\">{}</a></h2><p class=\"goal-meta\">{} ideas{}{}{} · {}</p></div></div>",
+                if goal.paused || goal.archived {
+                    "paused"
+                } else {
+                    ""
+                },
                 index + 1,
                 escape(&goal.id),
                 self.goal_title(goal),
-                concepts.len(),
+                live.len(),
                 if goal.focused { " · In focus" } else { "" },
                 if goal.paused { " · Paused" } else { "" },
+                if goal.archived { " · Archived" } else { "" },
                 status_label(self.goal_phase(goal))
             );
-            out.push_str(&constellation(self.app, &concepts, self.now));
+            if !live.is_empty() {
+                out.push_str(&constellation(&live));
+            }
             out.push_str("<ol class=\"concept-list\">");
-            for c in concepts {
+            for c in live.iter().chain(all.iter().filter(|c| c.archived)) {
                 let _ = write!(
                     out,
-                    "<li><a href=\"/concepts/{}\"><span class=\"idea-dot\" aria-hidden=\"true\"></span><span>{}</span><span class=\"idea-status\">{}</span><span aria-hidden=\"true\">↗</span></a></li>",
+                    "<li><a href=\"/concepts/{}\"><span class=\"idea-dot\" aria-hidden=\"true\"></span><span>{}</span><span class=\"idea-status\">{}{}</span><span aria-hidden=\"true\">↗</span></a></li>",
                     escape(&c.id),
                     self.concept_name(c),
-                    concept_state(self.app, c, self.now)
+                    if c.archived { "Archived · " } else { "" },
+                    answers_recorded(self.app, c)
                 );
             }
             out.push_str("</ol><div class=\"goal-actions\">");
-            out.push_str(&self.form(
-                &format!("/goals/{}/focus", goal.id),
-                "focus",
-                "",
-                "",
-                &format!(
-                    "<button class=\"small-button\">{}</button>",
-                    if goal.focused {
-                        "Remove focus"
-                    } else {
-                        "Focus here"
-                    }
-                ),
-            ));
-            out.push_str(&self.form(
-                &format!("/goals/{}/pause", goal.id),
-                "pause",
-                "",
-                "",
-                &format!(
-                    "<button class=\"small-button\">{}</button>",
-                    if goal.paused { "Resume" } else { "Pause" }
-                ),
-            ));
             let _ = write!(
                 out,
                 "<a class=\"text-link\" href=\"/goals/{}\">Reference &amp; input ↗</a></div></article>",
                 escape(&goal.id)
             );
         }
-        out.push_str(
-            "<a class=\"text-link add-curiosity\" href=\"/library\">Browse Library</a></section>",
-        );
+        out.push_str("</section>");
         out
     }
     fn goal(&self, id: &str) -> String {
         let Some(g) = self.app.goals.get(id) else {
             return self.not_found();
         };
-        if self.app.protected_goal() == Some(id) {
-            return self.gate(&format!("/goals/{id}"));
-        }
         let mut out = format!(
             "<article class=\"reference-page\" data-state=\"goal\"><a class=\"back-link\" href=\"/map\">← Your map</a><div class=\"page-heading\"><p class=\"eyebrow\">A page in your notebook</p><h1>{}</h1><p class=\"fineprint\">Saved {}{}</p></div>",
             escape(&g.title),
@@ -2628,28 +3129,33 @@ impl View<'_> {
         }
         if !g.concept_ids.is_empty() {
             out.push_str("<section class=\"reference-contents\"><p class=\"eyebrow\">The useful starting point</p>");
-            for id in &g.concept_ids {
-                if let Some(c) = self.app.concepts.get(id).filter(|c| !c.archived) {
-                    let _ = write!(
-                        out,
-                        "<section class=\"reference-idea\"><h2><a href=\"/concepts/{}\">{}</a></h2>{}{}<a class=\"text-link\" href=\"/concepts/{}\">Explore this idea &amp; practice ↗</a></section>",
-                        escape(&c.id),
-                        self.concept_name(c),
-                        self.lede("lede small", c),
-                        if self.app.protected_concept(&c.id) {
-                            "<p>This idea is in your current question. Open its page to record assistance before reading.</p>".into()
-                        } else {
-                            self.notes(c)
-                        },
-                        escape(&c.id)
-                    );
-                }
+            let concepts: Vec<_> = g
+                .concept_ids
+                .iter()
+                .filter_map(|id| self.app.concepts.get(id))
+                .collect();
+            // Archived Concepts follow the live ones, labelled.
+            for c in concepts
+                .iter()
+                .filter(|c| !c.archived)
+                .chain(concepts.iter().filter(|c| c.archived))
+            {
+                let _ = write!(
+                    out,
+                    "<section class=\"reference-idea\"><h2><a href=\"/concepts/{}\">{}</a></h2>{}{}{}<a class=\"text-link\" href=\"/concepts/{}\">Explore this idea ↗</a></section>",
+                    escape(&c.id),
+                    self.concept_name(c),
+                    if c.archived {
+                        "<p class=\"fineprint\">Archived</p>"
+                    } else {
+                        ""
+                    },
+                    self.lede("lede small", c),
+                    self.notes(c),
+                    escape(&c.id)
+                );
             }
-            let _ = write!(
-                out,
-                "</section><a class=\"button primary\" href=\"{}\">Go to practice →</a>",
-                legacy_home(self.app)
-            );
+            out.push_str("</section>");
         }
         let _ = write!(
             out,
@@ -2663,17 +3169,157 @@ impl View<'_> {
                 ))
                 .unwrap_or_default()
         );
-        if !g.archived {
-            out.push_str(&self.form(
-                &format!("/goals/{id}/archive"),
-                "archive",
-                "archive-form",
-                "",
-                "<button class=\"text-button danger\">Archive this goal</button>",
-            ));
+        if g.photo.is_some() {
+            let _ = write!(
+                out,
+                "<a class=\"text-link\" href=\"/photos/{}\">The photo you sent ↗</a>",
+                escape(&g.id)
+            );
         }
+        out.push_str(&self.generation_records(g));
         out.push_str(&self.feedback_history(id, None));
         out.push_str("</article>");
+        out
+    }
+    /// Every retired generation record of a Goal, read-only and as saved: its
+    /// jobs with their candidates, defect reasons, critic results, model
+    /// attribution and raw responses, and the usage recorded for each request.
+    /// Model and Owner text is escaped; long records stay in native details.
+    fn generation_records(&self, g: &Goal) -> String {
+        let mut jobs: Vec<_> = self
+            .app
+            .jobs
+            .values()
+            .filter(|j| j.goal_id == g.id)
+            .collect();
+        if jobs.is_empty() {
+            return String::new();
+        }
+        jobs.sort_by_key(|j| (j.created_ms, &j.id));
+        let raw = |summary: &str, text: &str| {
+            format!(
+                "<details class=\"question-record\"><summary>{summary}</summary><pre class=\"raw-record\">{}</pre></details>",
+                escape(text)
+            )
+        };
+        let mut out =
+            String::from("<section class=\"generation-records\"><h2>Generation records</h2>");
+        for j in jobs {
+            let usage: Vec<_> = self
+                .app
+                .spend
+                .iter()
+                .filter(|s| s.work_id == j.id)
+                .collect();
+            let _ = write!(
+                out,
+                "<article class=\"record-entry generation-record\" id=\"job-{}\"><p class=\"history-meta\"><span>{}</span> · {} · Attempt {}</p><p class=\"fineprint\">Recorded status: {}{}{}</p>",
+                escape(&j.id),
+                match j.kind.as_str() {
+                    "create" => "Preparation".to_string(),
+                    "fix" => "Fix draft".to_string(),
+                    "refine" => "Refinement".to_string(),
+                    other => escape(other),
+                },
+                date(j.created_ms),
+                j.attempt,
+                escape(&j.status),
+                attributed(&j.model)
+                    .map(|m| format!(" · Model {}", escape(m)))
+                    .unwrap_or_default(),
+                attributed(&j.critic_model)
+                    .map(|m| format!(" · Critic {}", escape(m)))
+                    .unwrap_or_default()
+            );
+            if let Some(q) = j
+                .question_id
+                .as_ref()
+                .filter(|q| self.app.questions.contains_key(*q))
+            {
+                let _ = write!(
+                    out,
+                    "<a class=\"text-link\" href=\"/questions/{}/edit\">The saved question ↗</a>",
+                    escape(q)
+                );
+            }
+            // An imported job's marker is bookkeeping, not an outcome.
+            if let Some(error) = j
+                .error
+                .as_ref()
+                .filter(|e| !e.starts_with(LEGACY_JOB_MARKER))
+            {
+                let _ = write!(out, "<p>{}</p>", escape(error));
+            }
+            if !j.rejected.is_empty() {
+                out.push_str("<h3>Defect reasons</h3><ul class=\"generation-defects\">");
+                for reason in &j.rejected {
+                    let _ = write!(out, "<li>{}</li>", escape(reason));
+                }
+                out.push_str("</ul>");
+            }
+            if let Some(text) = &j.candidate_json {
+                out.push_str(&raw("Generated candidates", text));
+            }
+            if let Some(text) = &j.critic_json {
+                out.push_str(&raw("Critic result", text));
+            }
+            if let Some(text) = &j.critic_cache_json {
+                out.push_str(&raw("Critic results kept for reuse", text));
+            }
+            // A job's last response is usually one request's own; show it once.
+            if let Some(text) = j
+                .raw_response
+                .as_ref()
+                .filter(|r| !usage.iter().any(|s| s.raw_response.as_ref() == Some(*r)))
+            {
+                out.push_str(&raw("Raw response", text));
+            }
+            if usage.is_empty() {
+                out.push_str("<p class=\"fineprint\">No usage was recorded.</p>");
+            }
+            for s in usage {
+                let _ = write!(
+                    out,
+                    "<div class=\"generation-usage\" id=\"usage-{}\"><p class=\"history-meta\"><span>{}</span> · {}{}</p><p class=\"fineprint\">{}{}{}</p>",
+                    escape(&s.id),
+                    match s.purpose.as_deref() {
+                        Some("generate.concepts") => "Generation".to_string(),
+                        Some("transcribe.photo") => "Photo transcription".to_string(),
+                        Some(p) if p.starts_with("critic") => "Critic".to_string(),
+                        Some(p) => escape(p),
+                        None => "Request".to_string(),
+                    },
+                    date(s.created_ms),
+                    attributed(&s.model)
+                        .map(|m| format!(" · {}", escape(m)))
+                        .unwrap_or_default(),
+                    match s.cost_micros.filter(|_| s.status == "known") {
+                        Some(cost) => format!("Cost {}", dollars(cost)),
+                        None => format!("Unknown cost · {} counted", dollars(s.reserved_micros)),
+                    },
+                    attributed(&s.response_model)
+                        .filter(|m| attributed(&s.model) != Some(*m))
+                        .map(|m| format!(" · Answered by {}", escape(m)))
+                        .unwrap_or_default(),
+                    s.response_outcome
+                        .as_ref()
+                        .map(|o| format!(" · Response {}", escape(o)))
+                        .unwrap_or_default()
+                );
+                if let Some(text) = &s.raw_response {
+                    out.push_str(&raw(
+                        &match s.response_bytes {
+                            Some(n) => format!("Raw response · {n} bytes"),
+                            None => "Raw response".into(),
+                        },
+                        text,
+                    ));
+                }
+                out.push_str("</div>");
+            }
+            out.push_str("</article>");
+        }
+        out.push_str("</section>");
         out
     }
     fn feedback_history(&self, goal_id: &str, concept_id: Option<&str>) -> String {
@@ -2718,12 +3364,11 @@ impl View<'_> {
             .map(|s| s.cost_micros.unwrap_or(s.reserved_micros))
             .sum::<u64>() as f64
             / 1_000_000.0;
+        // The recorded outcome itself is with the Goal's generation records.
         let detail = if self.goal_phase(g) == "imported-unfinished" {
-            "<p>This request didn't finish. It came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again.</p>".into()
+            "<p>This request didn't finish. It came from your earlier notebook, where its preparation didn't finish. Your words are saved, and nothing has been sent again.</p>"
         } else {
-            job.and_then(|j| j.error.as_ref()).map_or_else(String::new, |error| {
-                format!("<details><summary>Recorded preparation outcome</summary><p>{}</p></details>", escape(error))
-            })
+            ""
         };
         format!(
             "<section class=\"preparation-panel stopped\"><h2>Saved preparation history</h2><p>Native content generation is retired. This request, its outcome and any existing material are kept; no work will be sent again.</p>{detail}<p>Recorded status: {} · job {}</p><p class=\"fineprint\">${accounted:.2} used or reserved for this preparation. Uncertain outcomes remain accounted.</p><a class=\"text-link\" href=\"/\">Back to review</a></section>",
@@ -2735,61 +3380,56 @@ impl View<'_> {
         let Some(c) = self.app.concepts.get(id) else {
             return self.not_found();
         };
-        if self.app.protected_concept(id) {
-            return self.gate(&format!("/concepts/{id}"));
-        }
-        let state = concept_evidence(self.app, c, self.now);
+        let state = concept_evidence(self.app, c);
         let unaided = state.unaided;
         let helped = state.helped;
         let missed = state.missed;
         let mut out = format!(
-            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/\">← Your concepts</a><div class=\"page-heading\"><h1>{}</h1>{}</div><section class=\"concept-study\"><h2>Study</h2>{}</section><section class=\"practice-evidence\" aria-label=\"Your practice record\"><h2>Practice</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">{}</p>{}</section>{}",
+            "<article class=\"concept-page\" data-state=\"concept\"><a class=\"back-link\" href=\"/map\">← Your map</a><div class=\"page-heading\"><h1>{}</h1>{}{}</div><section class=\"concept-study\"><h2>Notes</h2>{}</section><section class=\"practice-evidence\"><h2>Recorded answers</h2><p><strong>{unaided}</strong> recalled <span>·</span> <strong>{helped}</strong> with help <span>·</span> <strong>{missed}</strong> missed</p><p class=\"fineprint\">Graded answers to its saved questions, as recorded. History lists every answer.</p>{}</section>{}",
             self.concept_name(c),
             self.lede("lede", c),
-            self.notes(c),
-            recall_label(self.app, c, self.now),
-            if !self.active_concept(c) {
-                "<p>Archived: retained for reference.</p>".into()
+            if c.already_known {
+                "<p class=\"fineprint\">Marked as already known.</p>"
             } else {
-                self.form(
-                    &format!("/concepts/{id}/practice"),
-                    "practice",
-                    "",
-                    "",
-                    "<button class=\"button primary\">Practice this idea →</button>",
-                )
+                ""
+            },
+            all_notes(self.app, c),
+            if self.active_concept(c) {
+                ""
+            } else {
+                "<p>Archived: retained for reference.</p>"
             },
             tally(&state)
         );
         out.push_str("<section class=\"saved-questions\"><h3>Saved questions</h3>");
-        for q in self
+        let questions: Vec<_> = self
             .app
             .questions
             .values()
-            .filter(|q| q.concept_id == id && !q.archived)
+            .filter(|q| q.concept_id == id)
+            .collect();
+        // Archived questions follow the live ones, labelled.
+        for q in questions
+            .iter()
+            .filter(|q| !q.archived)
+            .chain(questions.iter().filter(|q| q.archived))
         {
             let content = q.content();
-            let protected = self.app.protected_concept(&q.concept_id);
             let _ = write!(
                 out,
-                "<details class=\"question-reference\"><summary>{}</summary>",
-                escape(&content.prompt)
+                "<details class=\"question-reference\"><summary>{}{}</summary><div class=\"reading\"><p><strong>{}</strong></p><p>{}</p></div>",
+                escape(&content.prompt),
+                if q.archived {
+                    " <span class=\"fineprint\">Archived</span>"
+                } else {
+                    ""
+                },
+                escape(&content.answer),
+                escape(&content.explanation)
             );
-            if protected {
-                out.push_str(
-                    "<p>The answer stays private while your current attempt is unaided.</p>",
-                );
-            } else {
-                let _ = write!(
-                    out,
-                    "<div class=\"reading\"><p><strong>{}</strong></p><p>{}</p></div>",
-                    escape(&content.answer),
-                    escape(&content.explanation)
-                );
-            }
             let _ = write!(
                 out,
-                "<a class=\"text-link\" href=\"/questions/{}/edit\">Edit future wording ↗</a></details>",
+                "<a class=\"text-link\" href=\"/questions/{}/edit\">The saved question ↗</a></details>",
                 escape(&q.id)
             );
         }
@@ -2801,58 +3441,51 @@ impl View<'_> {
                 escape(&g.id)
             );
         }
-        let dependents: Vec<_> = self
+        // Links to archived Concepts stay, labelled, after the live ones.
+        let mut dependents: Vec<_> = self
             .app
             .concepts
             .values()
-            .filter(|other| self.active_concept(other) && other.prerequisites.contains(&c.id))
+            .filter(|other| other.prerequisites.contains(&c.id))
             .collect();
-        let prerequisites: Vec<_> = c
+        dependents.sort_by_key(|p| !self.active_concept(p));
+        let mut prerequisites: Vec<_> = c
             .prerequisites
             .iter()
             .filter_map(|id| self.app.concepts.get(id))
-            .filter(|p| self.active_concept(p))
             .collect();
+        prerequisites.sort_by_key(|p| !self.active_concept(p));
         if !prerequisites.is_empty() || !dependents.is_empty() {
             out.push_str("<section class=\"connected\"><h2>Related</h2>");
             if !prerequisites.is_empty() {
                 out.push_str("<h3>Builds on</h3>");
                 for p in prerequisites {
-                    let _ = write!(
-                        out,
-                        "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>",
-                        escape(&p.id),
-                        self.concept_name(p)
-                    );
+                    out.push_str(&self.related_chip(p));
                 }
             }
             if !dependents.is_empty() {
                 out.push_str("<h3>Used by</h3>");
                 for p in dependents {
-                    let _ = write!(
-                        out,
-                        "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>",
-                        escape(&p.id),
-                        self.concept_name(p)
-                    );
+                    out.push_str(&self.related_chip(p));
                 }
             }
             out.push_str("</section>");
         }
-        let body = "<label for=\"feedback\">What is still unclear?</label><textarea id=\"feedback\" name=\"text\" rows=\"3\" maxlength=\"4000\" required placeholder=\"Tell Scry what you need from this idea…\"></textarea><button class=\"button secondary\">Save feedback</button>";
-        out.push_str(&format!("<section class=\"refinement\"><h2>Keep the conversation with your learning.</h2>{}</section>",self.form(&format!("/concepts/{id}/feedback"),"feedback","","",body)));
-        if !c.archived {
-            out.push_str(&self.form(
-                &format!("/concepts/{id}/archive"),
-                "archive",
-                "archive-form",
-                "",
-                "<button class=\"text-button danger\">Archive this idea</button>",
-            ));
-        }
         out.push_str(&self.feedback_history(&c.goal_id, Some(id)));
         out.push_str("</article>");
         out
+    }
+    fn related_chip(&self, p: &Concept) -> String {
+        format!(
+            "<a class=\"concept-chip\" href=\"/concepts/{}\">{}</a>{}",
+            escape(&p.id),
+            self.concept_name(p),
+            if self.active_concept(p) {
+                ""
+            } else {
+                "<span class=\"fineprint related-archived\">Archived</span>"
+            }
+        )
     }
     fn history(&self) -> String {
         if self.app.practice.protected() {
@@ -2868,14 +3501,10 @@ impl View<'_> {
         }
         if !self.app.practice.attempts.is_empty() {
             out.push_str("<section aria-label=\"Exact recall\"><h2>Exact recall</h2>");
-            if self.app.protected_goal().is_some() {
-                out.push_str("<p class=\"fineprint\">History is hidden while you answer from memory.</p><a class=\"text-link\" href=\"/notebook\">Return to the question</a>");
-            } else {
-                let mut attempts = self.app.practice.attempts.values().collect::<Vec<_>>();
-                attempts.sort_by_key(|a| std::cmp::Reverse(a.sequence));
-                for attempt in attempts {
-                    out.push_str(&self.exact_history_attempt(attempt));
-                }
+            let mut attempts = self.app.practice.attempts.values().collect::<Vec<_>>();
+            attempts.sort_by_key(|a| std::cmp::Reverse(a.sequence));
+            for attempt in attempts {
+                out.push_str(&self.exact_history_attempt(attempt));
             }
             out.push_str("</section>");
         }
@@ -2906,10 +3535,6 @@ impl View<'_> {
             out.push_str("</details>");
         }
         for event in self.app.events.iter().rev() {
-            if self.app.protected_concept(&event.concept_id) {
-                out.push_str("<p class=\"fineprint\">An earlier attempt is hidden while you work on its question from memory.</p>");
-                continue;
-            }
             let corrected = self.app.overrides.iter().any(|o| o.event_id == event.id);
             let outcome = if event.is_ungraded() {
                 "Ungraded"
@@ -2947,6 +3572,12 @@ impl View<'_> {
         use crate::{grading::Verdict, study::Scope};
         let version = &self.app.library.versions[&a.version_id];
         let scope = match &a.prompt.scope {
+            Scope::Unit { position, .. }
+                if crate::study::attempt_direction(self.app, a)
+                    == crate::study::Direction::Reverse =>
+            {
+                format!("Unit {position}, in reverse")
+            }
             Scope::Unit { position, .. } => format!("Unit {position}"),
             Scope::Section { section_id } => format!(
                 "Section: {}",
@@ -2960,10 +3591,17 @@ impl View<'_> {
             Scope::Whole => "Whole text".into(),
         };
         let verdict = |v| if v == Verdict::Good { "Good" } else { "Again" };
+        let judged = crate::study::judgment_view(self.app, a);
         let label = if a.disclosure {
             "Shown before answering"
         } else {
-            verdict(a.grade.verdict)
+            match (a.verdict(), &judged) {
+                (Some(v), _) => verdict(v),
+                (None, Some(view)) if view.state == crate::study::JudgmentState::Checking => {
+                    "Checking"
+                }
+                (None, _) => "Saved, not graded",
+            }
         };
         let mut out = format!(
             "<article class=\"history-entry exact-history-entry\" data-attempt-id=\"{}\" data-disclosure=\"{}\"><p class=\"history-meta\"><span>{label}</span> · {} · {}</p><h2>{}</h2><p class=\"fineprint\">{} · {}</p><details><summary>See this attempt <span aria-hidden=\"true\">＋</span></summary>{}",
@@ -2978,7 +3616,7 @@ impl View<'_> {
             escape(&a.prompt.title),
             escape(version_name(version)),
             escape(&scope),
-            Self::exact_prompt_context(&a.prompt)
+            self.exact_prompt_context(&a.prompt)
         );
         let answer = if a.disclosure {
             "No answer submitted.".into()
@@ -3011,11 +3649,46 @@ impl View<'_> {
                 escape(&hint.name)
             );
         }
+        // Where Jev was asked, its judgment comes first and the comparison
+        // beneath is labelled as a comparison.
+        if let Some(view) = &judged {
+            match (view.decided, view.state) {
+                (Some(decided), _) => {
+                    let _ = write!(
+                        out,
+                        "<p class=\"fineprint exact-authority\" data-authority=\"jev\">{} · {}</p>",
+                        Self::judged_by(decided),
+                        date(decided.decided_ms)
+                    );
+                }
+                (None, crate::study::JudgmentState::Checking) => {
+                    out.push_str("<p class=\"fineprint\">Jev is judging this answer. It has no Verdict yet.</p>");
+                }
+                (None, _) => {
+                    let _ = write!(
+                        out,
+                        "<p class=\"notice\">{}</p><p class=\"fineprint\">This answer has no Verdict and its schedule is unchanged.</p>",
+                        escape(
+                            view.check
+                                .and_then(|c| c.reason.as_deref())
+                                .unwrap_or("Jev did not judge this answer.")
+                        )
+                    );
+                    if view.checks_left {
+                        out.push_str(&self.check_again(a, "exact-history-check"));
+                    } else {
+                        out.push_str("<p class=\"fineprint\">Three checks are saved for this answer. It stays saved and not graded.</p>");
+                    }
+                }
+            }
+        }
         let _ = write!(
             out,
             "<h3>{}</h3><ol class=\"exact-diff\" aria-label=\"Diff\">",
             if a.disclosure {
                 "Saved comparison · no answer submitted"
+            } else if judged.is_some() {
+                "Word-by-word comparison, not the Verdict"
             } else {
                 "Word by word"
             }
@@ -3030,12 +3703,19 @@ impl View<'_> {
             escape(&a.grade.authority.grader_version),
             if a.disclosure {
                 " · comparison only, not a recall Verdict"
+            } else if judged.is_some() {
+                " · comparison only, not the Verdict"
             } else {
                 ""
             }
         );
         for e in &a.effects {
-            let (kind, status) = if e.assisted {
+            let (kind, status) = if e.superseded {
+                (
+                    "superseded",
+                    "A newer answer was already recorded · schedule unchanged".into(),
+                )
+            } else if e.assisted {
                 ("assisted", "Assisted practice · schedule unchanged".into())
             } else if e.extra_practice {
                 ("extra", "Extra practice · already scheduled today".into())
@@ -3148,25 +3828,57 @@ impl View<'_> {
         out.push_str("</details>");
         out
     }
-    fn settings(&self) -> String {
-        let mut pace =
-            String::from("<fieldset class=\"pace-options\"><legend>New items per day</legend>");
-        for (value, title, desc) in [
-            ("light", "3", "Light"),
-            ("steady", "6", "Steady"),
-            ("intense", "12", "Intense"),
-        ] {
-            let _ = write!(
-                pace,
-                "<label><input type=\"radio\" name=\"pace\" value=\"{value}\" {}><span><strong>{title}</strong><span>{desc}</span></span></label>",
-                if self.app.preferences.pace == value {
-                    "checked"
+    /// The Owner's switch for paid judgment. It says what leaves Scry and what
+    /// each check reserves before it offers anything, and offers no control
+    /// where this Scry cannot reach Jev. A page rendered without the runtime's
+    /// answer to that question shows no section at all.
+    fn paid_judgment(&self) -> String {
+        let Some(capable) = self.query.get("__judgment") else {
+            return String::new();
+        };
+        let reserve = RESERVATION as f64 / 1_000_000.0;
+        let allowance = DAILY_ALLOWANCE as f64 / 1_000_000.0;
+        let on = self.app.preferences.paid_judgment;
+        let explain = format!(
+            "<p>When this is on, an answer that is not an exact match is saved and then sent to Jev, a paid judgment service, to be judged. Your answer and the expected text leave Scry for that check. So does what names the question: the Work's title and the place in it, a mapping's key or, in reverse, its value, and the accepted aliases of a list's items. Each check reserves ${reserve:.2} of the ${allowance:.2} daily allowance before it is sent. Spelling-strict content, empty answers, exact matches and answers in another Version's wording are never sent.</p>"
+        );
+        let switch = |value: &str, label: &str, class: &str| {
+            self.form(
+                "/settings/judgment",
+                "paid-judgment",
+                "judgment-form",
+                "",
+                &format!(
+                    "{}<button class=\"button {class}\">{label}</button>",
+                    hidden("paid_judgment", value)
+                ),
+            )
+        };
+        let body = if capable != "true" {
+            format!(
+                "<p data-paid-judgment=\"unavailable\"><strong>Paid judgment is not available here.</strong> Nothing leaves Scry: every answer is graded by exact comparison.</p>{}",
+                if on {
+                    "<p class=\"fineprint\">It is turned on in this notebook and stays unused here.</p>"
                 } else {
                     ""
                 }
-            );
-        }
-        pace.push_str("</fieldset><button class=\"button secondary\">Save pace</button>");
+            )
+        } else if on {
+            format!(
+                "<p data-paid-judgment=\"on\"><strong>Paid judgment is on.</strong></p>{explain}{}",
+                switch("off", "Turn paid judgment off", "secondary")
+            )
+        } else {
+            format!(
+                "<p data-paid-judgment=\"off\"><strong>Paid judgment is off.</strong> Nothing leaves Scry: every answer is graded by exact comparison.</p>{explain}{}",
+                switch("on", "Turn paid judgment on", "primary")
+            )
+        };
+        format!(
+            "<section class=\"settings-section\" id=\"paid-judgment\"><h2>Paid judgment</h2>{body}</section>"
+        )
+    }
+    fn settings(&self) -> String {
         let spent = self.app.spent(self.now) as f64 / 1_000_000.0;
         let unknown = self
             .app
@@ -3175,9 +3887,55 @@ impl View<'_> {
             .filter(|s| s.cost_micros.is_none())
             .count();
         let backup=match self.app.backup.completed_ms{Some(time)=>format!("Last verified backup: {}.{}",date(time),if self.now-time>DAY_MS{" A fresh backup needs attention."}else{""}),None=>"No verified remote backup is recorded. Recovery needs attention before personal use.".into()};
+        // A restore stores its marker where a backup's failure goes; it is
+        // not a failure. A restored notebook says so until it backs up here.
+        let restored_marker = self
+            .app
+            .backup
+            .error
+            .as_deref()
+            .is_some_and(|e| e.starts_with(crate::engine::RESTORE_MARKER));
+        let restored = restored_marker
+            || (self.app.restored_paused
+                && self.app.backup.error.is_none()
+                && self.app.backup.completed_ms.is_none());
+        let verified = |time: Option<i64>| {
+            time.map_or_else(
+                || "No verified backup exists.".to_string(),
+                |time| format!("Last verified backup: {}.", date(time)),
+            )
+        };
+        // A failed latest attempt leads, outside any disclosure, with the last
+        // verified date beside it. A full notebook says so too.
+        let backup = match (&self.app.backup.error, self.app.backup.completed_ms) {
+            _ if restored => format!(
+                "<p data-backup=\"restored\"><strong>Restored here; no backup has been taken here yet.</strong> {}</p>",
+                verified(self.app.backup.completed_ms)
+            ),
+            (Some(_), time) => format!(
+                "<p data-backup=\"failed\"><strong>The last backup failed.</strong> {}</p>",
+                verified(time)
+            ),
+            (None, _) => format!("<p>{backup}</p>"),
+        } + &match crate::persistence::footprint(self.app) {
+            crate::persistence::Footprint::TooLarge => {
+                "<p data-capacity=\"full\"><strong>Storage is full.</strong> The notebook is too large for a complete backup or export, and changes that add to it are refused. Nothing has been deleted.</p>".to_string()
+            }
+            // Over three quarters of the limit: its size, quietly.
+            crate::persistence::Footprint::Fits(bytes)
+                if bytes > crate::persistence::SIZE_NOTICE_BYTES =>
+            {
+                format!(
+                    "<p class=\"fineprint\" data-capacity=\"large\">The notebook uses {:.1} MiB of the {} MiB one complete backup can hold.</p>",
+                    bytes as f64 / 1_048_576.0,
+                    crate::persistence::MAX_ARCHIVE_BYTES / 1_048_576
+                )
+            }
+            _ => String::new(),
+        };
         let resume = if self.app.restored_paused {
             format!(
-                "<section class=\"notice\" id=\"preparation\"><h2>Preparation is paused.</h2><p>This restored notebook has background work paused. Resume queued and future meaning checks when you are ready. Native content generation stays retired. Historical uncertain work stays stopped; its allowance and your learning history stay saved.</p>{}</section>",
+                "<section class=\"notice\" id=\"preparation\"><h2>Preparation is paused.</h2><p>This restored notebook has background work paused. Resume future meaning checks when you are ready. Native content generation stays retired. Historical uncertain work stays stopped; its allowance and your learning history stay saved.</p>{}</section>",
                 self.form(
                     "/settings/resume",
                     "resume",
@@ -3196,20 +3954,33 @@ impl View<'_> {
             "",
             "<button class=\"button secondary\">Create a verified backup</button>",
         );
+        let backup = if self
+            .query
+            .get("__verification")
+            .is_some_and(|v| v == "true")
+        {
+            "<p data-backup=\"not-applicable\">Backups do not apply to this verification space.</p>"
+                .to_string()
+        } else {
+            format!(
+                "{backup}<details><summary>Recovery targets</summary><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p></details>{}{backup_action}",
+                self.app
+                    .backup
+                    .error
+                    .as_ref()
+                    .filter(|_| !restored_marker)
+                    .map(|e| format!(
+                        "<details><summary>Backup details</summary><p>{}</p></details>",
+                        escape(e)
+                    ))
+                    .unwrap_or_default()
+            )
+        };
         let mut out = format!(
-            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><h1>Settings</h1></div>{resume}{}<details class=\"settings-section\"><summary>Usage allowance</summary><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></details><section class=\"settings-section\"><h2>Backup</h2><p>{backup}</p><details><summary>Recovery targets</summary><p class=\"fineprint\">Daily remote snapshots and 30-day retention target 24 hours of recoverable work and a 60-minute recovery. A target is not a guarantee.</p></details>{}{backup_action}</section><section class=\"settings-section\"><h2>Export</h2><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><details class=\"settings-section font-colophon\"><summary>About</summary><p>Literata and Atkinson Hyperlegible Next.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses</a></details></section>",
-            self.form("/settings", "pace", "pace-form", "", &pace),
-            self.app
-                .backup
-                .error
-                .as_ref()
-                .map(|e| format!(
-                    "<details><summary>Backup details</summary><p>{}</p></details>",
-                    escape(e)
-                ))
-                .unwrap_or_default()
+            "<section class=\"settings-page\" data-state=\"settings\"><div class=\"page-heading\"><h1>Settings</h1></div>{resume}<details class=\"settings-section\"><summary>Usage allowance</summary><p class=\"spend-number\">${spent:.2}<span> / $3.50</span></p><p>Used or reserved in the last 24 hours. Each external meaning check reserves $0.50 before it begins. Historical generation usage remains accounted; uncertain outcomes keep their reservation.</p><p class=\"fineprint\">{unknown} reservations without confirmed final usage. Provider limits apply independently.</p></details><section class=\"settings-section\"><h2>Backup</h2>{backup}</section><section class=\"settings-section\"><h2>Export</h2><a class=\"button secondary\" href=\"/export\" download>Export your notebook ↓</a></section><details class=\"settings-section font-colophon\"><summary>About</summary><p>Literata and Atkinson Hyperlegible Next.</p><a href=\"/assets/fonts/OFL.txt\">Font licenses</a></details></section>"
         );
         out.push_str(&self.owner_tokens());
+        out.push_str(&self.paid_judgment());
         if self.query.get("__synthetic").is_some_and(|v| v == "true") {
             out.push_str("<p class=\"synthetic-note\">This is an isolated synthetic notebook. It does not prove production access, model usefulness, or remote recovery.</p>");
         }
@@ -3227,99 +3998,154 @@ impl View<'_> {
             String::new()
         }
     }
-    fn edit(&self, id: &str) -> String {
+    /// A saved question's whole record, read-only: its current wording,
+    /// every earlier version and any unapplied fix draft, then every answer
+    /// recorded to it with its Verdict, Authority, Corrections and checks, and
+    /// any schedule reset. The URL is the one the edit form had.
+    fn question_page(&self, id: &str) -> String {
         let Some(q) = self.app.questions.get(id) else {
             return self.not_found();
         };
-        if self.app.protected_concept(&q.concept_id) {
-            return self.gate(&format!("/questions/{id}/edit"));
-        }
-        let use_draft = q.draft_for_version == Some(q.content().version)
-            && q.draft.is_some()
-            && !self.query.get("current").is_some_and(|v| v == "true");
-        let c = if use_draft {
-            q.draft.as_ref().unwrap()
-        } else {
-            q.content()
-        };
-        let body = format!(
-            "{}<label for=\"prompt\">Question</label><textarea id=\"prompt\" name=\"prompt\" rows=\"3\" required maxlength=\"8192\">{}</textarea><label for=\"answer\">Expected answer</label><textarea id=\"answer\" name=\"answer\" rows=\"2\" required maxlength=\"8192\">{}</textarea><label for=\"variants\">Accepted variants <span>One per line, optional</span></label><textarea id=\"variants\" name=\"variants\" rows=\"2\">{}</textarea>{}<label for=\"explanation\">Explanation</label><textarea id=\"explanation\" name=\"explanation\" rows=\"5\" required maxlength=\"16384\">{}</textarea><div class=\"thumb-actions\"><button class=\"button primary\">Save future wording →</button></div>",
-            format_args!(
-                "{}{}{}{}{}",
-                hidden("content_version", &q.content().version.to_string()),
-                hidden("use_draft", if use_draft { "true" } else { "false" }),
-                hidden("kind", &c.kind),
-                hidden("basis", &c.basis),
-                hidden("quotes", &c.quotes.join("\n"))
-            ),
-            escape(
-                self.query
-                    .get("prompt")
-                    .map(String::as_str)
-                    .unwrap_or(&c.prompt)
-            ),
-            escape(
-                self.query
-                    .get("answer")
-                    .map(String::as_str)
-                    .unwrap_or(&c.answer)
-            ),
-            escape(
-                self.query
-                    .get("variants")
-                    .map(String::as_str)
-                    .unwrap_or(&c.variants.join("\n"))
-            ),
-            if c.choices.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "<label for=\"choices\">Answer choices <span>One per line</span></label><textarea id=\"choices\" name=\"choices\" rows=\"4\">{}</textarea>",
-                    escape(
-                        self.query
-                            .get("choices")
-                            .map(String::as_str)
-                            .unwrap_or(&c.choices.join("\n"))
-                    )
-                )
-            },
-            escape(
-                self.query
-                    .get("explanation")
-                    .map(String::as_str)
-                    .unwrap_or(&c.explanation)
-            )
-        );
-        format!(
-            "<section class=\"edit-page\" data-state=\"edit\"><a class=\"back-link\" href=\"/concepts/{}\">← Back to the idea</a><div class=\"page-heading\"><p class=\"eyebrow\">Keep the material honest</p><h1>A better question.</h1><p class=\"lede\">Edits apply to future practice. The question you already saw and your past attempts remain unchanged.</p></div>{}</section>",
+        let c = q.content();
+        let mut out = format!(
+            "<article class=\"study\" data-state=\"earlier-question\"><a class=\"back-link\" href=\"/concepts/{}\">← Back to the idea</a><p class=\"eyebrow\">A saved question</p><h1 class=\"question\">{}</h1><section class=\"question-current\">{}</section><p class=\"fineprint\">Version {} · Saved {}{}</p>{}",
             escape(&q.concept_id),
-            format_args!(
-                "{}{}{}",
-                self.fix_status(q),
-                if use_draft {
-                    format!(
-                        "<aside class=\"notice\"><strong>A better version is ready for your review.</strong><p>It is saved as a draft. Save below to use it in future practice.</p><a href=\"/questions/{id}/edit?current=true\">Use current wording instead</a></aside>"
-                    )
-                } else if q.draft.is_some() {
-                    format!(
-                        "<aside class=\"notice\"><a href=\"/questions/{id}/edit\">Review the prepared draft →</a></aside>"
-                    )
-                } else {
-                    String::new()
-                },
-                self.form(
-                    &format!("/questions/{id}/edit"),
-                    "edit",
-                    "edit-form",
-                    "",
-                    &body
-                )
-            )
-        )
+            escape(&c.prompt),
+            question_content(c, false),
+            c.version,
+            date(c.created_ms),
+            if q.archived { " · Archived" } else { "" },
+            self.fix_status(q)
+        );
+        if let Some(draft) = &q.draft {
+            let _ = write!(
+                out,
+                "<details class=\"question-record\" id=\"draft\"><summary>Fix draft, saved and never applied</summary><p class=\"fineprint\">Drafted for version {} · Saved {}</p>{}</details>",
+                q.draft_for_version
+                    .map_or_else(|| "unknown".to_string(), |v| v.to_string()),
+                date(draft.created_ms),
+                question_content(draft, true)
+            );
+        }
+        for v in q.versions.iter().rev().skip(1) {
+            let _ = write!(
+                out,
+                "<details class=\"question-record\" id=\"version-{}\"><summary>Version {} · Saved {}</summary>{}</details>",
+                v.version,
+                v.version,
+                date(v.created_ms),
+                question_content(v, true)
+            );
+        }
+        out.push_str("<section class=\"question-answers\"><h2>Recorded answers</h2>");
+        let events: Vec<_> = self
+            .app
+            .events
+            .iter()
+            .filter(|e| e.question_id == q.id)
+            .collect();
+        let saved: Vec<_> = unrecorded(self.app)
+            .into_iter()
+            .filter(|u| u.question_id == q.id)
+            .collect();
+        if events.is_empty() && saved.is_empty() {
+            out.push_str("<p class=\"fineprint\">No answer was recorded.</p>");
+        }
+        for e in events.iter().rev() {
+            out.push_str(&self.recorded_answer(e));
+        }
+        for u in saved.iter().rev() {
+            let _ = write!(
+                out,
+                "<article class=\"record-entry\" id=\"saved-{}\"><p class=\"history-meta\"><span>Ungraded</span> · {} · Version {}</p><p class=\"record-answer\">{}</p>{}</article>",
+                escape(u.occurrence_id),
+                date(u.at),
+                u.version,
+                escape(u.answer),
+                checks(&u.checks, u.answer)
+            );
+        }
+        out.push_str("</section>");
+        let resets: Vec<_> = self
+            .app
+            .resets
+            .iter()
+            .filter(|r| r.question_id == q.id)
+            .collect();
+        if !resets.is_empty() {
+            out.push_str("<section class=\"question-answers\"><h2>Schedule resets</h2>");
+            for r in resets {
+                let cause = self
+                    .app
+                    .feedback
+                    .iter()
+                    .find(|f| f.id == r.feedback_id)
+                    .map(|f| {
+                        format!(
+                            "<p class=\"reading preserve\" id=\"feedback-{}\">{}</p>",
+                            escape(&f.id),
+                            escape(&f.text)
+                        )
+                    })
+                    .unwrap_or_default();
+                let _ = write!(
+                    out,
+                    "<article class=\"record-entry\" id=\"reset-{}\"><p class=\"history-meta\"><span>Schedule reset</span> · {} · Version {}</p>{cause}</article>",
+                    escape(&r.id),
+                    date(r.created_ms),
+                    r.content_version
+                );
+            }
+            out.push_str("</section>");
+        }
+        out.push_str("</article>");
+        out
+    }
+    /// One Event on its question's page: the Verdict and Authority as saved,
+    /// the version it was given to, then any Correction and check.
+    fn recorded_answer(&self, e: &Event) -> String {
+        let outcome = if e.is_ungraded() {
+            "Ungraded"
+        } else if e.assisted {
+            "With help"
+        } else {
+            outcome_label(&e.result.outcome)
+        };
+        let mut out = format!(
+            "<article class=\"record-entry\" id=\"attempt-{}\"><p class=\"history-meta\"><span>{outcome}</span> · {} · {} · Version {}</p><p class=\"record-answer\">{}</p>",
+            escape(&e.id),
+            date(e.result.reviewed_ms),
+            authority_label(&e.result.authority),
+            e.presentation.version,
+            escape(if e.answer.is_empty() {
+                "You looked at the answer"
+            } else {
+                &e.answer
+            })
+        );
+        for o in self.app.overrides.iter().filter(|o| o.event_id == e.id) {
+            let _ = write!(
+                out,
+                "<p class=\"record-correction\" id=\"correction-{}\">Your Correction: counted as {} · {}</p>",
+                escape(&o.id),
+                if o.correct { "recalled" } else { "missed" },
+                date(o.created_ms)
+            );
+        }
+        let mut saved: Vec<_> = self
+            .app
+            .assessments
+            .values()
+            .filter(|a| a.occurrence_id == e.occurrence_id)
+            .collect();
+        saved.sort_by_key(|a| a.created_ms);
+        out.push_str(&checks(&saved, &e.answer));
+        out.push_str("</article>");
+        out
     }
     fn not_found(&self) -> String {
         format!(
-            "<section class=\"empty-stage\" data-state=\"not-found\">{}<p class=\"eyebrow\">A page has gone astray</p><h1>Nothing on this page.</h1><p class=\"lede\">Your saved notebook is still here. Return to your practice or explore the map.</p><a class=\"button primary\" href=\"/\">Back to review →</a></section>",
+            "<section class=\"empty-stage\" data-state=\"not-found\">{}<p class=\"eyebrow\">A page has gone astray</p><h1>Nothing on this page.</h1><p class=\"lede\">Your saved notebook is still here. Return to your practice or explore the map.</p><a class=\"button primary\" href=\"/\">Back to practice →</a></section>",
             emblem("large")
         )
     }
@@ -3359,7 +4185,7 @@ pub fn changelog() -> String {
         escape(VERSION),
         escape(SOURCE_REVISION)
     );
-    shell("Changelog", "/changelog", &content, None, false, false, "/")
+    shell("Changelog", "/changelog", &content, None, false, "/")
 }
 
 #[cfg(test)]
@@ -3379,12 +4205,29 @@ fn generated_markdown_cannot_activate_raw_html_or_untrusted_urls() {
 /// Only known, same-origin Library pages can follow the assistance POST.
 pub fn library_destination(path: &str) -> bool {
     matches!(path, "/library" | "/library/add")
-        || path.strip_prefix("/library/versions/").is_some_and(|id| {
-            id.len() == 32
-                && id
-                    .bytes()
-                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        })
+        || path
+            .strip_prefix("/library/versions/")
+            .or_else(|| path.strip_prefix("/library/works/"))
+            .is_some_and(|id| {
+                id.len() == 32
+                    && id
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            })
+}
+fn rights_label(r: crate::library::Rights) -> &'static str {
+    match r {
+        crate::library::Rights::PrivateOnly => "Private only",
+        crate::library::Rights::Licensed => "Licensed",
+        crate::library::Rights::PublicDomain => "Public domain",
+    }
+}
+fn provenance_label(p: crate::library::Provenance) -> &'static str {
+    match p {
+        crate::library::Provenance::Supplied => "Supplied text",
+        crate::library::Provenance::ModelFromMemory => "Written by a model from memory",
+        crate::library::Provenance::CheckedAgainstSources => "Checked against cited sources",
+    }
 }
 fn version_name(v: &crate::library::Version) -> &str {
     if v.name.trim().is_empty() {
@@ -3399,10 +4242,11 @@ fn version_metadata(v: &crate::library::Version) -> String {
         crate::library::Kind::OrderedList => "Ordered list",
         crate::library::Kind::KeyedMapping => "Keyed mapping",
     };
+    let count = |n: usize, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
     format!(
-        "{kind} · {} Sections · {} Units",
-        v.sections.len(),
-        v.sections.iter().map(|s| s.units.len()).sum::<usize>()
+        "{kind} · {} · {}",
+        count(v.sections.len(), "Section"),
+        count(v.sections.iter().map(|s| s.units.len()).sum(), "Unit")
     )
 }
 
@@ -3415,13 +4259,15 @@ fn exact_stream_active(app: &App) -> bool {
             .any(|s| s.status != crate::study::Status::Dropped)
 }
 
-fn legacy_home(_app: &App) -> &'static str {
-    "/notebook"
-}
-
 pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a str {
     if matches!(path, "/library/version/add" | "/library/mapping/add") {
         redirect.strip_prefix("/api/v1").unwrap_or("/library")
+    } else if path == "/practice/pace" {
+        // A Study's Pace is chosen on its Version's page and returns there.
+        redirect
+    } else if path == "/practice/check" && redirect == "/history" {
+        // An earlier answer was checked again from History: return there.
+        "/history"
     } else if path.starts_with("/practice/review/")
         || (path.starts_with("/practice/") && app.practice.mixed_review)
     {
@@ -3443,17 +4289,33 @@ pub fn mutation_redirect<'a>(app: &App, path: &str, redirect: &'a str) -> &'a st
         } else {
             "/recall"
         }
+    } else if path == "/settings/resume" && redirect == "/" {
+        // Resuming is done from Settings and returns there.
+        "/settings"
     } else if redirect == "/"
         && (path.starts_with("/review/")
-            || path == "/settings/resume"
             || path
                 .strip_prefix("/concepts/")
                 .is_some_and(|p| p.ends_with("/practice")))
     {
-        legacy_home(app)
+        // A retired earlier-notebook action is refused on the page it came from.
+        "/notebook"
     } else {
         redirect
     }
+}
+
+/// Pause, resume, drop and Pace are pressed on a Study's Version page; the
+/// browser returns there, whether the action commits or is refused.
+pub fn study_control_page(app: &App, path: &str, study_id: Option<&str>) -> Option<String> {
+    if !matches!(
+        path,
+        "/practice/pause" | "/practice/resume" | "/practice/drop" | "/practice/pace"
+    ) {
+        return None;
+    }
+    let study = app.practice.studies.get(study_id?)?;
+    Some(format!("/library/versions/{}", study.version_id))
 }
 
 pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
@@ -3461,10 +4323,30 @@ pub fn mutation_error_path<'a>(app: &App, path: &'a str) -> &'a str {
         "/library"
     } else if path == "/library/version/add" {
         "/library/add"
-    } else if matches!(path, "/create" | "/add") || path.ends_with("/edit") {
+    } else if matches!(path, "/create" | "/add" | "/settings") || path.ends_with("/edit") {
         path
+    } else if path == "/settings/backup" {
+        // A refused backup request is answered with the backup status.
+        "/settings"
+    } else if let Some(page) = earlier_page(path) {
+        page
     } else {
         mutation_redirect(app, path, "/")
+    }
+}
+
+/// A refused write to an earlier Goal or Concept is shown on that Goal's or
+/// Concept's own page; any other refused earlier-notebook write, on Earlier
+/// practice. Retired generation actions keep their own landing.
+fn earlier_page(path: &str) -> Option<&str> {
+    let parts: Vec<_> = path.trim_matches('/').split('/').collect();
+    match parts.as_slice() {
+        [_, _, "retry" | "refine" | "fix"] => None,
+        ["concepts", _, "practice"] => Some("/notebook"),
+        ["goals" | "concepts", _, _] => path.rfind('/').map(|end| &path[..end]),
+        ["questions", _, _] => Some("/notebook"),
+        _ if path == "/__fixture" => Some("/notebook"),
+        _ => None,
     }
 }
 
@@ -3484,8 +4366,13 @@ pub fn render(
     let content = match path {
         "/" | "/recall"
             if app.practice.current.as_ref().is_some_and(|p| {
-                app.practice.studies[&p.prompt.study_id].lesson
+                let study = &app.practice.studies[&p.prompt.study_id];
+                // A text that Study's mix reached first offers lesson controls
+                // only once every phrase has a Card; until then, outside the
+                // mix, it is ordinary Study practice at its Pace.
+                study.lesson
                     && !crate::library::is_nato(&app.library.versions[&p.prompt.version_id])
+                    && (app.practice.mixed_review || crate::study::fully_introduced(app, study))
             }) =>
         {
             view.lesson_screen()
@@ -3537,55 +4424,32 @@ pub fn render(
         {
             view.nato_screen()
         }
-        "/recall" if app.practice.current.is_none() && app.practice.mixed_review => {
-            view.mixed_home()
-        }
+        // Opening practice with nothing held selects nothing: it offers Study.
         "/recall"
             if app.practice.current.is_none()
-                && app.practice.studies.values().any(|s| {
-                    app.library
-                        .versions
-                        .get(&s.version_id)
-                        .is_some_and(crate::library::is_nato)
-                }) =>
+                && (app.practice.mixed_review || exact_stream_active(app)) =>
         {
-            view.nato_screen()
+            view.mixed_home()
         }
         "/recall" if exact_stream_active(app) => view.exact_stream(),
         "/recall" | "/library" => view.library(),
         "/library/add" => view.library_add(),
         "/notebook" => format!(
-            "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/\">Review</a><a href=\"/map\">Map</a></nav>{}",
-            view.study()
+            "<nav class=\"understanding-nav\" aria-label=\"Understanding\"><a href=\"/\">Practice</a><a href=\"/map\">Map</a></nav>{}",
+            view.earlier()
         ),
         "/create" | "/add" => view.create(),
         "/map" => view.map(),
         "/history" => view.history(),
         "/settings" => view.settings(),
-        "/gate" => {
-            let target = query
-                .get("return_to")
-                .filter(|v| v.starts_with('/') && !v.starts_with("//"))
-                .cloned()
-                .unwrap_or_else(|| {
-                    format!(
-                        "/concepts/{}",
-                        query
-                            .get("concept")
-                            .cloned()
-                            .or_else(|| app.occurrence.as_ref().map(|o| o.concept_id.clone()))
-                            .unwrap_or_default()
-                    )
-                });
-            view.gate(&target)
-        }
         _ => {
             let segments: Vec<_> = path.trim_matches('/').split('/').collect();
             match segments.as_slice() {
                 ["library", "versions", id] => view.library_version(id),
+                ["library", "works", id] => view.library_work(id),
                 ["goals", id] => view.goal(id),
                 ["concepts", id] => view.concept(id),
-                ["questions", id, "edit"] => view.edit(id),
+                ["questions", id, "edit"] => view.question_page(id),
                 _ => view.not_found(),
             }
         }
@@ -3601,18 +4465,12 @@ pub fn render(
         "/settings" => "Settings",
         _ => "Your notebook",
     };
-    let poll = path != "/"
-        && app
-            .occurrence
-            .as_ref()
-            .is_some_and(|o| matches!(o.phase.as_str(), "checking" | "pending"));
     shell(
         title,
         path,
         &content,
         notice,
         query.get("__synthetic").is_some_and(|v| v == "true"),
-        poll,
         if exact_stream_active(app) {
             "/recall"
         } else {
@@ -3626,21 +4484,20 @@ pub fn error_page(app: &App, status: u16, message: &str, now_ms: i64) -> String 
     let title = if status == 401 || status == 403 {
         "Your private notebook is locked."
     } else if status == 409 {
-        "Let's return to what is saved."
+        "This conflicts with what is saved."
     } else {
-        "A moment to pause."
+        "Scry could not complete this request."
     };
     let content = format!(
-        "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Back to review →</a></section>",
+        "<section class=\"empty-stage\" data-state=\"error\">{}<p class=\"eyebrow\">Request {status}</p><h1>{title}</h1><p class=\"lede\">{}</p><a class=\"button primary\" href=\"/\">Back to practice →</a></section>",
         emblem("large"),
         escape(message)
     );
     shell(
-        "A moment to pause",
+        "Request not completed",
         "/",
         &content,
         None,
-        false,
         false,
         if exact_stream_active(app) {
             "/recall"
@@ -3656,14 +4513,13 @@ fn shell(
     content: &str,
     notice: Option<&str>,
     synthetic: bool,
-    poll: bool,
     practice_href: &str,
 ) -> String {
     let notice = notice
         .map(|n| format!("<div class=\"notice\" role=\"status\">{}</div>", escape(n)))
         .unwrap_or_default();
     format!(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"{practice_href}\" {}>Practice</a><a href=\"/lessons\">Lessons</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a><a href=\"/changelog\">Changelog</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" {}>{notice}{content}</main></div></body></html>",
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content\"><meta name=\"color-scheme\" content=\"light dark\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#f5f2ea\"><meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#191e1d\"><meta name=\"robots\" content=\"noindex,nofollow\"><title>{} · Scry</title><link rel=\"icon\" href=\"/assets/icon.svg\" type=\"image/svg+xml\"><link rel=\"stylesheet\" href=\"/assets/app.css\"><script src=\"/assets/app.js\" defer></script></head><body><a class=\"skip-link\" href=\"#main\">Skip to the page</a><div class=\"page-frame\"><header class=\"masthead\"><a class=\"wordmark\" href=\"/\" aria-label=\"Scry, home\">{}<span>scry<span class=\"wordmark-period\">.</span></span></a><details class=\"account-menu\"><summary aria-label=\"Open menu\">Menu</summary><nav aria-label=\"Main navigation\"><a href=\"{practice_href}\" {}>Practice</a><a href=\"/lessons\">Lessons</a><a href=\"/library\">Library</a><a href=\"/history\">History</a><a href=\"/settings\">Settings</a><a href=\"/notebook\">Earlier practice</a><a href=\"/changelog\">Changelog</a></nav></details></header>{}<div id=\"request-status\" class=\"request-status\" role=\"status\" aria-live=\"polite\" hidden></div><main id=\"main\" tabindex=\"-1\" >{notice}{content}</main></div></body></html>",
         escape(title),
         emblem("wordmark-emblem"),
         if path == "/" || path == "/map" || path.starts_with("/concepts/") {
@@ -3675,8 +4531,7 @@ fn shell(
             "<div class=\"synthetic-badge\">Synthetic notebook · isolated preview</div>"
         } else {
             ""
-        },
-        if poll { "data-poll" } else { "" }
+        }
     ).replace("#f5f2ea", if content.contains("nato-screen") { "#f0efe9" } else { "#f5f2ea" })
      .replace("#191e1d", if content.contains("nato-screen") { "#151719" } else { "#191e1d" })
 }
@@ -3693,17 +4548,36 @@ fn emblem(class: &str) -> String {
         escape(class)
     )
 }
+/// A Concept's latest note, as the Goal page summarizes it.
 fn notes(app: &App, c: &Concept) -> String {
-    let Some(note) = c.notes.last() else {
-        return "<p class=\"fineprint\">No note is available yet.</p>".into();
-    };
+    c.notes.last().map_or_else(
+        || "<p class=\"fineprint\">No note is available yet.</p>".into(),
+        |note| note_section(app, c, note, false),
+    )
+}
+/// Every note of a Concept, in the order saved, each with its provenance.
+fn all_notes(app: &App, c: &Concept) -> String {
+    if c.notes.len() < 2 {
+        return notes(app, c);
+    }
+    c.notes
+        .iter()
+        .map(|note| note_section(app, c, note, true))
+        .collect()
+}
+fn note_section(app: &App, c: &Concept, note: &Note, dated: bool) -> String {
     let paragraphs = note_text(app, c, &note.text)
         .split("\n\n")
         .filter(|p| !p.trim().is_empty())
         .map(|p| format!("<p>{}</p>", escape(p)))
         .collect::<String>();
+    let saved = if dated {
+        format!("<p class=\"fineprint\">Saved {}</p>", date(note.created_ms))
+    } else {
+        String::new()
+    };
     format!(
-        "<section class=\"concept-note\" aria-label=\"Saved explanation\"><div class=\"reading preserve\">{paragraphs}</div>{}</section>",
+        "<section class=\"concept-note\" aria-label=\"Saved explanation\">{saved}<div class=\"reading preserve\">{paragraphs}</div>{}</section>",
         provenance(&note.basis, &note.quotes)
     )
 }
@@ -3724,7 +4598,9 @@ fn provenance(basis: &str, quotes: &[String]) -> String {
     out.push_str("</div>");
     out
 }
-fn constellation(app: &App, concepts: &[&Concept], now: i64) -> String {
+/// Decorative: prerequisites place the stars; every star is drawn alike, since
+/// nothing about the earlier notebook is predicted.
+fn constellation(concepts: &[&Concept]) -> String {
     fn depth(index: usize, concepts: &[&Concept], visited: &mut Vec<usize>) -> usize {
         if visited.contains(&index) {
             return 0;
@@ -3779,14 +4655,10 @@ fn constellation(app: &App, concepts: &[&Concept], now: i64) -> String {
             }
         }
     }
-    for (i, c) in concepts.iter().enumerate() {
-        let (x, y) = positions[i];
-        let brightness = concept_evidence(app, c, now).brightness;
+    for (i, &(x, y)) in positions.iter().enumerate() {
         let _ = write!(
             out,
-            "<circle class=\"chart-halo\" cx=\"{x}\" cy=\"{y}\" r=\"{}\"/><circle class=\"chart-star brightness-{brightness}\" cx=\"{x}\" cy=\"{y}\" r=\"{}\"/><text class=\"chart-number\" x=\"{}\" y=\"{}\">{:02}</text>",
-            7 + usize::from(brightness) * 2,
-            2.0 + f64::from(brightness) * 0.45,
+            "<circle class=\"chart-halo\" cx=\"{x}\" cy=\"{y}\" r=\"11\"/><circle class=\"chart-star\" cx=\"{x}\" cy=\"{y}\" r=\"3.35\"/><text class=\"chart-number\" x=\"{}\" y=\"{}\">{:02}</text>",
             x + 13,
             y - 10,
             i + 1
@@ -3795,14 +4667,13 @@ fn constellation(app: &App, concepts: &[&Concept], now: i64) -> String {
     out.push_str("<circle class=\"chart-distant\" cx=\"596\" cy=\"31\" r=\"1\"/><circle class=\"chart-distant\" cx=\"203\" cy=\"153\" r=\"1\"/><circle class=\"chart-distant\" cx=\"510\" cy=\"142\" r=\"1\"/></svg>");
     out
 }
-fn concept_evidence(app: &App, c: &Concept, now: i64) -> ConceptState {
-    let questions: Vec<_> = app
+fn concept_evidence(app: &App, c: &Concept) -> ConceptState {
+    let attempts: Vec<_> = app
         .questions
         .values()
         .filter(|q| q.concept_id == c.id && !q.archived)
-        .map(|q| {
-            let attempts = app
-                .events
+        .flat_map(|q| {
+            app.events
                 .iter()
                 .filter(|e| e.question_id == q.id && !e.is_ungraded())
                 .map(|e| {
@@ -3828,45 +4699,18 @@ fn concept_evidence(app: &App, c: &Concept, now: i64) -> ConceptState {
                         },
                     }
                 })
-                .collect();
-            QuestionEvidence {
-                card: q.card.clone(),
-                level: match q.content().kind.as_str() {
-                    "choice" => "recognize",
-                    "explain" => "explain",
-                    _ => "recall",
-                }
-                .into(),
-                attempts,
-            }
         })
         .collect();
-    compute_concept_state(&questions, now)
+    compute_concept_state(&attempts)
 }
-fn concept_state(app: &App, c: &Concept, now: i64) -> &'static str {
-    if c.archived {
-        return "Archived";
+/// How many answers to this Concept were recorded, graded or not: an observed
+/// count, never an estimate.
+fn answers_recorded(app: &App, c: &Concept) -> String {
+    match app.events.iter().filter(|e| e.concept_id == c.id).count() {
+        0 => "No answers".into(),
+        1 => "1 answer".into(),
+        n => format!("{n} answers"),
     }
-    let state = concept_evidence(app, c, now);
-    if state.tally.is_empty() && c.introduced_ms.is_some() {
-        return "Introduced";
-    }
-    match state.status.as_str() {
-        "solid" => "Solid",
-        "fading" => "Fading",
-        "learning" => "Learning",
-        _ => "New",
-    }
-}
-fn recall_label(app: &App, c: &Concept, now: i64) -> String {
-    let state = concept_evidence(app, c, now);
-    if state.recall < 0.0 {
-        return "Not enough unaided practice for a recall estimate yet. Reading and helped practice are recorded separately.".into();
-    }
-    format!(
-        "Estimated recall now: {:.0}%. This is a scheduling estimate, not a certainty or a measure of understanding.",
-        state.recall * 100.0
-    )
 }
 fn tally(state: &ConceptState) -> String {
     if state.tally.is_empty() {
@@ -3877,7 +4721,7 @@ fn tally(state: &ConceptState) -> String {
     for item in &state.tally {
         let (class, label) = match item.as_str() {
             "u" => ("unaided", "Recalled without help"),
-            "h" => ("helped", "Practiced with help"),
+            "h" => ("helped", "Answered with help"),
             _ => ("missed", "Missed"),
         };
         let _ = write!(
@@ -3887,6 +4731,129 @@ fn tally(state: &ConceptState) -> String {
     }
     out.push_str("</ol>");
     out
+}
+/// A saved question version as it was presented: choices, the answer and
+/// what else was accepted, the explanation and its provenance. `wording`
+/// repeats the question when it is not the page's heading.
+fn question_content(c: &Content, wording: bool) -> String {
+    let mut out = String::new();
+    if wording {
+        let _ = write!(
+            out,
+            "<p class=\"reading\"><strong>{}</strong></p>",
+            escape(&c.prompt)
+        );
+    }
+    if !c.choices.is_empty() {
+        out.push_str("<ol class=\"reading earlier-choices\">");
+        for choice in &c.choices {
+            let _ = write!(out, "<li>{}</li>", escape(choice));
+        }
+        out.push_str("</ol>");
+    }
+    let _ = write!(
+        out,
+        "<dl class=\"answer-pair\"><div><dt>The answer</dt><dd>{}</dd></div>{}</dl><div class=\"reading explanation\"><p>{}</p></div>{}",
+        escape(&c.answer),
+        if c.variants.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<div><dt>Also accepted</dt><dd>{}</dd></div>",
+                escape(&c.variants.join("\n"))
+            )
+        },
+        escape(&c.explanation),
+        provenance(&c.basis, &c.quotes)
+    );
+    out
+}
+/// Saved checks of one answer, oldest first, each by its fixed status label
+/// and the policy it ran under. An answer that differs from the one shown
+/// above it is shown with its check.
+fn checks(saved: &[&Assessment], answer: &str) -> String {
+    let mut out = String::new();
+    for a in saved {
+        let (name, label) = check_label(&a.status);
+        let _ = write!(
+            out,
+            "<p class=\"fineprint\" id=\"check-{}\" data-check=\"{name}\">{label} Policy {} · {}</p>",
+            escape(&a.id),
+            escape(&a.policy),
+            date(a.created_ms)
+        );
+        if a.answer != answer {
+            let _ = write!(
+                out,
+                "<p class=\"reading preserve\">{}</p>",
+                escape(&a.answer)
+            );
+        }
+    }
+    out
+}
+/// An answer saved in the earlier notebook with no Event: the held
+/// question's answer, or the answer a check was recorded for. Ungraded.
+struct Unrecorded<'a> {
+    occurrence_id: &'a str,
+    question_id: &'a str,
+    version: u64,
+    answer: &'a str,
+    at: i64,
+    checks: Vec<&'a Assessment>,
+}
+fn unrecorded(app: &App) -> Vec<Unrecorded<'_>> {
+    let graded = |id: &str| app.events.iter().any(|e| e.occurrence_id == id);
+    let mut out: Vec<Unrecorded<'_>> = Vec::new();
+    if let Some(o) = app.occurrence.as_ref().filter(|o| !graded(&o.id))
+        && let Some(answer) = o.answer.as_deref()
+    {
+        out.push(Unrecorded {
+            occurrence_id: &o.id,
+            question_id: &o.question_id,
+            version: o.presentation.version,
+            answer,
+            at: o.created_ms,
+            checks: Vec::new(),
+        });
+    }
+    let mut saved: Vec<_> = app
+        .assessments
+        .values()
+        .filter(|a| !graded(&a.occurrence_id))
+        .collect();
+    saved.sort_by_key(|a| a.created_ms);
+    for a in saved {
+        if let Some(u) = out.iter_mut().find(|u| u.occurrence_id == a.occurrence_id) {
+            u.at = u.at.max(a.created_ms);
+            u.checks.push(a);
+            continue;
+        }
+        out.push(Unrecorded {
+            occurrence_id: &a.occurrence_id,
+            question_id: &a.question_id,
+            version: a.content_version,
+            answer: &a.answer,
+            at: a.created_ms,
+            checks: vec![a],
+        });
+    }
+    out
+}
+/// A saved check is named by its stored status alone, never by the message
+/// stored with it.
+fn check_label(status: &str) -> (&'static str, &'static str) {
+    match status {
+        "queued" => ("queued", "Check recorded: queued, never sent."),
+        "sent" => ("sent", "Check recorded: sent, never confirmed."),
+        "failed" => ("failed", "Check recorded: failed."),
+        "unknown" => ("unknown", "Check recorded: outcome unknown."),
+        "paused" => ("paused", "Check recorded: paused, never sent."),
+        "unsure" => ("unsure", "Check recorded: inconclusive."),
+        "superseded" => ("superseded", "Check recorded: superseded."),
+        "complete" => ("complete", "Check recorded: complete."),
+        _ => ("recorded", "A check was recorded."),
+    }
 }
 fn status_label(value: &str) -> &'static str {
     match value {
@@ -3916,10 +4883,27 @@ fn authority_label(value: &str) -> &'static str {
         _ => "Recorded",
     }
 }
+/// A record's model attribution. An imported record's marker names the
+/// import, not a model, and is not shown.
+fn attributed(model: &Option<String>) -> Option<&str> {
+    model
+        .as_deref()
+        .filter(|m| !m.is_empty() && !m.starts_with("legacy-import"))
+}
+/// Whole micro-dollars as dollars, with cents always and no trailing zeros.
+fn dollars(micros: u64) -> String {
+    let text = format!("{}.{:06}", micros / 1_000_000, micros % 1_000_000);
+    let trimmed = text.trim_end_matches('0');
+    let cents = trimmed.find('.').unwrap() + 3;
+    format!("${}", &text[..cents.max(trimmed.len())])
+}
 fn date(ms: i64) -> String {
     chrono::DateTime::from_timestamp_millis(ms)
         .map(|d| d.format("%b %-d, %Y · %H:%M UTC").to_string())
         .unwrap_or_else(|| "at an unknown time".into())
+}
+fn next_review_line(at: i64) -> String {
+    format!("Next review {}.", date(at))
 }
 fn relative(ms: i64, now: i64) -> String {
     let diff = ms - now;
@@ -3983,13 +4967,5 @@ pub fn token_created(secret: &str) -> String {
         "<section><h1>Save your Owner token</h1><p>This secret is shown once. Use <code>scry login --token-stdin</code> to save it on your computer.</p><textarea aria-label=\"Owner token secret\" readonly>{}</textarea><p><a href=\"/settings#owner-tokens\">Return to Owner tokens</a></p></section>",
         escape(secret)
     );
-    shell(
-        "Owner token",
-        "/settings",
-        &content,
-        None,
-        false,
-        false,
-        "/",
-    )
+    shell("Owner token", "/settings", &content, None, false, "/")
 }

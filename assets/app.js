@@ -92,7 +92,6 @@
       autoEdited = true;
       answerUnsaved = true;
       if (!pending && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]);
-      else if (!pending && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.');
       else if (!pending && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.');
       else if (!pending && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.');
       else if (!pending) announce('Changes not yet saved.');
@@ -157,20 +156,10 @@
     if (!doc.querySelector('#main') || !doc.querySelector('.masthead')) throw new Error('The saved page could not be read.');
     return doc;
   };
-  const install = (doc, response, navigation = true, preserveDrafts = false) => {
+  const install = (doc, response, navigation = true) => {
     const main = doc.querySelector('#main');
     const previousMain = document.getElementById('main');
     if (!main || !previousMain) return;
-    const focused = document.activeElement;
-    const selection = focused?.selectionStart == null ? null : [focused.selectionStart, focused.selectionEnd];
-    if (preserveDrafts) {
-      // Keep the actual draft form, including its operation identity. Only a
-      // goal's read-only preparation/reference changes while the learner types.
-      [...previousMain.querySelectorAll('form')].filter(form => dirtyForms.has(form)).forEach(form => {
-        const replacement = [...main.querySelectorAll('form')].find(next => next.getAttribute('action') === form.getAttribute('action'));
-        replacement?.replaceWith(form);
-      });
-    }
     // Keep the read-only inspector steady while the server updates a review.
     // It never owns a grade, a schedule or a request of its own.
     const oldProgress = previousMain.querySelector('#nato-progress');
@@ -182,13 +171,9 @@
       if (nextSelected && oldProgress.open) nextSelected.checked = true;
     }
     previousMain.replaceWith(main);
-    if (!preserveDrafts) { cancelAuto(); autoEdited = false; answerUnsaved = false; autoBlocked = false; }
+    cancelAuto(); autoEdited = false; answerUnsaved = false; autoBlocked = false;
     enablePickerReturn();
     enableDraftSave();
-    if (preserveDrafts && focused?.isConnected) {
-      focused.focus({ preventScroll: true });
-      if (selection) focused.setSelectionRange(...selection);
-    }
     const header = doc.querySelector('.masthead');
     if (header) document.querySelector('.masthead')?.replaceWith(header);
     document.title = doc.title;
@@ -306,11 +291,6 @@
       if (request.automatic && response.type === 'opaqueredirect') throw new Error('The automatic save was redirected.');
       if (response.status === 401 || response.status === 403 || (response.status === 409 && response.headers.get('X-Scry-Scope-Mismatch') === '1') || (response.url && new URL(response.url, location.href).origin !== location.origin)) { conceal(); return; }
       if (!verifyScope(response.headers.get('X-Scry-Scope'))) return;
-      if (request.automatic && response.status === 429) {
-        pending = null; unlock(request); autoBlocked = 'limit'; cancelAuto();
-        announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.');
-        return;
-      }
       if (request.automatic && response.status === 200) {
         const receipt = await readCheckpoint(response, request);
         if (!valid()) return;
@@ -333,14 +313,13 @@
         acknowledgedDrafts.set(request.form, {value: request.snapshot, generation: receipt.generation});
         const discardControl = request.form.querySelector('[data-checkpoint-discard]');
         if (discardControl) { discardControl.dataset.checkpointPresent = 'true'; discardControl.hidden = false; }
-        if (receipt.remaining === 0) autoBlocked = 'limit';
         if (request.input.value === request.snapshot) {
           cancelAuto(); autoEdited = false; answerUnsaved = false;
-          announce(autoBlocked ? 'Saved. Automatic saving has reached its limit; use Save draft next time.' : 'Saved.');
+          announce('Saved.');
           checkpointAcknowledged = true;
         } else {
-          announce(autoBlocked ? 'Earlier text saved. Newer changes are not saved; use Save draft.' : 'Earlier text saved. Newer changes are not yet saved.');
-          if (request.followupAllowed && autoEdited && !autoBlocked) scheduleAuto(request.input);
+          announce('Earlier text saved. Newer changes are not yet saved.');
+          if (request.followupAllowed && autoEdited) scheduleAuto(request.input);
         }
         return;
       }
@@ -478,32 +457,20 @@
       return;
     }
     if (target instanceof HTMLElement && target.closest('a,button,summary')) return;
-    if (/^[1-9]$/.test(event.key)) {
-      const choice = document.querySelector(`[data-choice="${event.key}"]`);
-      if (choice) { event.preventDefault(); choice.form?.requestSubmit(choice); }
-    } else if (event.key === 'Enter' || event.key === ' ') {
+    if (event.key === 'Enter' || event.key === ' ') {
       const next = document.querySelector('form[data-next]');
       if (next) { event.preventDefault(); next.requestSubmit(); }
     }
   });
-  const mayInstallPoll = (doc, preserveDrafts) => {
-    const dirty = [...document.forms].filter(form => dirtyForms.has(form));
-    const focused = document.activeElement;
-    const editing = focused?.matches('textarea,input,select');
-    if (!preserveDrafts) return !editing && dirty.length === 0;
-    if (editing && !dirtyForms.has(focused.form)) return false;
-    const next = doc.querySelector('#main');
-    if (!next) return false;
-    const forms = [...next.querySelectorAll('form')];
-    return dirty.every(form => dirty.filter(candidate => candidate.getAttribute('action') === form.getAttribute('action')).length === 1 && forms.filter(candidate => candidate.getAttribute('action') === form.getAttribute('action')).length === 1);
-  };
+  const mayInstallPoll = () => !document.activeElement?.matches('textarea,input,select') && ![...document.forms].some(form => dirtyForms.has(form));
   const schedulePoll = (delay = 4000) => {
     clearTimeout(pollTimer);
     if (!document.querySelector('#main[data-poll], [data-poll]')) return;
     pollTimer = setTimeout(async () => {
-      const currentState = document.querySelector('[data-state]')?.getAttribute('data-state');
-      const preserveDrafts = currentState === 'goal';
-      if (pending || suspended || !navigator.onLine || inactive() || document.querySelector('form[aria-busy]') || (!preserveDrafts && (document.activeElement?.matches('textarea,input,select') || [...document.forms].some(form => dirtyForms.has(form))))) { schedulePoll(); return; }
+      // The element that asks to be polled names the state, where it has one: a
+      // lesson's result sits inside the lesson's own outer state.
+      const currentState = (document.querySelector('[data-poll][data-state]') || document.querySelector('[data-state]'))?.getAttribute('data-state');
+      if (pending || suspended || !navigator.onLine || inactive() || document.querySelector('form[aria-busy]') || !mayInstallPoll()) { schedulePoll(); return; }
       const sequence = pageSequence;
       const generation = epoch;
       const controller = new AbortController();
@@ -513,10 +480,8 @@
       try {
         const response = await fetch(location.href, { credentials: 'same-origin', headers: { Accept: 'text/html', 'X-Scry-Request': 'poll', ...expectedHeaders }, cache: 'no-store', signal: controller.signal });
         const doc = await safePage(response, valid);
-        if (doc && response.ok && !pending && valid() && mayInstallPoll(doc, preserveDrafts)) {
-          // Never replace an editable page or an unanswered question just to poll.
-          if (['concept-home', 'checking', 'checking-reference', 'checking-paused', 'pending', 'preparing', 'preparation-paused', 'preparation-stopped', 'goal', 'caught-up', 'edit'].includes(currentState)) install(doc, response, false, preserveDrafts);
-        }
+        // Never replace an editable page or an unanswered question just to poll.
+        if (doc && response.ok && !pending && valid() && mayInstallPoll() && currentState === 'exact-checking') install(doc, response, false);
       } catch { /* Poll reads never retry paid work or imply success. */ }
       finally { clearTimeout(timeout); if (pollRequest === controller) pollRequest = null; }
       if (current(generation)) schedulePoll();
@@ -613,7 +578,7 @@
     if (suspended) { resume(); return; }
     if (pending?.sending) announce('Saving…', [], 'Wait for the current response before continuing.');
     else if (pending) announce(pending.automatic && pending.input.value !== pending.snapshot ? 'Reconcile the earlier save. Your newer changes are not saved.' : 'You are connected again. Reconcile your saved operation.', [[reconcileLabel(pending), () => send(pending)], ['Open saved progress', () => location.reload()]]);
-    else { if (answerUnsaved && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); else if (answerUnsaved && autoBlocked === 'limit') announce('Automatic saving has reached its limit. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved) announce('Changes are not saved. Use Save draft or keep typing.'); else hideStatus(); schedulePoll(); }
+    else { if (answerUnsaved && autoBlocked === 'changed') announce('The question or saved draft changed. Your text is not saved.', [['Open saved progress', () => location.reload()]]); else if (answerUnsaved && autoBlocked === 'unavailable') announce('Automatic saving is unavailable. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved && autoBlocked === 'capacity') announce('Automatic saving is paused. Use Save draft.', [], 'Your current text is not saved yet.'); else if (answerUnsaved) announce('Changes are not saved. Use Save draft or keep typing.'); else hideStatus(); schedulePoll(); }
   });
   window.addEventListener('pagehide', conceal);
   window.addEventListener('pageshow', event => {

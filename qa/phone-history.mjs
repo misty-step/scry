@@ -1,7 +1,7 @@
 import {enterMemoryPage} from './study-review.mjs';
 // Saved History journeys against the built Worker and compiled CLI. All text is
 // synthetic; exact History and native disclosures must not mutate Practice.
-// Existing legacy History reads may still record concept exposure.
+// The earlier concept notebook's answers are listed after them and are only read.
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -18,10 +18,10 @@ const exactHistoryState = rows => ({
   practice:rows.meta.practice,
   rows:Object.fromEntries(Object.entries(rows).filter(([key])=>key.startsWith('practice_')||key.startsWith('study_version_refs/')||key.startsWith('operations/'))),
 });
-const legacyEvents = rows => Object.fromEntries(Object.entries(rows).filter(([key])=>key.startsWith('events/')));
+const earlierRows = rows => Object.fromEntries(Object.entries(rows).filter(([key])=>/^(goals|concepts|questions|events|overrides|resets|feedback|assessments)\//.test(key)));
 const assertExactReadOnly = (before,after) => {
   assert.deepEqual(exactHistoryState(after),exactHistoryState(before),'History leaves exact Practice/current, immutable payloads, Corrections, Study references and mutation receipts unchanged.');
-  assert.deepEqual(legacyEvents(after),legacyEvents(before),'Legacy concept exposure never rewrites original legacy events.');
+  assert.deepEqual(earlierRows(after),earlierRows(before),'Reading History changes nothing of the earlier concept notebook.');
 };
 const entry = (page,id) => page.locator(`${entries}[data-attempt-id="${id}"]`);
 const activate = async (page,locator,key='Enter') => {await locator.focus(); await page.keyboard.press(key);};
@@ -155,7 +155,7 @@ export async function phoneHistory({f,page,row,original,typography,record}) {
   await page.locator('[data-study-phase="study"]').waitFor();
   await enterMemoryPage(page);
   assert.equal(await page.getByLabel('Your answer',{exact:true}).inputValue(),'');
-  await activate(page,page.getByRole('button',{name:'Check my answer',exact:true}));
+  await activate(page,page.getByRole('button',{name:'Check',exact:true}));
   await page.locator('[data-state="exact-result"]').waitFor();
   const submitted=(await f.cli(['next'])).practice.attempt;
   assert.equal(submitted.raw_answer,''); assert.notEqual(submitted.disclosure,true); assert.equal(submitted.grade.verdict,'Again');
@@ -166,20 +166,6 @@ export async function phoneHistory({f,page,row,original,typography,record}) {
   await disclosure(page,submitted.id); await typography(); await record('history-empty-answer');
   assert.deepEqual(await f.rows(),saved);
   row.history={attempts:Object.keys(afterEmpty.attempts).length,original:original.id,disclosure:shown.id,empty_answer:submitted.id,cli_export_parity:true,read_only:true,native_keyboard:true,criteria:['US-016.9','US-016.10','US-017.9','US-017.10','US-007.2']};
-}
-
-// Optional pre-token fixture setup uses the existing authored demo and native
-// form routes, not SQL writes or a second production-only seed mechanism.
-export async function seedHistoryNotebook({worker,origin,record}) {
-  const post=(path,fields)=>worker.fetch(origin+path,{method:'POST',redirect:'manual',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});
-  const inputs=html=>Object.fromEntries([...html.matchAll(/name="(csrf|operation_id|revision|occurrence_id)" value="([^"]+)"/g)].map(match=>[match[1],match[2]]));
-  const empty=await(await worker.fetch(origin+'/notebook')).text();
-  assert.equal((await post('/__fixture',inputs(empty))).status,303);
-  const notebook=await(await worker.fetch(origin+'/notebook')).text();
-  const form=/<form[^>]*action="\/review\/answer"[^>]*>([\s\S]*?)<\/form>/.exec(notebook);
-  assert.ok(form);
-  const occurrence=(await record('meta')).occurrence;
-  assert.equal((await post('/review/answer',{...inputs(form[1]),answer:occurrence.presentation.answer})).status,303);
 }
 
 export async function phoneHistoryRecovery(browser,capture,fixture,{previousText,phoneText,phoneAnswer}) {
@@ -194,7 +180,7 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     catch(error) {row.status='fail'; row.reason=error.message;}
     finally {await shot(row.status); await context.close(); await f.close();}
   };
-  const answer=async(page,text)=>{await page.getByLabel('Your answer',{exact:true}).fill(text); await activate(page,page.getByRole('button',{name:'Check my answer',exact:true})); await page.locator('[data-state="exact-result"]').waitFor();};
+  const answer=async(page,text)=>{await page.getByLabel('Your answer',{exact:true}).fill(text); await activate(page,page.getByRole('button',{name:'Check',exact:true})); await page.locator('[data-state="exact-result"]').waitFor();};
 
   await check('History keeps frozen wording, mixed Unit effects and dropped Studies',{},async({f,page,row,shot})=>{
     await page.locator('details.overflow>summary').tap(); await page.getByRole('button',{name:'Show me',exact:true}).tap();
@@ -321,36 +307,35 @@ export async function phoneHistoryRecovery(browser,capture,fixture,{previousText
     row.observed={noJS,synthetic_denial:401,private_history_after_reload:false,private_history_after_back:false};
   });
 
-  await check('History retains legacy Attempts and gates all history during protected exact recall',{legacy:true},async({f,page,row,shot})=>{
-    const protectedRows=await f.rows();
+  // The fixture loads the earlier concept notebook holding a question that was
+  // never answered. Only a protected Study Prompt hides History; that earlier
+  // question hides nothing.
+  await check('History lists earlier Attempts after Study, and only a protected Study Prompt hides it',{legacy:true},async({f,page,row,shot})=>{
+    const protectedRows=await f.rows(),earlier=protectedRows.meta.occurrence;
+    assert.equal(earlier.phase,'question');assert.equal(earlier.assisted,false);
     const privateIds=Object.keys(protectedRows).filter(key=>key.startsWith('practice_attempts/')).map(key=>key.slice('practice_attempts/'.length));
     await openHistory(page); await assertGate(page,f,[phoneText.trim(),previousText.trim(),...privateIds]);
     assertExactReadOnly(protectedRows,await f.rows());
     await shot('mixed-history-gate');
     await navigate(page,'Practice'); await page.locator('[data-state="exact-prompt"]').waitFor();
     await answer(page,phoneAnswer); const history=await historyParity(f), original=(await f.cli(['export'])).app.events;
-    assert.equal(original.length,1);
+    assert.ok(original.length>0,'The loaded notebook holds earlier answers.');
     await openHistory(page); await assertHistory(page,history);
     const legacy=page.locator('article.history-entry:not(.exact-history-entry)');
-    assert.equal(await legacy.count(),1);
-    assert.equal(await legacy.locator('h2').textContent(),original[0].presentation.prompt);
+    assert.equal(await legacy.count(),original.length);
+    assert.equal(await legacy.first().locator('h2').textContent(),original.at(-1).presentation.prompt);
     const order=await page.locator('article.history-entry').evaluateAll(nodes=>nodes.map(node=>node.classList.contains('exact-history-entry')));
-    assert.deepEqual(order,[...savedOrder(history).map(()=>true),false],'Exact saved Attempts precede preserved legacy history.');
-    await page.goto(f.origin+'/notebook'); await page.locator('[data-state="result"]').waitFor();
-    await page.getByRole('button',{name:'Next question'}).tap(); await page.locator('[data-state="question"]').waitFor();
-    // Next records fresh concept exposure: this immediate legacy question is
-    // assisted, not a cold-recall fixture. Cold legacy gating has native proof.
-    assert.equal((await f.record('meta')).occurrence.assisted,true);
-    const before=await f.rows(); await openHistory(page); await assertHistory(page,history);
-    assert.equal(await legacy.count(),1);
+    assert.deepEqual(order,[...savedOrder(history).map(()=>true),...original.map(()=>false)],'Exact saved Attempts precede the earlier notebook\'s answers.');
+    // Earlier practice still holds its unanswered question, read-only.
+    const before=await f.rows();
+    await page.goto(f.origin+'/notebook'); await page.locator('[data-state="earlier-unanswered"]').waitFor();
+    assert.equal(await page.locator('main form,main button,main textarea').count(),0);
+    assert.deepEqual((await f.record('meta')).occurrence,earlier);
+    await openHistory(page); await assertHistory(page,history);
+    assert.equal(await legacy.count(),original.length);
     assertExactReadOnly(before,await f.rows());
-    await page.goto(f.origin+'/notebook'); await page.locator('#answer').fill('max-age');
-    await page.getByRole('button',{name:/Check my answer/}).tap(); await page.locator('[data-state="result"]').waitFor();
-    await openHistory(page); await assertHistory(page,await historyParity(f));
-    assert.equal(await legacy.count(),2);
-    const after=(await f.cli(['export'])).app.events;
-    assert.deepEqual(after[0],original[0],'New exact and legacy practice never rewrite the first legacy Attempt.');
-    row.observed={legacy_attempts_retained:2,protected_exact_gates_all_history:true,exact_entries_before_legacy:true,assisted_legacy_remains_readable:true,limit:'Cold protected legacy question is verified in native rendering tests, not this immediate-Next browser fixture.'};
+    assert.deepEqual((await f.cli(['export'])).app.events,original,'Study and reading never rewrite an earlier answer.');
+    row.observed={earlier_attempts_retained:original.length,protected_exact_gates_all_history:true,exact_entries_before_earlier:true,held_earlier_question_hides_nothing:true};
   });
   return results;
 }

@@ -106,3 +106,9 @@ impl MutationActor<'_> {
 pub fn paid_refusal() -> AppError {
     AppError::new(403, "This Owner token has no paid permission.")
 }
+pub fn expiry_refusal() -> AppError {
+    AppError::new(
+        403,
+        "This Owner token expires, so a token it creates must expire no later than it does. Nothing was created.",
+    )
+}

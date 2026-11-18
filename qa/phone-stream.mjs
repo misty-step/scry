@@ -2,7 +2,8 @@ import {historicalMutation} from './historical-fixture.mjs';
 // Authored synthetic text and native HTTP/CLI clients of the built Worker.
 import assert from 'node:assert/strict';
 import {feedbackArrival,assertFeedbackArrival,feedbackVariants,fullAnswer} from './feedback-arrival.mjs';
-import {phoneHistory,phoneHistoryRecovery,seedHistoryNotebook} from './phone-history.mjs';
+import {phoneHistory,phoneHistoryRecovery} from './phone-history.mjs';
+import {seedEarlier} from './earlier-fixture.mjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {mkdir,mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -23,7 +24,9 @@ export async function phoneFixture({port=0,legacy=false}={}) {
  const storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
  const rows=async()=>Object.fromEntries((await storage.exec('SELECT key,value FROM records ORDER BY key')).map(r=>[r.key,JSON.parse(r.value)]));
  const record=async key=>JSON.parse((await storage.exec('SELECT value FROM records WHERE key=?',key))[0].value);
- if(legacy)await seedHistoryNotebook({worker:runtime.worker,origin,record});
+ // The earlier concept notebook as an existing Owner holds it: a question
+ // left unanswered, with two answers before it.
+ if(legacy)await seedEarlier(storage,'question-cold',await runtime.mf.getR2Bucket('SCRY_ASSETS'));
  const page=await(await runtime.worker.fetch(origin+'/settings')).text();
  const form=/<form[^>]*action="\/tokens\/create"[^>]*>([\s\S]*?)<\/form>/.exec(page)[1];
  const fields=Object.fromEntries([...form.matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
@@ -42,15 +45,14 @@ export async function phoneFixture({port=0,legacy=false}={}) {
  let cid;
  for(const text of [previousText,phoneText]){
   cid=(await record('meta')).practice.current.targets[0].card_id;
-  // Fade via actual assisted answers. No direct SQLite writes or test clock.
-  for(let i=0;i<6;i++){
-   await cli(['answer',current.prompt.id,'--text-stdin'],text);
-   current=(await cli(['next','--after',current.prompt.id,'--card',cid])).practice;
-  }
-  assert.equal(current.prompt.cue_level,'previous_line');
+  // Study, then Try from memory, through the compiled CLI. No direct SQLite writes or test clock.
+  assert.equal(current.phase,'study');assert.equal(current.prompt.cue_level,'read');assert.equal(current.prompt.cue,text);
+  if(text===phoneText)assert.equal(current.prompt.context,previousText,'A studied phrase is shown after the phrase before it.');
+  current=(await cli(['quiz',current.prompt.id])).practice;
+  assert.equal(current.phase,'quiz');assert.equal(current.prompt.cue_level,'whole_title');assert.equal(current.prompt.assisted,false);
   if(text===previousText){await cli(['answer',current.prompt.id,'--text-stdin'],text);current=(await cli(['next','--after',current.prompt.id])).practice;}
  }
- assert.equal(current.prompt.context,previousText);
+ assert.equal(current.prompt.context,null,'A Quiz carries no neighbouring phrase.');
  const historicalCorrection=async fields=>{
   const payload={operation_id:randomUUID(),...fields};const before=await rows();
   const response=await runtime.worker.fetch(origin+'/api/v1/correct',{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -94,15 +96,17 @@ export async function phoneWalk(browser,capture) {
   };
   try{
    await page.goto(f.origin+'/recall');await page.locator('[data-state="exact-prompt"]').waitFor();
-   assert.equal(await page.locator('textarea').count(),1);assert.equal(await page.getByRole('button',{name:'Check my answer',exact:true}).count(),1);
+   assert.equal(await page.locator('textarea').count(),1);assert.equal(await page.getByRole('button',{name:'Check',exact:true}).count(),1);
    assert.deepEqual(await page.locator('.masthead nav a').allTextContents(),['Practice','Lessons','Library','History','Settings','Earlier practice','Changelog']);
-   assert.ok(!(await page.locator('main').innerText()).includes(phoneText.trim()));assert.equal((await page.locator('.exact-context .reading').innerText()).trim(),previousText.trim());
+   assert.ok(!(await page.content()).includes(phoneText.trim()),'The Quiz page carries no answer.');assert.equal(await page.locator('.exact-context,.exact-expected').count(),0);
+   // The previous phrase is context only when asked for.
+   const previous=page.locator('details.lesson-context');assert.equal(await previous.count(),1);assert.equal(await previous.getAttribute('open'),null);assert.equal((await previous.locator('p').textContent()).trim(),previousText.trim());
    await typography();await record('prompt');row.criteria.push(1);
    clone=await f.fork();
    await page.setViewportSize({width,height:844});
    await page.getByLabel('Your answer',{exact:true}).fill(phoneAnswer);
    // Submit with a real keyboard, including the no-JavaScript path.
-   await page.getByRole('button',{name:'Check my answer',exact:true}).focus();await page.keyboard.press('Enter');
+   await page.getByRole('button',{name:'Check',exact:true}).focus();await page.keyboard.press('Enter');
    await page.locator('[data-state="exact-result"]').waitFor();
    row.arrival=await feedbackArrival(page,capture,`phone-${width}-${scheme}-${zoom?200:100}-arrival.png`,zoom);
    row.evidence.push(row.arrival.evidence);
@@ -130,10 +134,16 @@ export async function phoneWalk(browser,capture) {
    assert.deepEqual((await f.cli(['next'])).practice.attempt,a,'Original Attempt stays immutable.');
    assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_corrections/')).length,1);row.criteria.push(5);
    await page.getByRole('button',{name:'Next',exact:true}).click();
-   await page.locator('[data-state="exact-caught-up"]').waitFor();
+   // Nothing is held: opening practice offers one Study action and selects nothing.
+   await page.locator('[data-state="mixed-home"]').waitFor();
    const due=(await f.cli(['due'])).next_due_ms;
-   assert.ok(due>Date.now());assert.ok((await page.locator('main').innerText()).includes('Next due at'));
-   assert.equal(await page.locator('textarea').count(),0);await record('caught-up');row.criteria.push(4);
+   assert.ok(due>Date.now());
+   const idle=await f.rows();assert.equal(idle['meta'].practice.current,null);
+   assert.equal(await page.locator('form[action="/practice/review/start"]').count(),1);
+   assert.equal(await page.locator('textarea').count(),0);
+   await page.reload();await page.locator('[data-state="mixed-home"]').waitFor();
+   assert.deepEqual(await f.rows(),idle,'Opening practice with nothing held writes nothing');
+   await record('caught-up');row.criteria.push(4);
    await f.cli(['next','--card',f.cid]);await page.reload();await page.locator('[data-state="exact-prompt"]').waitFor();
    const before=(await f.record('practice_cards/'+f.cid)).state;
    const attempts=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
@@ -161,7 +171,7 @@ export async function phoneRecovery(browser,capture) {
   catch(e){row.status='fail';row.reason=e.message;}
   finally{row.evidence=await capture(page,`phone-recovery-${results.length}.png`);await context.close();await f.close();}
  };
- const answer=async page=>{await page.getByLabel('Your answer',{exact:true}).fill(phoneAnswer);await page.getByRole('button',{name:'Check my answer',exact:true}).click();};
+ const answer=async page=>{await page.getByLabel('Your answer',{exact:true}).fill(phoneAnswer);await page.getByRole('button',{name:'Check',exact:true}).click();};
  const count=async f=>Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
  await check('unknown response reconciles one frozen answer',async({f,context,page,row})=>{
   const before=await count(f),payloads=[];let first=true;
@@ -180,12 +190,29 @@ export async function phoneRecovery(browser,capture) {
  });
  await check('offline pauses and reconnect sends nothing',async({f,context,page,row})=>{
   let sends=0;context.on('request',r=>{if(r.method()==='POST'&&r.url().endsWith('/practice/answer'))sends++;});
-  await page.getByLabel('Your answer',{exact:true}).fill(phoneAnswer);await context.setOffline(true);await page.getByRole('button',{name:'Check my answer',exact:true}).click();
+  await page.getByLabel('Your answer',{exact:true}).fill(phoneAnswer);await context.setOffline(true);await page.getByRole('button',{name:'Check',exact:true}).click();
   assert.equal(sends,0);assert.equal(await page.getByLabel('Your answer',{exact:true}).inputValue(),phoneAnswer);await context.setOffline(false);await page.waitForTimeout(400);assert.equal(sends,0);
-  await page.getByRole('button',{name:'Check my answer',exact:true}).click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(sends,1);row.observed={offline_sends:0,reconnect_sends:0,deliberate_sends:1};
+  await page.getByRole('button',{name:'Check',exact:true}).click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(sends,1);row.observed={offline_sends:0,reconnect_sends:0,deliberate_sends:1};
+ });
+ await check('Enter submits one phrase and starts a new line in a Recitation',async({f,page,row})=>{
+  const field=page.getByLabel('Your answer',{exact:true});
+  assert.equal(await field.getAttribute('data-multiline'),null,'A one-Unit answer is a one-line answer.');
+  await field.fill(phoneText.trim());await field.press('Enter');await page.locator('[data-state="exact-result"]').waitFor();
+  const phrase=(await f.cli(['next'])).practice.attempt;assert.equal(phrase.raw_answer,phoneText.trim());
+  for(const scope of [['--recite','section','--section',(await f.cli(['version','show',f.vid])).version.sections[0].id],['--recite','whole']]){
+   const held=(await f.record('meta')).practice.current;
+   const prompt=(await f.cli(['next','--after',held.prompt.id,'--study',f.sid,...scope])).practice.prompt;assert.equal(prompt.unit_ids.length,2);
+   await page.reload();await page.locator('[data-state="exact-prompt"]').waitFor();const before=await count(f);
+   assert.notEqual(await field.getAttribute('data-multiline'),null,'A Recitation is a several-line answer.');
+   await field.fill('First line');await field.press('Enter');await field.pressSequentially('Second line');
+   assert.equal(await field.inputValue(),'First line\nSecond line');await page.waitForTimeout(400);
+   assert.equal(await page.locator('[data-state="exact-result"]').count(),0,'Enter starts a new line in a Recitation.');assert.equal(await count(f),before);
+   await page.getByRole('button',{name:'Check',exact:true}).click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await count(f),before+1,'Check submits the Recitation.');
+  }
+  row.observed={one_unit_enter_submits:true,recitation_enter_new_line:['section','whole'],check_submits:true};
  });
  await check('automatic Good refuses new self-rating and retains a historical Correction fixture',async({f,page,row})=>{
-  await page.getByLabel('Your answer',{exact:true}).fill(phoneText);await page.getByRole('button',{name:'Check my answer',exact:true}).click();await page.locator('[data-verdict="Good"]').waitFor();
+  await page.getByLabel('Your answer',{exact:true}).fill(phoneText);await page.getByRole('button',{name:'Check',exact:true}).click();await page.locator('[data-verdict="Good"]').waitFor();
   const original=(await f.cli(['next'])).practice.attempt;
   assert.equal(await page.getByRole('button',{name:'Count as a miss',exact:true}).count(),0);
   await f.historicalCorrection({prompt_id:original.prompt.id,attempt_id:original.id,verdict:'Again'});await page.reload();await page.getByText('Owner Correction',{exact:false}).waitFor();

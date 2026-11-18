@@ -12,7 +12,9 @@ pub(super) const NAMES: &[&str] = &[
     "scry_lesson_next",
     "scry_due",
     "scry_next",
+    "scry_mix",
     "scry_answer",
+    "scry_check",
     "scry_reveal",
     "scry_quiz",
 ];
@@ -37,7 +39,9 @@ fn common_metadata() -> Value {
         "aliases":{"type":"array","maxItems":32,"items":{"type":"string","minLength":1,"maxLength":240}},
         "sources":{"type":"array","maxItems":32,"items":{"type":"string","minLength":1,"maxLength":2048},"description":"Caller-supplied citations; never fetched."},
         "rights":{"type":"string","enum":["private_only","public_domain","licensed"],"default":"private_only"},
-        "spelling_strict":{"type":"boolean"}
+        "spelling_strict":{"type":"boolean"},
+        "provenance":{"type":"string","enum":["supplied","model_from_memory","checked_against_sources"],"default":"supplied","description":"How the text was obtained: supplied by the Owner or his agent, written by a model from memory, or checked against the cited sources (which then must be listed)."},
+        "relations":{"type":"array","maxItems":32,"description":"Relations from this Version's Work to Works already in the Library, named by title or alias. Checked at import, not by local validation. A text already in the Library returns its Version and adds nothing.","items":object(json!({"kind":choices(&["part_of","related_to"]),"work":{"type":"string","minLength":1,"maxLength":240}}),&["kind","work"])}
     })
 }
 pub(super) fn manifests() -> Value {
@@ -45,41 +49,34 @@ pub(super) fn manifests() -> Value {
     version["kind"] = choices(&["text", "ordered_list", "keyed_mapping"]);
     version["text"] = json!({"type":"string","minLength":1,"maxLength":262144,"description":"At most 256 KiB of UTF-8; supplied Units must join to these bytes exactly."});
     version["sections"] = json!({"type":["array","null"],"maxItems":4096,"description":"At most 8192 Units total. Omit for native segmentation.","items":object(json!({"heading":{"type":"string","maxLength":240},"units":{"type":"array","minItems":1,"maxItems":8192,"items":{"type":"string","minLength":1}}}),&["heading","units"])});
+    version["direction"] = json!({"type":"string","enum":["forward","both"],"default":"forward","description":"Keyed mappings only; as the mapping schema's direction."});
+    version["safety_bearing"] = json!({"type":"array","maxItems":8192,"uniqueItems":true,"items":{"type":"integer","minimum":0},"description":"Keyed mappings only: zero-based positions of safety-bearing pairs."});
     version["ordered_aliases"] = json!({"type":"object","maxProperties":128,"description":"Ordered lists only: zero-based flattened item index to explicit accepted aliases. Canonical and alias identities must be unique across items.","additionalProperties":{"type":"array","maxItems":16,"items":{"type":"string","minLength":1,"maxLength":240}}});
     let mut mapping = common_metadata();
-    mapping["direction"] = choices(&["forward"]);
+    mapping["direction"] = json!({"type":"string","enum":["forward","both"],"description":"forward: each Prompt shows a key and asks for its value. both: each pair is also asked in reverse, its value shown and its key asked; values must then be unique too, and no pair may be safety-bearing, since a safety condition stays in its question."});
     mapping["spelling_strict"]["default"] = json!(true);
-    mapping["pairs"] = json!({"type":"array","minItems":1,"maxItems":8192,"description":"Unique normalized keys, nonempty key/value, no control characters or surrounding whitespace. Combined stored text must fit 256 KiB.","items":object(json!({"key":{"type":"string","minLength":1,"maxLength":240},"value":{"type":"string","minLength":1,"maxLength":4096}}),&["key","value"])});
+    mapping["pairs"] = json!({"type":"array","minItems":1,"maxItems":8192,"description":"Unique normalized keys, nonempty key/value, no control characters or surrounding whitespace. Combined stored text must fit 256 KiB. A value that is a year (one to four digits, optionally with AD or CE) accepts the year with or without AD or CE, as an exact number; a year before the common era is graded as written. An answer that is exactly another pair's value is the wrong key. Scry grades both itself and never sends them to be judged, except a year answer to a safety-bearing pair, to which the year rule does not apply.","items":object(json!({"key":{"type":"string","minLength":1,"maxLength":240},"value":{"type":"string","minLength":1,"maxLength":4096},"safety_bearing":{"type":"boolean","default":false,"description":"Its author's flag: the value is a safe practice the answer must state itself. Keep the critical safety condition in the key."}}),&["key","value"])});
     json!({"schema_dialect":"https://json-schema.org/draft/2020-12/schema",
         "version":object(version,&["title","kind","text"]),
         "mapping":object(mapping,&["title","direction","pairs"]),
-        "validation_scope":"Local shape/domain validation only; remote duplicates, policy, capacity, study admission and hosted access are not checked.",
+        "validation_scope":"Local shape/domain validation only; remote duplicates, related Works, policy, capacity, study admission and hosted access are not checked.",
         "limits":"All domain text limits are UTF-8 bytes, not characters. JSON Schema bounds are supplemented by the native Library validator.",
         "multimedia":"Not implemented in this slice; no media URL is fetched.",
-        "study_support":"Text, ordered lists and forward keyed mappings. Authored Lessons introduce up to 128 phrases/items and preserve existing schedules."})
+        "study_support":"Text, ordered lists and keyed mappings, forward or both ways. A text or list lesson introduces every phrase or item at once and a mapping lesson its pairs at its Pace, preserving existing schedules."})
 }
 
 pub(super) fn tools() -> Vec<Value> {
     let empty = object(json!({}), &[]);
-    let schemas = manifests();
-    let manifest = object(
-        json!({"format":choices(&["version","mapping"]),"data":{"type":"object","description":"Use scry_schema to select the version or mapping schema."}}),
+    // No combinator at the top level: common tool-calling clients refuse a
+    // tool list that has one. Scry validates `data` against the schema that
+    // `format` names, exactly as scry_schema publishes it.
+    let validate = object(
+        json!({"format":choices(&["version","mapping"]),"data":{"type":"object","description":"The manifest itself: for format version, scry_schema's version schema; for format mapping, its mapping schema. Scry validates it whole and refuses unknown fields."}}),
         &["format", "data"],
     );
-    let mut import = manifest.clone();
+    let mut import = validate.clone();
     import["properties"]["operation_id"] = operation();
     import["required"] = json!(["operation_id", "format", "data"]);
-    // Branch-specific data schemas are machine-readable as well as discoverable.
-    import["allOf"] = json!([
-        {"if":{"properties":{"format":{"const":"version"}}},"then":{"properties":{"data":schemas["version"]}}},
-        {"if":{"properties":{"format":{"const":"mapping"}}},"then":{"properties":{"data":schemas["mapping"]}}}
-    ]);
-    let mut validate = import.clone();
-    validate["properties"]
-        .as_object_mut()
-        .unwrap()
-        .remove("operation_id");
-    validate["required"] = json!(["format", "data"]);
     let definitions = [
         (
             "scry_capabilities",
@@ -143,7 +140,7 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_lesson_next",
-            "Advance an answered authored lesson. phrases cycles meaningful clauses; retry repeats the current individual text phrase with a visible cue and assisted evidence; join checks the current authored section; whole starts a cold complete-text challenge; middle practises a later phrase. Scry owns the grading and assistance evidence.",
+            "Advance an answered authored lesson. phrases cycles meaningful clauses; retry repeats the current individual text phrase with a visible cue and assisted evidence; join checks the current authored section; whole starts a complete-text Prompt from memory; middle practises a later phrase. Scry owns the grading and assistance evidence.",
             object(
                 json!({"operation_id":operation(),"after":id(),"mode":choices(&["phrases","retry","join","whole","middle"])}),
                 &["operation_id", "after"],
@@ -152,13 +149,13 @@ pub(super) fn tools() -> Vec<Value> {
         ),
         (
             "scry_due",
-            "Read due and upcoming Cards without presenting or consuming a Prompt.",
+            "Read the Cards, those due for review (answered before and due now) and the next due review time, without presenting or consuming a Prompt. A Card introduced but never answered is new learning, not due.",
             empty,
             true,
         ),
         (
             "scry_next",
-            "Present/resume the current Prompt or held result. Only after deliberately releases an answered Prompt. Reconcile every unknown answer/reveal response BEFORE Next.",
+            "Present or resume the held Prompt or result. With nothing named it chooses as scry_mix does: due reviews across every Study, least recently served first, then unfinished Studies, but it never starts a Work not yet started. study_id keeps to that Study: its due Cards by due time, then its next new Unit. card_id asks for one Card; recite with study_id asks for a whole-text or Section Recitation. Only after deliberately releases an answered Prompt. Reconcile every unknown answer/reveal response BEFORE Next.",
             object(
                 json!({"operation_id":operation(),"after":id(),"study_id":id(),"card_id":id(),"recite":choices(&["whole","section"]),"section_id":id()}),
                 &["operation_id"],
@@ -166,11 +163,29 @@ pub(super) fn tools() -> Vec<Value> {
             false,
         ),
         (
-            "scry_answer",
-            "Submit the learner's raw answer; native Scry grades and schedules. Empty answer is a miss. No verdict, rating, correct flag or self-grade is accepted.",
+            "scry_mix",
+            "Study's mix: the next due review of practised material across every Study, least recently served first, then unfinished Studies and Works not yet started, starting at most one. Without after or leave it returns the held Prompt or result. after releases the answered Prompt; leave closes the identified unanswered Prompt without a grade. Never supply both. Retain operation_id.",
             object(
-                json!({"operation_id":operation(),"prompt_id":id(),"answer":{"type":"string","maxLength":262144,"description":"At most 256 KiB UTF-8, unchanged raw learner answer."}}),
+                json!({"operation_id":operation(),"after":id(),"leave":id()}),
+                &["operation_id"],
+            ),
+            false,
+        ),
+        (
+            "scry_answer",
+            "Submit the Owner's raw answer; native Scry grades and schedules. Empty answer is a miss. No verdict, rating, correct flag or self-grade is accepted. Where the Owner has turned paid judgment on and the Owner token carries paid permission, a mismatch Scry does not decide itself is saved with no Verdict and practice.judgment.state is checking: repeat the same operation later, or read history, for its outcome. Use scry_check to have a saved answer whose state is ungraded checked again.",
+            object(
+                json!({"operation_id":operation(),"prompt_id":id(),"answer":{"type":"string","maxLength":262144,"description":"At most 256 KiB UTF-8, the unchanged raw answer."}}),
                 &["operation_id", "prompt_id", "answer"],
+            ),
+            false,
+        ),
+        (
+            "scry_check",
+            "Check again: ask Jev for one more paid judgment of a saved answer whose practice.judgment.state is ungraded (Jev was unsure, failed, was refused or could not be reached). It is a new check of the same Attempt, never a second answer, and applies only where the Owner has turned paid judgment on and the Owner token carries paid permission. Each check reserves 0.50 US dollars of the daily allowance before it is sent, and an answer is checked at most three times. Returns the saved Attempt with practice.judgment.state checking: repeat the same operation later, or read history, for decided (verdict Good or Again) or ungraded with its reason. Refused, with nothing written, while a check is open, once the answer has its Verdict, when the allowance is used or after three checks.",
+            object(
+                json!({"operation_id":operation(),"attempt_id":id()}),
+                &["operation_id", "attempt_id"],
             ),
             false,
         ),

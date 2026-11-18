@@ -2,13 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {starterFixture,nativeFields} from './nato-starter.mjs';
+import {enterMemory} from './study-review.mjs';
+// Each fixture starts at source study; a draft belongs to the Quiz reached by Try from memory.
 
 test('automatic checkpoint returns a non-replacing scoped acknowledgment and replay reflects current state',async()=>{
   const f=await starterFixture();
   try {
     const start=nativeFields(await f.get('/?practice=nato'),'/practice/nato/start');
     assert.equal((await f.post('/practice/nato/start',start)).status,303);
-    const page=await f.get('/?practice=nato');
+    const page=await enterMemory(f,'/?practice=nato');
     const scope=JSON.parse(await f.get('/session/scope')).scope;
     const original={...nativeFields(page,'/practice/answer'),generation:'0',answer:'Al',operation_id:`autosave-${randomUUID()}`};
     const send=()=>f.postScoped('/practice/draft',scope,original,{'X-Scry-Checkpoint-Mode':'auto-v1'});
@@ -27,7 +29,7 @@ test('competing saves conflict and never overwrite the winning tab',async()=>{
   const f=await starterFixture();
   try {
     const start=nativeFields(await f.get('/?practice=nato'),'/practice/nato/start');assert.equal((await f.post('/practice/nato/start',start)).status,303);
-    const page=await f.get('/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope;
+    const page=await enterMemory(f,'/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope;
     const fields={...nativeFields(page,'/practice/answer'),generation:'0',answer:'winner',operation_id:`autosave-${randomUUID()}`};
     const headers={'X-Scry-Checkpoint-Mode':'auto-v1'};
     assert.equal((await f.postScoped('/practice/draft',scope,fields,headers)).status,200);
@@ -41,7 +43,7 @@ test('discard and question switch invalidate old save receipts without revealing
   const f=await starterFixture();
   try {
     const start=nativeFields(await f.get('/?practice=nato'),'/practice/nato/start');assert.equal((await f.post('/practice/nato/start',start)).status,303);
-    const page=await f.get('/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope,base=nativeFields(page,'/practice/answer'),headers={'X-Scry-Checkpoint-Mode':'auto-v1'};
+    const page=await enterMemory(f,'/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope,base=nativeFields(page,'/practice/answer'),headers={'X-Scry-Checkpoint-Mode':'auto-v1'};
     const first={...base,generation:'0',answer:'private synthetic',operation_id:`autosave-${randomUUID()}`};
     assert.equal((await f.postScoped('/practice/draft',scope,first,headers)).status,200);
     const discard={...base,generation:'1',operation_id:randomUUID()};assert.equal((await f.postScoped('/practice/draft/discard',scope,discard)).status,303);
@@ -60,28 +62,50 @@ test('automatic save requires the original scope and valid CSRF',async()=>{
   const f=await starterFixture();
   try {
     assert.equal((await f.post('/practice/nato/start',nativeFields(await f.get('/?practice=nato'),'/practice/nato/start'))).status,303);
-    const page=await f.get('/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope;
+    const page=await enterMemory(f,'/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope;
     const fields={...nativeFields(page,'/practice/answer'),generation:'0',answer:'synthetic',operation_id:`autosave-${randomUUID()}`};const mode={'X-Scry-Checkpoint-Mode':'auto-v1'};const before=await f.rows();
-    assert.equal((await f.post('/practice/draft',fields)).status,403);
+    assert.equal((await f.post('/practice/draft',fields,mode)).status,403,'Automatic saving needs the page and its scope.');
     assert.equal((await f.postScoped('/practice/draft','b'.repeat(64),fields,mode)).status,409);
     assert.equal((await f.postScoped('/practice/draft',scope,{...fields,csrf:'invalid'},mode)).status,403);
     assert.equal((await f.postScoped('/practice/draft',scope,{...fields,answer:'x'.repeat(130*1024)},mode)).status,413);
     assert.deepEqual(await f.rows(),before);
   } finally {await f.close();}
 });
-test('automatic budget is shared by reloads, rejects new saves, and permits replay and manual save',{timeout:180000},async()=>{
+test('automatic saving never runs out: the oldest receipts make room, replay stays safe and manual save remains',{timeout:240000},async()=>{
   const f=await starterFixture();
   try {
     assert.equal((await f.post('/practice/nato/start',nativeFields(await f.get('/?practice=nato'),'/practice/nato/start'))).status,303);
-    const page=await f.get('/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope,base=nativeFields(page,'/practice/answer'),mode={'X-Scry-Checkpoint-Mode':'auto-v1'};let last;
-    for(let i=0;i<512;i++){
-      last={...base,generation:String(i),answer:`answer ${i}`,operation_id:`autosave-${randomUUID()}`};const r=await f.postScoped('/practice/draft',scope,last,mode);assert.equal(r.status,200,`save ${i}`);const receipt=await r.json();assert.equal(receipt.remaining,511-i);
+    const page=await enterMemory(f,'/?practice=nato'),scope=JSON.parse(await f.get('/session/scope')).scope,base=nativeFields(page,'/practice/answer'),mode={'X-Scry-Checkpoint-Mode':'auto-v1'};const sent=[];
+    const automatic=rows=>Object.keys(rows).filter(key=>key.startsWith('operations/autosave-')).length;
+    for(let i=0;i<600;i++){
+      const fields={...base,generation:String(i),answer:`answer ${i}`,operation_id:`autosave-${randomUUID()}`};sent.push(fields);const r=await f.postScoped('/practice/draft',scope,fields,mode);assert.equal(r.status,200,`save ${i}`);const receipt=await r.json();assert.equal(receipt.current,true);assert.equal(receipt.generation,String(i+1));
       if(i===255)await f.get('/?practice=nato');
     }
-    const before=await f.rows(),blocked={...last,generation:'512',answer:'blocked',operation_id:`autosave-${randomUUID()}`};assert.equal((await f.postScoped('/practice/draft',scope,blocked,mode)).status,429);assert.deepEqual(await f.rows(),before);
-    assert.equal((await f.postScoped('/practice/draft',scope,{...blocked,csrf:'invalid'},mode)).status,403);assert.deepEqual(await f.rows(),before);
-    const replay=await f.postScoped('/practice/draft',scope,last,mode);assert.equal(replay.status,200);assert.equal((await replay.json()).current,true);assert.deepEqual(await f.rows(),before);
-    const manual={...blocked,operation_id:randomUUID(),answer:'manual remains available'};assert.equal((await f.postScoped('/practice/draft',scope,manual)).status,303);assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft.answer,'manual remains available');
+    const after=await f.rows();assert.equal(after.meta.practice.answer_checkpoint.draft.answer,'answer 599');assert.equal(automatic(after),512,'Only the newest 512 automatic receipts are kept.');
+    assert.equal(Object.keys(after).filter(key=>key.startsWith('practice_attempts/')).length,0,'Saving never grades.');
+    // A dropped save meets a newer generation: refused, never applied twice.
+    const dropped=await f.postScoped('/practice/draft',scope,sent[0],mode);assert.equal(dropped.status,409);assert.deepEqual(await f.rows(),after);
+    // A kept save replays its committed result and writes nothing.
+    const replay=await f.postScoped('/practice/draft',scope,sent[599],mode);assert.equal(replay.status,200);assert.equal((await replay.json()).current,true);assert.deepEqual(await f.rows(),after);
+    assert.equal((await f.postScoped('/practice/draft',scope,{...sent[599],generation:'600',csrf:'invalid',operation_id:`autosave-${randomUUID()}`},mode)).status,403);assert.deepEqual(await f.rows(),after);
+    const manual={...base,generation:'600',operation_id:randomUUID(),answer:'manual remains available'};assert.equal((await f.postScoped('/practice/draft',scope,manual)).status,303);assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft.answer,'manual remains available');
+  } finally {await f.close();}
+});
+
+test('Save draft and its discard are native forms: no script, no generation, a stale page conflicts',async()=>{
+  const f=await starterFixture();
+  try {
+    assert.equal((await f.post('/practice/nato/start',nativeFields(await f.get('/?practice=nato'),'/practice/nato/start'))).status,303);
+    const page=await enterMemory(f,'/?practice=nato'),form=nativeFields(page,'/practice/answer');
+    assert.match(page,/formaction="\/practice\/draft" data-checkpoint-save value="Save draft"/);
+    const saved=await f.post('/practice/draft',{...form,answer:'Del'});assert.equal(saved.status,303,await saved.text());
+    const rows=await f.rows();assert.equal(rows.meta.practice.answer_checkpoint.draft.answer,'Del');assert.equal(Object.keys(rows).filter(key=>key.startsWith('practice_attempts/')).length,0);
+    assert.equal((await f.post('/practice/draft',{...form,answer:'Del'})).status,303,'A repeated press replays.');assert.deepEqual(await f.rows(),rows);
+    const reloaded=await f.get('/?practice=nato');assert.match(reloaded,/value="Del"/);assert.match(reloaded,/data-checkpoint-present="true"/);
+    // The page drawn before the save is stale: it cannot overwrite the newer draft.
+    const stale=await f.post('/practice/draft',{...form,answer:'stale',operation_id:randomUUID()});assert.equal(stale.status,409);assert.match(await stale.text(),/value="stale"/,'A refused save keeps the typed text on the page.');assert.deepEqual(await f.rows(),rows);
+    const fresh=nativeFields(reloaded,'/practice/answer');
+    assert.equal((await f.post('/practice/draft/discard',{...fresh,answer:'Del'})).status,303);assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft,null);
   } finally {await f.close();}
 });
 
@@ -89,7 +113,7 @@ test('a maximum-length LF-heavy textarea fits the bounded multipart save',async(
   const f=await starterFixture();
   try {
     const lessons=await f.get('/lessons');const selected=lessons.split('<form').find(part=>part.startsWith(' method="post" action="/practice/lesson/start"')&&part.split('</form>')[0].includes('name="starter" value="rosary-joyful"'));assert.ok(selected);assert.equal((await f.post('/practice/lesson/start',nativeFields('<form'+selected,'/practice/lesson/start'))).status,303);
-    const page=await f.get('/'),scope=JSON.parse(await f.get('/session/scope')).scope,answer='\n'.repeat(32768);
+    const page=await enterMemory(f),scope=JSON.parse(await f.get('/session/scope')).scope,answer='\n'.repeat(32768);
     const fields={...nativeFields(page,'/practice/answer'),generation:'0',answer,operation_id:`autosave-${randomUUID()}`};
     const saved=await f.postScoped('/practice/draft',scope,fields,{'X-Scry-Checkpoint-Mode':'auto-v1'});assert.equal(saved.status,200,await saved.text());assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft.answer,answer);
   } finally {await f.close();}

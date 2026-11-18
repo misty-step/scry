@@ -15,6 +15,12 @@ fn main() {
             if let Ok(output) = output
                 && writeln!(std::io::stdout().lock(), "{output}").is_ok()
             {
+                if !json && value.get("existing").and_then(|v| v.as_bool()) == Some(true) {
+                    let _ = writeln!(
+                        std::io::stderr().lock(),
+                        "That text was already in the Library. Nothing was added."
+                    );
+                }
                 return;
             }
             std::process::exit(1);
@@ -44,16 +50,17 @@ mod cli {
     };
     use serde_json::{Value, json};
     use std::{
+        borrow::Cow,
         fs::{self, OpenOptions},
         io::{Read, Write},
         os::unix::fs::{OpenOptionsExt, PermissionsExt},
         path::{Path, PathBuf},
     };
-    type Result<T> = std::result::Result<T, &'static str>;
+    type Result<T> = std::result::Result<T, Cow<'static, str>>;
     fn option(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
         if let Some(i) = args.iter().position(|arg| arg == name) {
             if i + 1 == args.len() {
-                return Err("Missing option value.");
+                return Err("Missing option value.".into());
             }
             args.remove(i);
             Ok(Some(args.remove(i)))
@@ -103,16 +110,18 @@ mod cli {
         if result.is_err() {
             let _ = fs::remove_file(&temporary);
         }
-        result
+        Ok(result?)
     }
     fn draft(args: &mut Vec<String>) -> Result<scry::library::VersionInput> {
-        use scry::library::{Kind, Rights, SectionInput, VersionInput};
+        use scry::library::{
+            Kind, Provenance, RelationInput, RelationKind, Rights, SectionInput, VersionInput,
+        };
         let title = option(args, "--title")?.ok_or("Use --title WORK_TITLE.")?;
         let kind = match option(args, "--kind")?.as_deref() {
             Some("text") => Kind::Text,
             Some("ordered_list") => Kind::OrderedList,
             Some("keyed_mapping") => Kind::KeyedMapping,
-            _ => return Err("Use --kind text|ordered_list|keyed_mapping."),
+            _ => return Err("Use --kind text|ordered_list|keyed_mapping.".into()),
         };
         let text_path = option(args, "--text-file")?.ok_or("Use --text-file PATH.")?;
         let text = fs::read_to_string(text_path).map_err(|_| "Cannot read UTF-8 text file.")?;
@@ -135,9 +144,45 @@ mod cli {
             None | Some("private_only") => Rights::PrivateOnly,
             Some("public_domain") => Rights::PublicDomain,
             Some("licensed") => Rights::Licensed,
-            _ => return Err("Use --rights private_only|public_domain|licensed."),
+            _ => return Err("Use --rights private_only|public_domain|licensed.".into()),
         };
+        let provenance = match option(args, "--provenance")?.as_deref() {
+            None | Some("supplied") => Provenance::Supplied,
+            Some("model_from_memory") => Provenance::ModelFromMemory,
+            Some("checked_against_sources") => Provenance::CheckedAgainstSources,
+            _ => {
+                return Err(
+                    "Use --provenance supplied|model_from_memory|checked_against_sources.".into(),
+                );
+            }
+        };
+        let direction = match option(args, "--direction")?.as_deref() {
+            None | Some("forward") => scry::library::MappingDirection::Forward,
+            Some("both") => scry::library::MappingDirection::Both,
+            _ => return Err("Use --direction forward|both.".into()),
+        };
+        let mut safety_bearing = std::collections::BTreeSet::new();
+        while let Some(position) = option(args, "--safety-bearing")? {
+            safety_bearing.insert(
+                position
+                    .parse::<usize>()
+                    .map_err(|_| "Use --safety-bearing with a zero-based pair position.")?,
+            );
+        }
+        let mut relations = Vec::new();
+        for (name, kind) in [
+            ("--part-of", RelationKind::PartOf),
+            ("--related-to", RelationKind::RelatedTo),
+        ] {
+            while let Some(work) = option(args, name)? {
+                relations.push(RelationInput { kind, work });
+            }
+        }
         Ok(VersionInput {
+            provenance,
+            relations,
+            direction,
+            safety_bearing,
             title,
             kind,
             text,
@@ -163,11 +208,11 @@ mod cli {
         option(args, "--revision")?
             .ok_or("Use --revision from Work show.")?
             .parse()
-            .map_err(|_| "Use the Work revision from show.")
+            .map_err(|_| "Use the Work revision from show.".into())
     }
     fn resource_path(resource: &str, id: &str) -> Result<String> {
         if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err("Use a Work or Version identifier from search or show.");
+            return Err("Use a Work or Version identifier from search or show.".into());
         }
         Ok(format!("/api/v1/library/{resource}/{id}"))
     }
@@ -184,7 +229,7 @@ mod cli {
         let client = owner_client::client()?;
         if args.first().is_some_and(|arg| arg == "login") {
             if !flag(&mut args, "--token-stdin") || args.len() != 1 {
-                return Err("Usage: scry login --url ORIGIN --token-stdin [--json]");
+                return Err("Usage: scry login --url ORIGIN --token-stdin [--json]".into());
             }
             let mut token = String::new();
             std::io::stdin()
@@ -193,7 +238,7 @@ mod cli {
                 .map_err(|_| "Cannot read token from stdin.")?;
             let token = token.trim().to_string();
             if token_id(&token).is_none() {
-                return Err("Owner authorization required.");
+                return Err("Owner authorization required.".into());
             }
             let login = Login {
                 origin: url.ok_or("Use --url when logging in.")?,
@@ -203,14 +248,14 @@ mod cli {
             let identity: Identity =
                 serde_json::from_value(value).map_err(|_| "Invalid owner identity.")?;
             if !identity.owner || identity.token.is_none() {
-                return Err("Owner authorization required.");
+                return Err("Owner authorization required.".into());
             }
             store(&path, &login)?;
-            return serde_json::to_value(identity).map_err(|_| "Invalid owner identity.");
+            return serde_json::to_value(identity).map_err(|_| "Invalid owner identity.".into());
         }
         let login = owner_client::load(&path)?;
         if url.is_some_and(|url| url != login.origin) {
-            return Err("Log in separately for this origin.");
+            return Err("Log in separately for this origin.".into());
         }
         if args.as_slice() == ["whoami"] {
             return request(&client, &login, "/api/v1/whoami", None);
@@ -218,12 +263,12 @@ mod cli {
         if args.first().is_some_and(|arg| arg == "spend") {
             let by = option(&mut args, "--by")?.ok_or("Use spend --by day|purpose|model.")?;
             if args.len() != 1 || scry::spend::SpendBy::parse(&by).is_err() {
-                return Err("Use spend --by day|purpose|model.");
+                return Err("Use spend --by day|purpose|model.".into());
             }
             let value = request(&client, &login, &format!("/api/v1/spend?by={by}"), None)?;
             let report: scry::spend::SpendReport =
                 serde_json::from_value(value).map_err(|_| "Invalid spend report.")?;
-            return serde_json::to_value(report).map_err(|_| "Invalid spend report.");
+            return serde_json::to_value(report).map_err(|_| "Invalid spend report.".into());
         }
         if args.as_slice() == ["token", "list"] {
             return request(&client, &login, "/api/v1/tokens", None);
@@ -266,7 +311,7 @@ mod cli {
             && supplied_operation.is_none()
         {
             return Err(
-                "Use --operation-id ID and retain it to reconcile an uncertain checkpoint operation.",
+                "Use --operation-id ID and retain it to reconcile an uncertain checkpoint operation.".into(),
             );
         }
         let operation = supplied_operation.map(Ok).unwrap_or_else(random_id)?;
@@ -285,7 +330,7 @@ mod cli {
             }
             if args.len() != 2 || !matches!(args[1].as_str(), "start" | "next") {
                 return Err(
-                    "Usage: scry lesson start --starter NAME|--version VERSION [--after PROMPT|--leave PROMPT] | lesson next --after PROMPT [--mode phrases|retry|join|whole|middle]",
+                    "Usage: scry lesson start --starter NAME|--version VERSION [--after PROMPT|--leave PROMPT] | lesson next --after PROMPT [--mode phrases|retry|join|whole|middle]".into(),
                 );
             }
             let action = args[1].as_str();
@@ -300,7 +345,7 @@ mod cli {
                         || payload.get("leave").is_some())
             {
                 return Err(
-                    "Choose one starter or Version for start; next requires the answered Prompt and an optional mode.",
+                    "Choose one starter or Version for start; next requires the answered Prompt and an optional mode.".into(),
                 );
             }
             return request(
@@ -313,7 +358,7 @@ mod cli {
         if args.first().is_some_and(|a| a == "learn") {
             let pace = option(&mut args, "--pace")?.unwrap_or_else(|| "steady".into());
             if args.len() != 2 {
-                return Err("Usage: scry learn VERSION [--pace light|steady|intense]");
+                return Err("Usage: scry learn VERSION [--pace light|steady|intense]".into());
             }
             return request(
                 &client,
@@ -321,6 +366,31 @@ mod cli {
                 "/api/v1/learn",
                 Some(&json!({"operation_id":operation,"version_id":args[1],"pace":pace})),
             );
+        }
+        if args.starts_with(&["study".into(), "pace".into()]) {
+            let pace = option(&mut args, "--pace")?;
+            if args.len() != 3 || pace.is_none() {
+                return Err("Usage: scry study pace STUDY --pace light|steady|intense".into());
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/studies/pace",
+                Some(&json!({"operation_id":operation,"study_id":args[2],"pace":pace})),
+            );
+        }
+        // Study's mix: what the app's Study and Next serve.
+        if args.first().is_some_and(|a| a == "mix") {
+            let mut payload = json!({"operation_id":operation});
+            for (option_name, field) in [("--after", "after"), ("--leave", "leave")] {
+                if let Some(value) = option(&mut args, option_name)? {
+                    payload[field] = json!(value);
+                }
+            }
+            if args.len() != 1 || payload.get("after").is_some() && payload.get("leave").is_some() {
+                return Err("Usage: scry mix [--after PROMPT | --leave PROMPT]".into());
+            }
+            return request(&client, &login, "/api/v1/mix", Some(&payload));
         }
         if args.first().is_some_and(|a| a == "study")
             && args.len() == 3
@@ -348,7 +418,7 @@ mod cli {
             }
             if args.len() != 1 {
                 return Err(
-                    "Usage: scry next [--after PROMPT] [--study STUDY] [--card CARD | --recite whole|section --section SECTION]",
+                    "Usage: scry next [--after PROMPT] [--study STUDY] [--card CARD | --recite whole|section --section SECTION]".into(),
                 );
             }
             return request(&client, &login, "/api/v1/next", Some(&payload));
@@ -359,7 +429,9 @@ mod cli {
                 .parse::<u64>()
                 .map_err(|_| "Use a numeric draft generation.")?;
             if args.len() != 2 {
-                return Err("Usage: scry discard-draft PROMPT --generation N --operation-id ID");
+                return Err(
+                    "Usage: scry discard-draft PROMPT --generation N --operation-id ID".into(),
+                );
             }
             return request(
                 &client,
@@ -379,7 +451,7 @@ mod cli {
             let stdin = flag(&mut args, "--text-stdin");
             if args.len() != 2 || file.is_some() == stdin {
                 return Err(
-                    "Usage: scry save-draft PROMPT --generation N --text-file PATH|--text-stdin --operation-id ID",
+                    "Usage: scry save-draft PROMPT --generation N --text-file PATH|--text-stdin --operation-id ID".into(),
                 );
             }
             let answer = if let Some(path) = file {
@@ -393,7 +465,7 @@ mod cli {
                 text
             };
             if answer.len() > 32768 {
-                return Err("Keep your answer under 32 KiB.");
+                return Err("Keep your answer under 32 KiB.".into());
             }
             return request(
                 &client,
@@ -408,7 +480,7 @@ mod cli {
             let file = option(&mut args, "--text-file")?;
             let stdin = flag(&mut args, "--text-stdin");
             if args.len() != 2 || file.is_some() == stdin {
-                return Err("Usage: scry answer PROMPT --text-file PATH|--text-stdin");
+                return Err("Usage: scry answer PROMPT --text-file PATH|--text-stdin".into());
             }
             let answer = if let Some(path) = file {
                 fs::read_to_string(path).map_err(|_| "Cannot read UTF-8 answer file.")?
@@ -427,6 +499,18 @@ mod cli {
                 Some(&json!({"operation_id":operation,"prompt_id":args[1],"answer":answer})),
             );
         }
+        // A new, deliberate paid check of a saved answer that has no Verdict.
+        if args.first().is_some_and(|a| a == "check") {
+            if args.len() != 2 {
+                return Err("Usage: scry check ATTEMPT [--operation-id ID]".into());
+            }
+            return request(
+                &client,
+                &login,
+                "/api/v1/check",
+                Some(&json!({"operation_id":operation,"attempt_id":args[1]})),
+            );
+        }
         if args
             .first()
             .is_some_and(|a| matches!(a.as_str(), "reveal" | "quiz"))
@@ -443,28 +527,13 @@ mod cli {
                 Some(&json!({"operation_id":operation,"prompt_id":args[1]})),
             );
         }
-        if args.first().is_some_and(|a| a == "correct") {
-            let verdict = option(&mut args, "--verdict")?.ok_or("Use --verdict Good|Again.")?;
-            let unit = option(&mut args, "--unit")?.unwrap_or_default();
-            if args.len() != 3 {
-                return Err(
-                    "Usage: scry correct PROMPT ATTEMPT --verdict Good|Again [--unit UNIT]",
-                );
-            }
-            return request(
-                &client,
-                &login,
-                "/api/v1/correct",
-                Some(
-                    &json!({"operation_id":operation,"prompt_id":args[1],"attempt_id":args[2],"unit_id":unit,"verdict":verdict}),
-                ),
-            );
-        }
         if args.starts_with(&["mapping".into(), "add".into()]) {
             let file =
                 option(&mut args, "--file")?.ok_or("Use mapping add --file MANIFEST.json.")?;
             if args.len() != 2 {
-                return Err("Usage: scry mapping add --file MANIFEST.json [--operation-id ID]");
+                return Err(
+                    "Usage: scry mapping add --file MANIFEST.json [--operation-id ID]".into(),
+                );
             }
             let mut bytes = Vec::new();
             fs::File::open(file)
@@ -473,10 +542,10 @@ mod cli {
                 .read_to_end(&mut bytes)
                 .map_err(|_| "Cannot read mapping manifest.")?;
             if bytes.len() > 1024 * 1024 {
-                return Err("Mapping manifest exceeds 1 MiB.");
+                return Err("Mapping manifest exceeds 1 MiB.".into());
             }
             let data: scry::library::MappingInput = serde_json::from_slice(&bytes).map_err(
-                |_| "Use a supplied mapping manifest with direction forward and key/value pairs.",
+                |_| "Use a supplied mapping manifest with direction forward or both and key/value pairs.",
             )?;
             data.clone()
                 .into_version()
@@ -499,7 +568,9 @@ mod cli {
             };
             let data = draft(&mut args)?;
             if args.len() != if supersede { 3 } else { 2 } {
-                return Err("Unexpected Version arguments.");
+                return Err(
+                    "Usage: scry version add|supersede [VERSION --revision N] --title TITLE --kind text|ordered_list|keyed_mapping --text-file PATH [--name EDITION] [--alias NAME] [--source CITATION] [--rights private_only|public_domain|licensed] [--provenance supplied|model_from_memory|checked_against_sources] [--part-of WORK] [--related-to WORK] [--sections-file PATH] [--ordered-aliases-file PATH] [--spelling-strict] [--direction forward|both] [--safety-bearing PAIR_POSITION]".into(),
+                );
             }
             let mut payload = json!({"operation_id":operation,"data":data});
             if let Some(rev) = rev {
@@ -530,7 +601,7 @@ mod cli {
             };
             if args.len() != 3 {
                 return Err(
-                    "Usage: scry work edit ID --revision N [--title TITLE] [--alias ALIAS] [--context NOTE]",
+                    "Usage: scry work edit ID --revision N [--title TITLE] [--alias ALIAS] [--context NOTE]".into(),
                 );
             }
             resource_path("works", &args[2])?;
@@ -546,7 +617,7 @@ mod cli {
         {
             let rev = revision(&mut args)?;
             if args.len() != 3 {
-                return Err("Usage: scry work|version delete ID --revision N");
+                return Err("Usage: scry work|version delete ID --revision N".into());
             }
             let work = args[0] == "work";
             let resource = if work { "works" } else { "versions" };
@@ -565,7 +636,7 @@ mod cli {
             let expiry = option(&mut args, "--expires-ms")?;
             if args.len() != 3 {
                 return Err(
-                    "Usage: scry token create NAME [--paid] [--expires-ms TIME] [--operation-id ID]",
+                    "Usage: scry token create NAME [--paid] [--expires-ms TIME] [--operation-id ID]".into(),
                 );
             }
             let mut payload = json!({"operation_id":operation,"name":args[2],"paid":paid});
@@ -587,7 +658,7 @@ mod cli {
             );
         }
         Err(
-            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study|next|answer|draft|save-draft|discard-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]",
+            "Usage: scry login|whoami|token|search|work|version|mapping|lesson|learn|study [list|pause|resume|drop|pace]|mix|next|answer|check|draft|save-draft|discard-draft|reveal|quiz|due|history|export [--library]|spend --by day|purpose|model [--json] [--config PATH]".into(),
         )
     }
 }

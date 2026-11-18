@@ -1,16 +1,18 @@
 # NATO review
 
 Practise the 26 NATO phonetic words with server-owned deterministic grading.
-The current product rules are in [SPEC](../SPEC.md#nato-focused-review-2026-10-29).
+The current product rules are in [SPEC § NATO alphabet](../SPEC.md#nato-alphabet).
 
 ## Sub-features
 
 - One Start practice action imports and starts the native deck atomically.
+- A letter not yet practised is shown with its code word and Try from memory,
+  with no answer field. Its Quiz then shows the letter alone.
 - Type, Check, inspect feedback, and Next; no client-supplied grade.
 - Start/lesson selection and Next choose due/new letters, interleaving away from
   the just-completed letter when another eligible letter exists. Future-due A
   must not reappear just because the learner reselects NATO. With all letters
-  future-due, show caught-up and the next scheduled time; reads do not select.
+  future-due, show Rest for now, Browse and the next scheduled review; reads do not select.
 - Reveal records assistance separately from independent recall.
 - Per-letter count, accuracy and next-review visibility reflect stored evidence.
 
@@ -24,7 +26,8 @@ start the same mapping through the documented CLI/MCP entry points.
 
 Run `node --test qa/nato-focus.test.mjs` for the atomic real-Worker journey.
 Run `node --test qa/keyed-mapping.test.mjs` for pointer/keyboard, native/enhanced
-phone and desktop flows. Use `#answer`, the native answer form, the visible
+phone and desktop flows. Use `[data-study-phase]`, the native
+`/practice/quiz` form, `#answer`, the native answer form, the visible
 verdict, and `form[data-next]`, not direct storage mutations. The suites assert
 protected recall, replay safety, stored effects and honest progress. Capture
 `target/keyed-mapping/focused-runtime.json`, `browser.json` and `nato-focus-*`

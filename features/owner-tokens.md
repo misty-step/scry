@@ -2,7 +2,7 @@
 
 The owner, signed in through Access, mints a named Owner token in Settings. He
 saves its secret once, logs the `scry` CLI in with it, and later revokes it.
-Behavior authority: [US-014 / AG1](../SPEC.md#us-014-drive-scry-with-an-owner-token).
+Behavior authority: [SPEC § Owner tokens](../SPEC.md#owner-tokens) and [Agent access](../SPEC.md#agent-access).
 
 ## Sub-features
 
@@ -11,7 +11,8 @@ Behavior authority: [US-014 / AG1](../SPEC.md#us-014-drive-scry-with-an-owner-to
 - `token-act` lets an unexpired, unrevoked token act as the Owner for every API action.
 - `token-refuse` refuses missing, malformed, expired and revoked tokens identically.
 - `token-revoke` refuses the token's next request.
-- `token-paid` refuses paid work for tokens without paid permission.
+- `token-expiry` refuses a token's request to create a token that expires later than it does, or never; the refusal writes nothing (`tests/custody.rs`, `qa/custody.test.mjs`).
+- `token-paid` refuses paid work for tokens without paid permission. An answer submitted with such a token is graded locally and never sent to Jev; `scry check` is refused. Paid judgment itself is turned on or off only in Settings → Paid judgment by the signed-in Owner, never by a token ([paid judgment](../docs/owner-api.md#paid-judgment-jev)).
 - `mcp-supplied` exposes supplied-content schema, validation/import and native practice through [stdio MCP](../docs/mcp.md), using the existing private CLI login; no generation or caller grade.
 - `token-spend` reports spend through `scry spend --by day|purpose|model` and `GET /api/v1/spend` (US-019.7 slice, #321).
 

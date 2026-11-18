@@ -57,7 +57,7 @@ describe('Rust Worker candidate lifecycle and data boundaries',()=>{
       assert.ok(Date.now()-started<5000);
     }finally{for(const socket of sockets)socket.destroy();await new Promise(done=>server.close(done));}
   });
-  it('builds frozen Rust source, seeds real workerd SQLite, binds served module bytes and stops only its own process',async()=>{
+  it('builds frozen Rust source, starts a starter lesson in real workerd SQLite, binds served module bytes and stops only its own process',async()=>{
     const directory=join(temporary,'fresh','candidate'),port=await freePort();
     const result=run('candidate','up','--dir',directory,'--port',String(port),'--json');
     assert.equal(result.status,0,result.stdout+result.stderr);
@@ -65,13 +65,13 @@ describe('Rust Worker candidate lifecycle and data boundaries',()=>{
     try{
       assert.equal(handle.format,'scry-critic-worker-candidate-v2');
       assert.equal(handle.binary_revision,handle.revision);
-      assert.equal(handle.seed.model,'authored-test-fixture');
+      assert.equal(handle.seed.model,'starter-shelf');
       assert.match(handle.source_sha256,/^[a-f0-9]{64}$/);
       await verifyWorkerIdentity(handle);
-      const response=await fetch(handle.url+'/notebook');
+      const response=await fetch(handle.url+'/');
       assert.equal(response.status,200);
-      const html=await response.text();assert.match(html,/data-state="question"/);
-      assert.match(html,/cached response|freshness lifetime|conditional request/);
+      const html=await response.text();assert.match(html,/data-state="lesson-home"/);assert.match(html,/data-study-phase="study"/);
+      assert.match(html,/Saint Michael the Archangel/);assert.match(html,/defend us in battle/);
       const nonce='current-worker-test';
       const identity=await(await fetch(handle.url+'/__critic/identity?nonce='+nonce)).json();
       assert.equal(identity.nonce,nonce);assert.equal(identity.pid,handle.pid);

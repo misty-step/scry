@@ -1,4 +1,4 @@
-use scry::{api, engine, model::*, persistence, study, web};
+use scry::{api, engine, model::*, persistence, web};
 use std::collections::BTreeMap;
 
 const NOW: i64 = 1_800_000_000_000;
@@ -139,7 +139,6 @@ fn phone_library_entry_supplied_text_and_same_study_use_existing_transitions() {
         learned.entity_id
     );
     assert_eq!(app.practice.studies.len(), 1);
-    study::ensure_stream(&mut app, NOW, "first-prompt").unwrap();
     assert!(page(&app, "/recall").contains("data-state=\"exact-prompt\""));
     let source_pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
     let source_page = page(&app, "/recall");
@@ -235,7 +234,7 @@ fn phone_library_search_validation_and_understanding_remain_honest() {
         api::library_form_fields(&mut oversized).unwrap_err().status,
         422
     );
-    assert!(page(&app, "/notebook").contains("href=\"/\">Review</a>"));
+    assert!(page(&app, "/notebook").contains("href=\"/\">Practice</a>"));
     assert!(page(&app, "/notebook").contains("href=\"/library\">Library</a>"));
     assert!(!page(&app, "/notebook").contains("href=\"/create\""));
 }
@@ -251,25 +250,25 @@ fn phone_library_never_renders_protected_text_before_durable_help() {
         "phone-library-learn-01",
         &[("version_id", &vid)],
     );
-    study::ensure_stream(&mut app, NOW, "initial-prompt").unwrap();
+    let opened = app.clone();
+    let open = page(&app, "/recall");
+    assert!(open.contains("action=\"/practice/review/start\""));
+    assert!(!open.contains("data-prompt-id"));
+    assert_eq!(app, opened, "Opening practice selects nothing");
+    action(&mut app, "/practice/next", "phone-library-first-next", &[]);
     let cid = app.practice.current.as_ref().unwrap().targets[0]
         .card_id
         .clone();
-    for i in 0..6 {
-        let pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
-        action(
-            &mut app,
-            "/practice/answer",
-            &format!("phone-library-fade-answer-{i}"),
-            &[("prompt_id", &pid), ("answer", TEXT)],
-        );
-        action(
-            &mut app,
-            "/practice/next",
-            &format!("phone-library-fade-next-{i}"),
-            &[("after", &pid), ("card_id", &cid)],
-        );
-    }
+    // The supplied phrase is studied in the open; its Quiz is protected recall.
+    assert!(!app.practice.protected());
+    assert!(page(&app, &format!("/library/versions/{vid}")).contains(TEXT));
+    let source = app.practice.current.as_ref().unwrap().prompt.id.clone();
+    action(
+        &mut app,
+        "/practice/quiz",
+        "phone-library-quiz-0001",
+        &[("prompt_id", &source)],
+    );
     assert!(app.practice.protected());
     let before = app.clone();
     let detail = format!("/library/versions/{vid}");
@@ -307,6 +306,14 @@ fn phone_library_never_renders_protected_text_before_durable_help() {
         app.practice.cards[&cid].state,
         before.practice.cards[&cid].state
     );
+    // The shown phrase is tried from memory again; the help stays recorded.
+    action(
+        &mut app,
+        "/practice/quiz",
+        "phone-library-quiz-0002",
+        &[("prompt_id", &pid)],
+    );
+    let pid = app.practice.current.as_ref().unwrap().prompt.id.clone();
     engine::mutate(
         &mut app,
         "/practice/answer",
@@ -319,6 +326,7 @@ fn phone_library_never_renders_protected_text_before_durable_help() {
         "answer",
     )
     .unwrap();
+    assert!(app.practice.attempts.values().all(|a| a.assisted));
     action(
         &mut app,
         "/practice/next",

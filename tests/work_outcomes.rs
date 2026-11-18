@@ -1,11 +1,12 @@
+mod common;
+
 use scry::{
     engine::{self, WorkConfig},
     model::*,
-    persistence,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
-const NOW: i64 = 1_791_410_400_000;
+const NOW: i64 = 1_800_000_000_000;
 fn cfg() -> WorkConfig {
     WorkConfig {
         generation: true,
@@ -15,18 +16,11 @@ fn cfg() -> WorkConfig {
         jev_model: "synthetic-jev".into(),
     }
 }
+/// The retired authored demo's published Goal, with no question held.
 fn fixture() -> App {
-    let mut a = App::new("paid-outcome-owner-csrf-32-characters".into());
-    engine::seed_fixture(&mut a, NOW).unwrap();
-    for q in a
-        .questions
-        .values_mut()
-        .filter(|q| q.content().kind == "choice")
-    {
-        q.card.due_ms = NOW + DAY_MS;
-    }
+    let (mut a, now) = common::earlier("question-cold-choice");
+    assert_eq!(now, NOW);
     a.occurrence = None;
-    engine::ensure_occurrence(&mut a, NOW, "paid-recall").unwrap();
     a
 }
 fn act(a: &mut App, path: &str, op: &str, extra: &[(&str, &str)], now: i64) {
@@ -42,68 +36,10 @@ fn act(a: &mut App, path: &str, op: &str, extra: &[(&str, &str)], now: i64) {
     }
     engine::mutate(a, path, &f, now, op).unwrap();
 }
-fn accepted() -> String {
-    json!({"answers":{"verdict":{"choice":"accept","probabilities":{"accept":0.99,"reject":0.005,"unsure":0.005}},"identity":{"noul":0.0},"injection":{"noul":0.0}}}).to_string()
-}
-#[test]
-fn stale_paid_assessment_retains_exact_raw_and_known_cost_without_learning_write() {
-    let mut a = fixture();
-    act(
-        &mut a,
-        "/review/answer",
-        "stale-paid-answer01",
-        &[("answer", "nonexact authored response")],
-        NOW,
-    );
-    let work = engine::claim_work(&mut a, NOW, "stale-paid-lease01", &cfg())
-        .unwrap()
-        .unwrap();
-    let goal = a.goals.keys().next().unwrap().clone();
-    act(
-        &mut a,
-        &format!("/goals/{goal}/archive"),
-        "stale-goal-archive01",
-        &[],
-        NOW + 1,
-    );
-    let raw = accepted();
-    assert_eq!(
-        engine::finish_work(
-            &mut a,
-            &work,
-            raw.clone(),
-            "synthetic-jev".into(),
-            Some(19_500),
-            NOW + 2
-        )
-        .unwrap_err()
-        .status,
-        409
-    );
-    assert!(a.events.is_empty());
-    assert_eq!(
-        a.assessments[&work.id].raw_response.as_deref(),
-        Some(raw.as_str())
-    );
-    assert_eq!(a.assessments[&work.id].status, "superseded");
-    assert_eq!(a.spend.last().unwrap().cost_micros, Some(19_500));
-    assert_eq!(a.spend.last().unwrap().status, "known");
-    let bytes = persistence::Archive::new(a.clone(), vec![], NOW + 3)
-        .encode()
-        .unwrap();
-    assert_eq!(
-        persistence::Archive::decode(&bytes, &persistence::sha256(&bytes))
-            .unwrap()
-            .app,
-        a
-    );
-}
 #[test]
 fn changed_question_blocks_fix_before_paid_send() {
     let mut a = fixture();
-    let qid = a.occurrence.as_ref().unwrap().question_id.clone();
-    let q = a.questions[&qid].clone();
-    act(&mut a, "/review/help", "stale-fix-help-0001", &[], NOW);
+    let qid = a.questions.keys().next().unwrap().clone();
     act(
         &mut a,
         &format!("/questions/{qid}/fix"),
@@ -111,24 +47,14 @@ fn changed_question_blocks_fix_before_paid_send() {
         &[("content_version", "1")],
         NOW,
     );
-    act(
-        &mut a,
-        &format!("/questions/{qid}/edit"),
-        "stale-fix-edit-0001",
-        &[
-            ("content_version", "1"),
-            ("prompt", &q.content().prompt),
-            ("kind", &q.content().kind),
-            ("answer", &q.content().answer),
-            ("basis", "general"),
-            ("quotes", ""),
-            (
-                "explanation",
-                "A new authored explanation supersedes the draft source.",
-            ),
-        ],
-        NOW + 1,
-    );
+    // The question gains a version after the fix was requested, as an edit
+    // once saved one.
+    let q = a.questions.get_mut(&qid).unwrap();
+    let mut edited = q.content().clone();
+    edited.version += 1;
+    edited.explanation = "A new authored explanation supersedes the draft source.".into();
+    edited.created_ms = NOW + 1;
+    q.versions.push(edited);
     assert!(
         engine::claim_work(&mut a, NOW + 2, "stale-fix-no-send01", &cfg())
             .unwrap()
@@ -212,11 +138,12 @@ fn refinement_retry_is_bounded_but_new_feedback_starts_fresh_attempt() {
 #[test]
 fn rejected_transport_never_claims_a_free_paid_outcome() {
     let mut a = fixture();
+    let goal = a.goals.keys().next().unwrap().clone();
     act(
         &mut a,
-        "/review/answer",
+        &format!("/goals/{goal}/refine"),
         "rejected-send-00001",
-        &[("answer", "nonexact test answer")],
+        &[("feedback", "Explain with a more concrete example.")],
         NOW,
     );
     let w = engine::claim_work(&mut a, NOW, "rejected-lease-0001", &cfg())

@@ -28,8 +28,9 @@ including midnight, with no rolling-day filter. Reporting rejects arithmetic
 overflow instead of silently truncating a sum.
 
 Entries expose only cost metadata: ledger `id` (send lease), existing `work_id`,
-`work_kind` (`concept_job`, `assessment`, or `unattributed` when `work_id`
-matches neither), optional `goal_id` (`null` when unattributed), `created_ms`,
+`work_kind` (`concept_job`, `assessment`, `study_check` for a Check of a
+memorization answer, or `unattributed` when `work_id` matches none), optional
+`goal_id` (`null` when unattributed or a `study_check`), `created_ms`,
 `day`, `purpose`, `model`, `status`, and the entry monetary fields above.
 Use `work_id` to sum the calls for one existing job or assessment; `goal_id`
 connects generation, transcription and critic jobs to the saved request.
@@ -38,11 +39,33 @@ identities. Raw provider responses, prompts, answer text, titles, token metadata
 verifiers and credentials are excluded. `model` is the reserved/requested model;
 the provider's raw response/model receipt remains private in the full archive.
 
-New reservations use `grade.jev`, `critic`, `generate.concepts`, or
-`transcribe.photo`. Concept generation is not `generate.version`; #322 owns
+New reservations use `grade.recall` (Jev judging a memorization answer),
+`grade.jev` (the earlier concept notebook's check), `critic`,
+`generate.concepts`, or `transcribe.photo`. Concept generation is not `generate.version`; #322 owns
 Generation agent calls and their run identities. Missing or empty historical
 purpose/model display as `unattributed`, without inference or writeback.
 Nonempty historical values are retained verbatim.
+
+## Paid judgment of memorization answers
+
+Each Check reserves 0.50 US dollars (`reserved_micros: 500000`) against the
+3.50 rolling 24-hour allowance before its one request is sent. When the response
+reports `usage.cost`, the entry becomes `known` with that amount and only the
+amount counts against the allowance. When the response reports no cost, is
+refused, cannot be read or never arrives, the entry stays `unknown` and its
+whole 0.50 reservation keeps counting for 24 hours: with a provider that
+reports no cost, seven checks fill the day's allowance. A check that would not
+fit is not sent; the answer is saved and not graded, and it says why. Nothing
+is reserved for an answer graded locally, for a request without paid
+permission, or while paid judgment is off.
+
+Only production can spend. Outside production nothing is sent to a real
+provider whatever is bound: a preview's judge endpoint must be a host under
+`.invalid` (a test harness's controlled egress), and every other environment
+sends nothing. To enable paid judgment in production an operator binds the
+secret `JEV_API_KEY` and the variables `JEV_MODEL` and `JEV_URL` (an `https`
+endpoint with no credentials, query or fragment) on the production Worker; the
+Owner then turns it on in Settings.
 
 Spend GET/HEAD authenticates synchronously before reading records. It bypasses
 the ordinary load/save path: no table/store initialization, token last-use,

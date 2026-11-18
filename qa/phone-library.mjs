@@ -186,7 +186,9 @@ export async function phoneLibraryWalk(browser, capture) {
       assert.equal(original.version.sections.flatMap(section => section.units).map(unit => unit.text).join(''),text);
       await shot('version');
       await page.goto(f.origin + '/library/add'); await fillDraft(page); await activate(addButton(page));
-      await page.waitForURL(f.origin + versionPath(vid));
+      // The repeated save lands on the same Version and says nothing was added.
+      await page.waitForURL(f.origin + versionPath(vid) + '?existing=1');
+      assert.ok((await page.locator('main').innerText()).includes('That text was already in the Library. Nothing was added.'));
       assert.equal(await count(f,'library_versions/'),1);
       assert.equal(await count(f,'library_works/'),1);
       assert.deepEqual((await f.cli(['version','show',vid])).version,original.version);
@@ -241,7 +243,7 @@ export async function phoneLibraryWalk(browser, capture) {
       await shot('first-prompt');
       await page.setViewportSize({width,height:844});
       await page.getByLabel('Your answer',{exact:true}).fill('Copper lanterns shelter a tired garden.');
-      await activate(page.getByRole('button',{name:'Check my answer',exact:true}));
+      await activate(page.getByRole('button',{name:'Check',exact:true}));
       await page.locator('[data-state="exact-result"]').waitFor();
       row.arrival=await feedbackArrival(page,capture,`phone-library-${width}-${scheme}-${zoom?200:100}-arrival.png`,zoom);
       row.evidence.push(row.arrival.evidence);
@@ -269,14 +271,16 @@ export async function phoneLibraryWalk(browser, capture) {
         await page.goto(f.origin + versionPath(vid));
         await activate(page.getByText('Manage Study',{exact:true}));
         await Promise.all([
-          page.waitForURL(f.origin + '/recall',{waitUntil:'domcontentloaded'}),
+          // A Study control returns to the Version page it was pressed on.
+          page.waitForURL(f.origin + versionPath(vid),{waitUntil:'domcontentloaded'}),
           activate(page.getByRole('button',{name:action,exact:true}))
         ]);
-        await page.locator(status==='dropped'?'[data-state="library"]':'[data-state="exact-prompt"]').waitFor();
+        await page.getByText('Manage Study',{exact:true}).waitFor();
         assert.equal((await f.record('practice_studies/'+study.id)).status,status);
         assert.equal(await count(f,'practice_attempts/'),1,'Study controls retain the first Attempt.');
         assert.deepEqual((await f.cli(['version','show',vid])).version,original.version);
       }
+      await activate(page.getByRole('link',{name:'Return to practice',exact:true}));
       await page.getByLabel('Find a text',{exact:true}).waitFor();
       await shot('dropped-return');
       const complete = await f.cli(['export']);
@@ -286,7 +290,7 @@ export async function phoneLibraryWalk(browser, capture) {
       assert.deepEqual(backup.archive.app.practice,complete.app.practice);
       assert.equal(f.egress,0);
       row.criteria.push(6);
-      row.observed = {version:vid,study:study.id,attempt:attempt.id,duplicate_versions:0,duplicate_studies:0,first_attempt_assisted:true,held_reload:true,deliberate_next:true,search:'title, alias, opening words; edition-only honest miss',study_controls:['pause','resume','drop'],local_r2:{sha256:backup.sha256,bytes:backup.bytes},egress:0,spend:0};
+      row.observed = {version:vid,study:study.id,attempt:attempt.id,duplicate_versions:0,duplicate_studies:0,first_attempt_assisted:false,held_reload:true,deliberate_next:true,search:'title, alias, opening words; edition-only honest miss',study_controls:['pause','resume','drop'],local_r2:{sha256:backup.sha256,bytes:backup.bytes},egress:0,spend:0};
     } catch (error) {row.status='fail'; row.reason=error.message; row.evidence.push(await capture(page,`phone-library-${width}-${scheme}-${zoom?200:100}-failure.png`));}
     finally {row.cli=f.transcript; await context.close(); await f.close();}
   }
@@ -337,7 +341,8 @@ export async function phoneLibraryRecovery(browser, capture) {
     const destination=page.url(), vid=new URL(destination).pathname.split('/').at(-1);
     const original=(await f.cli(['version','show',vid])).version;
     const secondResponse=other.waitForResponse(response => response.request().method()==='POST' && new URL(response.url()).pathname==='/library/version/add');
-    await Promise.all([other.waitForURL(destination,{waitUntil:'domcontentloaded'}),addButton(other).tap()]);
+    // The second tab's text is already there: same Version, and it says so.
+    await Promise.all([other.waitForURL(destination+'?existing=1',{waitUntil:'domcontentloaded'}),addButton(other).tap()]);
     assert.equal((await secondResponse).status(),303);
     await other.locator('[data-state="library-version"]').waitFor();
     assert.equal(await count(f,'library_works/'),1); assert.equal(await count(f,'library_versions/'),1); assert.equal(await count(f,'practice_studies/'),0);
@@ -360,12 +365,12 @@ export async function phoneLibraryRecovery(browser, capture) {
     const longTitle='A deliberately long supplied title keeps every word available without displacing the correction from its learning moment';
     const longWord='counterrevolutionary'.repeat(4), longAnswer='misremembered'.repeat(6);
     const added=await f.cli(['version','add','--title',longTitle,'--kind','text','--name',edition,'--source',source,'--text-file',await f.file('long.txt',longWord+'.')]);
-    await f.cli(['learn',added.result.entity_id]);
+    await f.cli(['learn',added.result.entity_id]);await f.cli(['next']);
     await page.goto(f.origin+'/recall');
     const action=assertStudySource(await page.content(),longWord+'.');
     await page.locator(`form[action="${action.path}"] .primary`).tap();
     await page.getByLabel('Your answer',{exact:true}).fill(longAnswer);
-    await page.getByRole('button',{name:'Check my answer',exact:true}).tap();
+    await page.getByRole('button',{name:'Check',exact:true}).tap();
     await page.locator('[data-state="exact-result"]').waitFor();
     await layout(page,true);
     const original=(await f.cli(['next'])).practice.attempt;
@@ -388,11 +393,13 @@ export async function phoneLibraryRecovery(browser, capture) {
     await f.cli(['learn',vid]);
     await page.goto(f.origin+versionPath(vid));
     assert.ok((await page.locator('main').innerText()).includes(firstUnit));
-    await page.goto(f.origin+'/recall'); await page.locator('[data-state="exact-prompt"]').waitFor();
     let current=(await f.cli(['next'])).practice;
+    await page.goto(f.origin+'/recall'); await page.locator('[data-state="exact-prompt"]').waitFor();
     const cid=(await f.record('meta')).practice.current.targets[0].card_id;
-    for(let i=0;i<6;i++) {await f.cli(['answer',current.prompt.id,'--text-stdin'],firstUnit); current=(await f.cli(['next','--after',current.prompt.id,'--card',cid])).practice;}
-    assert.equal(current.prompt.cue_level,'previous_line'); assert.equal(current.prompt.assisted,false);
+    // The phrase is studied in the open; trying it from memory makes it protected recall.
+    assert.equal(current.phase,'study'); assert.ok((await page.content()).includes(firstUnit));
+    current=(await f.cli(['quiz',current.prompt.id])).practice;
+    assert.equal(current.phase,'quiz'); assert.equal(current.prompt.cue_level,'whole_title'); assert.equal(current.prompt.assisted,false);
     await page.reload(); await page.locator('[data-state="exact-prompt"]').waitFor();
     assert.ok(!(await page.content()).includes(firstUnit));
     const before=await f.rows(), priorAttempts=await count(f,'practice_attempts/'), card=(await f.record('practice_cards/'+cid)).state;

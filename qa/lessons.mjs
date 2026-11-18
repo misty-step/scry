@@ -18,7 +18,14 @@ export async function lessonJourney(){
   await f.get('/lessons');assert.deepEqual(await f.rows(),initial,'Browsing never imports or schedules.');
   const start=selectedFields(shelf,'/practice/lesson/start','starter','rosary-joyful');
   for(const override of [{grade:'Good'},{answer:'known'},{pace:'intense'}]) {const before=await f.rows();assert.equal((await f.post('/practice/lesson/start',{...start,...override,operation_id:randomUUID()})).status,422);assert.deepEqual(await f.rows(),before);}
-  await submit(f,'/practice/lesson/start',start);let prompt=await f.get('/');let held=await f.rows();assert.equal(current(held).prompt.scope.kind,'whole');assert.equal(current(held).prompt.assisted,false);assert.doesNotMatch(prompt,/Annunciation|Visitation/);
+  await submit(f,'/practice/lesson/start',start);
+  // A set not yet practised is shown whole first: its title and five mysteries in order, with no answer.
+  const mysteries=['Annunciation','Visitation','Nativity','Presentation','Finding in the Temple'];
+  const rosarySource=await f.get('/');let held=await f.rows();assert.equal(current(held).prompt.scope.kind,'whole');assert.equal(current(held).phase,'study');
+  assert.equal(Object.keys(held).filter(k=>k.startsWith('practice_cards/')).length,5);assert.equal(Object.keys(held).filter(k=>k.startsWith('practice_attempts/')).length,0);
+  assertStudySource(rosarySource,'Annunciation');assert.match(rosarySource,/Joyful Mysteries/);
+  let shownAt=-1;for(const item of mysteries){const found=rosarySource.indexOf(`<p class="reading exact-expected">${item}`,shownAt+1);assert.ok(found>shownAt,item+' is shown in its order');shownAt=found;}
+  let prompt=await enterMemory(f);held=await f.rows();assert.equal(current(held).prompt.scope.kind,'whole');assert.equal(current(held).phase,'quiz');assert.equal(current(held).prompt.assisted,false);assert.doesNotMatch(prompt,/Annunciation|Visitation/);
   const checkpoint={...nativeFields(prompt,'/practice/answer'),generation:'0',answer:'\nFirst line\nSecond line'};
   const scope=JSON.parse(await f.get('/session/scope')).scope;const saved=await f.postScoped('/practice/draft',scope,checkpoint);assert.equal(saved.status,303,await saved.text());
   held=await f.rows();assert.equal(held.meta.practice.answer_checkpoint.draft.answer,checkpoint.answer,'Multipart form newline normalization preserves the textarea value.');
@@ -48,7 +55,7 @@ export async function lessonJourney(){
   const section=v.sections.find(s=>s.id===current(joined).prompt.scope.section_id);await submit(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:section.units.map(u=>u.text).join('')});
   await submit(f,'/practice/lesson/next',selectedFields(await f.get('/'),'/practice/lesson/next','mode','whole'));const whole=await f.rows();assert.equal(current(whole).prompt.scope.kind,'whole');assert.equal(current(whole).prompt.assisted,false);
   await submit(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:v.text});assert.match(await f.get('/'),/data-verdict="Good"/);assert.equal(f.egress,0);
-  return {status:'pass',catalog_read_only:true,ordered_omission_then_correct:true,source_view_not_copy_graded:true,wrong_continuation_guided_retry:true,retry_replay_and_stale_fenced:true,joined_section:true,cold_whole:true,egress:0};
+  return {status:'pass',catalog_read_only:true,ordered_list_studied_whole_before_quiz:true,ordered_omission_then_correct:true,source_view_not_copy_graded:true,wrong_continuation_guided_retry:true,retry_replay_and_stale_fenced:true,joined_section:true,cold_whole:true,egress:0};
  }finally{await f.close();}
 }
 export async function lessonWalk(browser,capture){
@@ -61,6 +68,11 @@ export async function lessonWalk(browser,capture){
    const activate=locator=>width<1000?locator.tap():locator.click();const shot=async name=>{assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);row.evidence.push(await capture(page,`lesson-${width}-${noJS?'native':'enhanced'}-${name}.png`));};
    await page.goto(f.origin+'/lessons');await shot('shelf');
    await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="rosary-joyful"]')}).locator('button'));
+   // The set is first shown whole: five mysteries in order and nothing to type into.
+   await page.locator('[data-study-phase="study"]').waitFor();assert.equal(await page.locator('#answer,form[action="/practice/answer"],form[action="/practice/reveal"]').count(),0);
+   assert.deepEqual((await page.locator('[data-study-phase="study"] .exact-expected').allInnerTexts()).map(text=>text.trim()),['Annunciation','Visitation','Nativity','Presentation','Finding in the Temple']);
+   assert.equal(await page.locator('.practice-heading h1').innerText(),'Joyful Mysteries');assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,0);await shot('sequence-study');
+   await enterMemoryPage(page);for(const item of ['Annunciation','Visitation','Nativity'])assert.ok(!(await page.content()).includes(item),'The Quiz carries no mystery.');await shot('sequence-quiz');
    await page.locator('#answer').waitFor();const beforeTyped=await f.rows();await page.locator('#answer').fill('Annunciation\nNativity');assert.deepEqual(await f.rows(),beforeTyped,'Typing alone never saves or creates evidence.');
    if(!noJS){
     await page.locator('#answer').fill('\nAnnunciation\nNativity');
@@ -81,7 +93,20 @@ export async function lessonWalk(browser,capture){
     assert.equal(await page.locator('#answer').inputValue(),'');assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft,null);
     assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,countBefore);
     await page.locator('#answer').fill('Annunciation\nNativity');
-   } else { assert.equal(await page.getByRole('button',{name:'Save draft',exact:true}).count(),0); }
+   } else {
+    // Without JavaScript, Save draft and its discard are ordinary form submissions.
+    const promptBefore=current(await f.rows()).prompt.id,countBefore=Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length;
+    assert.equal(await page.getByRole('button',{name:'Discard saved draft',exact:true}).count(),0,'Discard appears only beside a saved draft.');
+    await page.locator('#answer').fill('\nAnnunciation\nNativity');await shot('draft-before-save');
+    await activate(page.getByRole('button',{name:'Save draft',exact:true}));await page.locator('#answer').waitFor();
+    assert.equal(await page.locator('#answer').inputValue(),'\nAnnunciation\nNativity');assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft.answer,'\nAnnunciation\nNativity');
+    assert.equal(current(await f.rows()).prompt.id,promptBefore);assert.equal(Object.keys(await f.rows()).filter(k=>k.startsWith('practice_attempts/')).length,countBefore,'Saving never grades.');
+    await shot('draft-saved');
+    await page.reload();assert.equal(await page.locator('#answer').inputValue(),'\nAnnunciation\nNativity');
+    await activate(page.getByRole('button',{name:'Discard saved draft',exact:true}));await page.locator('#answer').waitFor();
+    assert.equal(await page.locator('#answer').inputValue(),'');assert.equal((await f.rows()).meta.practice.answer_checkpoint.draft,null);
+    await page.locator('#answer').fill('Annunciation\nNativity');
+   }
    const saved=current(await f.rows());await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('#answer').inputValue(),'Annunciation\nNativity');assert.deepEqual(current(await f.rows()),saved);await shot('sequence-draft');
    assert.equal(await page.locator('[data-current-lesson="rosary-joyful"]').count(),1);
    assert.equal(await page.locator('[data-picker-close]').isVisible(),!noJS,'The enhanced return control is hidden without JavaScript.');
@@ -116,15 +141,26 @@ export async function lessonWalk(browser,capture){
    await shot('ordered-long-answer-open');
    await activate(page.getByText('Your submitted answer',{exact:true}));
    await activate(page.locator('.lesson-picker > summary'));await activate(page.locator('form[action="/practice/lesson/start"]').filter({has:page.locator('input[name="starter"][value="st-michael-en"]')}).locator('button'));
-   assert.equal(await page.locator('#answer').count(),0);await enterMemoryPage(page);assert.match(await page.locator('.lesson-instruction').innerText(),/from memory/);assert.match(await page.locator('.lesson-position').innerText(),/Phrase 1 \/ 8/);assert.equal(await page.locator('.practice-heading h1').count(),1);assert.equal(await page.locator('.lesson-position').count(),1);assert.equal(await page.locator('.lesson-stage h1').count(),0);assert.equal(await page.locator('.practice-tools > details').count(),2);await activate(page.locator('.lesson-evidence > summary'));assert.equal(await page.locator('.lesson-evidence').getAttribute('open'),'');await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('.lesson-evidence').getAttribute('open'),null);await activate(page.locator('.lesson-picker > summary'));await shot('prayer-guided');const r=await f.rows(),p=current(r),v=version(r,p.prompt.version_id);
+   assert.equal(await page.locator('#answer').count(),0);await enterMemoryPage(page);assert.match(await page.locator('.lesson-instruction').innerText(),/from memory/);assert.match(await page.locator('.lesson-position').innerText(),/Phrase 1 \/ 8/);assert.equal(await page.locator('.practice-heading h1').count(),1);assert.equal(await page.locator('.lesson-position').count(),1);assert.equal(await page.locator('.lesson-stage h1').count(),0);assert.equal((await page.locator('[data-study-phase="quiz"]').textContent()).trim(),'Quiz','A first Quiz is not labelled review.');assert.equal(await page.locator('.lesson-context').count(),0,'The first phrase has no previous phrase.');assert.equal(await page.locator('.practice-tools > details').count(),2);await activate(page.locator('.lesson-evidence > summary'));assert.equal(await page.locator('.lesson-evidence').getAttribute('open'),'');await activate(page.locator('.lesson-picker > summary'));assert.equal(await page.locator('.lesson-evidence').getAttribute('open'),null);await activate(page.locator('.lesson-picker > summary'));await shot('prayer-guided');const r=await f.rows(),p=current(r),v=version(r,p.prompt.version_id);
    // An understandable learner mistake: continuing with the following phrase.
    await page.locator('#answer').fill(v.sections[0].units[1].text);await activate(page.locator('form[action="/practice/answer"] button'));await page.locator('[data-verdict="Again"]').waitFor();
    assert.equal((await page.locator('.lesson-target .exact-expected').innerText()).trim(),v.sections[0].units[0].text.trim());assert.equal(await page.locator('.exact-changes').isVisible(),false,'Detailed token corrections stay secondary.');assert.match(await page.locator('form[data-next] button').innerText(),/Try this phrase again/);await shot('prayer-mismatch');
    const miss=current(await f.rows());await page.reload();assert.deepEqual(current(await f.rows()),miss);assert.equal(await page.locator('.lesson-target').isVisible(),true);
    await activate(page.locator('form[data-next] button'));await enterMemoryPage(page);const retry=current(await f.rows());assert.notEqual(retry.prompt.id,p.prompt.id);assert.deepEqual(retry.prompt.unit_ids,p.prompt.unit_ids);assert.equal(retry.prompt.assisted,false);assert.match(await page.locator('.lesson-position').innerText(),/Phrase 1 \/ 8/);await shot('prayer-retry');
    await page.locator('#answer').fill(v.sections[0].units[0].text);await activate(page.locator('form[action="/practice/answer"] button'));await page.locator('[data-verdict="Good"]').waitFor();assert.match(await page.locator('.lesson-verdict').innerText(),/with help/);assert.equal(await page.locator('[data-result-metric="recall"]').innerText(),'0 / 1','Helped retry must retain the earlier failed unaided review');assert.notEqual(await page.locator('[data-result-metric="due"]').innerText(),'Not scheduled');await shot('prayer-evidence');
-   await activate(page.locator('form[data-next] button'));await enterMemoryPage(page);assert.equal(current(await f.rows()).prompt.scope.position,2);assert.match(await page.locator('.lesson-position').innerText(),/Phrase 2 \/ 8/);assert.equal(await page.locator('.lesson-context').count(),0,'Memory quiz does not disclose prior source text');await shot('prayer-second');
+   await activate(page.locator('form[data-next] button'));await enterMemoryPage(page);assert.equal(current(await f.rows()).prompt.scope.position,2);assert.match(await page.locator('.lesson-position').innerText(),/Phrase 2 \/ 8/);const previous=page.locator('details.lesson-context');assert.equal(await previous.count(),1);assert.equal(await previous.getAttribute('open'),null,'The previous phrase stays closed until asked for.');await shot('prayer-second');
+   await page.locator('#answer').fill('Typed before asking');const beforeContext=await f.rows();await activate(previous.locator('summary'));assert.notEqual(await previous.getAttribute('open'),null);
+   assert.equal((await previous.locator('p').innerText()).trim(),v.sections[0].units[0].text.trim());assert.equal(await page.locator('#answer').inputValue(),'Typed before asking','Opening the previous phrase keeps the draft.');
+   assert.ok(!(await page.locator('.lesson-stage').innerText()).includes(v.sections[0].units[1].text.trim()),'The asked phrase stays hidden.');
+   const afterContext=await f.rows();assert.deepEqual(domain(afterContext),domain(beforeContext),'Opening the previous phrase records nothing.');assert.deepEqual(current(afterContext),current(beforeContext),'Opening the previous phrase keeps the Prompt and is not help.');assert.equal(current(afterContext).revealed,false);await shot('prayer-second-context');
    await page.locator('#answer').fill(v.sections[0].units[1].text);await activate(page.locator('form[action="/practice/answer"] button'));await page.locator('[data-verdict="Good"]').waitFor();
+   assert.doesNotMatch(await page.locator('.lesson-verdict').innerText(),/with help/,'Reading the previous phrase is not Assistance.');assert.equal((await f.rows())['practice_attempts/'+current(await f.rows()).attempt_id].assisted,false);
+   // A Section Recitation is prompted by its heading.
+   const joining=page.locator('details').filter({has:page.locator('form[action="/practice/lesson/next"] input[name="mode"][value="join"]')});if(await joining.count())await activate(joining.locator('summary').first());
+   await activate(page.locator('form[action="/practice/lesson/next"]').filter({has:page.locator('input[name="mode"][value="join"]')}).locator('button'));await page.locator('#answer').waitFor();
+   assert.equal(current(await f.rows()).prompt.scope.kind,'section');assert.equal((await page.locator('.lesson-cue').innerText()).trim(),v.sections[0].heading);assert.equal(await page.locator('.practice-heading h1').innerText(),r['library_works/'+v.work_id].title);
+   for(const unit of v.sections[0].units)assert.ok(!(await page.content()).includes(unit.text.trim()),'A Section Recitation shows its heading, never its wording.');await shot('prayer-section');
+   await page.locator('#answer').fill(v.sections[0].units.map(u=>u.text).join(''));await activate(page.locator('form[action="/practice/answer"] button'));await page.locator('[data-verdict="Good"]').waitFor();
    const challenge=page.locator('details').filter({has:page.locator('form[action="/practice/lesson/next"] input[name="mode"][value="whole"]')});if(await challenge.count())await activate(challenge.locator('summary').first());
    await activate(page.locator('form[action="/practice/lesson/next"]').filter({has:page.locator('input[name="mode"][value="whole"]')}).locator('button'));await page.locator('#answer').waitFor();assert.equal(current(await f.rows()).prompt.assisted,false);assert.equal(await page.locator('.practice-edition').isVisible(),true);assert.match(await page.locator('.practice-edition').innerText(),/English · supplied wording/);await shot('prayer-whole');
    if(!noJS&&width===1280){await page.locator('#answer').fill('First typed phrase');await page.locator('#answer').press('Enter');assert.equal(await page.locator('[data-state="exact-result"]').count(),0,'Full text Enter inserts a line, not a grade.');}
@@ -158,8 +194,10 @@ export async function lessonWalk(browser,capture){
     await activate(page.getByRole('button',{name:'Reconcile this attempt',exact:true}));
     await page.locator('.nato-letter').waitFor();assert.deepEqual(current(await f.rows()),committed,'Switch response reconciliation keeps one prompt.');
    }
+   // The alphabet's first letter is new: it is studied, then quizzed.
+   await page.locator('.nato-letter').waitFor();const switched=current(await f.rows());assert.equal(switched.phase,'study');await enterMemoryPage(page);
    await page.locator('#answer').waitFor();
-   const afterLeave=await f.rows();assert.equal(Object.keys(afterLeave).filter(k=>k.startsWith('practice_attempts/')).length,attemptCount,'Explicit leave creates no synthetic miss or success.');assert.notEqual(current(afterLeave).prompt.id,current(beforeLeave).prompt.id);await shot('explicit-switch');
+   const afterLeave=await f.rows();assert.equal(Object.keys(afterLeave).filter(k=>k.startsWith('practice_attempts/')).length,attemptCount,'Explicit leave creates no synthetic miss or success.');assert.notEqual(current(afterLeave).prompt.id,current(beforeLeave).prompt.id);assert.deepEqual(current(afterLeave).prompt.unit_ids,switched.prompt.unit_ids);await shot('explicit-switch');
    // Inspect secondary surfaces after a real saved answer, never bypassing protection.
    await page.locator('#answer').fill('Alfa');await activate(page.locator('form[action="/practice/answer"] button'));await page.locator('[data-state="exact-result"]').waitFor();
    await page.goto(f.origin+'/library');assert.equal(await page.locator('#nato-starter').count(),0);assert.equal(await page.locator('footer').count(),0);await shot('library');

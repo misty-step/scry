@@ -101,7 +101,8 @@ export async function studyJourney({seedHistorical=true}={}){
  };
  const next=async(extra=[])=>{const args=['next',...(current?.attempt_id?['--after',current.prompt.id]:[]),...extra];const v=await ok(args);current=v.practice;return current;};
  const answer=async(text,extra=[])=>{const v=await ok(['answer',current.prompt.id,'--text-stdin',...extra],text);current={...current,attempt_id:v.practice.attempt.id};return v.practice.attempt;};
- const stopCurrent=async()=>{if(current?.prompt&&!current.attempt_id)await answer('');};
+ const quiz=async()=>{const v=await ok(['quiz',current.prompt.id]);current=v.practice;return current;};
+ const stopCurrent=async()=>{if(current?.prompt&&!current.attempt_id){if(current.phase==='study')await quiz();await answer('');}};
  const card=cid=>record('practice_cards/'+cid);
  const attempt=async id=>(await(await req('/api/v1/history')).json()).attempts[id];
  const attemptRows=async id=>(await rows()).filter(r=>r.key==='practice_attempts/'+id||r.key.startsWith('practice_payload/'+id+'/'));
@@ -121,16 +122,22 @@ export async function studyJourney({seedHistorical=true}={}){
  const clock=async value=>{at=value;bindings={...bindings,SCRY_TEST_NOW_MS:String(at)};runtime={...runtime,...await runtime.rebind(bindings)};storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});};
  const add=async(title,text,sections,strict=false)=>{const path=await file(randomUUID()+'.txt',text),sectionFile=sections?await file(randomUUID()+'.json',JSON.stringify(sections)):null;
   const v=await ok(['version','add','--title',title,'--kind','text','--text-file',path,'--name','Roman Missal 2011 metadata; caller-authored synthetic wording','--source','Authored test text; no canonical wording claimed',...(sectionFile?['--sections-file',sectionFile]:[]),...(strict?['--spelling-strict']:[])]);return v.result.entity_id;};
- const prepare=async(cid,text)=>{ // Observable Ladder journey, never editing rows.
-  for(let i=0;i<6;i++){
-   const cue=current.prompt.cue_level;assert.equal(cue,['read','read','first_letters','first_letters','first_letter','first_letter'][i]);
-   if(cue!=='read'){assert.ok(!JSON.stringify(current.prompt).includes(text.trim()));assert.ok(!('version' in current.prompt));}
-   const a=await answer(text);assert.equal(a.assisted,true);assert.ok(a.effects.every(e=>!e.scheduled));
-   await next(['--card',cid]);
-  }
-  assert.equal(current.prompt.cue_level,'previous_line');assert.equal(current.prompt.cue,'');assert.equal(current.prompt.assisted,false);
+ const prepare=async(cid,text)=>{ // Observable study-then-Quiz journey, never editing rows.
+  // A new Unit arrives as source study: the supplied text, which accepts no answer.
+  assert.equal(current.phase,'study');assert.equal(current.prompt.cue_level,'read');assert.equal(current.prompt.cue.trim(),text.trim());
+  const saved=await rows(),studied=await card(cid);
+  assert.notEqual((await cli(['answer',current.prompt.id,'--text-stdin'],text)).code,0,'The CLI refuses an answer against a source being studied.');
+  assert.equal((await req('/api/v1/answer',{operation_id:randomUUID(),prompt_id:current.prompt.id,answer:text})).status,409);
+  assert.deepEqual(await rows(),saved,'A refused answer writes nothing.');
+  // Try from memory: the same Unit with nothing answer-bearing, and no evidence.
+  const source=current.prompt;await quiz();
+  assert.equal(current.phase,'quiz');assert.equal(current.prompt.cue_level,'whole_title');assert.equal(current.prompt.assisted,false);assert.equal(current.prompt.context,null);
+  assert.deepEqual(current.prompt.unit_ids,source.unit_ids);assert.deepEqual(current.prompt.scope,source.scope);
+  assert.ok(!JSON.stringify(current.prompt).includes(text.trim()));assert.ok(!('version' in current.prompt));
+  assert.deepEqual(await card(cid),studied,'Studying and trying from memory change no Card.');
+  assert.equal((await rows()).filter(r=>r.key.startsWith('practice_attempts/')).length,saved.filter(r=>r.key.startsWith('practice_attempts/')).length,'Neither creates an Attempt.');
  };
- const freshCase=async(title='Exact grader example',strict=false)=>{await stopCurrent();const tail='Synthetic '+title+' tail.\n';const v=await add(title,'We conceived a patient garden.\n'+tail,[{heading:'Synthetic clause',units:['We conceived a patient garden.\n']},{heading:'Fixture identity',units:[tail]}],strict);const s=(await ok(['learn',v])).practice.study.id;await next(['--study',s]);const p=current.prompt;const c=Object.values(await state()).find(r=>r.study_id===s&&r.unit_id&&r.state)?.id;return {s,c,p,v};};
+ const freshCase=async(title='Exact grader example',strict=false)=>{await stopCurrent();const tail='Synthetic '+title+' tail.\n';const v=await add(title,'We conceived a patient garden.\n'+tail,[{heading:'Synthetic clause',units:['We conceived a patient garden.\n']},{heading:'Fixture identity',units:[tail]}],strict);const s=(await ok(['learn',v])).practice.study.id;await next(['--study',s]);const c=Object.values(await state()).find(r=>r.study_id===s&&r.unit_id&&r.state)?.id;await prepare(c,'We conceived a patient garden.');const p=current.prompt;return {s,c,p,v};};
  const practice=async(cid,text)=>{await next(['--card',cid]);return answer(text);};
  const historyRecoveryCases=async()=>{
   await stopCurrent();
@@ -173,19 +180,18 @@ export async function studyJourney({seedHistorical=true}={}){
    vid=await add("Apostles' Creed",lines.join('\n')+'\n',sections);const shown=await ok(['version','show',vid]);version=shown.version;wid=shown.work.id;
    sid=(await ok(['learn',vid,'--pace','steady'])).practice.study.id;assert.equal((await ok(['learn',vid])).practice.study.id,sid);
    assert.equal(Object.keys((await ok(['study','list'])).studies).length,historicalBaseline.studies+1,'Exactly one current Study is added beside the preserved historical fixture.');
-   await next(['--study',sid]);assert.equal(current.prompt.cue,lines[0]+'\n');const assisted=await answer(lines[0]);
-   await checkHistory('History: first assisted Attempt is visible with saved Diff and Authority',[assisted.id]);
+   await next(['--study',sid]);assert.equal(current.prompt.cue,lines[0]+'\n');
+   const opening=Object.values(await state()).find(r=>r.study_id===sid&&r.unit_id&&r.state);await prepare(opening.id,lines[0]);
+   const unaided=await answer(lines[0]);assert.equal(unaided.assisted,false);assert.ok(unaided.effects.every(e=>e.scheduled),'The Quiz after source study is Free recall and schedules its Card.');
+   await checkHistory('History: first Attempt is visible with saved Diff and Authority',[unaided.id]);
    await ok(['due']);await ok(['history']);await ok(['export']);assert.deepEqual((await ok(['spend','--by','day'])).entries,[]);
    const beforeRecite=await rows();assert.notEqual((await cli(['next','--after',current.prompt.id,'--study',sid,'--recite','whole'])).code,0);assert.deepEqual(await rows(),beforeRecite,'Recitation cannot bypass introductions/Pace.');
   },
   async()=>{
-   // Complete each new Unit through real cues to its first Free recall answer.
+   // Complete each new Unit through source study to its first Free recall answer.
    const all=version.sections.flatMap(s=>s.units);
    let first=Object.values(await state()).find(r=>r.study_id===sid&&r.unit_id&&r.state);cards.push(first.id);
-   await next(['--card',first.id]); // one read success already committed
-   await answer(lines[0]);await next(['--card',first.id]);
-   for(let i=0;i<4;i++){await answer(lines[0]);await next(['--card',first.id]);}
-   assert.equal(current.prompt.cue_level,'previous_line');await answer(lines[0]);
+   assert.ok(first.state.schedule.last_review_ms,'The first phrase was recalled unaided in the previous criterion.');
    for(let i=1;i<6;i++){
     await next(['--study',sid]);assert.equal(current.prompt.unit_ids[0],all[i].id);
     const c=Object.values(await state()).find(r=>r.study_id===sid&&r.unit_id===all[i].id&&r.state);cards.push(c.id);
@@ -194,15 +200,19 @@ export async function studyJourney({seedHistorical=true}={}){
    assert.equal((await next(['--study',sid])).prompt,null);
    await clock(START+DAY-1);
    // Clear due work without creating new Units; the cap remains six.
-   for(const [i,cid]of cards.entries()){await next(['--card',cid]);await answer(lines[i]);}
+   for(const [i,cid]of cards.entries()){await next(['--card',cid]);assert.equal(current.phase,'quiz','A practised phrase returns as a Quiz.');await answer(lines[i]);}
    assert.equal((await next(['--study',sid])).prompt,null);assert.equal((await rows()).filter(r=>r.key.startsWith('practice_cards/')).length,historicalBaseline.cards+6,'Exactly six current Cards plus the unchanged historical Cards.');
    await clock(START+DAY);
    for(let i=6;i<8;i++){await next(['--study',sid]);assert.equal(current.prompt.unit_ids[0],all[i].id);const c=Object.values(await state()).find(r=>r.unit_id===all[i].id&&r.state);cards.push(c.id);await prepare(c.id,lines[i]);await answer(lines[i]);}
    transcript.push({observation:'Steady Pace: exactly six introductions before rolling 24h boundary; Units seven/eight only at boundary, all in immutable reading order.'});
   },
   async()=>{
-   await next(['--card',cards[1]]);assert.equal(current.prompt.cue_level,'section_heading');assert.equal(current.prompt.cue,version.sections[0].heading);assert.equal(current.prompt.context,null);
-   await answer(lines[1]);await next(['--card',cards[1]]);await answer(lines[1]);await next(['--card',cards[1]]);assert.equal(current.prompt.cue_level,'whole_title');assert.equal(current.prompt.cue,"Apostles' Creed");assert.equal(current.prompt.context,null);await answer(lines[1]);
+   // A practised phrase always returns as a Quiz named by its Work alone. No
+   // success fades a cue, no miss brings one back, and the Card's level is unread.
+   for(const text of [lines[1],'a deliberate synthetic miss',lines[1]]){
+    await next(['--card',cards[1]]);assert.equal(current.phase,'quiz');assert.equal(current.prompt.cue_level,'whole_title');assert.equal(current.prompt.cue,"Apostles' Creed");assert.equal(current.prompt.context,null);assert.equal(current.prompt.assisted,false);assert.ok(!JSON.stringify(current.prompt).includes(lines[1]));
+    const a=await answer(text);assert.equal(a.assisted,false);assert.equal(a.effects[0].cue_level,'whole_title');assert.equal((await card(cards[1])).state.cue,'read');
+   }
    for(const route of ['/api/v1/next','/api/v1/answer','/api/v1/reveal','/api/v1/correct'])assert.equal((await req(route,{operation_id:randomUUID()},'invalid')).status,401);
   },
   async()=>{
@@ -211,7 +221,7 @@ export async function studyJourney({seedHistorical=true}={}){
    await next(['--study',sid,'--recite','whole']);assert.equal(current.prompt.cue,"Apostles' Creed");assert.equal(current.prompt.context,null);assert.equal(current.prompt.unit_ids.length,8);
    const bad=await answer(lines.join(' ').replace('lantern','mountain'));assert.equal(bad.grade.units.filter(u=>u.verdict==='Again').length,1);assert.equal(bad.grade.units[2].verdict,'Again');assert.ok(bad.grade.diff.some(d=>d.kind==='wrong'&&d.unit_index===2));
    await checkHistory('History: Recitation keeps every original per-Unit Verdict and Diff',[a.id,bad.id]);
-   await recitationAdmission({add,ok,cli,next,answer,stopCurrent,rows,record,req,transcript});
+   await recitationAdmission({add,ok,cli,next,quiz,answer,stopCurrent,rows,record,req,transcript});
   },
   async()=>{
    const prior=await ok(['history']);
@@ -225,18 +235,22 @@ export async function studyJourney({seedHistorical=true}={}){
    const shown=await ok(['reveal',current.prompt.id]);assert.equal(shown.practice.assisted,true);assert.equal((await record('meta')).practice.current.revealed,true,'Assistance persisted before reveal response.');
    const disclosure=await attempt(shown.practice.disclosure_attempt_id);assert.equal(disclosure.disclosure,true);assert.equal(disclosure.raw_answer,'');
    await checkHistory('History: Reveal unlocks historical records as Shown before answering',[disclosure.id]);
+   // The revealed phrase is on show as study: it takes no answer until tried from memory again.
+   assert.equal((await record('meta')).practice.current.phase,'study');assert.notEqual((await cli(['answer',current.prompt.id,'--text-stdin'],lines[4])).code,0);
+   await quiz();assert.equal(current.revealed,true);assert.ok(!JSON.stringify(current.prompt).includes(lines[4]));
    const a=await answer(lines[4]);assert.equal(a.assisted,true);assert.deepEqual((await card(cid)).state.schedule,before);
    await checkHistory('History: disclosure and later assisted answer are distinct saved records',[disclosure.id,a.id]);
   },
   async()=>{
-   const x=await freshCase('Once daily Free recall');caseStudy=x.s;caseCard=x.c;await prepare(x.c,'We conceived a patient garden.');const before=(await card(x.c)).state.schedule;
+   const x=await freshCase('Once daily Free recall');caseStudy=x.s;caseCard=x.c;const before=(await card(x.c)).state.schedule;
    const first=await answer('We conceived a patient garden.');assert.equal(first.effects[0].scheduled,true);assert.equal(first.effects[0].after.schedule.reps,before.reps+1);firstScheduled=(await card(x.c)).state.schedule;
    const extra=await practice(x.c,'We conceived a patient garden.');assert.equal(extra.assisted,false);assert.equal(extra.effects[0].extra_practice,true);assert.equal(extra.effects[0].scheduled,false);assert.deepEqual((await card(x.c)).state.schedule,firstScheduled);
    await checkHistory('History: unassisted scheduled and same-day extra Attempts agree with API/CLI/export',[first.id,extra.id]);
   },
   async()=>{
-   assert.equal((await card(caseCard)).state.cue,'section_heading');const bad=await practice(caseCard,'We imagined a patient garden.');assert.equal(bad.grade.verdict,'Again');assert.equal((await card(caseCard)).state.cue,'previous_line');assert.deepEqual((await card(caseCard)).state.schedule,firstScheduled);
-   await clock(START+2*DAY);const nextDay=await practice(caseCard,'We imagined a patient garden.');assert.equal(nextDay.effects[0].scheduled,true);assert.equal(nextDay.effects[0].after.schedule.reps,firstScheduled.reps+1);assert.equal((await card(caseCard)).state.cue,'first_letter');
+   // Early extra practice, hit or miss, leaves the schedule alone and moves no cue level.
+   assert.equal((await card(caseCard)).state.cue,'read');const bad=await practice(caseCard,'We imagined a patient garden.');assert.equal(bad.grade.verdict,'Again');assert.equal(bad.effects[0].extra_practice,true);assert.equal((await card(caseCard)).state.cue,'read');assert.deepEqual((await card(caseCard)).state.schedule,firstScheduled);
+   await clock(START+2*DAY);const nextDay=await practice(caseCard,'We imagined a patient garden.');assert.equal(nextDay.effects[0].scheduled,true);assert.equal(nextDay.effects[0].after.schedule.reps,firstScheduled.reps+1);assert.equal((await card(caseCard)).state.cue,'read');assert.equal(current.phase,'quiz');
   },
   async()=>{
    const before=await rows();
@@ -247,7 +261,7 @@ export async function studyJourney({seedHistorical=true}={}){
   },
   async()=>{
    const earlier=(await ok(['history'])).attempts;const original=Object.values(earlier).find(a=>a.prompt.study_id===sid);assert.ok(original,'Drop preservation checks an Attempt from this Study, not the historical fixture.');
-   await ok(['study','pause',caseStudy]);assert.equal((await next(['--study',caseStudy])).prompt,null,'Paused Study cannot introduce its waiting second Unit.');await ok(['study','resume',caseStudy]);await next(['--study',caseStudy]);assert.equal(current.prompt.scope.position,2);await answer('Synthetic Once daily Free recall tail.');
+   await ok(['study','pause',caseStudy]);assert.equal((await next(['--study',caseStudy])).prompt,null,'Paused Study cannot introduce its waiting second Unit.');await ok(['study','resume',caseStudy]);await next(['--study',caseStudy]);assert.equal(current.prompt.scope.position,2);assert.equal(current.phase,'study');await quiz();await answer('Synthetic Once daily Free recall tail.');
    await ok(['study','pause',sid]);await next(['--card',cards[0]]);await answer(lines[0]); // paused due/explicit Cards remain usable
    await ok(['study','resume',sid]);await ok(['study','drop',sid]);current=null;
    for(const command of [['version','delete',vid,'--revision','1'],['work','delete',wid,'--revision','1']]){const before=await rows();assert.notEqual((await cli(command)).code,0);assert.deepEqual(await rows(),before);}
@@ -261,7 +275,7 @@ export async function studyJourney({seedHistorical=true}={}){
    for(const [id,value]of Object.entries(historicalBaseline.attempts))assert.deepEqual(retained.history.attempts[id],value,'Current practice cannot rewrite a historical Attempt.');
    for(const [id,value]of Object.entries(historicalBaseline.corrections))assert.deepEqual(retained.history.corrections[id],value,'Current practice cannot rewrite a historical Correction.');
    for(const [id,value]of Object.entries(historicalBaseline.operations))assert.deepEqual(retained.history.operations[id],value,'Current practice cannot rewrite a historical operation receipt.');
-   const history=await ok(['history']),full=await ok(['export']);assert.equal(full.format,'scry-rust-durable-sqlite-study-scheduled-v2');assert.deepEqual(full.app.practice.studies,history.studies);assert.deepEqual(full.app.practice.cards,history.cards);assert.deepEqual(full.app.practice.attempts,history.attempts);assert.equal(history.versions[vid].normalized_hash,version.normalized_hash);assert.ok(Object.values(history.attempts).every(a=>a.acting_token===tokenId&&a.grade.authority.name==='exact-v2'&&a.grade.authority.grader_version));
+   const history=await ok(['history']),full=await ok(['export']);assert.equal(full.format,'scry-rust-durable-sqlite-study-phase-v3');assert.deepEqual(full.app.practice.studies,history.studies);assert.deepEqual(full.app.practice.cards,history.cards);assert.deepEqual(full.app.practice.attempts,history.attempts);assert.equal(history.versions[vid].normalized_hash,version.normalized_hash);assert.ok(Object.values(history.attempts).every(a=>a.acting_token===tokenId&&a.grade.authority.name==='exact-v2'&&a.grade.authority.grader_version));
    const before=full.app.practice,historyBefore=await checkHistory('History: full populated record before actual runtime restart');
    await runtime.mf.dispose();await start();await ok(['login','--url',origin,'--token-stdin'],secret+'\n');assert.deepEqual((await ok(['export'])).app.practice,before,'Real runtime restart retains all acknowledged practice rows.');
    const historyRestart=await checkHistory('History: actual SQLite runtime restart retains Attempts, Corrections and immutable wording');assert.deepEqual([...historyRestart.entries.values()],[...historyBefore.entries.values()]);
@@ -342,7 +356,7 @@ export async function studyJourney({seedHistorical=true}={}){
  const graderCriteria=[
   async()=>{const x=await freshCase();caseStudy=x.s;caseCard=x.c;const a=await answer('WE, CONCEIVED—A\nPATIENT “GARDEN”!!!');assert.equal(a.grade.verdict,'Good');caseAttempt=a;},
   async()=>{for(const text of ['We imagined a patient garden.','We conceived a garden.','We conceived a very patient garden.','We conceived patient a garden.']){const a=await practice(caseCard,text);assert.equal(a.grade.verdict,'Again');assert.ok(a.grade.diff.some(d=>['wrong','missing','extra'].includes(d.kind)));}
-   await stopCurrent();const text='orchard '.repeat(1100),v=await add('Bounded local alignment',text,[{heading:'Synthetic long Unit',units:[text]}]);const s=(await ok(['learn',v])).practice.study.id;await next(['--study',s]);const before=await rows();assert.notEqual((await cli(['answer',current.prompt.id,'--text-stdin'],text)).code,0);assert.deepEqual(await rows(),before);await answer('');},
+   await stopCurrent();const text='orchard '.repeat(1100),v=await add('Bounded local alignment',text,[{heading:'Synthetic long Unit',units:[text]}]);const s=(await ok(['learn',v])).practice.study.id;await next(['--study',s]);await quiz();const before=await rows();assert.notEqual((await cli(['answer',current.prompt.id,'--text-stdin'],text)).code,0);const bounded=await req('/api/v1/answer',{operation_id:randomUUID(),prompt_id:current.prompt.id,answer:text});assert.equal(bounded.status,422);assert.match((await bounded.json()).error,/capacity/);assert.deepEqual(await rows(),before);await answer('');},
   async()=>{const a=await practice(caseCard,'We concieved a patient garden.');assert.equal(a.grade.verdict,'Good');assert.ok(a.grade.diff.some(d=>d.kind==='slip'&&d.expected.text==='conceived'&&d.typed.text==='concieved'));},
   async()=>{const x=await freshCase('Strict spelling example',true);caseCard=x.c;const a=await answer('We concieved a patient garden.');assert.equal(a.grade.verdict,'Again');assert.ok(a.grade.diff.some(d=>d.kind==='slip'));},
   async()=>{const a=await practice(caseCard,'We concieved a harsh orchard extra.');assert.equal(a.grade.verdict,'Again');assert.ok(a.grade.diff.some(d=>d.kind==='slip'));assert.ok(a.grade.diff.some(d=>d.kind==='wrong'));const held=await ok(['next']);assert.deepEqual(held.practice.attempt,a);assert.equal(held.practice.prompt.id,current.prompt.id);caseAttempt=a;},

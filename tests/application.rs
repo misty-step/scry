@@ -1,3 +1,5 @@
+mod common;
+
 use scry::{
     engine::{self, WorkConfig},
     generation,
@@ -7,22 +9,15 @@ use scry::{
 use serde_json::json;
 use std::collections::BTreeMap;
 
-const NOW: i64 = 1_791_410_400_000;
+const NOW: i64 = 1_800_000_000_000;
 fn fresh() -> App {
     App::new("test-owner-csrf-at-least-32-characters".into())
 }
+/// The retired authored demo as it left the notebook: one published Goal and
+/// its choice question held unanswered.
 fn fixture() -> App {
-    let mut a = fresh();
-    engine::seed_fixture(&mut a, NOW).unwrap();
-    for q in a
-        .questions
-        .values_mut()
-        .filter(|q| q.content().kind == "choice")
-    {
-        q.card.due_ms = NOW + DAY_MS;
-    }
-    a.occurrence = None;
-    engine::ensure_occurrence(&mut a, NOW, "recall-fixture").unwrap();
+    let (a, now) = common::earlier("question-cold-choice");
+    assert_eq!(now, NOW);
     a
 }
 fn fields(a: &App, operation: &str, extra: &[(&str, &str)]) -> BTreeMap<String, String> {
@@ -58,46 +53,6 @@ fn no_models() -> WorkConfig {
         critic: false,
         ..config()
     }
-}
-
-#[test]
-fn exact_answer_event_schedule_and_receipt_are_one_transition() {
-    let mut a = fixture();
-    let expected = a.occurrence.as_ref().unwrap().presentation.answer.clone();
-    let f = fields(&a, "answer-operation-0001", &[("answer", &expected)]);
-    let r = engine::mutate(&mut a, "/review/answer", &f, NOW, "answer-1").unwrap();
-    assert_eq!(a.events.len(), 1);
-    assert_eq!(a.events[0].result.outcome, "correct");
-    assert_eq!(a.events[0].result.authority, "exact");
-    let saved = a.clone();
-    assert_eq!(
-        engine::mutate(
-            &mut a,
-            "/review/answer",
-            &f,
-            NOW + 5000,
-            "different-random-id"
-        )
-        .unwrap(),
-        r
-    );
-    assert_eq!(a, saved);
-    let mut conflicting = f.clone();
-    conflicting.insert("answer".into(), "a different answer".into());
-    assert_eq!(
-        engine::mutate(&mut a, "/review/answer", &conflicting, NOW, "answer-2")
-            .unwrap_err()
-            .status,
-        409
-    );
-    assert_eq!(a, saved);
-    let q = &a.questions[&a.events[0].question_id];
-    assert_eq!(q.card, a.events[0].after_card);
-    assert_eq!(q.schedule_version, 1);
-    let rows = persistence::rows(&a).unwrap();
-    let mut restarted = persistence::app_from_rows(&rows).unwrap();
-    engine::ensure_occurrence(&mut restarted, NOW + 1000, "restart").unwrap();
-    assert_eq!(restarted, a);
 }
 
 #[test]
@@ -153,157 +108,6 @@ fn capture_word_phrase_dictated_and_url_stay_private_and_exact() {
 }
 
 #[test]
-fn look_up_is_durable_and_cannot_become_unaided_success() {
-    let mut a = fixture();
-    let before = a.occurrence.as_ref().unwrap().before_card.clone();
-    assert!(a.protected_goal().is_some());
-    apply(&mut a, "/review/help", "assistance-operation1", &[]);
-    assert!(a.protected_goal().is_none());
-    let mut b = persistence::app_from_rows(&persistence::rows(&a).unwrap()).unwrap();
-    let answer = b.occurrence.as_ref().unwrap().presentation.answer.clone();
-    apply(
-        &mut b,
-        "/review/answer",
-        "assisted-answer-0001",
-        &[("answer", &answer)],
-    );
-    let e = &b.events[0];
-    assert!(e.assisted);
-    assert_eq!(e.result.rating, 0);
-    assert_eq!(e.result.outcome, "warm_correct");
-    assert_eq!(e.after_card, before);
-}
-
-#[test]
-fn reveal_is_held_and_next_is_deliberate() {
-    let mut a = fixture();
-    let oid = a.occurrence.as_ref().unwrap().id.clone();
-    apply(&mut a, "/review/reveal", "reveal-operation-001", &[]);
-    assert_eq!(a.events[0].result.outcome, "revealed");
-    assert_eq!(a.events[0].result.rating, 1);
-    engine::ensure_occurrence(&mut a, NOW + 100, "read-only").unwrap();
-    assert_eq!(a.occurrence.as_ref().unwrap().id, oid);
-    apply(&mut a, "/review/next", "next-operation-0001", &[]);
-    assert_ne!(a.occurrence.as_ref().unwrap().id, oid);
-    assert_eq!(a.events.len(), 1);
-}
-
-#[test]
-fn missing_assessor_keeps_answer_and_learner_authority() {
-    let mut a = fixture();
-    apply(
-        &mut a,
-        "/review/answer",
-        "semantic-answer-0001",
-        &[("answer", "an attempt in my own words")],
-    );
-    assert_eq!(a.occurrence.as_ref().unwrap().phase, "checking");
-    assert!(a.events.is_empty());
-    assert!(
-        engine::claim_work(&mut a, NOW, "missing-assessor-01", &no_models())
-            .unwrap()
-            .is_none()
-    );
-    assert_eq!(a.occurrence.as_ref().unwrap().phase, "self-check");
-    assert_eq!(
-        a.occurrence.as_ref().unwrap().answer.as_deref(),
-        Some("an attempt in my own words")
-    );
-    assert!(a.spend.is_empty());
-    apply(
-        &mut a,
-        "/review/self",
-        "self-check-operation1",
-        &[("correct", "true")],
-    );
-    assert_eq!(a.events[0].result.authority, "learner");
-    assert!(!a.events[0].assisted);
-    assert_eq!(a.events[0].result.rating, 3);
-}
-
-#[test]
-fn assessment_send_once_timeout_unknown_reservation_and_explicit_retry() {
-    let mut a = fixture();
-    apply(
-        &mut a,
-        "/review/answer",
-        "semantic-answer-0002",
-        &[("answer", "caching directives")],
-    );
-    let work = engine::claim_work(&mut a, NOW, "semantic-lease-001", &config())
-        .unwrap()
-        .unwrap();
-    assert_eq!(work.kind, "assessment");
-    assert_eq!(a.spent(NOW), RESERVATION);
-    assert!(
-        engine::claim_work(&mut a, NOW + 1000, "second-lease-001", &config())
-            .unwrap()
-            .is_none()
-    );
-    assert!(engine::recover(&mut a, NOW + 90_001));
-    assert_eq!(a.occurrence.as_ref().unwrap().phase, "self-check");
-    assert_eq!(a.spend[0].status, "unknown");
-    assert_eq!(a.spent(NOW), RESERVATION);
-    assert!(a.events.is_empty());
-    let raw=serde_json::to_string(&json!({"answers":{"verdict":{"choice":"accept","probabilities":{"accept":0.99,"reject":0.005,"unsure":0.005}},"identity":{"noul":0.0},"injection":{"noul":0.0}}})).unwrap();
-    assert_eq!(
-        engine::finish_work(&mut a, &work, raw, "jev".into(), Some(12_000), NOW + 90_002)
-            .unwrap_err()
-            .status,
-        409
-    );
-    assert!(a.events.is_empty());
-    apply(&mut a, "/review/retry", "explicit-retry-0001", &[]);
-    let next = engine::claim_work(&mut a, NOW + 91_000, "new-lease-explicit", &config())
-        .unwrap()
-        .unwrap();
-    assert_ne!(next.id, work.id);
-    assert_eq!(a.spend.len(), 2);
-}
-
-#[test]
-fn semantic_verdict_fenced_and_grade_override_keeps_original() {
-    let mut a = fixture();
-    apply(
-        &mut a,
-        "/review/answer",
-        "semantic-answer-0003",
-        &[("answer", "wrong answer")],
-    );
-    let work = engine::claim_work(&mut a, NOW, "semantic-lease-002", &config())
-        .unwrap()
-        .unwrap();
-    let raw=json!({"answers":{"verdict":{"choice":"reject","probabilities":{"accept":0.005,"reject":0.99,"unsure":0.005}},"identity":{"noul":0.0},"injection":{"noul":0.0}}}).to_string();
-    engine::finish_work(&mut a, &work, raw, "jev".into(), Some(12_000), NOW + 100).unwrap();
-    assert_eq!(a.events[0].result.outcome, "wrong");
-    let original = a.events[0].clone();
-    apply(
-        &mut a,
-        "/review/override",
-        "grade-override-0001",
-        &[("correct", "true")],
-    );
-    assert_eq!(a.events[0], original);
-    assert_eq!(a.overrides.len(), 1);
-    assert!(
-        a.occurrence
-            .as_ref()
-            .unwrap()
-            .result
-            .as_ref()
-            .unwrap()
-            .corrected
-    );
-    let fields = fields(&a, "grade-override-0002", &[("correct", "false")]);
-    assert_eq!(
-        engine::mutate(&mut a, "/review/override", &fields, NOW, "again")
-            .unwrap_err()
-            .status,
-        409
-    );
-}
-
-#[test]
 fn allowance_is_shared_and_unknown_cost_is_never_free() {
     let mut a = fixture();
     for i in 0..7 {
@@ -323,11 +127,12 @@ fn allowance_is_shared_and_unknown_cost_is_never_free() {
             response_outcome: None,
         });
     }
+    let goal = a.goals.keys().next().unwrap().clone();
     apply(
         &mut a,
-        "/review/answer",
+        &format!("/goals/{goal}/refine"),
         "semantic-budget-0001",
-        &[("answer", "cache control")],
+        &[("feedback", "Use a concrete example of validation.")],
     );
     assert!(
         engine::claim_work(&mut a, NOW, "no-budget-lease-01", &config())
@@ -335,59 +140,8 @@ fn allowance_is_shared_and_unknown_cost_is_never_free() {
             .is_none()
     );
     assert_eq!(a.spend.len(), 7);
-    assert_eq!(a.occurrence.as_ref().unwrap().phase, "self-check");
+    assert_eq!(a.jobs[&a.goals[&goal].job_id].status, "failed");
     assert_eq!(a.spent(NOW + DAY_MS + 1), 0);
-}
-
-#[test]
-fn content_edits_leave_historical_presentations_immutable() {
-    let mut a = fixture();
-    apply(&mut a, "/review/reveal", "reveal-before-edit1", &[]);
-    let qid = a.events[0].question_id.clone();
-    let old = a.events[0].clone();
-    let c = a.questions[&qid].content().clone();
-    let extra = [
-        ("content_version", "1"),
-        (
-            "prompt",
-            "Which directive controls a stored response's freshness lifetime?",
-        ),
-        ("kind", c.kind.as_str()),
-        ("answer", c.answer.as_str()),
-        ("variants", ""),
-        ("choices", ""),
-        ("explanation", c.explanation.as_str()),
-        ("basis", "general"),
-        ("quotes", ""),
-    ];
-    apply(
-        &mut a,
-        &format!("/questions/{qid}/edit"),
-        "content-edit-operation1",
-        &extra,
-    );
-    assert_eq!(a.events[0], old);
-    assert_eq!(a.questions[&qid].versions.len(), 2);
-    assert_eq!(
-        a.occurrence.as_ref().unwrap().presentation,
-        old.presentation
-    );
-}
-
-#[test]
-fn competing_occurrences_and_archive_cannot_publish_stale_answer() {
-    let mut a = fixture();
-    let old = fields(&a, "late-answer-operation1", &[("answer", "max-age")]);
-    apply(&mut a, "/review/reveal", "reveal-other-tab-01", &[]);
-    apply(&mut a, "/review/next", "next-other-tab-0001", &[]);
-    let before = a.clone();
-    assert_eq!(
-        engine::mutate(&mut a, "/review/answer", &old, NOW, "stale")
-            .unwrap_err()
-            .status,
-        409
-    );
-    assert_eq!(a, before);
 }
 
 #[test]
@@ -520,102 +274,29 @@ fn full_text_refinement_keeps_existing_material_when_generation_or_critic_is_par
 }
 
 #[test]
-fn new_practice_follows_authored_order_without_overriding_due_time() {
-    let mut a = fresh();
-    apply(
-        &mut a,
-        "/create",
-        "ordered-capture-0001",
-        &[("intent", "HTTP caching")],
-    );
-    let mut batch: generation::Batch = serde_json::from_str(
-        fixture()
-            .jobs
-            .values()
-            .next()
-            .unwrap()
-            .candidate_json
-            .as_ref()
-            .unwrap(),
-    )
-    .unwrap();
-    batch.concepts.truncate(1);
-    batch.concepts[0].prerequisites.clear();
-    let prompts: Vec<_> = batch.concepts[0]
-        .questions
-        .iter()
-        .map(|q| q.prompt.clone())
-        .collect();
-    assert!(prompts.len() >= 2);
-    let work = engine::claim_work(&mut a, NOW, "ordered-generator-lease", &config())
-        .unwrap()
-        .unwrap();
-    let raw = json!({"choices":[{"message":{"content":serde_json::to_string(&batch).unwrap()}}]})
-        .to_string();
-    engine::finish_work(&mut a, &work, raw, "test-generator".into(), Some(1), NOW).unwrap();
-    assert!(
-        engine::claim_work(&mut a, NOW, "ordered-skipped-critic", &config())
-            .unwrap()
-            .is_none()
-    );
-    assert_eq!(
-        a.jobs[&work.id].status, "ready",
-        "{:?}",
-        a.jobs[&work.id].error
-    );
-    let mut deferred = a.clone();
-    deferred
-        .questions
-        .values_mut()
-        .find(|q| q.position == 0)
-        .unwrap()
-        .card
-        .due_ms = NOW + DAY_MS;
-    engine::ensure_occurrence(&mut deferred, NOW, "ordered-deferred-check").unwrap();
-    assert_eq!(
-        deferred.occurrence.as_ref().unwrap().presentation.prompt,
-        prompts[1]
-    );
-    engine::ensure_occurrence(&mut a, NOW, "ordered-first-question").unwrap();
-    apply(
-        &mut a,
-        "/review/intro",
-        "ordered-intro-0001",
-        &[("known", "false")],
-    );
-    for (i, prompt) in prompts.iter().enumerate() {
-        assert_eq!(&a.occurrence.as_ref().unwrap().presentation.prompt, prompt);
-        apply(
-            &mut a,
-            "/review/reveal",
-            &format!("ordered-reveal-{i:04}"),
-            &[],
-        );
-        apply(&mut a, "/review/next", &format!("ordered-next-{i:04}"), &[]);
-    }
-    assert!(a.occurrence.is_none());
-    let encoded = persistence::Archive::new(a, vec![], NOW).encode().unwrap();
-    let restored = persistence::Archive::decode(&encoded, &persistence::sha256(&encoded)).unwrap();
-    assert!(restored.app.questions.values().any(|q| q.position == 1));
-}
-
-#[test]
 fn restored_state_keeps_paid_work_paused_and_held_feedback() {
-    let mut a = fixture();
-    apply(
-        &mut a,
-        "/review/answer",
-        "restore-assess-0001",
-        &[("answer", "cache headers")],
-    );
-    engine::claim_work(&mut a, NOW, "restore-lease-001", &config())
-        .unwrap()
-        .unwrap();
-    let spend = a.spend.clone();
-    engine::pause_for_restore(&mut a, NOW + 1).unwrap();
+    // A non-exact answer whose check was sent, with its reservation.
+    let (mut a, now) = common::earlier("checking-sent");
+    assert!(now >= NOW);
+    let sent = a.clone();
+    assert_eq!(sent.occurrence.as_ref().unwrap().phase, "checking");
+    engine::pause_restored(&mut a, NOW + 1).unwrap();
     assert!(a.restored_paused);
-    assert_eq!(a.spend, spend);
-    assert_eq!(a.occurrence.as_ref().unwrap().phase, "self-check");
+    assert_eq!(a.spend, sent.spend);
+    // The earlier notebook is restored as it was saved: the sent check, the
+    // held answer and the Concepts are not rewritten.
+    assert_eq!(a.assessments, sent.assessments);
+    assert_eq!(a.occurrence, sent.occurrence);
+    assert_eq!(a.concepts, sent.concepts);
+    // Neither the alarm's claim nor the historical one sends from it.
+    for later in [NOW + 500_000, NOW + 10 * 365 * DAY_MS] {
+        assert!(!engine::recover_checks(&mut a, later));
+        assert!(
+            engine::claim_check_work(&mut a, later, "cannot-send-check", &config())
+                .unwrap()
+                .is_none()
+        );
+    }
     assert!(
         engine::claim_work(&mut a, NOW + 500_000, "cannot-send-lease", &config())
             .unwrap()
@@ -639,6 +320,19 @@ fn restored_state_keeps_paid_work_paused_and_held_feedback() {
             .unwrap_err()
             .status,
         409
+    );
+    assert_eq!(a, resumed);
+    // Resumed, the alarm still recovers and claims nothing of the saved check.
+    assert!(!engine::recover_checks(&mut a, NOW + 10 * 365 * DAY_MS));
+    assert!(
+        engine::claim_check_work(
+            &mut a,
+            NOW + 10 * 365 * DAY_MS,
+            "never-resend-check",
+            &config()
+        )
+        .unwrap()
+        .is_none()
     );
     assert_eq!(a, resumed);
     assert!(
@@ -724,8 +418,8 @@ fn missing_generation_never_fabricates_content() {
 
 #[test]
 fn export_readback_roundtrip_preserves_complete_schedule_and_evidence() {
-    let mut a = fixture();
-    apply(&mut a, "/review/reveal", "export-reveal00001", &[]);
+    // An answer revealed, held as its result.
+    let (a, _) = common::earlier("result-revealed");
     engine::validate_app(&a).unwrap();
     let value = serde_json::to_value(&a).unwrap();
     let copy: App = serde_json::from_value(value).unwrap();

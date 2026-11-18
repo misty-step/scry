@@ -20,7 +20,9 @@ export async function mixedReviewFixture(){
   for(const id of ['nato','rosary-joyful','rosary-sorrowful']){
    await post(f,'/practice/lesson/start',lessonFields(await f.get('/lessons'),id));
    const rows=await f.rows(),p=current(rows);studies.push(p.prompt.study_id);
-   await post(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:'A deliberate synthetic miss'});
+   // A new letter or Rosary set is studied first; the miss answers its Quiz.
+   assertStudySource(await f.get('/'),expected(rows,p));
+   await post(f,'/practice/answer',{...nativeFields(await enterMemory(f),'/practice/answer'),answer:'A deliberate synthetic miss'});
   }
   await post(f,'/practice/lesson/start',lessonFields(await f.get('/lessons'),'st-michael-en'));
   await enterMemory(f);const guided=current(await f.rows());await post(f,'/practice/answer',{...nativeFields(await f.get('/'),'/practice/answer'),answer:expected(await f.rows(),guided)});
@@ -37,7 +39,7 @@ export async function mixedReviewJourney(){
   const seen=[];
   for(const sid of studies){
    const before=await f.rows(),p=current(before);assert.equal(p.prompt.study_id,sid);assert.equal(before.meta.practice.mixed_review,true);seen.push(sid);
-   const html=await f.get('/');assert.match(html,/All subjects/);assert.deepEqual(await f.rows(),before,'Held refresh neither selects nor advances');
+   const html=await f.get('/');assert.ok(html.includes(`data-prompt-id="${p.prompt.id}"`),'Study holds the same Prompt');assert.deepEqual(await f.rows(),before,'Held refresh neither selects nor advances');
    const fields={...nativeFields(html,'/practice/answer'),answer:expected(before,p)};
    const bad=await f.post('/practice/answer',{...fields,operation_id:randomUUID(),grade:'Good'});assert.equal(bad.status,422);assert.deepEqual(await f.rows(),before);
    await post(f,'/practice/answer',fields);const answered=await f.rows(),a=answered['practice_attempts/'+current(answered).attempt_id];
@@ -112,8 +114,11 @@ export async function continuousStudyJourney(){
   const counts=studies.map(s=>({kind:rows['library_versions/'+s.version_id].kind,count:Object.values(rows).filter(c=>c.study_id===s.id&&c.unit_index!==undefined).length}));
   assert.ok(counts.some(c=>c.kind==='keyed_mapping'&&c.count===6),'Continuous NATO respects six-card pace, not focused all-26 flag');
   assert.ok(counts.every(c=>c.kind==='ordered_list'||c.count<=6),'Non-sequence subjects cannot exceed daily introductions');
-  const exhausted=await f.get('/');const doneDOM=htmlStructure(exhausted);assert.equal(doneDOM.forms('/practice/review/start').length,0);assert.equal(doneDOM.classes('lesson-picker').length,1);assert.ok(!('open' in doneDOM.classes('lesson-picker')[0].attrs));assert.doesNotMatch(exhausted,/action="\/practice\/review\/start"/);assert.doesNotMatch(exhausted,/No reviews due/);assert.match(exhausted,/<h1>Rest for now<\/h1>/);assert.doesNotMatch(exhausted,/All learned|All done|Next review in/,'Paced rest is not a claim that all Library material is learned');
-  await f.get('/');assert.deepEqual(await f.rows(),rows,'Paced completion GET preserves all history');assert.equal(f.egress,0);
+  const exhausted=await f.get('/');const doneDOM=htmlStructure(exhausted);assert.equal(doneDOM.forms('/practice/review/start').length,0);assert.equal(doneDOM.classes('lesson-picker').length,1);assert.ok(!('open' in doneDOM.classes('lesson-picker')[0].attrs));assert.doesNotMatch(exhausted,/action="\/practice\/review\/start"/);assert.doesNotMatch(exhausted,/No reviews due/);assert.match(exhausted,/<p class="study-context">Study<\/p><h1>Rest for now<\/h1>/,'Rest under Study names Study (SPEC § Open into study), not a subject list');assert.doesNotMatch(exhausted,/All learned|All done|All set|Next review in/,'Paced rest is not a claim that all Library material is learned, and shows no countdown');
+  assert.equal(doneDOM.withAttr('data-next-review').length,1);assert.match(exhausted,/data-next-review>Next review [A-Z][a-z]{2} \d{1,2}, \d{4} · \d{2}:\d{2} UTC\.<\/p>/,'Rest states the next scheduled review as a static time');
+  const restOf=html=>html.slice(html.indexOf('data-state="rest"'),html.indexOf('</summary>',html.indexOf('data-state="rest"')));
+  assert.ok(restOf(exhausted).includes('<span>Browse</span>'));assert.equal(restOf(await f.get('/recall')),restOf(exhausted),'Opening practice shows the same rest state as Home');
+  await f.get('/');await f.get('/recall');assert.deepEqual(await f.rows(),rows,'Paced completion GET preserves all history');assert.equal(f.egress,0);
   return {status:'pass',prompts:visits.length,subjects:firstVisits.size,fresh_one_action:true,parsed_html_every_prompt_and_result:true,due_future_continues_new:true,source_to_memory_review:true,per_study_pacing:true,canonical_editions:true,true_paced_exhaustion:true,held_get_readonly:true,answer_and_next_idempotent:true,stale_grade_fenced:true,egress:0};
  }finally{await f.close();}
 }
@@ -131,14 +136,46 @@ export async function continuousStudyWalk(browser,capture){
    assert.equal(await home.getByRole('heading',{name:'No reviews due',exact:true}).count(),0);
    const before=await f.rows();await page.reload();assert.deepEqual(await f.rows(),before);
    row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-entry.png`));
-   await home.getByRole('button',{name:'Study',exact:true}).click();await page.locator('#answer').waitFor();
+   // Browse opens the lesson shelf and the Library, and changes nothing.
+   await home.locator('.lesson-picker>summary').click();assert.equal(await home.locator('.lesson-picker .lesson-shelf').isVisible(),true);
+   const library=home.locator('.lesson-picker a[href="/library"]');assert.equal(await library.count(),1);assert.equal(await library.isVisible(),true);assert.equal((await library.innerText()).trim(),'Library');
+   row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-browse.png`));
+   await library.click();await page.locator('h1').first().waitFor();assert.equal(new URL(page.url()).pathname,'/library');assert.deepEqual(await f.rows(),before,'Browsing to the Library writes nothing');
+   await page.goto(f.origin+'/');await home.waitFor();assert.equal(await home.locator('.lesson-picker').getAttribute('open'),null);
+   // Study's first subject is new: it is shown as source study before its Quiz.
+   await home.getByRole('button',{name:'Study',exact:true}).click();await page.locator('[data-study-phase="study"]').waitFor();
+   const studied=await f.rows();assert.equal(current(studied).phase,'study');assert.equal(await page.locator('#answer,form[action="/practice/answer"]').count(),0);assert.ok((await page.locator('[data-study-phase="study"]').innerText()).includes(expected(studied,current(studied))));
+   row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-first-study.png`));
+   await enterMemoryPage(page);await page.locator('#answer').waitFor();
    const first=current(await f.rows());await page.locator('#answer').fill('My held draft');await page.locator('.lesson-picker>summary').click();assert.equal(await page.locator('#answer').inputValue(),'My held draft');await page.locator('.lesson-picker>summary').click();assert.deepEqual(current(await f.rows()),first);
+   let retried=false;
    for(let n=0;n<10;n++){
-    const rows=await f.rows(),p=current(rows);await page.locator('#answer').fill(expected(rows,p));await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);
+    let rows=await f.rows(),p=current(rows);
+    if(n>0&&!retried&&rows['library_versions/'+p.prompt.version_id].kind==='text'&&p.prompt.scope.kind==='unit'){
+     // A missed phrase under Study's mix: expected phrase at once, guided retry first, Next second.
+     retried=true;const phrase=expected(rows,p);
+     await page.locator('#answer').fill('Not the phrase that was asked for');await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-verdict="Again"]').waitFor();
+     const missed=await f.rows();assert.equal(missed.meta.practice.mixed_review,true);
+     assert.equal((await page.locator('.lesson-target .exact-expected').innerText()).trim(),phrase.trim());assert.equal(await page.locator('.lesson-target').isVisible(),true);
+     assert.equal(await page.locator('form[data-next] button').count(),1);assert.equal((await page.locator('form[data-next] button').innerText()).trim(),'Try this phrase again');
+     const onward=page.locator('form[action="/practice/review/next"] button');assert.equal(await onward.count(),1);assert.equal((await onward.innerText()).trim(),'Next');assert.equal(await onward.evaluate(node=>node.classList.contains('primary')),false,'Continuing is the secondary choice');
+     row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-missed-phrase.png`));
+     await page.locator('form[data-next] button').click();await page.locator('[data-study-phase="study"]').waitFor();
+     const offered=await f.rows();assert.deepEqual(Object.keys(offered).filter(k=>k.startsWith('practice_attempts/')),Object.keys(missed).filter(k=>k.startsWith('practice_attempts/')),'A retry records nothing until it is submitted');
+     assert.equal(offered.meta.practice.mixed_review,true,'The retry stays under Study');assert.deepEqual(current(offered).prompt.unit_ids,p.prompt.unit_ids);
+     await enterMemoryPage(page);assert.ok(!(await page.locator('main').innerText()).includes(phrase.trim()),'The retry is answered with the source hidden again');
+     await page.locator('#answer').fill(phrase);await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-verdict="Good"]').waitFor();
+     const helped=await f.rows(),attempt=helped['practice_attempts/'+current(helped).attempt_id];assert.equal(attempt.assisted,true,'A guided retry is never unaided credit');
+     for(const t of p.targets)assert.deepEqual(helped['practice_cards/'+t.card_id].state,missed['practice_cards/'+t.card_id].state,'A guided retry leaves the schedule alone');
+     assert.equal((await page.locator('form[data-next] button').innerText()).trim(),'Next');
+     await page.locator('form[action="/practice/review/next"] button').click();await enterMemoryPage(page);continue;
+    }
+    await page.locator('#answer').fill(expected(rows,p));await page.locator('form[action="/practice/answer"] button').click();await page.locator('[data-state="exact-result"]').waitFor();assert.equal(await page.locator('[data-result-progress]').isVisible(),true);
     if(n===0)row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-graded.png`));
     await page.locator('form[action="/practice/review/next"] button').click();await enterMemoryPage(page);
     if(n===0){assert.notEqual(current(await f.rows()).prompt.study_id,first.prompt.study_id);row.evidence.push(await capture(page,`continuous-study-${width}-${noJS?'native':'enhanced'}-next-subject.png`));}
    }
+   assert.equal(retried,true,'Study served a text phrase to miss and retry');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(f.egress,0);
   }catch(error){row.status='fail';row.reason=error.stack||error.message;}
   finally{await context.close();await f.close();}

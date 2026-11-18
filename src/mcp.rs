@@ -137,10 +137,23 @@ struct Next {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct Mix {
+    operation_id: String,
+    after: Option<String>,
+    leave: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Answer {
     operation_id: String,
     prompt_id: String,
     answer: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Check {
+    operation_id: String,
+    attempt_id: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -151,20 +164,36 @@ struct Reveal {
 
 /// The same domain validator used by import, in a disposable empty Library.
 /// This deliberately proves no remote deduplication, authorization or capacity.
+/// A mapping declaration's own refusal, as the API gives it, where there is one.
+fn declared(error: &crate::model::AppError) -> Option<&'static str> {
+    [
+        crate::library::BOTH_NEEDS_UNIQUE_VALUES,
+        crate::library::SAFETY_FORWARD_ONLY,
+        crate::library::MAPPING_DECLARATIONS_ONLY,
+    ]
+    .into_iter()
+    .find(|reason| error.message == *reason)
+}
 fn validate(format: &str, data: Value) -> InputResult<Value> {
-    let input = match format {
+    let mut input = match format {
         "version" => parse::<VersionInput>(data)?,
         "mapping" => parse::<MappingInput>(data)?.into_version()
-            .map_err(|_| "Invalid mapping: use unique keys, direction forward, and nonempty key/value pairs without control characters or surrounding whitespace.")?,
+            .map_err(|e| declared(&e).unwrap_or("Invalid mapping: use unique keys, direction forward or both (both needs unique values and no safety-bearing pair), and nonempty key/value pairs without control characters or surrounding whitespace."))?,
         _ => return Err("format must be version or mapping."),
     };
+    // The Works a manifest relates to exist only in the remote Library.
+    crate::library::check_relation_inputs(&input.relations).map_err(
+        |_| "Invalid relations: name each related Work once by its title or alias, at most 32.",
+    )?;
+    let relations = std::mem::take(&mut input.relations).len();
     let mut library = Library::default();
     let id = library.add(input, "local-mcp-validation", None)
-        .map_err(|_| "Invalid Library draft: check metadata and byte/count limits; Sections must join to text exactly.")?;
+        .map_err(|e| declared(&e).unwrap_or("Invalid Library draft: check metadata and byte/count limits; Sections must join to text exactly."))?;
     let version = &library.versions[&id];
     Ok(
         json!({"valid":true,"scope":"local_structure_only","remote_admission_checked":false,
-        "kind":version.kind,"text_bytes":version.text.len(),"sections":version.sections.len(),
+        "kind":version.kind,"provenance":version.provenance,"relations":relations,
+        "text_bytes":version.text.len(),"sections":version.sections.len(),
         "units":version.sections.iter().map(|s| s.units.len()).sum::<usize>()}),
     )
 }
@@ -196,6 +225,7 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
                 json!({"adapter":"scry-mcp","protocol_version":PROTOCOL_VERSION,
                 "formats":["version","mapping"],"grading":"native_only","generation":false,
                 "self_grading":false,"multimedia":false,"mapping_direction":"forward",
+                "mapping_directions":["forward","both"],
                 "remote_capabilities_checked":false,"hosted_admission":"unverified",
                 "instructions":INSTRUCTIONS,"max_message_bytes":MAX_MESSAGE_BYTES,
                 "mutation_ids":"required; preserve across retries and restarts",
@@ -356,6 +386,21 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
             }
             Ok(write("/api/v1/next", payload))
         }
+        "scry_mix" => {
+            let input: Mix = parse(args)?;
+            operation(&input.operation_id)?;
+            if input.after.is_some() && input.leave.is_some() {
+                return Err("Use after or leave, not both.");
+            }
+            let mut payload = json!({"operation_id":input.operation_id});
+            for (field, value) in [("after", input.after), ("leave", input.leave)] {
+                if let Some(value) = value {
+                    identity(&value)?;
+                    payload[field] = json!(value);
+                }
+            }
+            Ok(write("/api/v1/mix", payload))
+        }
         "scry_answer" => {
             let input: Answer = parse(args)?;
             operation(&input.operation_id)?;
@@ -366,6 +411,16 @@ fn prepare(name: &str, args: Value) -> InputResult<Call> {
             Ok(write(
                 "/api/v1/answer",
                 json!({"operation_id":input.operation_id,"prompt_id":input.prompt_id,"answer":input.answer}),
+            ))
+        }
+        // Check again: a new paid check of the same saved answer.
+        "scry_check" => {
+            let input: Check = parse(args)?;
+            operation(&input.operation_id)?;
+            identity(&input.attempt_id)?;
+            Ok(write(
+                "/api/v1/check",
+                json!({"operation_id":input.operation_id,"attempt_id":input.attempt_id}),
             ))
         }
         "scry_reveal" | "scry_quiz" => {
@@ -662,6 +717,65 @@ pub fn serve(config: PathBuf) -> owner_client::Result<()> {
 }
 
 #[cfg(test)]
+mod mapping_tests {
+    use super::*;
+    #[test]
+    fn capabilities_keep_the_default_direction_and_list_every_declarable_one() {
+        let Call::Local(capabilities) = prepare("scry_capabilities", json!({})).unwrap() else {
+            panic!("local");
+        };
+        assert_eq!(capabilities["mapping_direction"], "forward");
+        assert_eq!(
+            capabilities["mapping_directions"],
+            json!(["forward", "both"])
+        );
+    }
+    #[test]
+    fn validation_gives_a_refused_declarations_own_reason() {
+        let pairs = |flag: bool| json!([{"key":"One","value":"Same","safety_bearing":flag},{"key":"Two","value":"same"}]);
+        let text = "One\tSame\nTwo\tsame\n";
+        for (format, data, reason) in [
+            (
+                "mapping",
+                json!({"title":"T","direction":"both","pairs":pairs(false)}),
+                "A mapping practised in both directions needs a different value for every pair: each value is also a question.",
+            ),
+            (
+                "mapping",
+                json!({"title":"T","direction":"both","pairs":[{"key":"Hazard","value":"step back","safety_bearing":true}]}),
+                "A safety-bearing pair keeps its safety condition in its question, so a mapping with one is practised forward only.",
+            ),
+            (
+                "version",
+                json!({"title":"T","kind":"keyed_mapping","text":text,"direction":"both"}),
+                "A mapping practised in both directions needs a different value for every pair: each value is also a question.",
+            ),
+            (
+                "version",
+                json!({"title":"T","kind":"keyed_mapping","text":"Hazard\tstep back\n","direction":"both","safety_bearing":[0]}),
+                "A safety-bearing pair keeps its safety condition in its question, so a mapping with one is practised forward only.",
+            ),
+            (
+                "version",
+                json!({"title":"T","kind":"text","text":"Words.\n","direction":"both"}),
+                "Directions and safety-bearing pairs belong to keyed mappings.",
+            ),
+            (
+                "version",
+                json!({"title":"T","kind":"keyed_mapping","text":"1066\tAD 1066\nBattle\t1066\n","direction":"both"}),
+                "A mapping practised in both directions needs a different value for every pair: each value is also a question.",
+            ),
+        ] {
+            assert_eq!(
+                validate(format, data.clone()).unwrap_err(),
+                reason,
+                "{data}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod lesson_tests {
     use super::*;
     #[test]
@@ -688,6 +802,127 @@ mod lesson_tests {
                 .iter()
                 .any(|tool| tool["name"] == "scry_quiz")
         );
+    }
+    #[test]
+    fn check_again_is_its_own_tool_and_answer_takes_no_attempt() {
+        let op = "check-mcp-operation-0001";
+        let args = json!({"operation_id":op,"attempt_id":"a".repeat(32)});
+        match prepare("scry_check", args.clone()).unwrap() {
+            Call::Api { path, payload } => {
+                assert_eq!(path, "/api/v1/check");
+                assert_eq!(payload.unwrap(), args);
+            }
+            _ => panic!("not API"),
+        }
+        for field in ["verdict", "grade", "answer", "prompt_id", "paid_judgment"] {
+            let mut supplied = args.clone();
+            supplied[field] = json!("Good");
+            assert!(prepare("scry_check", supplied).is_err());
+        }
+        assert!(prepare("scry_check", json!({"operation_id":op})).is_err());
+        assert!(
+            prepare(
+                "scry_check",
+                json!({"operation_id":op,"attempt_id":"short"})
+            )
+            .is_err()
+        );
+        // The answer tool is what it was: a Prompt and a raw answer, nothing else.
+        let answer = json!({"operation_id":op,"prompt_id":"b".repeat(32),"answer":"Alfa"});
+        assert!(matches!(
+            prepare("scry_answer", answer.clone()).unwrap(),
+            Call::Api { path, .. } if path == "/api/v1/answer"
+        ));
+        let mut overloaded = answer.clone();
+        overloaded["attempt_id"] = json!("a".repeat(32));
+        assert!(prepare("scry_answer", overloaded).is_err());
+        assert!(prepare("scry_answer", args).is_err());
+        let tools = schema::tools();
+        let schema = |name: &str| {
+            tools
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .unwrap_or_else(|| panic!("{name} is listed"))["inputSchema"]
+                .clone()
+        };
+        assert_eq!(
+            schema("scry_answer")["required"],
+            json!(["operation_id", "prompt_id", "answer"])
+        );
+        assert!(
+            schema("scry_answer")["properties"]
+                .get("attempt_id")
+                .is_none()
+        );
+        assert_eq!(
+            schema("scry_check")["required"],
+            json!(["operation_id", "attempt_id"])
+        );
+    }
+    /// Common tool-calling clients refuse a tool whose input schema combines
+    /// schemas at its top level, and with it the whole server. No tool has one.
+    #[test]
+    fn every_tool_is_named_once_and_no_other_input_schema_has_a_top_level_combinator() {
+        let tools = schema::tools();
+        let mut listed = tools
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        let mut named = schema::NAMES.to_vec();
+        listed.sort_unstable();
+        named.sort_unstable();
+        assert_eq!(listed, named);
+        let mut combined = Vec::new();
+        for tool in &tools {
+            let input = tool["inputSchema"].as_object().unwrap();
+            assert_eq!(input["type"], "object", "{}", tool["name"]);
+            for combinator in ["oneOf", "anyOf", "allOf", "not", "if", "then", "else"] {
+                if input.contains_key(combinator) {
+                    combined.push((tool["name"].as_str().unwrap(), combinator));
+                }
+            }
+        }
+        assert_eq!(combined, Vec::<(&str, &str)>::new());
+    }
+    #[test]
+    fn mix_tool_is_study_and_next_and_takes_no_selector_or_grade() {
+        let op = "mix-mcp-operation-0001";
+        let after = "a".repeat(32);
+        for args in [
+            json!({"operation_id":op}),
+            json!({"operation_id":op,"after":after}),
+            json!({"operation_id":op,"leave":after}),
+        ] {
+            match prepare("scry_mix", args.clone()).unwrap() {
+                Call::Api { path, payload } => {
+                    assert_eq!(path, "/api/v1/mix");
+                    assert_eq!(payload.unwrap(), args);
+                }
+                _ => panic!("not API"),
+            }
+        }
+        assert!(
+            prepare(
+                "scry_mix",
+                json!({"operation_id":op,"after":after,"leave":after})
+            )
+            .is_err()
+        );
+        for field in ["study_id", "card_id", "verdict", "grade", "pace", "due_ms"] {
+            let mut supplied = json!({"operation_id":op});
+            supplied[field] = json!("a".repeat(32));
+            assert!(prepare("scry_mix", supplied).is_err(), "{field}");
+        }
+        assert!(prepare("scry_mix", json!({"operation_id":op,"after":"short"})).is_err());
+        assert!(prepare("scry_mix", json!({})).is_err());
+        assert_eq!(
+            crate::api::mutation_path("/api/v1/mix"),
+            Some("/practice/review/start")
+        );
+        // Study control and Pace stay API and CLI actions, not tools.
+        for name in ["scry_pause", "scry_resume", "scry_drop", "scry_pace"] {
+            assert!(!schema::NAMES.contains(&name));
+        }
     }
     #[test]
     fn lesson_tools_share_native_routes_and_reject_self_grades() {

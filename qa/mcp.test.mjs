@@ -112,11 +112,15 @@ test('MCP lifecycle, version negotiation, discovery, IDs and notifications', {ti
   assert.equal((await f.request('tools/list')).error.code,-32000);
   f.send({jsonrpc:'2.0',method:'notifications/initialized'});
   const list = await f.request('tools/list');
-  assert.equal(list.result.tools.length,14);
-  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,14);
+  assert.equal(list.result.tools.length,16);
+  assert.equal(new Set(list.result.tools.map(tool=>tool.name)).size,16);
+  assert.ok(list.result.tools.some(tool=>tool.name==='scry_mix'),'Study\'s mix is a tool, as the app\'s Study and Next.');
   for(const tool of list.result.tools) {
     assert.equal(tool.inputSchema.type,'object');
     assert.equal(tool.inputSchema.additionalProperties,false);
+    // Common tool-calling clients refuse a whole tool list over one of these.
+    for(const combinator of ['oneOf','anyOf','allOf','not','if','then','else']) assert.ok(!(combinator in tool.inputSchema),`${tool.name} has a top-level ${combinator}`);
+    assert.ok(!/pause|resume|drop|pace/.test(tool.name),'Study control stays an API and CLI action.');
     assert.ok(!/correct|generate|token|grade/.test(tool.name));
   }
   assert.equal((await f.request('tools/list',{cursor:'unsupported'})).error.code,-32602);
@@ -157,7 +161,22 @@ test('Auth-free schema and native validation, not remote acceptance; strict auth
   assert.equal(capabilities.generation,false); assert.equal(capabilities.self_grading,false);
   assert.equal(capabilities.multimedia,false); assert.equal(capabilities.hosted_admission,'unverified');
   const schemas = data(await f.call('scry_schema'));
-  assert.deepEqual(schemas.mapping.properties.direction.enum,['forward']);
+  // SPEC § Keyed mappings: practised in each direction its Version declares.
+  assert.deepEqual(schemas.mapping.properties.direction.enum,['forward','both']);
+  assert.equal(schemas.mapping.properties.pairs.items.properties.safety_bearing.type,'boolean');
+  // The default direction keeps its earlier type; the declarable ones are listed apart.
+  assert.equal(capabilities.mapping_direction,'forward');
+  assert.deepEqual(capabilities.mapping_directions,['forward','both']);
+  const reverseDuplicate={...mapping,direction:'both',pairs:[{key:'A',value:'Same'},{key:'B',value:'same'}]};
+  assert.equal((await f.call('scry_validate',{format:'mapping',data:reverseDuplicate})).result.isError,true);
+  // A refused declaration names its own reason, for either manifest format.
+  const versionBoth={title:'Synthetic both',kind:'keyed_mapping',text:'A\tSame\nB\tsame\n',direction:'both'};
+  assert.match(error(await f.call('scry_validate',{format:'version',data:versionBoth})).message,/needs a different value for every pair/);
+  const versionSafety={title:'Synthetic both',kind:'keyed_mapping',text:'A hazard\tstep back\n',direction:'both',safety_bearing:[0]};
+  assert.match(error(await f.call('scry_validate',{format:'version',data:versionSafety})).message,/practised forward only/);
+  const safetyBoth={...mapping,direction:'both',pairs:[{key:'A hazard',value:'step back',safety_bearing:true}]};
+  assert.equal((await f.call('scry_validate',{format:'mapping',data:safetyBoth})).result.isError,true);
+  assert.equal(data(await f.call('scry_validate',{format:'mapping',data:{...mapping,direction:'both'}})).valid,true);
   for(const [format,draft] of [['version',version],['mapping',mapping]]) {
     const checked = data(await f.call('scry_validate',{format,data:draft}));
     assert.equal(checked.valid,true); assert.equal(checked.scope,'local_structure_only');
@@ -194,6 +213,9 @@ test('Each tool forwards only its exact existing Owner API route and frozen payl
     ['scry_lesson_start',{operation_id:operation('lesson-leave'),starter:'rosary-joyful',leave:prompt},'/api/v1/lessons/start',{operation_id:operation('lesson-leave'),starter:'rosary-joyful',leave:prompt}],
     ['scry_due',{},'/api/v1/due',undefined],
     ['scry_next',{operation_id:operation('next'),after:prompt,study_id:entity},'/api/v1/next',{operation_id:operation('next'),after:prompt,study_id:entity}],
+    ['scry_mix',{operation_id:operation('mix')},'/api/v1/mix',{operation_id:operation('mix')}],
+    ['scry_mix',{operation_id:operation('mix-after'),after:prompt},'/api/v1/mix',{operation_id:operation('mix-after'),after:prompt}],
+    ['scry_mix',{operation_id:operation('mix-leave'),leave:prompt},'/api/v1/mix',{operation_id:operation('mix-leave'),leave:prompt}],
     ['scry_answer',{operation_id:operation('answer'),prompt_id:prompt,answer:'Raw\nanswer Ω'},'/api/v1/answer',{operation_id:operation('answer'),prompt_id:prompt,answer:'Raw\nanswer Ω'}],
     ['scry_reveal',{operation_id:operation('reveal'),prompt_id:prompt},'/api/v1/reveal',{operation_id:operation('reveal'),prompt_id:prompt}],
     ['scry_quiz',{operation_id:operation('quiz'),prompt_id:prompt},'/api/v1/quiz',{operation_id:operation('quiz'),prompt_id:prompt}],
@@ -212,6 +234,8 @@ test('Each tool forwards only its exact existing Owner API route and frozen payl
     ['scry_lesson_next',{operation_id:operation('bad-next'),after:prompt,mode:'selfgrade'}],
     ['scry_lesson_start',{operation_id:operation('bad-leave'),starter:'rosary-joyful',after:prompt,leave:prompt}],
     ['scry_next',{}],['scry_next',{operation_id:operation('next'),recite:'section'}],
+    ['scry_mix',{}],['scry_mix',{operation_id:operation('bad-mix'),after:prompt,leave:prompt}],
+    ['scry_mix',{operation_id:operation('bad-mix'),study_id:entity}],['scry_mix',{operation_id:operation('bad-mix'),verdict:'Good'}],
     ['scry_show',{kind:'version',id:'../../tokens'}],
     ['scry_import',{operation_id:operation('invalid'),format:'version',data:{...version,text:''}}],
   ]) assert.equal(error(await f.call(name,args)).code,'invalid_arguments');
@@ -278,6 +302,38 @@ test('Fixed structured failures, assistance-fence conflict and no redirect forwa
   assert.equal(error(await f.call('scry_due')).code,'invalid_response');
   f.setHandler(async (_request,response)=>response.end('{"echo":"'+secret.replace(/^s/,'\\u0073')+'"}'));
   assert.equal(error(await f.call('scry_due')).code,'invalid_response','JSON escapes cannot bypass credential reflection refusal.');
+});
+
+test('A refusal keeps its own bounded plain-text reason, never the request or credential', {timeout:15000}, async t => {
+  const f = await fixture(t); await f.initialize();
+  let status = 422, body = {error:'Choose a Section of this Version.'};
+  f.setHandler(async (_request,response) => { response.statusCode=status; response.end(JSON.stringify(body)); });
+  for(const [code,expected,phrase] of [[401,'unauthorized','Owner authorization required.'],[403,'forbidden','Request refused.'],[404,'api_error','API request failed.'],[409,'conflict','Operation conflict.'],[413,'api_error','API request failed.'],[422,'validation_failed','API request failed.']]) {
+    status=code;
+    const received = error(await f.call('scry_due'));
+    assert.deepEqual([received.code,received.status,received.message],[expected,code,`${phrase} Choose a Section of this Version.`]);
+  }
+  // A reason that is the fixed phrase is not repeated.
+  status=401; body={error:'Owner authorization required.'};
+  assert.equal(error(await f.call('scry_due')).message,'Owner authorization required.');
+  // A stale browser page's wording says nothing to an agent: the fixed phrase stands alone.
+  status=409; body={error:'This changed in another tab. Reload to continue from your saved progress.'};
+  assert.equal(error(await f.call('scry_due')).message,'Operation conflict.');
+  // Plain text: control characters become spaces, and a long reason is cut.
+  status=422; body={error:'Line one.\n\u001b[31mLine two.'};
+  assert.equal(error(await f.call('scry_due')).message,'API request failed. Line one. [31mLine two.');
+  body={error:'word '.repeat(400)};
+  const long=error(await f.call('scry_due')).message;
+  assert.equal([...long].length,'API request failed. '.length+300); assert.ok(long.endsWith('…'));
+  // A reason that is not a JSON error string, or that repeats the request's
+  // own text, keeps the fixed phrase.
+  body={error:{nested:'Not plain text.'}};
+  assert.equal(error(await f.call('scry_due')).message,'API request failed.');
+  body={error:`Refused: ${privateAnswer}`};
+  const echoed=error(await f.call('scry_answer',{operation_id:operation('echo'),prompt_id:prompt,answer:privateAnswer}));
+  assert.equal(echoed.message,'API request failed.'); assert.equal(echoed.outcome_unknown,false);
+  // Neither the proxy's nor the server's failure text is a refusal reason.
+  for(status of [302,500,502]) { body={error:'Upstream diagnostic.'}; assert.equal(error(await f.call('scry_due')).message,'API request failed.'); }
 });
 
 test('Proxy errors and malformed 2xx objects never settle an unknown mutation', {timeout:15000}, async t => {
@@ -356,6 +412,11 @@ test('Extracted shared client preserves compiled CLI login, errors and one trans
     });
     const received=await cli(['whoami']); assert.equal(received.code,1);
     assert.equal(received.body.error,({401:'Owner authorization required.',403:'Request refused.',409:'Operation conflict.'})[status] || 'API request failed.');
+  }
+  // A refusal's own reason passes through, with the same exit code and shape.
+  for(const status of [403,409,422]) {
+    f.setHandler(async (_request,response)=>{response.statusCode=status;response.end(JSON.stringify({error:'This Owner token has no paid permission.'}));});
+    assert.deepEqual(await cli(['whoami']),{code:1,body:{error:`${({403:'Request refused.',409:'Operation conflict.'})[status] || 'API request failed.'} This Owner token has no paid permission.`}});
   }
   const before=f.seen.length;
   f.setHandler(async request=>request.socket.destroy());

@@ -3,8 +3,7 @@
 `scry-mcp` is a small native adapter over the same Owner HTTP client as `scry`.
 External agents author content; Scry validates, stores and grades it. It does
 not generate content, accept a caller's grade, manage tokens, or expose arbitrary
-HTTP/filesystem actions. Multimedia and reverse mapping authoring are not yet
-supported. This is local source support, **not proof of hosted admission**;
+HTTP/filesystem actions. Multimedia is not supported. This is local source support, **not proof of hosted admission**;
 [#335](https://github.com/misty-step/scry/issues/335) remains unverified.
 
 ## Connect
@@ -46,26 +45,68 @@ block. Tool failures set `isError: true` with a bounded `error` object, includin
 
 | Tool | Purpose |
 | --- | --- |
-| `scry_capabilities` | Adapter limits and supported subset; not a remote health check |
-| `scry_schema` | Machine-readable Version and forward mapping manifest schemas |
+| `scry_capabilities` | Adapter limits and supported subset; not a remote health check. `mapping_direction` is the default direction, the string `"forward"`; `mapping_directions` lists every direction a manifest may declare, `["forward","both"]` |
+| `scry_schema` | Machine-readable Version and mapping manifest schemas |
 | `scry_search` / `scry_show` | Existing private Library reads, with the native assistance fence |
 | `scry_validate` | Native structural validation in a disposable empty local Library |
 | `scry_import` | Existing Version or mapping import; no automatic Study |
 | `scry_learn` / `scry_due` | Start/resume the retained Study, or read due Cards |
 | `scry_next` | Current Prompt/held result; deliberate `after` releases an answered Prompt |
-| `scry_lesson_start` | Start/resume one supplied or bundled authored lesson; explicit `after` or `leave` controls a switch |
+| `scry_mix` | Study's mix, as the app's Study and Next serve it; `after` releases an answered Prompt, `leave` closes an unanswered one ungraded |
+| `scry_lesson_start` | Start/resume a lesson for any supplied Version (text, list or mapping) or a bundled starter; explicit `after` or `leave` controls a switch |
 | `scry_lesson_next` | Advance phrases, join their authored Section, try the whole text, or practise from the middle |
 | `scry_answer` | Raw learner answer, graded by Scry; no verdict/rating/correct field |
+| `scry_check` | Check again: one more paid check of a saved answer that has no Verdict |
 | `scry_reveal` | Record assistance before disclosing the target |
 | `scry_quiz` | Deliberately hide the held source and start a memory quiz; no grade or schedule credit |
 
 `scry_validate` and `scry_import` accept `format: "version" | "mapping"` and a
-`data` object matching `scry_schema`. Import additionally requires
+`data` object matching `scry_schema`. Their input schemas carry no top-level
+`oneOf`, `anyOf` or `allOf`, which common tool-calling clients refuse; `data`
+is described as an object and Scry's native validator checks it whole against
+the schema `format` names. Import additionally requires
 `operation_id`. Version drafts use the existing Library shape. Mapping drafts
-use `title`, `direction: "forward"`, and `pairs: [{"key":"A","value":"Alfa"}]`,
-plus the supported optional metadata. Both reuse native Library validation.
-Validation does not query the remote Library or prove deduplication, available
-storage, authorization, Study admission, learning efficacy or deployment.
+use `title`, `direction` (`"forward"`, or `"both"` to practise each pair in
+reverse too, which needs unique values and no safety-bearing pair), and
+`pairs: [{"key":"A","value":"Alfa"}]`, where a pair may add
+`"safety_bearing": true`, plus the supported optional metadata. A year value
+accepts the year with or without AD or CE, as an exact number, and an answer
+that is a year as typed (digits with an optional AD, CE, BC or BCE marker and
+nothing else) is never sent to Jev, except to a safety-bearing pair, where the
+year rule does not apply. Exactly another pair's value (or key in reverse)
+is the wrong key: Again at once, never sent. A reverse
+Prompt has `cue_level: "mapping_value"` and shows the value; see the Owner API
+guide for the result's `mapping_feedback`. Both reuse native Library validation.
+Both formats take an optional `provenance` (`supplied`, the default,
+`model_from_memory` or `checked_against_sources`, which needs a source) and
+`relations`, an array of `{"kind":"part_of"|"related_to","work":"TITLE OR ALIAS"}`
+naming Works already in the Library. Validation checks the shape of each
+Relation and reports how many there are; import checks that each named Work
+exists, and refuses the whole manifest otherwise. A text already in the
+Library returns its Version with `existing: true` and records nothing from the
+manifest, Relations included; the same text with different Units, aliases,
+pairs or Spelling-strict setting is refused with what differs.
+Validation does not query the remote Library or prove deduplication, related
+Works, available storage, authorization, Study admission, learning efficacy or
+deployment. Library corrections and deletions, and pausing, resuming,
+dropping or pacing a Study, are API and CLI actions, not tools.
+
+`scry_mix` is Study's mix, the action SPEC calls Study and Next: due reviews
+across every Study first, then unfinished Studies and Works not yet started. It
+takes `operation_id` and optionally `after` (the answered Prompt) or `leave`
+(the unanswered Prompt to close ungraded), never both, and no Study, Card,
+Pace or grade. Without either it returns the held Prompt or result.
+
+Where the Owner has turned paid judgment on and the login's Owner token carries
+paid permission, `scry_answer` may return `practice.judgment.state: "checking"`:
+the answer is saved with no Verdict while Jev judges it. Repeat the same
+`scry_answer` call (same `operation_id` and arguments) to read `decided` or
+`ungraded`. For an `ungraded` answer, `scry_check` with `operation_id` and
+`attempt_id` asks for one more paid check of the same Attempt, under the
+[Owner API's rules](owner-api.md#paid-judgment-jev): each check reserves 0.50
+US dollars of the daily allowance and an answer is checked at most three times.
+It returns the same `practice.judgment`, in state `checking`. The adapter has
+no tool that turns paid judgment on or off.
 
 Search before import; show the returned `result.entity_id` to inspect what was
 stored. A new agent must not infer that the running Worker matches its binary's
@@ -88,9 +129,12 @@ Call `scry_quiz` with a retained `operation_id` and that `prompt_id` only when
 the learner chooses to try from memory. Its new Prompt hides the source and
 creates no Attempt or schedule credit. Source-phase `scry_answer` is refused.
 A reveal returns to source study; hiding it again preserves assistance, so the
-subsequent answer cannot count as unaided recall. Generic legacy `scry_next`
-without a phase retains its historical guided-cue protocol; `scry_quiz` is also
-the explicit opt-in from its visible source cue.
+subsequent answer cannot count as unaided recall. `scry_next` and `scry_learn`
+follow the same two forms as a lesson: a Unit not yet practised arrives as
+`study`, a practised one as `quiz`, and an ordered list always arrives whole.
+Scry never fades cues or shows first letters. A Prompt held without a phase
+comes from an older record: it can be answered once, and `scry_quiz` applies to
+its visible source.
 
 Submit raw typed text for the quiz with `scry_answer`. Then call `scry_lesson_next` with a
 new retained `operation_id`, the answered Prompt ID in `after`, and `mode`:

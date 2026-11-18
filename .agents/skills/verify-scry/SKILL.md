@@ -96,8 +96,8 @@ and `continuous-library-runtime.json`; the phone/desktop continuous-study walk m
 show one primary Study action, closed Browse, and no false no-reviews dead end.
 
 For retained exact-text, Library or historical compatibility changes, use the
-existing guide and `qa/walk --stories "US-016 US-017"` (or the appropriate SPEC IDs).
-`qa/walk --all` discovers the active numbered stories. Do not treat an old
+existing guide and `qa/walk --stories "US-016 US-017"` (or the appropriate journeys).
+`qa/walk --all` runs every journey in `qa/walk-specs.mjs`, each bound to a SPEC capability. Do not treat an old
 concept/generation journey as current product intent.
 
 ## Evidence
@@ -156,7 +156,7 @@ No new runner is installed by this skill. Existing helpers are:
 - `qa/nato-focus.test.mjs`: atomic native NATO journey and JSON receipt.
 - `qa/keyed-mapping.test.mjs`: mappings, lessons and browser screenshots.
 - `qa/mcp-worker.test.mjs`: compiled MCP authoring-to-graded-review proof.
-- `qa/walk --stories "US-0NN"`: SPEC-indexed retained journeys.
+- `qa/walk --stories "US-0NN"`: retained journeys bound to SPEC capabilities.
 - `scripts/rust-dev`: optional disposable manual loopback session.
 - `scripts/scry-ci full`: existing aggregate source and runtime gate.
 
@@ -173,10 +173,14 @@ SPEC and user intent instead of weakening a journey to turn it green.
 
 ## Study versus memory quiz
 
-Run `cargo test --locked --test study_quiz` and `node --test qa/nato-focus.test.mjs`
-after changing source visibility. New app source phases must have no answer field,
-refuse copied answers without writes, and transition explicitly through
-`/practice/quiz`. Inspect source → hidden quiz → native result and
+Run `cargo test --locked --test study_quiz --test study_then_quiz` and
+`node --test qa/nato-focus.test.mjs` after changing source visibility. Every
+Study presents a Unit not yet practised as source study, whatever its Kind and
+whichever client asks: no answer field, copied answers refused without writes,
+and an explicit transition through `/practice/quiz`. An ordered list is studied
+and quizzed whole. Inspect source → hidden quiz → native result and
 reveal → source → hidden assisted retry screenshots. Preserve safety-bearing
 mapping questions. Exercise `scry quiz PROMPT` / `scry_quiz` in the existing
-MCP runtime suite; legacy phase-less API history remains compatible.
+MCP runtime suite. `tests/fixtures/cue-ladder-legacy.json` holds notebooks stored
+under the earlier cue ladder: they must restore and export unchanged, and a
+Prompt they still hold without a phase is answered once, as recorded before.

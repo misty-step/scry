@@ -92,7 +92,14 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  const units=shown.version.sections.flatMap(section=>section.units);assert.equal(units.length,26);
  assert.equal(units.map(unit=>unit.text.split('\t')[0]).join(''),'ABCDEFGHIJKLMNOPQRSTUVWXYZ');
  const sid=(await ok('scry_learn',{operation_id:'mcp-worker-learn-operation',version_id:vid,pace:'intense'})).practice.study.id;
- const first=(await ok('scry_next',{operation_id:'mcp-worker-next-operation',study_id:sid})).practice;
+ // A learned Study presents its new pair as source study: the key with its value,
+ // which the tool server cannot answer. scry_quiz then asks from the key alone.
+ const firstSource=(await ok('scry_next',{operation_id:'mcp-worker-next-operation',study_id:sid})).practice;
+ assert.equal(firstSource.phase,'study');assert.equal(firstSource.prompt.cue_level,'read');assert.equal(firstSource.prompt.cue,'A\tAlfa\n');
+ await refused('scry_answer',{operation_id:'mcp-worker-source-answer',prompt_id:firstSource.prompt.id,answer:'Alfa'},'conflict');
+ const beforeQuiz=await rows(),first=(await ok('scry_quiz',{operation_id:'mcp-worker-first-quiz',prompt_id:firstSource.prompt.id})).practice;
+ assert.ok(isDeepStrictEqual((await rows()).filter(row=>row.key.startsWith('practice_cards/')||row.key.startsWith('practice_attempts/')),beforeQuiz.filter(row=>row.key.startsWith('practice_cards/')||row.key.startsWith('practice_attempts/'))),'Try from memory creates no Attempt and changes no schedule.');
+ assert.equal(first.phase,'quiz');assert.equal(first.prompt.cue_level,'mapping_key');
  assert.equal(first.prompt.cue,'A');assert.equal(first.prompt.assisted,false);assert.ok(!JSON.stringify(first).includes('Alfa'));
  const answer={operation_id:'mcp-worker-answer-operation',prompt_id:first.prompt.id,answer:'Alpha'};
  const answered=await ok('scry_answer',answer),attempt=answered.practice.attempt;
@@ -106,13 +113,19 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  const held=(await ok('scry_next',{operation_id:'mcp-worker-held-operation'})).practice;
  assert.equal(held.attempt.id,attempt.id,'No automatic advance after judgment.');
 
- const second=(await ok('scry_next',{operation_id:'mcp-worker-second-operation',after:first.prompt.id,study_id:sid})).practice;
+ const secondSource=(await ok('scry_next',{operation_id:'mcp-worker-second-operation',after:first.prompt.id,study_id:sid})).practice;
+ assert.equal(secondSource.phase,'study');assert.equal(secondSource.prompt.cue,'B\tBravo\n');
+ const second=(await ok('scry_quiz',{operation_id:'mcp-worker-second-quiz',prompt_id:secondSource.prompt.id})).practice;
  assert.equal(second.prompt.cue,'B');assert.equal(second.prompt.assisted,false);
  await refused('scry_answer',answer,'conflict'); // #349: old disclosure cannot bypass new unaided Prompt.
  await refused('scry_show',{kind:'version',id:vid},'conflict');
  const reveal=(await ok('scry_reveal',{operation_id:'mcp-worker-reveal-operation',prompt_id:second.prompt.id})).practice;
  assert.equal(reveal.assisted,true);assert.ok(reveal.expected.some(unit=>unit.text==='Bravo'));
- const helped=(await ok('scry_answer',{operation_id:'mcp-worker-helped-operation',prompt_id:second.prompt.id,answer:'Bravo'})).practice.attempt;
+ // The revealed pair is on show as study; it is tried from memory again, with help recorded.
+ await refused('scry_answer',{operation_id:'mcp-worker-revealed-copy',prompt_id:second.prompt.id,answer:'Bravo'},'conflict');
+ const retried=(await ok('scry_quiz',{operation_id:'mcp-worker-second-retry',prompt_id:second.prompt.id})).practice;
+ assert.equal(retried.revealed,true);assert.ok(!JSON.stringify(retried.prompt).includes('Bravo'));
+ const helped=(await ok('scry_answer',{operation_id:'mcp-worker-helped-operation',prompt_id:retried.prompt.id,answer:'Bravo'})).practice.attempt;
  assert.equal(helped.grade.verdict,'Good');assert.equal(helped.assisted,true);assert.equal(helped.effects[0].scheduled,false);
  assert.deepEqual((await ok('scry_answer',answer)).practice.attempt,attempt,'Old answer replay works once current Prompt is answered.');
  const due=await ok('scry_due');assert.ok(due.cards.length>=2);assert.ok(due.cards.every(card=>card.direction==='forward'));
@@ -125,9 +138,9 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  assert.deepEqual(app.practice.attempts[attempt.id],attempt);assert.deepEqual(app.practice.attempts[helped.id],helped);
  assert.deepEqual(app.practice.corrections,{});
  assert.deepEqual(app.jobs,{});assert.deepEqual(app.assessments,{});assert.deepEqual(app.spend,[]);
- // Additive agent Study→Quiz is real transport, while the legacy modeNone
- // NATO/Reveal chain above retains its original records and semantics.
- const source=(await ok('scry_lesson_start',{operation_id:'mcp-worker-source-operation',starter:'st-michael-en',after:second.prompt.id})).practice;
+ // A lesson uses the same two forms through the same transport, and the
+ // mapping records above keep their bytes.
+ const source=(await ok('scry_lesson_start',{operation_id:'mcp-worker-source-operation',starter:'st-michael-en',after:retried.prompt.id})).practice;
  const beforeSource=await rows(),meta=()=>rows().then(rows=>JSON.parse(rows.find(row=>row.key==='meta').value));
  const sourceCurrent=(await meta()).practice.current;
  const sourceVersion=JSON.parse(beforeSource.find(row=>row.key==='library_versions/'+sourceCurrent.prompt.version_id).value);
@@ -152,8 +165,73 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  assert.notEqual(retry.prompt.id,quiz.prompt.id);assert.ok(!JSON.stringify(retry).includes(words.trim()));
  const answeredRetry=(await ok('scry_answer',{operation_id:'mcp-worker-helped-retry',prompt_id:retry.prompt.id,answer:words})).practice.attempt;
  assert.equal(answeredRetry.assisted,true);assert.equal(answeredRetry.effects[0].scheduled,false,'Hiding a peek through CLI never erases help');
- const finalRows=await rows();for(const old of attemptsIn(beforeSource))assert.deepEqual(finalRows.find(row=>row.key===old.key),old,'Additive quiz preserves every legacy Attempt byte');
+ const finalRows=await rows();for(const old of attemptsIn(beforeSource))assert.deepEqual(finalRows.find(row=>row.key===old.key),old,'A later lesson preserves every earlier Attempt byte');
  assert.equal(stderr,'');assert.equal(pending.size,0);
  assert.equal(sha(await readFile(join(artifact,'index_bg.wasm'))),wasmHash);assert.equal(sha(await readFile(binary)),mcpHash);
- console.log('MCP Worker receipt: '+JSON.stringify({format:'scry-mcp-workerd-proof-v1',mcp_sha256:mcpHash,worker_wasm_sha256:wasmHash,units:26,legacy_answer_attempts:2,legacy_disclosure_attempts:1,explicit_source_quiz_mcp_cli:true,source_copy_refused:true,help_persists_across_quiz:true,wrong_spelling:'Again',revealed_correct:'assisted Good',answer_replay_domain_and_receipts_unchanged:true,replay_cas_revision_increment:1,protected_replay_and_library_reads:409,client_grade_refused_before_http:true,external_egress:egress,limits:['synthetic local Owner token','loopback workerd/SQLite','no hosted or physical-phone claim']}));
+ console.log('MCP Worker receipt: '+JSON.stringify({format:'scry-mcp-workerd-proof-v1',mcp_sha256:mcpHash,worker_wasm_sha256:wasmHash,units:26,mapping_source_study_before_quiz:true,mapping_answer_attempts:2,mapping_disclosure_attempts:1,explicit_source_quiz_mcp_cli:true,source_copy_refused:true,help_persists_across_quiz:true,wrong_spelling:'Again',revealed_correct:'assisted Good',answer_replay_domain_and_receipts_unchanged:true,replay_cas_revision_increment:1,protected_replay_and_library_reads:409,client_grade_refused_before_http:true,external_egress:egress,limits:['synthetic local Owner token','loopback workerd/SQLite','no hosted or physical-phone claim']}));
+});
+
+// Study's mix and a supplied mapping lesson through the compiled MCP, the
+// Owner API and the built Worker's SQLite, with replay and protected recall.
+test('Compiled MCP takes Study\'s mix and a supplied mapping lesson once, without disclosure', {timeout:120000}, async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'scry-mcp-mix-'));
+ const config=join(directory,'login.json'),name='mcp-mix-'+randomUUID();
+ const at=(Math.floor(Date.now()/86400000)+1)*86400000+12*60*60*1000;
+ const bindings={SCRY_ENV:'development',CANONICAL_ORIGIN:'http://127.0.0.1:0',SPACE_NAME:name,INTERNAL_KEY:internalKey,SCRY_TEST_NOW_MS:String(at)};
+ let egress=0,runtime,child,closed;
+ t.after(async()=>{
+  try {if(child){child.stdin.end();const done=await Promise.race([closed,new Promise(resolve=>setTimeout(()=>resolve(null),2000).unref())]);if(!done){child.kill('SIGKILL');await closed;}}}
+  finally {try {await runtime?.mf.dispose();} finally {await rm(directory,{recursive:true,force:true});}}
+  assert.equal(egress,0);
+ });
+ runtime=await createRuntime({port:0,name,inspect:true,testClock:true,bindings,egress:async()=>{egress++;throw Error('No external egress.');}});
+ const origin=(await runtime.mf.ready).origin;
+ runtime={...runtime,...await runtime.rebind({...bindings,CANONICAL_ORIGIN:origin})};
+ const storage=await runtime.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name});
+ const rows=()=>storage.exec('SELECT key,value FROM records ORDER BY key');
+ const settings=await(await runtime.worker.fetch(origin+'/settings')).text();
+ const form=/<form[^>]*action="\/tokens\/create"[^>]*>([\s\S]*?)<\/form>/.exec(settings);
+ const fields=Object.fromEntries([...form[1].matchAll(/name="(csrf|operation_id|revision)" value="([^"]+)"/g)].map(m=>[m[1],m[2]]));
+ const issued=await runtime.worker.fetch(origin+'/tokens/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,name:'Synthetic MCP mix proof; unpaid'})});
+ const secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await issued.text())?.[1];assert.ok(secret);
+ const login=spawn(join(dirname(binary),'scry'),['login','--url',origin,'--token-stdin','--config',config,'--json'],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});
+ const loginClosed=once(login,'close');login.stdin.end(secret+'\n');assert.equal((await loginClosed)[0],0);
+ child=spawn(binary,['--config',config],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});closed=once(child,'close');
+ let serial=0;const pending=new Map();
+ createInterface({input:child.stdout}).on('line',line=>{assert.ok(!line.includes(secret));const value=JSON.parse(line);pending.get(value.id)(value);pending.delete(value.id);});
+ const send=value=>child.stdin.write(JSON.stringify(value)+'\n');
+ const request=(method,params={})=>new Promise(done=>{const id=++serial;pending.set(id,done);send({jsonrpc:'2.0',id,method,params});});
+ const call=async(tool,args={})=>(await request('tools/call',{name:tool,arguments:args})).result;
+ const ok=async(tool,args={})=>{const r=await call(tool,args);assert.equal(r.isError,false,JSON.stringify(r.structuredContent));return r.structuredContent;};
+ const refused=async(tool,args,code)=>{const before=await rows();const r=await call(tool,args);assert.equal(r.isError,true);assert.equal(r.structuredContent.error.code,code);assert.ok(isDeepStrictEqual(await rows(),before),'Refusal leaves every row unchanged.');};
+ await request('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'scry-mix-proof',version:'1'}});
+ send({jsonrpc:'2.0',method:'notifications/initialized'});
+ const tools=(await request('tools/list')).result.tools;
+ for(const tool of tools)for(const c of ['oneOf','anyOf','allOf'])assert.ok(!(c in tool.inputSchema),`${tool.name}: ${c}`);
+ const text='First synthetic mix line,\nsecond synthetic mix line.\n';
+ await ok('scry_import',{operation_id:'mcp-mix-import-operation',format:'version',data:{title:'Synthetic Mix Text',kind:'text',text}});
+ // Asking what is due starts nothing.
+ const empty=await rows();await ok('scry_due');assert.ok(isDeepStrictEqual(await rows(),empty));
+ const mixArgs={operation_id:'mcp-mix-start-operation'};
+ const started=(await ok('scry_mix',mixArgs)).practice;
+ assert.equal(started.phase,'study');assert.equal(started.prompt.cue,'First synthetic mix line,\n');
+ const frozen=await rows(),again=await ok('scry_mix',mixArgs);
+ assert.equal(again.replayed,true);assert.deepEqual(again.practice,started);successfulReplay(frozen,await rows());
+ await refused('scry_mix',{...mixArgs,leave:started.prompt.id},'conflict');
+ const quiz=(await ok('scry_quiz',{operation_id:'mcp-mix-quiz-operation',prompt_id:started.prompt.id})).practice;
+ const held=(await ok('scry_mix',{operation_id:'mcp-mix-held-operation'})).practice;
+ assert.equal(held.prompt.id,quiz.prompt.id);assert.equal(held.phase,'quiz');
+ assert.ok(!JSON.stringify(held).includes('synthetic mix line'),'The mix discloses nothing during protected recall.');
+ await refused('scry_mix',{operation_id:'mcp-mix-early-after',after:quiz.prompt.id},'conflict');
+ const answered=(await ok('scry_answer',{operation_id:'mcp-mix-answer-operation',prompt_id:quiz.prompt.id,answer:'First synthetic mix line,'})).practice.attempt;
+ assert.equal(answered.grade.verdict,'Good');
+ const next=(await ok('scry_mix',{operation_id:'mcp-mix-next-operation',after:quiz.prompt.id})).practice;
+ assert.notEqual(next.prompt.id,quiz.prompt.id);assert.equal(next.phase,'study','The mix rotates to material not yet practised.');
+ // A supplied mapping is a lesson too, introduced at its Pace.
+ const mapping=await ok('scry_import',{operation_id:'mcp-mix-mapping-operation',format:'mapping',data:{title:'Synthetic Capitals',direction:'forward',pairs:[{key:'Synthland',value:'Testville'},{key:'Mockovia',value:'Fixture City'}]}});
+ const lesson=(await ok('scry_lesson_start',{operation_id:'mcp-mix-lesson-operation',version_id:mapping.result.entity_id,leave:next.prompt.id})).practice;
+ assert.equal(lesson.prompt.version_id,mapping.result.entity_id);assert.equal(lesson.phase,'study');assert.equal(lesson.prompt.cue,'Synthland\tTestville\n');
+ const exported=await(await runtime.worker.fetch(origin+'/api/v1/export',{headers:{Authorization:'Bearer '+secret}})).json();
+ assert.deepEqual(exported.app.jobs,{});assert.deepEqual(exported.app.spend,[]);
+ assert.equal(Object.keys(exported.app.practice.attempts).length,1,'Only the one answer is an Attempt.');
 });

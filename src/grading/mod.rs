@@ -32,6 +32,9 @@ pub fn mapping_words(text: &str) -> Vec<String> {
         .collect()
 }
 pub const MAPPING_GRADER_VERSION: &str = "1;unicode=17.0.0;mapping=1";
+/// The mapping profile where the year rule decided the Verdict. An Attempt the
+/// rule did not decide keeps `MAPPING_GRADER_VERSION`.
+pub const MAPPING_YEAR_GRADER_VERSION: &str = "1;unicode=17.0.0;mapping=1;year=1";
 
 pub const AUTHORITY: &str = "exact-v2";
 pub const GRADER_VERSION: &str = "1;unicode=17.0.0";
@@ -293,6 +296,137 @@ fn grade_with_policy(
         units: unit_verdicts,
         diff,
         wrong_version_hint,
+    })
+}
+
+/// Whether a year was written in the common era (with AD or CE, or none) or
+/// before it (with BC or BCE).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Era {
+    Common,
+    BeforeCommon,
+}
+
+/// A year as typed: one to four digits, alone or with one AD, CE, BC or BCE
+/// marker before or after them, and nothing else but whitespace and stops
+/// inside or directly after the marker. So "1066", "AD 1066", "1066 c.e." and
+/// "44 B.C." are years as typed; "1066.", "1066,", "(1066)", "-1066", "in
+/// 1066" and "1066 to 1087" are not. Returns the tokens, the digits' position
+/// and the era. This one definition decides both whether the year rule may
+/// grade a text and whether an answer is graded by Scry alone, never sent.
+fn typed_year(text: &str) -> Option<(Vec<unicode::Token>, usize, Era)> {
+    let tokens = unicode::mapping_tokens(text);
+    let words: Vec<&str> = tokens.iter().map(|t| t.normalized.as_str()).collect();
+    let i = words
+        .iter()
+        .position(|w| (1..=4).contains(&w.len()) && w.bytes().all(|b| b.is_ascii_digit()))?;
+    // Typed as digits, ASCII or full-width: never "⑻", which is "(8)".
+    if !tokens[i]
+        .word
+        .text
+        .chars()
+        .all(|c| c.is_ascii_digit() || ('\u{FF10}'..='\u{FF19}').contains(&c))
+    {
+        return None;
+    }
+    let marker = match (&words[..i], &words[i + 1..]) {
+        ([], []) => &[][..],
+        ([], after) => after,
+        (before, []) => before,
+        _ => return None,
+    };
+    let era = match marker {
+        [] | ["ad"] | ["ce"] | ["a", "d"] | ["c", "e"] => Era::Common,
+        ["bc"] | ["bce"] | ["b", "c"] | ["b", "c", "e"] => Era::BeforeCommon,
+        _ => return None,
+    };
+    let mut covered = vec![false; text.len()];
+    let mut after_marker = vec![false; text.len() + 1];
+    for (n, token) in tokens.iter().enumerate() {
+        covered[token.word.span.clone()].fill(true);
+        if n != i {
+            after_marker[token.word.span.end] = true;
+        }
+    }
+    // A stop is allowed only directly after a marker letter: "A.D.", never "1066.".
+    let mut previous_end = None;
+    for (at, c) in text.char_indices() {
+        let allowed = covered[at]
+            || c.is_whitespace()
+            || (c == '.' && previous_end.is_some_and(|end: usize| after_marker[end]));
+        if !allowed {
+            return None;
+        }
+        previous_end = Some(at + c.len_utf8());
+        if c == '.' {
+            // "A.D." : the stop belongs to the marker letter before it.
+            previous_end = None;
+        }
+    }
+    Some((tokens, i, era))
+}
+
+/// A year the year rule may grade: a year as typed in the common era.
+fn year_as_typed(text: &str) -> Option<(Vec<unicode::Token>, usize)> {
+    typed_year(text)
+        .filter(|(_, _, era)| *era == Era::Common)
+        .map(|(tokens, i, _)| (tokens, i))
+}
+
+/// The year a mapping text is to the year rule, as its normalized digits:
+/// two texts with the same year are the same answer to it.
+pub fn mapping_year(text: &str) -> Option<String> {
+    year_as_typed(text).map(|(tokens, i)| tokens[i].normalized.clone())
+}
+
+/// Whether a mapping text is a year as typed, in any era. An answer that is
+/// one, to a value that is one, is graded by Scry alone (by the year rule in
+/// the common era, as written before it) and never sent to be judged.
+pub fn mapping_year_shaped(text: &str) -> bool {
+    typed_year(text).is_some()
+}
+
+/// `grade_mapping`, then the year rule: where a single expected value and the
+/// answer as typed are the same year, with or without AD or CE, a miss becomes
+/// Good under `MAPPING_YEAR_GRADER_VERSION`, its Diff comparing the numbers.
+/// Every other answer keeps the plain grade, byte for byte, so the rule is
+/// recorded only where it turned a miss into Good.
+pub fn grade_mapping_year(
+    version: Version<'_>,
+    units: Range<usize>,
+    answer: &str,
+) -> Result<Grade, GradeError> {
+    let plain = grade_mapping(version, units.clone(), answer)?;
+    if plain.verdict == Verdict::Good || units.len() != 1 {
+        return Ok(plain);
+    }
+    let (Some((e, i)), Some((t, j))) = (
+        year_as_typed(version.units[units.start]),
+        year_as_typed(answer),
+    ) else {
+        return Ok(plain);
+    };
+    if e[i].normalized != t[j].normalized {
+        return Ok(plain);
+    }
+    Ok(Grade {
+        authority: Authority {
+            name: AUTHORITY.into(),
+            grader_version: MAPPING_YEAR_GRADER_VERSION.into(),
+        },
+        verdict: Verdict::Good,
+        units: vec![UnitVerdict {
+            unit_index: units.start,
+            verdict: Verdict::Good,
+        }],
+        diff: vec![Diff {
+            unit_index: units.start,
+            change: Change::Correct {
+                expected: e[i].word.clone(),
+                typed: t[j].word.clone(),
+            },
+        }],
+        wrong_version_hint: None,
     })
 }
 

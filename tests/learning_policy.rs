@@ -1,4 +1,4 @@
-use scry::learning::{self, CriticParams, SemanticJudgments, ShortJudgments};
+use scry::learning::{self, CriticParams, ShortJudgments};
 use std::collections::BTreeMap;
 
 #[test]
@@ -63,57 +63,6 @@ fn short_answer_thresholds_and_risks_fail_closed() {
     malformed.probabilities =
         BTreeMap::from([("accept".into(), 0.99), ("irrelevant".into(), f64::NAN)]);
     assert!(!learning::grade_short(&malformed).applied);
-}
-
-fn semantic() -> SemanticJudgments {
-    SemanticJudgments {
-        ideas: vec![0.80, 0.95],
-        contradictions: vec![0.20],
-        relation: "equivalent".into(),
-        relation_probabilities: BTreeMap::from([("equivalent".into(), 0.85)]),
-        injection: 0.20,
-    }
-}
-
-#[test]
-fn required_idea_policy_and_shadow_classes_keep_honest_authority() {
-    assert!(learning::grade_semantic(&semantic()).applied);
-    let mut incomplete = semantic();
-    incomplete.ideas = vec![0.94, 0.20];
-    incomplete.relation = "partial".into();
-    incomplete.relation_probabilities = BTreeMap::from([("partial".into(), 0.88)]);
-    let result = learning::grade_semantic(&incomplete);
-    assert_eq!(result.decision, "incomplete");
-    assert_eq!(result.missing_idea, Some(1));
-    assert!(!result.applied);
-    assert_eq!(result.outcome, "ungraded");
-    assert_eq!(result.rating, 0);
-    let mut incorrect = semantic();
-    incorrect.ideas = vec![0.10, 0.10];
-    incorrect.contradictions = vec![0.96];
-    incorrect.relation = "different".into();
-    incorrect.relation_probabilities = BTreeMap::from([("different".into(), 0.94)]);
-    let result = learning::grade_semantic(&incorrect);
-    assert_eq!(result.decision, "incorrect");
-    assert_eq!(result.contradiction, Some(0));
-    assert!(!result.applied);
-    assert_eq!(result.rating, 0);
-    for field in 0..6 {
-        let mut uncertain = semantic();
-        match field {
-            0 => uncertain.ideas[0] = 0.799999,
-            1 => uncertain.contradictions[0] = 0.200001,
-            2 => {
-                uncertain
-                    .relation_probabilities
-                    .insert("equivalent".into(), 0.849999);
-            }
-            3 => uncertain.injection = 0.200001,
-            4 => uncertain.ideas.clear(),
-            _ => uncertain.ideas[0] = f64::NAN,
-        };
-        assert!(!learning::grade_semantic(&uncertain).applied);
-    }
 }
 
 #[test]

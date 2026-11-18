@@ -2,7 +2,8 @@
 // Request, Response or thrown value enters this reporter's interface.
 // Existing project's public ingestion DSN, not an auth/upload credential.
 const DSN = "https://a64d1b367f9a28f503fd81c733198d14@o4510313803677696.ingest.us.sentry.io/4510313841426432";
-const CATEGORIES = new Set(["request_exception", "upstream_5xx"]);
+// Fixed categories only. All but the first two are Rust-only.
+const CATEGORIES = new Set(["request_exception", "upstream_5xx", "alarm_failure", "scheduled_failure", "access_keys_unavailable", "backup_failure"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EDGE = { logger: "scry.edge", release: "scry-edge", label: "Scry edge", boundary: "go-container-edge" };
 const RUST = { logger: "scry.rust", release: "scry-rust", label: "Scry Rust", boundary: "rust-worker" };
@@ -55,8 +56,9 @@ function report(env, ctx, category, profile = EDGE) {
   }
 }
 
-// The Rust entrypoint passes only deployment bindings/context and a literal
-// category. Keep one DSN, transport, privacy allowlist and bounded-send policy.
+// The Rust entrypoint, Durable Object alarm and scheduled handler pass only
+// deployment bindings, a waitUntil context and a literal category. Keep one
+// DSN, transport, privacy allowlist and bounded-send policy.
 export function reportRust(env, ctx, category) {
   report(env, ctx, category, RUST);
 }

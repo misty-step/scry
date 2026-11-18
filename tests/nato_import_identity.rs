@@ -105,6 +105,15 @@ fn normalized_owner_import_dedupes_and_starts_focused_and_lessons_without_rewrit
             json!({"study_id":study}),
         )
         .unwrap();
+        // The supplied pair is studied before the agent's first answer.
+        let source = a.practice.current.as_ref().unwrap().prompt.id.clone();
+        api_mutate(
+            &mut a,
+            "/api/v1/quiz",
+            "nato-import-quiz",
+            json!({"prompt_id":source}),
+        )
+        .unwrap();
         let prompt = a.practice.current.as_ref().unwrap().prompt.clone();
         api_mutate(
             &mut a,
@@ -217,24 +226,39 @@ fn nato_identity_requires_all_ordered_correct_pairs_strict_policy_and_consistent
         assert!(!library::is_nato(&a.library.versions[&vid]));
         let before = a.clone();
         if !a.library.versions[&vid].spelling_strict {
-            assert_eq!(
-                focused(&mut a, "nato-negative-focus").unwrap_err().status,
-                409
+            // SPEC § NATO alphabet: Start practice imports the canonical
+            // alphabet; the Starter shelf is always startable. The agent's
+            // pairs without Spelling-strict stay as they are, beside it.
+            let mut started = a.clone();
+            focused(&mut started, "nato-negative-focus").unwrap();
+            let canonical = &started.practice.current.as_ref().unwrap().prompt.version_id;
+            assert_ne!(canonical, &vid);
+            assert!(library::is_nato(&started.library.versions[canonical]));
+            assert_eq!(started.library.versions[&vid], a.library.versions[&vid]);
+            assert!(
+                started
+                    .practice
+                    .studies
+                    .values()
+                    .all(|s| s.version_id != vid)
             );
-            assert_eq!(a, before);
         }
-        assert_eq!(
-            api_mutate(
-                &mut a,
-                "/api/v1/lessons/start",
-                "nato-negative-lesson",
-                json!({"version_id":vid})
-            )
-            .unwrap_err()
-            .status,
-            422
-        );
-        assert_eq!(a, before);
+        // SPEC § Agent access: a lesson starts for any supplied Version. A
+        // near-NATO mapping is an ordinary mapping lesson at its Pace, never
+        // focused NATO practice of all 26 letters.
+        let started = api_mutate(
+            &mut a,
+            "/api/v1/lessons/start",
+            "nato-negative-lesson",
+            json!({"version_id":vid}),
+        )
+        .unwrap();
+        assert_ne!(started.redirect, "/?practice=nato");
+        let held = a.practice.current.as_ref().unwrap();
+        assert_eq!(held.prompt.version_id, vid);
+        let study = &a.practice.studies[&held.prompt.study_id];
+        assert!(!study.nato_all_letters && !study.lesson);
+        assert_eq!(a.library, before.library);
     }
     let mut a = app();
     let vid = a

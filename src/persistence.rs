@@ -98,6 +98,15 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
                 result.insert(format!("practice_{field}/{id}"), bounded_json(&record)?);
             }
         }
+        // Present only in a judged notebook. The key leaves the metadata row,
+        // so a reader older than paid judgment refuses these rows by name.
+        if let Some(Value::Object(checks)) =
+            practice.as_object_mut().and_then(|p| p.remove("checks"))
+        {
+            for (id, record) in checks {
+                result.insert(format!("practice_checks/{id}"), bounded_json(&record)?);
+            }
+        }
     }
     if let Some(library) = object.remove("library") {
         for field in ["works", "versions", "relations"] {
@@ -156,6 +165,15 @@ pub fn rows(app: &App) -> AppResult<BTreeMap<String, String>> {
     if app.practice.answer_checkpoint.is_some() {
         result.insert("checkpoint_compatibility/v1".into(), "1".into());
     }
+    if judged(app) {
+        result.insert(JUDGMENT_MARKER.into(), "1".into());
+    }
+    if crate::library::uses_corrections_and_provenance(&app.library) {
+        result.insert(LIBRARY_MARKER.into(), "1".into());
+    }
+    if mapped(app) {
+        result.insert(MAPPING_MARKER.into(), "1".into());
+    }
     object.remove("owner_tokens");
     object.remove("study_version_refs");
     result.insert("meta".into(), bounded_json(&value)?);
@@ -172,8 +190,18 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
     }
     value["study_version_refs"] = serde_json::json!({});
     value["library"] = serde_json::json!({"works":{},"versions":{},"relations":{}});
+    if rows.keys().any(|key| key.starts_with("practice_checks/"))
+        && let Some(practice) = value.get_mut("practice").and_then(Value::as_object_mut)
+    {
+        practice.insert("checks".into(), serde_json::json!({}));
+    }
     for (key, data) in rows {
-        if key == "meta" || key == "checkpoint_compatibility/v1" {
+        if key == "meta"
+            || key == "checkpoint_compatibility/v1"
+            || key == JUDGMENT_MARKER
+            || key == LIBRARY_MARKER
+            || key == MAPPING_MARKER
+        {
             continue;
         }
         let (field, id) = key
@@ -293,6 +321,26 @@ pub fn app_from_rows(rows: &BTreeMap<String, String>) -> AppResult<App> {
             "Checkpoint compatibility marker is invalid.",
         ));
     }
+    if rows.get(JUDGMENT_MARKER).map(String::as_str) != judged(&app).then_some("1") {
+        return Err(AppError::new(
+            500,
+            "Judgment compatibility marker is invalid.",
+        ));
+    }
+    if rows.get(LIBRARY_MARKER).map(String::as_str)
+        != crate::library::uses_corrections_and_provenance(&app.library).then_some("1")
+    {
+        return Err(AppError::new(
+            500,
+            "Library compatibility marker is invalid.",
+        ));
+    }
+    if rows.get(MAPPING_MARKER).map(String::as_str) != mapped(&app).then_some("1") {
+        return Err(AppError::new(
+            500,
+            "Mapping compatibility marker is invalid.",
+        ));
+    }
     if app.schema != SCHEMA {
         return Err(AppError::new(500, "A compatible Scry build is required."));
     }
@@ -312,7 +360,62 @@ pub fn sha256(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
+const JUDGMENT_MARKER: &str = "judgment_compatibility/v1";
+const JUDGED_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-study-judged-v4";
+/// Present only where the Library holds a Provenance other than supplied or a
+/// correction whose normalized text equals another Version's. An older reader
+/// refuses the row by name, and the archive by its format name.
+const LIBRARY_MARKER: &str = "library_compatibility/v1";
+const LIBRARY_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-library-v5";
+/// Present only where the notebook holds a keyed-mapping capability that an
+/// earlier Worker would silently drop or regrade: a Version practised in both
+/// directions or with safety-bearing pairs, a reverse Card, or an Attempt the
+/// year rule decided. An older reader refuses the row by name, and the
+/// archive by its format name.
+const MAPPING_MARKER: &str = "mapping_compatibility/v1";
+const MAPPING_ARCHIVE_FORMAT: &str = "scry-rust-durable-sqlite-mapping-v6";
+
+/// Whether this notebook uses a keyed-mapping capability; see `MAPPING_MARKER`.
+pub fn mapped(app: &App) -> bool {
+    app.library
+        .versions
+        .values()
+        .any(crate::library::uses_mapping_capabilities)
+        || app
+            .practice
+            .cards
+            .values()
+            .any(|c| c.direction != crate::study::Direction::Forward)
+        || app.practice.attempts.values().any(|a| {
+            a.grade.authority.grader_version == crate::grading::MAPPING_YEAR_GRADER_VERSION
+        })
+}
+
+/// Whether this notebook holds anything of paid judgment: the Owner's switch,
+/// a Check, an Attempt left for Jev, or a receipt of either action. Only then
+/// are its rows and archive named so that an older reader refuses them whole.
+pub fn judged(app: &App) -> bool {
+    app.preferences.paid_judgment
+        || !app.practice.checks.is_empty()
+        || app.practice.attempts.values().any(|a| a.judgment.is_some())
+        || app.operations.values().any(|r| {
+            matches!(
+                r.path.as_deref(),
+                Some("/practice/check" | "/settings/judgment")
+            )
+        })
+}
+
 fn archive_format(app: &App) -> &'static str {
+    if mapped(app) {
+        return MAPPING_ARCHIVE_FORMAT;
+    }
+    if crate::library::uses_corrections_and_provenance(&app.library) {
+        return LIBRARY_ARCHIVE_FORMAT;
+    }
+    if judged(app) {
+        return JUDGED_ARCHIVE_FORMAT;
+    }
     if app.practice.answer_checkpoint.is_some() {
         return "scry-rust-durable-sqlite-checkpoint-v1";
     }
@@ -481,10 +584,21 @@ impl Write for BoundedSize {
     }
 }
 
-/// Check the complete archive footprint without loading any R2 photo bodies.
+/// How one complete archive of the notebook measures.
+pub enum Footprint {
+    /// It fits, in this many bytes.
+    Fits(usize),
+    /// It is larger than one complete archive can be.
+    TooLarge,
+    /// It cannot be measured for a reason other than its size, such as a
+    /// stored photo larger than the photo limit or conflicting photo records.
+    Unsizable(AppError),
+}
+
+/// Measure the complete archive footprint without loading any R2 photo bodies.
 /// Base64 needs exactly four ASCII bytes per three input bytes; it requires no
 /// JSON escaping. The timestamp bound also covers future compatible exports.
-pub fn archive_size(app: &App) -> AppResult<usize> {
+pub fn footprint(app: &App) -> Footprint {
     #[derive(Serialize)]
     struct PhotoSize<'a> {
         photo: &'a Photo,
@@ -501,31 +615,105 @@ pub fn archive_size(app: &App) -> AppResult<usize> {
     }
     let mut size = BoundedSize { bytes: 0 };
     let mut photos = Vec::new();
-    for photo in required_photos(app)?.into_values() {
+    let required = match required_photos(app) {
+        Ok(required) => required,
+        Err(error) => return Footprint::Unsizable(error),
+    };
+    for photo in required.into_values() {
         if photo.size > PHOTO_LIMIT {
-            return Err(AppError::new(
+            return Footprint::Unsizable(AppError::new(
                 413,
                 "A photo exceeds the archive size limit.",
             ));
         }
-        size.add(photo.size.div_ceil(3) * 4).map_err(|_| {
-            AppError::new(413, "The complete archive exceeds its bounded size limit.")
-        })?;
+        if size.add(photo.size.div_ceil(3) * 4).is_err() {
+            return Footprint::TooLarge;
+        }
         photos.push(PhotoSize { photo, bytes: "" });
     }
-    serde_json::to_writer(
-        &mut size,
-        &ArchiveSize {
-            format: archive_format(app),
-            schema: SCHEMA,
-            algorithm: ALGORITHM,
-            created_ms: i64::MIN,
-            app,
-            photos,
-        },
-    )
-    .map_err(|_| AppError::new(413, "The complete archive exceeds its bounded size limit."))?;
-    Ok(size.bytes)
+    let archive = ArchiveSize {
+        format: archive_format(app),
+        schema: SCHEMA,
+        algorithm: ALGORITHM,
+        created_ms: i64::MIN,
+        app,
+        photos,
+    };
+    match serde_json::to_writer(&mut size, &archive) {
+        Ok(()) => Footprint::Fits(size.bytes),
+        Err(_) => Footprint::TooLarge,
+    }
+}
+/// The complete archive's size, refused as before when it cannot be built.
+pub fn archive_size(app: &App) -> AppResult<usize> {
+    match footprint(app) {
+        Footprint::Fits(bytes) => Ok(bytes),
+        Footprint::TooLarge => Err(AppError::new(
+            413,
+            "The complete archive exceeds its bounded size limit.",
+        )),
+        Footprint::Unsizable(error) => Err(error),
+    }
+}
+
+/// What a mutation refused for storage capacity says, from any client.
+pub const CAPACITY_REFUSAL: &str = "Storage is full. This would make the notebook too large for one complete backup, so nothing was saved.";
+
+/// Over this share of the archive limit, Settings states the notebook's size.
+pub const SIZE_NOTICE_BYTES: usize = MAX_ARCHIVE_BYTES / 4 * 3;
+
+/// Browser writes that checked the complete archive before one capacity rule
+/// existed. A notebook whose archive cannot be measured for a reason other than
+/// its size keeps exactly that behaviour.
+fn checked_before(path: &str) -> bool {
+    matches!(
+        path,
+        "/create"
+            | "/add"
+            | "/library/version/add"
+            | "/library/mapping/add"
+            | "/practice/nato/start"
+            | "/practice/lesson/start"
+            | "/practice/draft"
+            | "/practice/draft/discard"
+    ) || path.ends_with("/edit")
+}
+
+/// Which client asked: the two once differed, and an unmeasurable notebook
+/// keeps each one's earlier answer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Client {
+    Browser,
+    Api,
+}
+
+/// One capacity rule for every client, decided by size alone. A mutation
+/// that changed the notebook is refused when the result would not fit one
+/// complete archive. Revoking an Owner token is never refused for capacity,
+/// and a replay changes nothing and returns its committed result. Writes that
+/// never ask (a backup's status, a restore's marker, records of paid work) can
+/// carry a notebook within a few hundred bytes of the limit past it; no
+/// reserve guards against that, because the live notebook's size is unknown.
+/// A notebook whose archive cannot be measured for another reason is answered
+/// exactly as before this rule: the earlier checked browser paths and every
+/// API mutation refuse with that reason, and every other write is admitted.
+pub fn admit_growth(
+    path: &str,
+    before_revision: u64,
+    after: &App,
+    client: Client,
+) -> AppResult<()> {
+    let changed = after.revision != before_revision;
+    match footprint(after) {
+        Footprint::Unsizable(error)
+            if client == Client::Api || (changed && checked_before(path)) =>
+        {
+            Err(error)
+        }
+        Footprint::Unsizable(_) | Footprint::Fits(_) => Ok(()),
+        Footprint::TooLarge if !changed || path == "/tokens/revoke" => Ok(()),
+        Footprint::TooLarge => Err(AppError::new(413, CAPACITY_REFUSAL)),
+    }
 }
 impl Archive {
     pub fn new(app: App, photos: Vec<ArchivedPhoto>, now: i64) -> Self {

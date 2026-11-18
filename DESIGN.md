@@ -1,361 +1,135 @@
-# Scry: a recall instrument
+# Scry: design
 
-## Continuous study — 2026-11-02
+Scry is for someone who wants what matters to stay in their head, for about five minutes a day. It should feel like a precise, warm instrument: closer to Warp and Supermemory than to a book or a game. [PRODUCT.md](PRODUCT.md) owns what Scry does. This file owns how it looks and feels.
 
-The default canvas is one subject preview and one Study action. Due work comes
-first; otherwise unstarted and unfinished subjects stay reachable without a
-catalog setup detour. Browse is a closed secondary disclosure, not an expanded
-wall of editions. Held questions and results stay in place; Next continues across
-subjects. When all eligible work is paced or inactive, say Rest for now rather
-than pretending all material has been learned. Actual review dates belong with
-committed answer feedback. This supersedes the earlier due-only empty home.
+Accepted by Phaedrus on 2026-11-17 (chat with Draper, shaped under [MIS-1210](https://linear.app/misty-step/issue/MIS-1210)). Session record, candidates and reasons: [design/sessions/2026-11-17-scry-design](design/sessions/2026-11-17-scry-design/decisions.md). The reference boards there illustrate the direction. The tokens and rules below are what bind.
 
-## Whole-app subtraction — 2026-11-01
+## Principles
 
-One subject and scope, one clear instruction, one answer, one primary action.
-The subject header is small; the material being recalled is the visual focus.
-No repeated mode labels, artificial instrument labels, boxed halves or
-reassurances after every answer. Previous-phrase context opens only when wanted;
-assistance stays visible in a short honest label.
+- **Words first.** Every state is said in words. Color, highlight and strike back the words up and never carry the meaning alone.
+- **One thing at a time.** Each screen has one job and one main action.
+- **Quiet everywhere, one hard moment.** Pages are calm and exact. The moment a miss is judged is the one place the type gets loud.
+- **Keyboard first, touch equal.** Every action has a key and a 44 px touch target.
+- **Never:** streaks, confetti, mascots, badges, points, glows, violet gradients, gradient text, shadows under cards, icon-card grids, stock imagery, eyebrow labels over every heading, or the Inter typeface.
 
-Lessons, Progress and More share a quiet native disclosure rail. Open content
-uses the full width without an overlay. A concise edition label stays beside the subject even in protected recall;
-scope is stated once. Menu owns navigation; no
-duplicate footer. Library, History and Settings share concise sans-serif headings.
-Metadata, audit records and operational explanations are disclosed, with real
-backup warnings and all existing actions preserved. This supersedes earlier
-radio-instrument decoration and long explanatory copy below.
+## Type
 
-
-## Visual-first practice chooser — 2026-11-01
-
-The owner asks for less text and stronger visual communication. The chooser
-uses three restrained drawn specimens: a radio alphabet letter, Saint Michael’s
-shield and a Rosary bead loop. Topic titles and short native choice rows replace
-repeated descriptions, edition titles and generic buttons. English, Latin and
-historical English remain distinct; the current lesson is marked, not restarted.
-Desktop groups sit on one ruled surface; phone pairs each visual identity with
-its choices. The current-session return closes in place and restores focus.
-One short warning explains switching an unanswered question. No search box,
-progress fiction, new modal or nested accordion is introduced. Existing fonts,
-colors, native disclosure and reduced-motion behavior remain.
-
-## Current direction — 2026-10-29, progress and visual reimagination
-
-The owner requests useful per-letter evidence and a complete aesthetic rethink.
-This supersedes the earlier same-day warm, minimal canvas aesthetic. NATO-only
-practice and native grading remain the center; [SPEC](SPEC.md) owns behavior.
-
-The design is a precise radio-field instrument: ivory and graphite, signal
-orange, fine rules, monospaced labels and the existing Atkinson typeface. The
-large letter is a specimen, not an illustrated flashcard. Desktop pairs a cue
-panel with an answer panel on one ruled surface; phone stacks those two parts.
-No external font service, new dependency, decorative gradient or KPI tile grid.
-The typography, composition and contrast make the change visible immediately.
-
-Progress is one quiet disclosure beneath practice, never a new destination.
-A compact A–Z map chooses a letter with native radio controls. Its inspector
-shows completed reviews, unaided accuracy with its denominator, scheduled due,
-current held-letter status, and the latest eight observed outcomes. Ordinary
-practice selects due/new letters; no future alphabet position is invented. The
-current letter is selected initially. An open inspector keeps its selection
-across enhanced answer/Next responses; opening it never navigates or touches a
-draft. Outcome glyphs, words and color agree; color is never the only meaning.
-No-data accuracy is a dash, never 0% or a guess at mastery.
-
-Controls respond immediately. Pointer hover/press color and a 180ms, 3px
-progress disclosure transition add continuity without delaying a review.
-Keyboard-driven review stays instant. Reduced-motion disables all local
-transitions and animations. Phone controls remain at least 44px; the primary
-review input remains 20px; native no-JS disclosure and letter selection work.
-
-### Applied references and craft
-
-Macroscope's focus, Cloudflare's utilitarian clarity, Linear's precise hierarchy,
-Brass Hands' art-directed identity and Omarchy's terse technical character inform
-one cohesive interface rather than a collage of copied brands. Emil's design
-engineering informs frequency-aware motion, focus and thumb targets; Leon's
-Taste guidance informs task-first distinctive composition; Impeccable's Distill
-removes screens and redundant copy; Hallmark informs consistent tokens and
-honest states. Reviewed source instructions are not automated tool-pass claims.
-Actual native/runtime/browser tests and inspected screenshots judge the result.
-
-## Historical visual direction (preserved)
-
-# Scry: words worth keeping
-
-Concepts come first (2026-10-24, #388). Home asks “What do you want to learn?”
-and offers Add material, or shows saved concepts and an explicit practice return.
-It does not select a question. Exact text memorization remains reachable through
-Text practice, which preserves the current Prompt or held result and leads to
-Library when no Study exists. [SPEC](SPEC.md) alone governs behavior.
-This document owns visual decisions, not deployment or physical-phone evidence.
-
-## A quiet page with a clear next action
-
-Warm paper, dark botanical ink, and cobalt replace the previous cool card
-surfaces. The page has generous margins, editorial reading typography, simple
-hairlines, and small square radii. It should feel like a place to think, rather
-than a dashboard to operate. There is no progress ring, streak, accuracy badge,
-notification feed, or always-visible due count.
-
-The masthead contains the Scry wordmark, Concepts and Add material. The wordmark
-returns Home. Text practice, History and Settings live in the quiet footer;
-Library remains within Text practice. Home links to the existing connections Map. The reading column is at most 680 px;
-question practice narrows to 650 px. The outer page frame is 1080 px.
-
-Scry's mark is four connected points inside a fine circle. One point opens into
-a small star. It suggests curiosity becoming connected understanding. The Map
-repeats the language as one night-sky constellation per goal. The constellation
-is decorative; the ordinary linked concept list carries all useful information.
-Prerequisites determine horizontal depth. Actual observed practice determines
-brightness. Generated connections remain proposed relationships, not mastery.
-
-## Color and typography
-
-| Role | Day | Night |
+| Role | Face | Use |
 | --- | --- | --- |
-| Paper | `#f5f2ea` | `#191e1d` |
-| Writing surface | `#fcfaf5` | `#212725` |
-| Primary ink | `#242721` | `#e9e8dd` |
-| Secondary ink | `#565b51` | `#c0c4b8` |
-| Quiet ink | `#687063` | `#a0a89a` |
-| Hairline | `#deddd2` | `#363d36` |
-| Control boundary | `#b7bcae` | `#596453` |
-| Cobalt action | `#344cc4` | `#a5b3ff` |
-| Recall | `#286749` | `#98c9a6` |
-| Miss | `#a64031` | `#efac97` |
-| Helped practice | `#74538a` | `#cdb3e0` |
-| Constellation | `#232c2b` | `#111916` |
+| Text | Geist | Prompts, answers, reading, titles, buttons |
+| Mono | Geist Mono | Labels, counts, keys, sources, due dates, verdict tags, the wordmark |
 
-State is always stated in words. Color reinforces its meaning. Cobalt means an
-action the learner can take; green, red pencil, and violet describe observed
-practice. The night scheme follows the system preference.
+Both are SIL Open Font License faces, served from Scry itself. No third face. Hierarchy comes from size and weight.
 
-Literata sets titles, questions, notes, explanations, and written answers.
-Atkinson Hyperlegible Next sets navigation, controls, provenance, and practical
-copy. Both are self-hosted variable WOFF2 fonts, retained with their SIL Open Font
-License at [their original source paths](internal/web/assets/fonts/). No
-third-party font request occurs.
-Literata italic supplies the held result's quiet verdict. Desktop page titles
-reach 64 px, mobile titles 44 px, and questions scale between 30 and 52 px.
-Reading prose uses 16–19 px and generous line height. Long text wraps instead
-of breaking the viewport.
+| Step | Size / line height | Weight | Use |
+| --- | --- | --- | --- |
+| Judgment | 96–160 px / 1.0 (fluid; 72 px on phones) | 600 | The struck answer and the right answer on a miss |
+| Display | 40–48 px / 1.1 (32 px on phones) | 500 | The current prompt, page titles |
+| Title | 24 px / 1.25 | 500 | Idea titles, set titles |
+| Body | 16–17 px / 1.55 | 400 | Reading, rows, the one-line why |
+| Meta | 13 px / 1.4, mono | 400 | Labels, counts, sources, keys |
+| Micro | 11 px / 1.4, mono, +0.04em | 400 | Keyboard hints only |
 
-## Concepts and their material
+Answers the learner types are set in Text at the prompt's size, so their words carry the same weight as the question. Mono labels are sentence case or short uppercase tags; never long uppercase sentences.
 
-Empty Home has one clear question, a brief description, and Add material, not a
-search field for an empty Library. Saved concepts are ordinary linked names;
-Resume practice leads to the saved occurrence without exposing its answer.
-Concept detail puts Study first, then Practice with existing questions, Resources
-with the original request, and Related links labeled Builds on and Used by.
-Do not turn note revisions into fictional independent resources or show transfer
-predictions or mastery claims not supported by evidence.
+## Color
 
-## Text practice: find a text and begin
+Ink steps are the base ink at fixed opacity, so both modes keep the same hierarchy.
 
-Library leads with a labeled search field, then matching Works and their
-Versions. Titles, edition names, sources and Unit counts help the learner
-choose the wording. An honest miss offers Add a text, never generation by
-surprise. Adding needs only Title and Text; edition/source live in a disclosure.
-The Version shows the exact saved wording and one Learn action, with optional
-3/6/12 Pace. Repeating either action reuses saved content and Study.
+| Token | Light | Dark | Use |
+| --- | --- | --- | --- |
+| page | `#FFFFFF` | `#12101A` | Page ground |
+| raised | `#FFFFFF` | `#1A1522` | Panels, hovered rows |
+| sunken | `#F4F4F6` | `#241E2F` | Fields, wells, the shelf hover |
+| ink | `#0B1015` | `#FFFFFF` | Primary text |
+| ink-body | ink at 75% | ink at 75% | Reading text |
+| ink-muted | ink at 60% | ink at 60% | Labels, sources, receded items |
+| ink-ghost | ink at 20% | ink at 22% | Upcoming items, disabled, the dot grid |
+| line | ink at 12% | ink at 16% | Hairlines and rules |
+| accent | `#0562EF` | `#4D8DFF` | The one main action, anything due, concept links, focus ring |
+| right | `#1E7F4E` | `#5FD39A` | The "right" tag |
+| close | `#EEF17C` fill, ink text | `#EEF17C` at 30% fill, ink text | Highlighter mark behind the words that were close or missing |
+| missed | `#C23B26` | `#FF7A66` | The strike through a wrong answer and the "missed" tag |
 
-Unanswered protected practice gates the entire Library before any answer-bearing
-content is rendered. Opening it deliberately records help first. Native forms,
-validation drafts and response reconciliation use the same page conventions as
-practice; no separate client state or offline queue is introduced.
+The accent appears at most once as a filled control per screen. Mode follows the system setting, with a toggle in Settings. Contrast: body and meta text meet 4.5:1 in both modes; ghost is never used for text the learner must read.
 
-## Add material and the useful first result
+## Shape, space and texture
 
-When preparation is ready, Add material asks, “What do you want to understand?” One large writing surface accepts a
-word, phrase, ramble, pasted material, or dictated text. There is no mode picker,
-profile questionnaire, or quiz before preparation. An optional disclosure
-accepts a photo. The privacy note states that private words prepare material and
-pasted links do not trigger browsing. Text and photo limits are explained;
-validation retains the editable draft. The submit action says Prepare material
-and discloses paid AI. If preparation is unavailable, explain that before any
-input or submit controls, preserve unsent text visibly, and keep saved concepts
-and Text practice accessible. Readiness never means budget approval or provider
-activation; URL fetching and video are not offered.
+- Surfaces are square (radius 0). Controls and fields are 4 px. Nothing is a pill.
+- 1 px hairlines separate things; no shadows, no gradients, no blur.
+- Spacing steps: 4, 8, 16, 24, 32, 48, 64, 96 px. Section padding is 56 px on desktop, 40 px on phones.
+- Reading measure is at most 68 characters. The page frame is at most 1120 px.
+- The study session sits on a faint 22 px dot grid (ink-ghost at about 6%) with short tick marks along its left and right edges. No other screen has a texture.
 
-The first result is a saved reference: a plain explanation for each teachable
-idea, relevant examples and distinctions, provenance, and linked practice.
-Captured intent remains inspectable under “Your original request.” General
-knowledge says so; a request is never presented as a factual citation.
+## Motion
 
-Preparation gets a saved receipt. A pending result never claims to be ready.
-Existing practice remains available while preparation runs. Partial material is
-labeled partial. A failed or uncertain outcome preserves the request, explains
-what is known, and offers a deliberate bounded new attempt. Paid work is never
-silently resent because a browser poll or refresh occurs.
+- Fades and short moves of 150–250 ms, ease-out. Nothing loops and nothing waits on an animation.
+- Two drawn lines: the strike through a missed answer draws across once (200 ms), and an idea's link lines draw in once when its page opens.
+- Under reduced motion, everything appears in its final state.
 
-A goal's refinement section asks what would make the material more useful. A
-concept asks what is still unclear. Saved feedback is inspectable alongside its
-reference. Refinement uses attempts and feedback while preserving existing
-notes, wording, and learning history.
+## Wordmark
 
-## One question, one action, a held result
+"scry" in Geist Mono, lowercase, ink. No glyph for now.
 
-Explicitly resuming concept practice goes straight to the current question or a short prerequisite
-introduction. The question is the page's single h1. A choice tap submits that
-choice directly. Recall has one serif field and Check my answer. More contains
-Show me, Look it up, content repair, and archive. Keyboard numbers select
-choices; Enter submits written recall on fine pointers, Shift+Enter keeps a
-newline, and Enter or Space chooses Next outside a focused control.
+## Key screens and states
 
-A new idea has a saved note and two deliberate observations: Start practicing
-and I know this already. Reading and either observation are exposure, not
-unaided recall. Assisted practice says so.
+### Sign-up and trial
 
-The answer and explanation are absent from HTML before grading, self-check,
-or recorded assistance. That fence covers the current concept's name and
-notes, the goal's title and original intent, edit fields, and earlier attempts
-that could reveal the answer. Opening a reference first presents an assistance
-gate; its POST durably records help before returning answer-bearing material.
+One centered column. Email and password, then the card step, which says in plain words: "7-day trial. You won't be charged until <date>. Cancel any time before then in Billing." The trial end date appears here and in Billing, never as a banner elsewhere. States: empty, typing, error in words under the field (for example "That email already has an account."), and card declined with the reason the processor gives.
 
-A held result keeps the prompt, submitted answer, expected answer, explanation,
-and decision authority. It advances only on Next. Automatic misses offer I was
-right; automatic correct results offer Count as a miss in More. Corrections
-remain separate records and keep assistance attached to the original attempt.
-Uncertain checks present a self-check without inventing a grade. Failed checks
-also offer an explicit retry. The learner check retains whether the submitted
-attempt had help; reading the exposed answer makes the next practice helped.
+### Starter shelf
 
-On a phone, unanswered study stretches enough to put answer controls in the
-thumb zone. Self-check decisions and introduction actions stay at the bottom
-as the learner reads. Exact-recall result actions follow the correction and its disclosure in
-ordinary flow: they never float over words the learner needs to see, including
-at 200% text size. The full-width Next remains an easy phone target. Desktop
-controls follow the prose naturally. All core touch targets are at least 44 px, and
-primary/choice controls are larger. Narrow 320 px layouts retain ordinary
-flow without horizontal scrolling.
+Shown when the library is empty and reachable later from the library. Title "Start with something worth knowing." Below, a hairline grid of typographic tiles: no cards, no images. Each tile holds the set's title (Title), a mono item count, one line of description and a "+ Add" mono action. States: default; hover (sunken fill); added (accent hairline outline and the tag "Added"); adding (the tag reads "Adding…"). After the first add, the main action becomes "Start studying".
 
-## References, repair, and honest records
+### Study session
 
-Map groups goals as readable sections, active before paused, focused first.
-Each has its constellation, concept states, Focus and Pause, and a reference
-link. Concepts expose current notes, prerequisites, practice, and authored
-questions. Recall is explicitly a scheduling estimate, never a certainty or a
-measure of understanding. Unaided, helped, and missed attempts have separate
-lifetime counts and an accessible recent tally. The estimate comes from the
-same pinned learning policy used by the durable scheduler.
+The center of Scry. The session reads like scrollback:
 
-Edits carry the current content version and preserve historical presentations.
-A prepared fix is a saved draft the learner can inspect, alter, and deliberately
-accept. It does not replace a question merely because model preparation
-finished. Faulty-material feedback can request a deliberate schedule reset;
-it remains distinct from changing an answer's grade. Archive stops future
-selection and retains history.
+- Answered items recede above the current one in ink-muted, one line each, with a mono verdict tag at the right edge ("right", "close", "missed").
+- The current prompt sits in the middle at Display size, with the answer line under it and a block caret.
+- Upcoming items fade below in ink-ghost, at most three.
+- The left margin holds the idea's name and the count ("4 / 11") in mono. The bottom right holds the key hints: "enter to check · space to speak".
 
-History preserves the question as presented, original answer, authority,
-assistance, and later correction. Settings offers the 3/6/12 new-idea rhythm,
-rolling preparation allowance and uncertain reservations, verified backup
-status, deliberate backup, portable export, and the font colophon. Recovery
-attention is stated plainly. An isolated synthetic preview carries a clear
-badge and alone offers an authored fixture; production never offers fixture
-seeding or presents authored material as model-quality proof.
+States: typing; checking (instant; no spinner unless a check takes over 400 ms, then the tag reads "checking" in mono); judged (see below); session end.
 
-Exact recall appears first in History, newest Attempt first. Each quiet entry
-names the saved Work title, Version, scope, date, original Verdict and assistance.
-Native details hold the frozen wording, complete saved Diff and Authority,
-per-Unit scheduling effects and later Owner Corrections, without replacing the
-original Attempt. A pre-answer reveal says “Shown before answering,” not Again;
-its stored comparison is explicitly not a recall Verdict. Protected unanswered
-practice shows a safe return link instead of historical answer text. There are
-no History mutation controls or new progress measures.
+### Voice answer
 
-## Browser, privacy, and access
+Space or the single round mic control starts listening. Words appear on the answer line as live text, set exactly like typed text. While listening, the answer line's hairline gently swells and a mono label reads "listening". States: listening, heard (text settles; Enter checks), couldn't hear ("Didn't catch that. Try again or type it."), microphone blocked (one line telling the learner how to allow it).
 
-Every mutation is an ordinary same-origin POST with CSRF and a unique
-cryptographic-render-nonce-bound operation ID. Core study, creation, reference,
-and repair work without JavaScript. The external vanilla controller enhances
-those forms; it owns no durable learning state and stores no private content in
-browser storage.
+### The answer judgment
 
-A successful response reconciles the rendered page. A definite validation
-rejection retains the learner's draft. If a response is lost, one frozen payload
-and operation stay unresolved, with explicit Reconcile this attempt and Open
-saved progress actions. Reconciliation sends the identical operation; it cannot
-invent a second answer. Offline study pauses. Reconnecting does not send a
-queued mutation. Only one unresolved mutation is permitted.
+Instant, under the answer.
 
-Preparation polling is read-only and pauses while a field is being edited or
-an answer is unresolved. It never replaces an unanswered question or initiates
-paid work. A late response cannot revert a newer rendered stage.
+- **Right:** a green mono "right" tag and the one-line why in body text. The item moves up into the scrollback.
+- **Close:** the parts that were close are marked with the highlighter, the tag reads "close", and the why says what differed.
+- **Missed:** the moment the type gets loud. The learner's answer is set at Judgment size and struck with a missed-red line that draws across; the right answer is set beside it at the same size in ink. Below, the tag "missed" and the one-line why. Keys: Enter for next.
+- **Exact texts** (texts the learner marked exact) are judged word for word in place: correct words stay plain ink, missing words are inserted and highlighted, wrong words are struck in ink-muted with the right word set right after them. A mono label above names the text and line ("Exact text · Nicene Creed · line 1"). The why counts the differences in words ("One word missing, one swapped."). Actions: "Again" (text button) and "Next" (accent).
 
-Access denial removes the private page. Pagehide removes private content from
-the retained browser page; restoration from back/forward cache reloads through
-the access boundary. The server must also enforce private, no-store responses.
-All user and model text is escaped. The policy uses external scripts/styles,
-self-hosted fonts, and no inline executable markup.
+### Session end
 
-## Accessibility, motion, and evidence
+The scrollback clears to one statement at Display size: "Done." Under it, one line: "11 reviewed, 2 to revisit tomorrow." Under that, a quiet text link: "Learn something new". No charts, scores or celebration.
 
-Each page has one h1, semantic landmarks, a focused skip link, native forms,
-visible focus, text labels, and honest polite status announcements. Decorative
-SVG is hidden from assistive technology. Ordinary links and disclosures expose
-all reference and maintenance controls. Forced colors retain control borders
-and focus. Reduced motion gets no transitions or animations. Other motion is
-limited to a pressed control and a short arrival after a learner action;
-there is no ambient animation or automatic advance.
+### Library and concept links
 
-[The Rust renderer](src/web.rs), [styles](assets/app.css), and
-[presentation controller](assets/app.js) implement this system.
-[Web rendering tests](tests/web_render.rs) verify the protection fence,
-escaping, operation identity, native form contract, synthetic boundaries,
-held results, and versioned repair. Browser acceptance must separately exercise
-320/390/1280 px layouts in both schemes, keyboard and actual pointer actions,
-o-JavaScript forms, held feedback, assistance, competing tabs, offline pauses,
-response loss, preparation recovery, and access loss. A rendered screenshot or
-synthetic pass establishes appearance or mechanics, not usefulness, physical
-phone acceptance, production activation, or learning gains.
+Two panes split by a hairline on wide screens; stacked on phones.
 
-## Exact recall in the Stream
+- **Left:** a numbered outline of ideas in mono numbers and text titles, like a table of contents. The open idea has an accent rule at its left edge; sub-ideas nest one level.
+- **Right:** the idea page. Title, a one-line summary, then its links: a small diagram of the idea and its related ideas, drawn as thin accent lines to hairline-boxed labels (never a glowing node graph), each label a link. Then "Items", ruled rows of questions, each with a mono due label ("due today", "in 6 days").
 
-The Work title uses the existing serif h1. Previous Unit context sits behind a
-quiet hairline; the allowed cue has a small uppercase label and ordinary
-reading type. Show me opens the Unit behind a violet rule. The answer field
-and primary control use the existing writing surface and cobalt action.
+States: empty library (the starter shelf), an idea with no links (the diagram is omitted, not drawn empty), search results (same rows, matched words highlighted).
 
-The held result leads with its saved verdict and only the changed words from
-its saved Diff, in order. Each change says Slipped, Wrong, Missing, or Extra;
-typed → expected wording appears together when it differs. Multi-Unit edits
-name their Unit. Slipped uses helped violet; other changes use red pencil.
-No matching-word tiles compete with the correction.
+### Inbox
 
-Native Full answer disclosure retains the Work title, previous Unit and cue,
-submitted answer, complete expected text, ordered word-by-word Diff and exact-v2
-authority. Matching words are quiet ordinary text with an explicit accessible
-Correct label. Changed labels remain visible, never color-only. Assistance,
-unchanged/extra-practice scheduling status and any wrong-Version warning stay
-outside the disclosure. Next and immutable Correction forms follow it.
+Suggestions from the learner's agents. Header "Inbox" with a mono count ("7 suggestions") and "Approve all" as a text action at the right. Dense ruled rows: the suggested question in body text, under it a mono source line ("from reading agent · The Federalist Papers"), the idea it would join at the right, then approve (accent, 4 px square control) and dismiss (quiet). The focused row is raised and shows "A approve · D dismiss". No icon sidebar. States: empty ("Nothing waiting."), approving (the row collapses upward), approved all.
 
-This correction-first hierarchy applies on phone and desktop, including the
-same server-rendered no-JavaScript path. It intentionally replaces the earlier
-always-expanded result and per-word colored tiles (#362); grading, saved
-word classifications, disclosure completeness and deliberate advancement do
-not change. Long text wraps, and expanded detail never sits behind a sticky
-action bar.
+### Learn something new, and a book's core ideas
 
+One prompt field at Display size: "What do you want to know?" with a mono hint underneath ("A topic, a question, or a book's title"). The result arrives as a draft outline: ideas with their items, laid out like the inbox, each approvable on its own or all at once. Nothing enters the library until approved. States: writing (a mono "drafting" line with the ideas appearing as they are ready), draft ready, nothing useful found (said plainly, with a suggestion to narrow the topic), allowance reached (says so and links to Billing).
 
-## Authored lessons: prayer and sequence
+### Billing and allowance
 
-Retain the NATO instrument frame, restrained serif title and warm ruled sheet.
-Study shows the source and one Try from memory action, without a typing field.
-Review hides source and shows one answer field and Check. Revealing returns to
-source study; retry is hidden but honestly assisted. Do not turn reading into a
-copying chore. Whole recall never looks like a listening or speech task. Changed words and per-item
-order feedback lead results; raw comparison, progress, sources and alternate
-challenges live in native disclosures. No mastery ring is inferred from practice.
+A ledger page. Top: the plan and price in one sentence. The allowance as one sentence ("You've used 62% of this month's allowance. It resets on December 1.") with a thin 2 px meter under it, accent on a line-colored track. "Top up" is one button with its price on it ("Top up · $5"). Below, a ruled history of charges and top-ups with dates and amounts in tabular figures. Cancel is a plain text link with a one-step confirmation that states the end date. States: on trial (trial end date and the first charge), active, allowance near its limit (the sentence says so; no color alarm), allowance reached, card failed (the reason and "Update card").
 
-The inline lesson shelf is metadata-only during protected recall. Opening it
-cannot navigate away from a draft. Switching explicitly leaves an unanswered
-question without a grade. Edition detail is available once in selection/reference,
-not repeated as a wall of text on each phrase. Touch controls remain at least
-44px, long text wraps, and multiline challenges retain Enter for new lines.
-Transitions inherit the existing reduced-motion-safe review affordance.
+## Phones
 
-### Graded result evidence
-
-A small two-column strip joins the committed correction to Next: observed same-scope recall and the actual next review time. Recent marks carry text alternatives, not color alone. No mastery meter, extra panel, disclosure or self-rating. Guided results remain distinct; unknown evidence is not zero percent.
+Everything stacks into one column. The study session keeps the scrollback with two receded items above and one below. Judgment size drops to 72 px. Key hints are hidden; the mic and Check are thumb-reachable at the bottom. Nothing scrolls sideways.

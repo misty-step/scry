@@ -1,3 +1,5 @@
+mod common;
+
 use scry::{
     engine,
     learning::new_card,
@@ -10,9 +12,11 @@ const NOW: i64 = 1_800_000_000_000;
 fn query(nonce: &str) -> BTreeMap<String, String> {
     BTreeMap::from([("__nonce".into(), nonce.into())])
 }
+/// The retired authored demo as it left the notebook, under this file's CSRF.
 fn fixture() -> App {
-    let mut app = App::new("01234567890123456789012345678901".into());
-    engine::seed_fixture(&mut app, NOW).unwrap();
+    let (mut app, now) = common::earlier("question-cold-choice");
+    assert_eq!(now, NOW);
+    app.csrf = "01234567890123456789012345678901".into();
     app
 }
 /// Text a reader can see: markup, attributes and hidden fields removed.
@@ -189,7 +193,7 @@ fn legacy_occurrence(app: &App, phase: &str) -> Occurrence {
 }
 
 #[test]
-fn understanding_reference_returns_to_notebook_and_retired_preparation_to_review() {
+fn a_goal_reference_offers_no_practice_and_retired_preparation_returns_to_review() {
     let app = revived();
     let reference = web::render(
         &app,
@@ -198,8 +202,11 @@ fn understanding_reference_returns_to_notebook_and_retired_preparation_to_review
         NOW,
         None,
     );
-    assert!(reference.contains("href=\"/notebook\">Go to practice →</a>"));
-    assert!(!reference.contains("href=\"/\">Go to practice →</a>"));
+    // The earlier concept notebook is history: its reference leads to no practice.
+    assert!(reference.contains("data-state=\"goal\""));
+    assert!(reference.contains(LEGACY_PROMPT));
+    assert!(!reference.contains("Go to practice"));
+    assert!(!reference.contains("&amp; practice"));
     let preparation = web::render(
         &app,
         "/goals/legacy-import-goal-00000000000000000000000000000000",
@@ -284,11 +291,13 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
     idle.occurrence = None;
     assert!(!check(&idle, "/notebook").contains("taking shape"));
 
-    // The new-idea introduction names the idea by its question, once.
+    // A question that was never introduced is shown once, as unanswered,
+    // under its goal: its own title would repeat it.
     app.occurrence = Some(legacy_occurrence(&app, "intro"));
     let intro = check(&app, "/notebook");
     assert_eq!(intro.matches(LEGACY_PROMPT).count(), 1);
-    assert!(intro.contains("The Sacramento and the American"));
+    assert!(intro.contains(LEGACY_GOAL_TITLE));
+    assert!(intro.contains("Not answered."));
 
     // Above its held result, the chip names and links the goal instead of
     // repeating the question.
@@ -310,17 +319,17 @@ fn imported_material_shows_its_own_words_not_import_labels_or_identifiers() {
     assert!(held.contains(LEGACY_GOAL_TITLE));
     assert_eq!(held.matches(LEGACY_PROMPT).count(), 1);
 
-    // While its question waits for an unaided answer, the imported idea and
-    // goal stay behind the same fence as generated material.
+    // A question left unanswered masks nothing: the Map names the imported
+    // idea by its question and the goal by its title, as with nothing held.
     app.occurrence = Some(legacy_occurrence(&app, "question"));
-    let fenced = check(&app, "/map");
-    assert!(!fenced.contains(LEGACY_PROMPT));
-    assert!(!fenced.contains(LEGACY_GOAL_TITLE));
-    assert!(fenced.contains("Current idea"));
+    let open = check(&app, "/map");
+    assert!(open.contains(LEGACY_PROMPT));
+    assert!(open.contains(LEGACY_GOAL_TITLE));
+    assert!(!open.contains("Current idea") && !open.contains("Current study"));
 }
 
 #[test]
-fn ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume() {
+fn ready_imports_are_never_shown_as_stopped_despite_unfinished_latest_jobs_through_resume() {
     for status in [
         "failed",
         "paused",
@@ -349,11 +358,12 @@ fn ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume() 
             let before = app.clone();
             let home = web::render(&app, "/notebook", &query("ready-import"), NOW, None);
             assert!(
-                home.contains("data-state=\"caught-up\""),
+                home.contains("data-state=\"earlier-empty\""),
                 "{status}, paused={paused}"
             );
-            assert!(home.contains("A good place to pause."));
-            assert!(home.contains("class=\"button primary\" href=\"/library\""));
+            assert!(home.contains("<h1>Earlier practice</h1>"));
+            assert!(home.contains("No question is held."));
+            assert!(!home.contains("Your next practice"));
             assert!(!home.contains("Review your saved request"));
             assert!(!home.contains("taking shape"));
             let map = web::render(&app, "/map", &query("ready-map"), NOW, None);
@@ -387,7 +397,7 @@ fn ready_imports_stay_caught_up_despite_unfinished_latest_jobs_through_resume() 
 }
 
 #[test]
-fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rules() {
+fn unfinished_imports_are_never_shown_as_stopped_through_resume_and_keep_their_recovery_rules() {
     let mut app = revived();
     app.goals.retain(|_, goal| goal.concept_ids.is_empty());
     app.jobs
@@ -403,8 +413,8 @@ fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rule
         assert_eq!(app.restored_paused, paused);
         let before = app.clone();
         let home = web::render(&app, "/notebook", &query("import-stream"), NOW, None);
-        assert!(home.contains("data-state=\"caught-up\""));
-        assert!(home.contains("A good place to pause."));
+        assert!(home.contains("data-state=\"earlier-empty\""));
+        assert!(home.contains("<h1>Earlier practice</h1>"));
         assert!(!home.contains("taking shape"));
         assert!(!home.contains("Review your saved request"));
         assert_eq!(
@@ -471,25 +481,29 @@ fn unfinished_imports_stay_caught_up_through_resume_and_keep_their_recovery_rule
     )));
 }
 
+/// A question left unanswered is no longer a Prompt awaiting an answer: it
+/// protects nothing. Its Goal, Concept, note and saved answer are readable
+/// where they always were, and `/notebook` shows it as unanswered.
 #[test]
-fn answer_and_related_reference_are_absent_before_assistance() {
+fn a_held_unanswered_question_hides_nothing_of_the_notebook() {
     let mut app = fixture();
     let occurrence = app.occurrence.as_mut().unwrap();
     occurrence.phase = "question".into();
     occurrence.assisted = false;
     occurrence.presentation.kind = "recall".into();
-    occurrence.presentation.answer = "PRIVATE_EXPECTED_ANSWER".into();
-    occurrence.presentation.explanation = "PRIVATE_EXPLANATION".into();
+    occurrence.presentation.choices.clear();
+    occurrence.presentation.answer = "SAVED_EXPECTED_ANSWER".into();
+    occurrence.presentation.explanation = "SAVED_EXPLANATION".into();
     let concept_id = occurrence.concept_id.clone();
     let question_id = occurrence.question_id.clone();
     let concept = app.concepts.get_mut(&concept_id).unwrap();
-    concept.name = "PRIVATE_CONCEPT_NAME".into();
-    concept.summary = "PRIVATE_CONCEPT_SUMMARY".into();
-    concept.notes[0].text = "PRIVATE_NOTE".into();
+    concept.name = "SAVED_CONCEPT_NAME".into();
+    concept.summary = "SAVED_CONCEPT_SUMMARY".into();
+    concept.notes[0].text = "SAVED_NOTE".into();
     let goal_id = concept.goal_id.clone();
     let goal = app.goals.get_mut(&goal_id).unwrap();
-    goal.title = "PRIVATE_GOAL_TITLE".into();
-    goal.intent = "PRIVATE_GOAL_INTENT".into();
+    goal.title = "SAVED_GOAL_TITLE".into();
+    goal.intent = "SAVED_GOAL_INTENT".into();
     let current = app
         .questions
         .get_mut(&question_id)
@@ -497,112 +511,122 @@ fn answer_and_related_reference_are_absent_before_assistance() {
         .versions
         .last_mut()
         .unwrap();
-    current.answer = "PRIVATE_EXPECTED_ANSWER".into();
-    current.explanation = "PRIVATE_EXPLANATION".into();
-    for path in [
-        "/notebook".to_string(),
-        "/map".into(),
-        "/history".into(),
-        "/settings".into(),
-        format!("/goals/{goal_id}"),
-        format!("/concepts/{concept_id}"),
-        format!("/questions/{question_id}/edit"),
-    ] {
-        let html = web::render(&app, &path, &query("nonce-one"), NOW, None);
-        for secret in [
-            "PRIVATE_EXPECTED_ANSWER",
-            "PRIVATE_EXPLANATION",
-            "PRIVATE_CONCEPT_NAME",
-            "PRIVATE_CONCEPT_SUMMARY",
-            "PRIVATE_NOTE",
-            "PRIVATE_GOAL_TITLE",
-            "PRIVATE_GOAL_INTENT",
-        ] {
-            assert!(!html.contains(secret), "{secret} leaked on {path}");
+    current.answer = "SAVED_EXPECTED_ANSWER".into();
+    current.explanation = "SAVED_EXPLANATION".into();
+    let shown = [
+        ("/notebook".to_string(), vec!["SAVED_CONCEPT_NAME"]),
+        (
+            "/map".into(),
+            vec!["SAVED_CONCEPT_NAME", "SAVED_GOAL_TITLE"],
+        ),
+        (
+            format!("/goals/{goal_id}"),
+            vec![
+                "SAVED_GOAL_TITLE",
+                "SAVED_GOAL_INTENT",
+                "SAVED_CONCEPT_NAME",
+                "SAVED_CONCEPT_SUMMARY",
+                "SAVED_NOTE",
+            ],
+        ),
+        (
+            format!("/concepts/{concept_id}"),
+            vec![
+                "SAVED_CONCEPT_NAME",
+                "SAVED_CONCEPT_SUMMARY",
+                "SAVED_NOTE",
+                "SAVED_EXPECTED_ANSWER",
+                "SAVED_EXPLANATION",
+            ],
+        ),
+        (
+            format!("/questions/{question_id}/edit"),
+            vec!["SAVED_EXPECTED_ANSWER", "SAVED_EXPLANATION"],
+        ),
+    ];
+    for (path, saved) in &shown {
+        let html = web::render(&app, path, &query("nonce-one"), NOW, None);
+        for text in saved {
+            assert!(html.contains(text), "{text} is not shown on {path}");
         }
+        assert!(!html.contains("data-state=\"gate\""), "a gate on {path}");
+        assert!(!html.contains("Look it up"), "a gate on {path}");
         assert!(!html.contains("style=\""));
         assert!(!html.contains("<script>"));
     }
-    app.occurrence.as_mut().unwrap().assisted = true;
-    let page = web::render(
-        &app,
-        &format!("/concepts/{concept_id}"),
-        &query("nonce-two"),
-        NOW,
-        None,
-    );
-    assert!(page.contains("PRIVATE_NOTE"));
-    assert!(page.contains("PRIVATE_EXPECTED_ANSWER"));
+    // The question itself is shown as it was left: unanswered, with no answer beside it.
+    let held = web::render(&app, "/notebook", &query("nonce-two"), NOW, None);
+    assert!(held.contains("data-state=\"earlier-unanswered\""));
+    assert!(held.contains("<h2>Not answered.</h2>"));
+    assert!(!held.contains("SAVED_EXPECTED_ANSWER") && !held.contains("SAVED_EXPLANATION"));
+    assert!(!held.contains("<form"));
 }
 
+/// An answer saved while its check was still queued is history too: nothing
+/// is hidden behind it, and no page offers to record help or to wait for it.
 #[test]
-fn pending_check_keeps_reference_private_without_offering_an_invalid_help_mutation() {
-    let mut app = fixture();
-    let initial = app.occurrence.as_ref().unwrap().clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "history-before-pending-check".into()),
-        ("occurrence_id".into(), initial.id),
-        ("answer".into(), initial.presentation.answer),
-    ]);
-    engine::mutate(&mut app, "/review/answer", &fields, NOW, "history").unwrap();
+fn an_ungraded_saved_answer_hides_nothing_and_offers_no_help_mutation() {
+    // A graded answer in history, and the held question set back to checking.
+    let (mut app, now) = common::earlier("result-held");
     let historical = app.events.last_mut().unwrap();
-    historical.presentation.prompt = "PENDING_PRIVATE_HISTORY_PROMPT".into();
-    historical.presentation.answer = "PENDING_PRIVATE_ANSWER".into();
-    historical.presentation.explanation = "PENDING_PRIVATE_EXPLANATION".into();
-    historical.answer = "PENDING_PRIVATE_ANSWER".into();
+    historical.presentation.prompt = "PENDING_HISTORY_PROMPT".into();
+    historical.presentation.answer = "PENDING_ANSWER".into();
+    historical.presentation.explanation = "PENDING_EXPLANATION".into();
+    historical.answer = "PENDING_ANSWER".into();
     let occurrence = app.occurrence.as_mut().unwrap();
     occurrence.phase = "checking".into();
     occurrence.assisted = false;
-    occurrence.presentation.answer = "PENDING_PRIVATE_ANSWER".into();
-    occurrence.presentation.explanation = "PENDING_PRIVATE_EXPLANATION".into();
+    occurrence.answer = Some("PENDING_SUBMITTED".into());
+    occurrence.presentation.answer = "PENDING_ANSWER".into();
+    occurrence.presentation.explanation = "PENDING_EXPLANATION".into();
     let concept_id = occurrence.concept_id.clone();
     let question_id = occurrence.question_id.clone();
     let concept = app.concepts.get_mut(&concept_id).unwrap();
-    concept.name = "PENDING_PRIVATE_CONCEPT".into();
-    concept.summary = "PENDING_PRIVATE_SUMMARY".into();
-    concept.notes[0].text = "PENDING_PRIVATE_NOTE".into();
+    concept.name = "PENDING_CONCEPT".into();
+    concept.notes[0].text = "PENDING_NOTE".into();
     let goal_id = concept.goal_id.clone();
-    let goal = app.goals.get_mut(&goal_id).unwrap();
-    goal.title = "PENDING_PRIVATE_GOAL".into();
-    goal.intent = "PENDING_PRIVATE_INTENT".into();
-    for path in [
-        "/notebook".to_string(),
-        "/map".into(),
-        "/history".into(),
-        "/settings".into(),
-        format!("/goals/{goal_id}"),
-        format!("/concepts/{concept_id}"),
-        format!("/questions/{question_id}/edit"),
-    ] {
-        let html = web::render(&app, &path, &query("checking"), NOW, None);
-        for secret in [
-            "PENDING_PRIVATE_ANSWER",
-            "PENDING_PRIVATE_EXPLANATION",
-            "PENDING_PRIVATE_CONCEPT",
-            "PENDING_PRIVATE_SUMMARY",
-            "PENDING_PRIVATE_NOTE",
-            "PENDING_PRIVATE_GOAL",
-            "PENDING_PRIVATE_INTENT",
-            "PENDING_PRIVATE_HISTORY_PROMPT",
+    app.goals.get_mut(&goal_id).unwrap().title = "PENDING_GOAL".into();
+    let shown = [
+        (
+            "/notebook".to_string(),
+            vec!["PENDING_SUBMITTED", "PENDING_ANSWER", "PENDING_CONCEPT"],
+        ),
+        ("/map".into(), vec!["PENDING_CONCEPT", "PENDING_GOAL"]),
+        (
+            "/history".into(),
+            vec!["PENDING_HISTORY_PROMPT", "PENDING_ANSWER"],
+        ),
+        ("/settings".into(), vec![]),
+        (
+            format!("/goals/{goal_id}"),
+            vec!["PENDING_GOAL", "PENDING_NOTE"],
+        ),
+        (
+            format!("/concepts/{concept_id}"),
+            vec!["PENDING_CONCEPT", "PENDING_NOTE"],
+        ),
+        (format!("/questions/{question_id}/edit"), vec![]),
+    ];
+    for (path, saved) in &shown {
+        let html = web::render(&app, path, &query("checking"), now, None);
+        for text in saved {
+            assert!(html.contains(text), "{text} is not shown on {path}");
+        }
+        for offer in [
+            "Return to your saved answer",
+            "action=\"/review/help\"",
+            "Look it up",
+            "An earlier attempt is hidden",
+            "Checking your meaning.",
+            "data-poll",
         ] {
-            assert!(
-                !html.contains(secret),
-                "{secret} leaked while checking on {path}"
-            );
-        }
-        if path.starts_with("/goals/")
-            || path.starts_with("/concepts/")
-            || path.starts_with("/questions/")
-        {
-            assert!(html.contains("Return to your saved answer"));
-            assert!(!html.contains("action=\"/review/help\""));
-            assert!(!html.contains("Look it up"));
-        }
-        if path == "/history" {
-            assert!(html.contains("An earlier attempt is hidden"));
+            assert!(!html.contains(offer), "{offer} on {path}");
         }
     }
+    let held = web::render(&app, "/notebook", &query("held"), now, None);
+    assert!(held.contains("data-state=\"earlier-ungraded\""));
+    assert!(held.contains("Your answer is saved, not graded."));
+    assert!(held.contains("data-check=\"none\""));
 }
 
 #[test]
@@ -626,8 +650,8 @@ fn author_and_model_text_is_escaped_in_every_context() {
 #[test]
 fn every_form_has_a_unique_nonce_bound_operation_and_native_fallback() {
     let app = fixture();
-    let first = web::render(&app, "/notebook", &query("first-request"), NOW, None);
-    let second = web::render(&app, "/notebook", &query("second-request"), NOW, None);
+    let first = web::render(&app, "/settings", &query("first-request"), NOW, None);
+    let second = web::render(&app, "/settings", &query("second-request"), NOW, None);
     let ids = |html: &str| {
         html.split("name=\"operation_id\" value=\"")
             .skip(1)
@@ -650,12 +674,19 @@ fn every_form_has_a_unique_nonce_bound_operation_and_native_fallback() {
         first.matches("<form ").count(),
         first.matches("name=\"csrf\"").count()
     );
-    assert!(first.contains("form method=\"post\" action=\"/review/answer\""));
+    assert!(first.contains("form method=\"post\" action=\"/settings/backup\""));
     assert_eq!(first.matches("<h1").count(), 1);
+    // The earlier concept notebook's held question is read-only: no form at all.
+    let held = web::render(&app, "/notebook", &query("first-request"), NOW, None);
+    assert!(held.contains("data-state=\"earlier-unanswered\""));
+    assert_eq!(held.matches("<form ").count(), 0);
+    assert_eq!(held.matches("<h1").count(), 1);
 }
 
+/// The authored demo seeded an earlier concept notebook; it is retired, so not
+/// even an isolated synthetic preview offers it. The preview keeps its badge.
 #[test]
-fn synthetic_fixture_is_never_advertised_in_the_private_application() {
+fn the_authored_demo_is_offered_nowhere_not_even_in_a_synthetic_preview() {
     let app = App::new("01234567890123456789012345678901".into());
     let private = web::render(&app, "/notebook", &query("private"), NOW, None);
     assert!(!private.contains("/__fixture"));
@@ -663,15 +694,19 @@ fn synthetic_fixture_is_never_advertised_in_the_private_application() {
     let mut synthetic_query = query("synthetic");
     synthetic_query.insert("__synthetic".into(), "true".into());
     let synthetic = web::render(&app, "/notebook", &synthetic_query, NOW, None);
-    assert!(synthetic.contains("/__fixture"));
+    assert!(!synthetic.contains("/__fixture"));
+    assert!(!synthetic.contains("Explore an authored demo"));
+    assert!(!synthetic.contains("<form "));
     assert!(synthetic.contains("Synthetic notebook"));
 }
 
+/// A saved question's page is the question as stored. Its edit form is retired:
+/// wording a refused edit sent back is not echoed, and no edit field remains.
 #[test]
-fn edits_carry_content_identity_and_preserve_rejected_drafts() {
-    let mut app = fixture();
-    app.occurrence.as_mut().unwrap().assisted = true;
+fn a_saved_question_page_shows_it_as_stored_and_offers_no_edit() {
+    let app = fixture();
     let question_id = app.occurrence.as_ref().unwrap().question_id.clone();
+    let stored = app.questions[&question_id].content().clone();
     let mut fields = query("edit");
     fields.insert("prompt".into(), "A corrected question <draft>".into());
     let html = web::render(
@@ -681,30 +716,35 @@ fn edits_carry_content_identity_and_preserve_rejected_drafts() {
         NOW,
         None,
     );
-    assert!(html.contains("A corrected question &lt;draft&gt;"));
-    for field in ["content_version", "kind", "basis", "quotes", "use_draft"] {
-        assert!(
-            html.contains(&format!("name=\"{field}\"")),
-            "Missing edit contract field {field}"
-        );
+    assert!(html.contains("data-state=\"earlier-question\""));
+    assert!(!html.contains("A corrected question"));
+    assert!(html.contains(&web::escape(&stored.prompt)));
+    assert!(html.contains(&web::escape(&stored.answer)));
+    assert!(html.contains(&web::escape(&stored.explanation)));
+    for choice in &stored.choices {
+        assert!(html.contains(&web::escape(choice)));
     }
+    for field in [
+        "content_version",
+        "kind",
+        "basis",
+        "quotes",
+        "use_draft",
+        "csrf",
+    ] {
+        assert!(!html.contains(&format!("name=\"{field}\"")), "{field}");
+    }
+    assert!(!html.contains("<form "));
 }
 
 #[test]
-fn held_result_names_authority_and_requires_deliberate_next() {
-    let mut app = fixture();
-    let o = app.occurrence.as_ref().unwrap().clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "web-result-answer-operation".into()),
-        ("occurrence_id".into(), o.id),
-        ("answer".into(), o.presentation.answer),
-    ]);
-    engine::mutate(&mut app, "/review/answer", &fields, NOW, "result").unwrap();
-    let html = web::render(&app, "/notebook", &query("result"), NOW, None);
-    assert!(html.contains("data-state=\"result\""));
-    assert!(html.contains("data-next"));
-    assert!(html.contains("Matched the saved answer"));
+fn held_result_names_its_authority_and_offers_no_next() {
+    let (app, now) = common::earlier("result-held");
+    let html = web::render(&app, "/notebook", &query("result"), now, None);
+    assert!(html.contains("data-state=\"earlier-result\""));
+    assert!(!html.contains("data-next") && !html.contains("/review/next"));
+    assert!(!html.contains("Next question") && !html.contains("<form"));
+    assert!(html.contains("<h2>Recalled.</h2><p>Exact match</p>"));
     assert!(html.contains("The answer"));
     assert!(!html.contains("http-equiv=\"refresh\""));
     assert!(web::asset("/assets/fonts/Literata.woff2").is_some());
@@ -713,41 +753,12 @@ fn held_result_names_authority_and_requires_deliberate_next() {
 
 #[test]
 fn assisted_results_do_not_offer_automatic_grade_overrides() {
-    let mut app = fixture();
-    app.occurrence.as_mut().unwrap().assisted = true;
-    let o = app.occurrence.as_ref().unwrap().clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        (
-            "operation_id".into(),
-            "web-assisted-answer-operation".into(),
-        ),
-        ("occurrence_id".into(), o.id),
-        ("answer".into(), o.presentation.answer),
-    ]);
-    engine::mutate(&mut app, "/review/answer", &fields, NOW, "assisted").unwrap();
-    let html = web::render(&app, "/notebook", &query("assisted"), NOW, None);
-    assert!(html.contains("recorded as helped practice"));
+    // An exact answer given after the reference was opened.
+    let (app, now) = common::earlier("result-helped");
+    let html = web::render(&app, "/notebook", &query("assisted"), now, None);
+    assert!(html.contains("<h2>With help.</h2><p>Exact match</p>"));
     assert!(!html.contains("/review/override"));
     assert!(!html.contains("Count as a miss"));
-}
-
-#[test]
-fn repair_dispute_form_fences_a_deliberate_schedule_reset() {
-    let app = fixture();
-    let html = web::render(&app, "/notebook", &query("dispute"), NOW, None);
-    let form = html
-        .split("/dispute\"")
-        .nth(1)
-        .unwrap()
-        .split("</form>")
-        .next()
-        .unwrap();
-    assert!(form.contains("name=\"content_version\""));
-    assert!(form.contains("name=\"schedule_version\""));
-    assert!(form.contains("name=\"reset\" value=\"true\""));
-    assert!(form.contains("name=\"text\""));
-    assert!(!form.contains(" checked"));
 }
 
 fn captured_request() -> App {
@@ -829,29 +840,36 @@ fn restored_pause_is_truthful_across_preparation_views_without_retries() {
 }
 
 #[test]
-fn restored_pause_applies_to_meaning_checks_and_fix_drafts_without_exposing_answers() {
-    let mut app = fixture();
-    app.restored_paused = true;
-    let o = app.occurrence.as_mut().unwrap();
-    o.presentation.kind = "recall".into();
-    o.assisted = false;
+fn a_restored_notebook_shows_a_queued_check_as_saved_and_keeps_fix_drafts_as_history() {
+    // A non-exact answer saved in a restored notebook, its check queued.
+    let (mut app, now) = common::earlier("queued-while-paused");
+    assert!(app.restored_paused);
+    let o = app.occurrence.as_ref().unwrap();
+    assert_eq!(o.phase, "checking");
+    let saved = o.answer.clone().unwrap();
     let question = o.question_id.clone();
     let goal = app.questions[&question].goal_id.clone();
-    let fields = BTreeMap::from([
-        ("csrf".into(), app.csrf.clone()),
-        ("operation_id".into(), "paused-meaning-check".into()),
-        ("occurrence_id".into(), o.id.clone()),
-        ("answer".into(), "A non-exact saved answer".into()),
-    ]);
-    engine::mutate(&mut app, "/review/answer", &fields, NOW, "paused-check").unwrap();
-    assert_eq!(app.occurrence.as_ref().unwrap().phase, "checking");
-    for path in ["/notebook".to_string(), format!("/goals/{goal}")] {
-        let html = web::render(&app, &path, &query("paused-check"), NOW, None);
-        assert!(html.contains("Your meaning check is paused."));
-        assert!(html.contains("href=\"/settings#preparation\""));
+    // The check stays queued and is named by that status. Resuming paused
+    // judgment would not start it, so nothing points to Settings for it.
+    let held = web::render(&app, "/notebook", &query("paused-check"), now, None);
+    assert!(held.contains("data-state=\"earlier-ungraded\""));
+    assert!(held.contains("Your answer is saved, not graded."));
+    assert!(held.contains("data-check=\"queued\">Check recorded: queued, never sent.</p>"));
+    assert!(held.contains(&web::escape(&saved)));
+    let reference = web::render(
+        &app,
+        &format!("/goals/{goal}"),
+        &query("paused-goal"),
+        now,
+        None,
+    );
+    assert!(reference.contains("data-state=\"goal\""));
+    for html in [&held, &reference] {
+        assert!(!html.contains("Your meaning check is paused."));
+        assert!(!html.contains("href=\"/settings#preparation\""));
         assert!(!html.contains("Checking your meaning."));
-        assert!(!html.contains("action=\"/review/help\""));
-        assert!(!html.contains(&app.occurrence.as_ref().unwrap().presentation.explanation));
+        assert!(!html.contains("action=\"/review/"));
+        assert!(!html.contains("data-poll"));
     }
     app.occurrence = None;
     let fields = BTreeMap::from([
@@ -866,7 +884,7 @@ fn restored_pause_applies_to_meaning_checks_and_fix_drafts_without_exposing_answ
         &mut app,
         &format!("/questions/{question}/fix"),
         &fields,
-        NOW,
+        now,
         "paused-fix",
     )
     .unwrap();
@@ -874,7 +892,7 @@ fn restored_pause_applies_to_meaning_checks_and_fix_drafts_without_exposing_answ
         &app,
         &format!("/questions/{question}/edit"),
         &query("paused-fix"),
-        NOW,
+        now,
         None,
     );
     assert!(html.contains("Saved draft history"));
@@ -942,12 +960,12 @@ fn stream_distinguishes_stopped_partial_archived_and_mixed_preparations() {
     goal.status = "partial".into();
     app.jobs.values_mut().next().unwrap().status = "partial".into();
     let partial = web::render(&app, "/notebook", &query("partial"), NOW, None);
-    assert!(partial.contains("data-state=\"caught-up\""));
+    assert!(partial.contains("data-state=\"earlier-empty\""));
     assert!(partial.contains("Saved preparation history · generation retired"));
     assert!(!partial.contains("taking shape"));
     app.goals.values_mut().next().unwrap().archived = true;
     let archived = web::render(&app, "/notebook", &query("archived"), NOW, None);
-    assert!(archived.contains("Follow your curiosity."));
+    assert!(archived.contains("data-state=\"earlier-empty\""));
     assert!(!archived.contains("Review your saved request"));
 
     let mut app = captured_request();
@@ -988,15 +1006,4 @@ fn continuous_home_has_one_study_action_and_closed_browse_without_writes() {
     assert!(!html.contains("No reviews due"));
     assert!(!html.contains("Rest for now"));
     assert_eq!(serde_json::to_value(&app).unwrap(), before);
-}
-
-#[test]
-fn checkpoint_control_is_not_added_to_legacy_review_forms() {
-    let mut app = fixture();
-    let occurrence = app.occurrence.as_mut().unwrap();
-    occurrence.phase = "question".into();
-    occurrence.presentation.kind = "recall".into();
-    let html = web::render(&app, "/notebook", &query("legacy-checkpoint"), NOW, None);
-    assert!(html.contains("action=\"/review/answer\""));
-    assert!(!html.contains("data-checkpoint-save"));
 }

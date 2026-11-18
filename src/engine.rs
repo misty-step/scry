@@ -7,7 +7,7 @@ use crate::{
     model::*,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,18 +34,6 @@ fn id(seed: &str, label: &str) -> String {
 }
 fn field<'a>(fields: &'a BTreeMap<String, String>, key: &str) -> &'a str {
     fields.get(key).map(String::as_str).unwrap_or("")
-}
-fn boolean(fields: &BTreeMap<String, String>, key: &str) -> AppResult<bool> {
-    match field(fields, key) {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        _ => Err(AppError::new(422, "Choose an explicit result.")),
-    }
-}
-fn version(fields: &BTreeMap<String, String>) -> AppResult<u64> {
-    field(fields, "content_version")
-        .parse()
-        .map_err(|_| AppError::conflict())
 }
 fn result(redirect: impl Into<String>, entity_id: Option<String>) -> MutationResult {
     MutationResult {
@@ -79,8 +67,22 @@ pub fn admit_current_mutation(path: &str) -> AppResult<()> {
             "Native content generation is retired. Add externally authored content in Library; your saved material and history are unchanged.",
         ));
     }
+    // The earlier concept notebook is history: nothing presents, answers,
+    // checks, dismisses, archives, edits, flags, focuses, pauses or paces it,
+    // and no demo seeds one. Refused here, before any receipt, save or alarm,
+    // so a notebook in any stored state is left as it is. `/settings` is matched
+    // exactly: backup, resume and paid judgment live beneath it.
+    if path.starts_with("/review/")
+        || (parts.len() == 3 && matches!(parts[0], "goals" | "concepts" | "questions"))
+        || matches!(path, "/settings" | "/__fixture")
+    {
+        return Err(AppError::new(410, EARLIER_NOTEBOOK_RETIRED));
+    }
     Ok(())
 }
+
+/// What a retired earlier-notebook action answers, in the browser and the API.
+pub const EARLIER_NOTEBOOK_RETIRED: &str = "The earlier concept notebook is kept as history. Scry no longer serves or grades its questions; everything saved is unchanged.";
 
 pub fn mutate(
     app: &mut App,
@@ -89,13 +91,26 @@ pub fn mutate(
     now: i64,
     seed: &str,
 ) -> AppResult<MutationResult> {
+    mutate_browser(app, path, fields, now, seed, false)
+}
+
+/// The signed-in Owner's request where the serving Scry may reach Jev.
+/// `mutate` is this with `jev` false.
+pub fn mutate_browser(
+    app: &mut App,
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+    jev: bool,
+) -> AppResult<MutationResult> {
     if field(fields, "csrf") != app.csrf || app.csrf.len() < 24 {
         return Err(AppError::new(
             403,
             "Your session needs to be refreshed before saving.",
         ));
     }
-    mutate_as(app, path, fields, now, seed, MutationActor::Browser)
+    mutate_judged(app, path, fields, now, seed, MutationActor::Browser, jev)
 }
 
 pub fn mutate_as(
@@ -105,6 +120,22 @@ pub fn mutate_as(
     now: i64,
     seed: &str,
     actor: MutationActor<'_>,
+) -> AppResult<MutationResult> {
+    mutate_judged(app, path, fields, now, seed, actor, false)
+}
+
+/// `jev` says whether the serving Scry can reach Jev at all. A memorization
+/// answer is left for Jev only where that holds, the Owner has turned paid
+/// judgment on and the actor carries paid permission. Wherever `jev` is false,
+/// every answer is graded exactly as it was before paid judgment existed.
+pub fn mutate_judged(
+    app: &mut App,
+    path: &str,
+    fields: &BTreeMap<String, String>,
+    now: i64,
+    seed: &str,
+    actor: MutationActor<'_>,
+    jev: bool,
 ) -> AppResult<MutationResult> {
     let operation = field(fields, "operation_id");
     if !(16..=128).contains(&operation.len())
@@ -134,8 +165,32 @@ pub fn mutate_as(
     if path == "/tokens/create" && field(fields, "paid") == "true" && !actor.paid() {
         return Err(owner_token::paid_refusal());
     }
+    // The switch that lets answers leave Scry is the signed-in Owner's alone.
+    if path == "/settings/judgment" && actor.token_id().is_some() {
+        return Err(AppError::new(
+            403,
+            "Only the signed-in Owner can turn paid judgment on or off.",
+        ));
+    }
     let mut next = app.clone();
-    let response = apply(&mut next, path, fields, now, seed)?;
+    let judging = crate::study::Judging {
+        capable: jev,
+        paid: actor.paid(),
+    };
+    let response = apply(&mut next, path, fields, now, seed, judging)?;
+    // A token cannot create one that outlives it: one that expires later than
+    // it does, or never. The signed-in Owner's tokens are unbounded.
+    if path == "/tokens/create"
+        && let MutationActor::Token(acting) = actor
+        && let Some(limit) = acting.expires_ms
+        && response
+            .entity_id
+            .as_ref()
+            .and_then(|id| next.owner_tokens.get(id))
+            .is_none_or(|created| created.info.expires_ms.is_none_or(|t| t > limit))
+    {
+        return Err(owner_token::expiry_refusal());
+    }
     if let Some(checkpoint) = &mut next.practice.answer_checkpoint
         && checkpoint.draft.as_ref().is_some_and(|draft| {
             next.practice.current.as_ref().is_none_or(|current| {
@@ -155,14 +210,6 @@ pub fn mutate_as(
             job.acting_token = acting_token.clone();
         }
     }
-    for (id, assessment) in &mut next.assessments {
-        if app.assessments.get(id) != Some(assessment) && assessment.status == "queued" {
-            if !actor.paid() {
-                return Err(owner_token::paid_refusal());
-            }
-            assessment.acting_token = acting_token.clone();
-        }
-    }
     next.operations.insert(
         operation.into(),
         Receipt {
@@ -176,31 +223,6 @@ pub fn mutate_as(
     next.revision += 1;
     *app = next;
     Ok(response)
-}
-
-fn active_occurrence(
-    app: &App,
-    fields: &BTreeMap<String, String>,
-    phase: &[&str],
-) -> AppResult<Occurrence> {
-    let o = app.occurrence.as_ref().ok_or_else(AppError::conflict)?;
-    if o.id != field(fields, "occurrence_id") || !phase.contains(&o.phase.as_str()) {
-        return Err(AppError::conflict());
-    }
-    let q = app
-        .questions
-        .get(&o.question_id)
-        .ok_or_else(AppError::conflict)?;
-    if o.phase != "result"
-        && (q.archived
-            || q.schedule_version != o.schedule_version
-            || q.content().version != o.presentation.version
-            || app.goals.get(&q.goal_id).is_none_or(|g| g.archived)
-            || app.concepts.get(&q.concept_id).is_none_or(|c| c.archived))
-    {
-        return Err(AppError::conflict());
-    }
-    Ok(o.clone())
 }
 
 fn create_job(
@@ -296,9 +318,10 @@ fn apply(
     fields: &BTreeMap<String, String>,
     now: i64,
     seed: &str,
+    judging: crate::study::Judging,
 ) -> AppResult<MutationResult> {
     if path.starts_with("/practice/") {
-        return crate::study::mutate(app, path, fields, now, seed);
+        return crate::study::mutate_judged(app, path, fields, now, seed, judging);
     }
     if path.starts_with("/library/") {
         return crate::library::mutate(app, path, fields, seed);
@@ -408,182 +431,41 @@ fn apply(
             token.info.revoked_ms.get_or_insert(now);
             Ok(result("/settings", Some(id.into())))
         }
-        "/review/intro" => {
-            let o = active_occurrence(app, fields, &["intro"])?;
-            let known = boolean(fields, "known")?;
-            let c = app.concepts.get_mut(&o.concept_id).unwrap();
-            c.introduced_ms = Some(now);
-            c.exposure_ms = Some(now);
-            c.already_known = known;
-            let o = app.occurrence.as_mut().unwrap();
-            o.phase = "question".into();
-            o.assisted = true;
-            Ok(result("/", None))
-        }
-        "/review/answer" => {
-            let o = active_occurrence(app, fields, &["question"])?;
-            let answer = field(fields, "answer");
-            if !generation::text_valid(answer, 4000) {
+        // The Owner's switch for paid judgment. Turning it on needs a Scry that
+        // can reach Jev; turning it off is always possible.
+        "/settings/judgment" => {
+            if fields.keys().any(|k| {
+                !matches!(
+                    k.as_str(),
+                    "csrf" | "operation_id" | "revision" | "paid_judgment"
+                )
+            }) {
+                return Err(AppError::new(422, "Choose only paid judgment on or off."));
+            }
+            let on = match field(fields, "paid_judgment") {
+                "on" => true,
+                "off" => false,
+                _ => return Err(AppError::new(422, "Choose paid judgment on or off.")),
+            };
+            if on && !judging.capable {
                 return Err(AppError::new(
-                    422,
-                    "Write an answer, or choose Show me. Your answer has not been graded.",
+                    409,
+                    "Paid judgment is not available here. Nothing was changed.",
                 ));
             }
-            if o.presentation.kind == "choice"
-                && !o.presentation.choices.iter().any(|v| v == answer)
-            {
+            // A request that changes nothing is refused, so it leaves no
+            // record: a notebook that never used the switch stays one.
+            if on == app.preferences.paid_judgment {
                 return Err(AppError::new(
-                    422,
-                    "Choose one of the answers that was displayed.",
+                    409,
+                    if on {
+                        "Paid judgment is already on. Nothing was changed."
+                    } else {
+                        "Paid judgment is already off. Nothing was changed."
+                    },
                 ));
             }
-            let kind = if o.presentation.kind == "choice" {
-                "choice"
-            } else {
-                "recall"
-            };
-            if let Some(correct) = learning::exact_grade(
-                kind,
-                &o.presentation.answer,
-                &o.presentation.variants,
-                answer,
-            ) {
-                app.occurrence.as_mut().unwrap().answer = Some(answer.into());
-                commit_grade(app, correct, false, "exact", now, seed)?;
-            } else {
-                stage_assessment(app, answer, now, seed)?;
-            }
-            Ok(result("/", None))
-        }
-        "/review/reveal" => {
-            active_occurrence(app, fields, &["question"])?;
-            let o = app.occurrence.as_mut().unwrap();
-            o.answer = Some(String::new());
-            o.assisted = true;
-            commit_grade(app, false, true, "reveal", now, seed)?;
-            Ok(result("/", None))
-        }
-        "/review/help" => {
-            let o = active_occurrence(app, fields, &["question"])?;
-            app.occurrence.as_mut().unwrap().assisted = true;
-            app.concepts.get_mut(&o.concept_id).unwrap().exposure_ms = Some(now);
-            let to = field(fields, "return_to");
-            let q = &app.questions[&o.question_id];
-            let dest = if to == format!("/goals/{}", q.goal_id)
-                || to == format!("/concepts/{}", o.concept_id)
-                || to == format!("/questions/{}/edit", q.id)
-                || to == "/export"
-                || to == format!("/photos/{}", q.goal_id)
-            {
-                to.to_string()
-            } else {
-                format!("/concepts/{}", o.concept_id)
-            };
-            Ok(result(dest, None))
-        }
-        "/review/self" => {
-            active_occurrence(app, fields, &["self-check"])?;
-            let correct = boolean(fields, "correct")?;
-            commit_grade(app, correct, false, "learner", now, seed)?;
-            Ok(result("/", None))
-        }
-        "/review/retry" => {
-            let o = active_occurrence(app, fields, &["self-check"])?;
-            let assessment = o
-                .assessment_id
-                .as_ref()
-                .and_then(|id| app.assessments.get(id))
-                .ok_or_else(AppError::conflict)?;
-            if !matches!(
-                assessment.status.as_str(),
-                "failed" | "unknown" | "paused" | "superseded"
-            ) {
-                return Err(AppError::new(
-                    422,
-                    "This check completed without a native verdict. Your answer remains saved and ungraded.",
-                ));
-            }
-            let answer = o.answer.clone().unwrap_or_default();
-            stage_assessment(app, &answer, now, seed)?;
-            Ok(result("/", None))
-        }
-        "/review/override" => {
-            let o = active_occurrence(app, fields, &["result"])?;
-            let correct = boolean(fields, "correct")?;
-            let e = app
-                .events
-                .iter()
-                .find(|e| Some(&e.id) == o.result.as_ref().map(|r| &r.event_id))
-                .ok_or_else(AppError::conflict)?
-                .clone();
-            if !matches!(e.result.authority.as_str(), "exact" | "jev")
-                || e.assisted
-                || e.result.rating == 0
-                || app.overrides.iter().any(|v| v.event_id == e.id)
-                || correct == (e.result.outcome == "correct" || e.result.outcome == "warm_correct")
-            {
-                return Err(AppError::conflict());
-            }
-            let q = app
-                .questions
-                .get_mut(&e.question_id)
-                .ok_or_else(AppError::conflict)?;
-            if q.schedule_version != e.schedule_version {
-                return Err(AppError::conflict());
-            }
-            let rating = if e.assisted {
-                0
-            } else if correct {
-                3
-            } else {
-                1
-            };
-            let after = if rating == 0 {
-                e.before_card.clone()
-            } else {
-                learning::schedule(&e.before_card, rating, e.result.reviewed_ms)
-                    .map_err(|m| AppError::new(422, m))?
-            };
-            let before = q.card.clone();
-            q.card = after.clone();
-            q.schedule_version += 1;
-            app.overrides.push(Override {
-                id: id(seed, "override"),
-                event_id: e.id.clone(),
-                correct,
-                before_card: before,
-                after_card: after.clone(),
-                created_ms: now,
-            });
-            let r = app.occurrence.as_mut().unwrap().result.as_mut().unwrap();
-            r.outcome = if correct { "correct" } else { "wrong" }.into();
-            if e.assisted {
-                r.outcome = format!("warm_{}", r.outcome)
-            }
-            r.authority = "learner".into();
-            r.corrected = true;
-            r.rating = rating;
-            r.due_ms = after.due_ms;
-            Ok(result("/", None))
-        }
-        "/review/next" => {
-            let o = active_occurrence(app, fields, &["result"])?;
-            // The held answer remains visible until Next, including after a
-            // long absence. Dismissing it is fresh exposure, not cold recall.
-            app.concepts.get_mut(&o.concept_id).unwrap().exposure_ms = Some(now);
-            app.occurrence = None;
-            ensure_occurrence(app, now, seed)?;
-            Ok(result("/", None))
-        }
-        "/settings" => {
-            let pace = field(fields, "pace");
-            if !matches!(pace, "light" | "steady" | "intense") {
-                return Err(AppError::new(
-                    422,
-                    "Choose light, steady, or intense practice.",
-                ));
-            }
-            app.preferences.pace = pace.into();
+            app.preferences.paid_judgment = on;
             Ok(result("/settings", None))
         }
         "/settings/backup" => Ok(result("/settings", None)),
@@ -600,152 +482,6 @@ pub fn resume_work(app: &mut App) -> AppResult<()> {
         return Err(AppError::new(409, "Preparation is already resumed."));
     }
     app.restored_paused = false;
-    Ok(())
-}
-
-fn stage_assessment(app: &mut App, answer: &str, now: i64, seed: &str) -> AppResult<()> {
-    let o = app.occurrence.as_ref().unwrap();
-    if app
-        .assessments
-        .values()
-        .filter(|a| a.occurrence_id == o.id)
-        .count()
-        >= 3
-    {
-        return Err(AppError::new(
-            422,
-            "Three checks are saved. Your answer remains ungraded.",
-        ));
-    }
-    let aid = id(seed, "assessment");
-    app.assessments.insert(
-        aid.clone(),
-        Assessment {
-            acting_token: None,
-            id: aid.clone(),
-            occurrence_id: o.id.clone(),
-            question_id: o.question_id.clone(),
-            content_version: o.presentation.version,
-            schedule_version: o.schedule_version,
-            policy: if o.presentation.kind == "explain" {
-                "semantic-v1"
-            } else {
-                "short-v1"
-            }
-            .into(),
-            answer: answer.into(),
-            status: "queued".into(),
-            lease: None,
-            started_ms: None,
-            raw_response: None,
-            error: None,
-            created_ms: now,
-        },
-    );
-    let o = app.occurrence.as_mut().unwrap();
-    o.phase = "checking".into();
-    o.answer = Some(answer.into());
-    o.assessment_id = Some(aid);
-    Ok(())
-}
-
-fn commit_grade(
-    app: &mut App,
-    correct: bool,
-    reveal: bool,
-    authority: &str,
-    now: i64,
-    seed: &str,
-) -> AppResult<()> {
-    let o = app
-        .occurrence
-        .as_ref()
-        .ok_or_else(AppError::conflict)?
-        .clone();
-    let q = app
-        .questions
-        .get_mut(&o.question_id)
-        .ok_or_else(AppError::conflict)?;
-    if q.schedule_version != o.schedule_version
-        || q.content().version != o.presentation.version
-        || o.phase == "result"
-        || q.archived
-        || app.goals.get(&q.goal_id).is_none_or(|g| g.archived)
-        || app.concepts.get(&q.concept_id).is_none_or(|c| c.archived)
-    {
-        return Err(AppError::conflict());
-    }
-    // Self-check exposes the key only after staging; it cannot change whether the original attempt was aided.
-    let assisted = o.assisted || reveal;
-    let warm = assisted && !reveal;
-    let rating = if warm {
-        0
-    } else if correct {
-        3
-    } else {
-        1
-    };
-    let after = if rating == 0 {
-        q.card.clone()
-    } else {
-        learning::schedule(&o.before_card, rating, now).map_err(|m| AppError::new(422, m))?
-    };
-    let event_id = id(seed, "event");
-    let outcome = if reveal {
-        "revealed".into()
-    } else if warm {
-        if correct {
-            "warm_correct"
-        } else {
-            "warm_wrong"
-        }
-        .into()
-    } else if correct {
-        "correct".into()
-    } else {
-        "wrong".into()
-    };
-    q.card = after.clone();
-    q.schedule_version += 1;
-    // Feedback exposes the key after the saved attempt. Future presentations retain that help.
-    app.concepts.get_mut(&q.concept_id).unwrap().exposure_ms = Some(now);
-    let grade_policy = match authority {
-        "jev" => {
-            if o.presentation.kind == "explain" {
-                "semantic-v1"
-            } else {
-                "short-v1"
-            }
-        }
-        "learner" => "learner-v1",
-        _ => "exact-v1",
-    };
-    let review_result = ReviewResult {
-        event_id: event_id.clone(),
-        outcome,
-        authority: authority.into(),
-        rating,
-        reviewed_ms: now,
-        due_ms: after.due_ms,
-        corrected: false,
-    };
-    app.events.push(Event {
-        id: event_id,
-        occurrence_id: o.id.clone(),
-        question_id: o.question_id,
-        concept_id: o.concept_id,
-        presentation: o.presentation,
-        answer: o.answer.unwrap_or_default(),
-        assisted,
-        before_card: o.before_card,
-        after_card: after,
-        schedule_version: q.schedule_version,
-        algorithm: learning::event_algorithm(grade_policy),
-        result: review_result.clone(),
-    });
-    let o = app.occurrence.as_mut().unwrap();
-    o.phase = "result".into();
-    o.result = Some(review_result);
     Ok(())
 }
 
@@ -773,39 +509,6 @@ fn apply_entity(
                 return Err(AppError::conflict());
             }
             match action {
-                "pause" => {
-                    app.goals.get_mut(entity).unwrap().paused = !goal.paused;
-                }
-                "focus" => {
-                    for g in app.goals.values_mut() {
-                        g.focused = g.id == entity && !goal.focused;
-                    }
-                }
-                "archive" => {
-                    let g = app.goals.get_mut(entity).unwrap();
-                    g.archived = true;
-                    g.revision += 1;
-                    g.status = "archived".into();
-                    let questions: Vec<_> = app
-                        .questions
-                        .values()
-                        .filter(|q| q.goal_id == entity)
-                        .map(|q| q.id.clone())
-                        .collect();
-                    for question in questions {
-                        invalidate_pending(
-                            app,
-                            &question,
-                            "This goal was archived. Your saved answer was not graded.",
-                        );
-                    }
-                    for j in app.jobs.values_mut().filter(|j| {
-                        j.goal_id == entity
-                            && !matches!(j.status.as_str(), "ready" | "partial" | "failed")
-                    }) {
-                        j.status = "superseded".into();
-                    }
-                }
                 "retry" => {
                     let old = app
                         .jobs
@@ -865,81 +568,7 @@ fn apply_entity(
                 }
                 _ => return Err(AppError::new(404, "That action does not exist.")),
             }
-            Ok(result(
-                if matches!(action, "archive" | "pause" | "focus") {
-                    "/map".into()
-                } else {
-                    format!("/goals/{entity}")
-                },
-                None,
-            ))
-        }
-        "concepts" => {
-            let c = app
-                .concepts
-                .get(entity)
-                .ok_or_else(|| AppError::new(404, "That idea does not exist."))?
-                .clone();
-            if c.archived {
-                return Err(AppError::conflict());
-            }
-            match action {
-                "practice" => {
-                    if app.occurrence.is_some() {
-                        return Err(AppError::new(
-                            409,
-                            "Finish your current question before starting another practice.",
-                        ));
-                    }
-                    let q = app
-                        .questions
-                        .values()
-                        .filter(|q| q.concept_id == entity && !q.archived)
-                        .min_by_key(|q| q.card.due_ms)
-                        .ok_or_else(|| AppError::new(422, "This idea has no active practice."))?
-                        .clone();
-                    // Deliberate extra practice never changes eligibility or masquerades as cold recall.
-                    app.concepts.get_mut(entity).unwrap().exposure_ms = Some(now);
-                    present(app, &q, "question", now, seed, true);
-                    return Ok(result("/", None));
-                }
-                "archive" => {
-                    app.concepts.get_mut(entity).unwrap().archived = true;
-                    let questions: Vec<_> = app
-                        .questions
-                        .values()
-                        .filter(|q| q.concept_id == entity)
-                        .map(|q| q.id.clone())
-                        .collect();
-                    for question in questions {
-                        invalidate_pending(
-                            app,
-                            &question,
-                            "This idea was archived. Your saved answer was not graded.",
-                        );
-                    }
-                }
-                "feedback" => {
-                    add_feedback(
-                        app,
-                        &c.goal_id,
-                        (Some(entity.into()), None),
-                        "confusion",
-                        field(fields, "text"),
-                        now,
-                        seed,
-                    )?;
-                }
-                _ => return Err(AppError::new(404, "That action does not exist.")),
-            }
-            Ok(result(
-                if action == "archive" {
-                    "/map".into()
-                } else {
-                    format!("/concepts/{entity}")
-                },
-                None,
-            ))
+            Ok(result(format!("/goals/{entity}"), None))
         }
         "questions" => {
             let q = app
@@ -951,141 +580,6 @@ fn apply_entity(
                 return Err(AppError::conflict());
             }
             match action {
-                "edit" => {
-                    if app.protected_concept(&q.concept_id) {
-                        return Err(AppError::new(
-                            409,
-                            "Choose Look it up before opening answer-bearing material.",
-                        ));
-                    }
-                    if version(fields)? != q.content().version {
-                        return Err(AppError::conflict());
-                    }
-                    let draft = field(fields, "use_draft") == "true"
-                        && q.draft_for_version == Some(q.content().version);
-                    let base = if draft {
-                        q.draft.as_ref().ok_or_else(AppError::conflict)?
-                    } else {
-                        q.content()
-                    };
-                    let choices = field(fields, "choices")
-                        .lines()
-                        .filter(|s| !s.trim().is_empty())
-                        .map(|s| s.trim().to_string())
-                        .collect();
-                    let variants = field(fields, "variants")
-                        .lines()
-                        .filter(|s| !s.trim().is_empty())
-                        .map(|s| s.trim().to_string())
-                        .collect();
-                    let preserve = field(fields, "prompt") == base.prompt
-                        && field(fields, "answer") == base.answer
-                        && field(fields, "quotes")
-                            .lines()
-                            .map(str::to_string)
-                            .collect::<Vec<_>>()
-                            == base.quotes;
-                    let required_ideas = if preserve {
-                        base.required_ideas.clone()
-                    } else {
-                        Vec::new()
-                    };
-                    let kind = if field(fields, "kind") == "explain" && !preserve {
-                        "recall"
-                    } else {
-                        field(fields, "kind")
-                    };
-                    let generated = generation::GeneratedQuestion {
-                        prompt: field(fields, "prompt").into(),
-                        kind: kind.into(),
-                        answer: field(fields, "answer").into(),
-                        variants,
-                        choices,
-                        explanation: field(fields, "explanation").into(),
-                        basis: field(fields, "basis").into(),
-                        quotes: field(fields, "quotes")
-                            .lines()
-                            .filter(|s| !s.is_empty())
-                            .map(str::to_string)
-                            .collect(),
-                        required_ideas,
-                        contradictions: if preserve {
-                            base.contradictions.clone()
-                        } else {
-                            Vec::new()
-                        },
-                    };
-                    let goal = &app.goals[&q.goal_id];
-                    let material = goal.transcript.as_deref().unwrap_or(&goal.intent);
-                    generation::validate_question(&generated, material)
-                        .map_err(|s| AppError::new(422, s))?;
-                    let target = app.questions.get_mut(entity).unwrap();
-                    target.versions.push(generation::content(
-                        &generated,
-                        "learner",
-                        now,
-                        q.content().version + 1,
-                    ));
-                    target.draft = None;
-                    target.draft_for_version = None;
-                    // Presentation remains immutable, but an ungraded outdated occurrence can no longer write.
-                    invalidate_pending(
-                        app,
-                        entity,
-                        "The question changed. Your saved answer was not graded.",
-                    );
-                }
-                "archive" => {
-                    app.questions.get_mut(entity).unwrap().archived = true;
-                    invalidate_pending(
-                        app,
-                        entity,
-                        "The question was archived. Your saved answer was not graded.",
-                    );
-                }
-                "dispute" => {
-                    let reset = field(fields, "reset") == "true";
-                    if reset
-                        && (version(fields)? != q.content().version
-                            || field(fields, "schedule_version").parse::<u64>().ok()
-                                != Some(q.schedule_version))
-                    {
-                        return Err(AppError::conflict());
-                    }
-                    add_feedback(
-                        app,
-                        &q.goal_id,
-                        (Some(q.concept_id.clone()), Some(entity.into())),
-                        "dispute",
-                        field(fields, "text"),
-                        now,
-                        seed,
-                    )?;
-                    if reset {
-                        let after = learning::new_card(now);
-                        let next_version = q.schedule_version.checked_add(1).ok_or_else(|| {
-                            AppError::new(422, "The schedule version is exhausted.")
-                        })?;
-                        app.resets.push(Reset {
-                            id: id(seed, "reset"),
-                            question_id: q.id.clone(),
-                            concept_id: q.concept_id.clone(),
-                            goal_id: q.goal_id.clone(),
-                            source_revision: app.goals[&q.goal_id].revision,
-                            content_version: q.content().version,
-                            schedule_version_before: q.schedule_version,
-                            schedule_version_after: next_version,
-                            before_card: q.card.clone(),
-                            after_card: after.clone(),
-                            created_ms: now,
-                            feedback_id: id(seed, "feedback"),
-                        });
-                        let target = app.questions.get_mut(entity).unwrap();
-                        target.card = after;
-                        target.schedule_version = next_version;
-                        invalidate_pending(app, entity, "The schedule was deliberately reset.");
-                    }
-                }
                 "fix" => {
                     create_job(app, &q.goal_id, "fix", Some(entity.into()), now, seed)?;
                 }
@@ -1124,153 +618,16 @@ fn add_feedback(
     Ok(())
 }
 
-fn invalidate_pending(app: &mut App, question: &str, message: &str) {
-    for a in app
-        .assessments
-        .values_mut()
-        .filter(|a| a.question_id == question && matches!(a.status.as_str(), "queued" | "sent"))
-    {
-        a.status = "superseded".into();
-        a.error = Some(message.into());
-    }
-    if app
-        .occurrence
-        .as_ref()
-        .is_some_and(|o| o.question_id == question && o.phase != "result")
-    {
-        app.occurrence = None;
-    }
-}
-
-fn present(app: &mut App, q: &Question, phase: &str, now: i64, seed: &str, assisted: bool) {
-    app.occurrence = Some(Occurrence {
-        id: id(seed, "occurrence"),
-        question_id: q.id.clone(),
-        concept_id: q.concept_id.clone(),
-        presentation: q.content().clone(),
-        phase: phase.into(),
-        assisted,
-        before_card: q.card.clone(),
-        schedule_version: q.schedule_version,
-        created_ms: now,
-        answer: None,
-        assessment_id: None,
-        result: None,
-    });
-}
-
-pub fn ensure_occurrence(app: &mut App, now: i64, seed: &str) -> AppResult<()> {
-    if app.schema != SCHEMA {
-        return Err(AppError::new(
-            503,
-            "This learning record needs a compatible application version.",
-        ));
-    }
-    if let Some(o) = &app.occurrence {
-        if o.phase == "result"
-            || app.questions.get(&o.question_id).is_some_and(|q| {
-                !q.archived
-                    && q.content().version == o.presentation.version
-                    && q.schedule_version == o.schedule_version
-                    && app.goals.get(&q.goal_id).is_some_and(|g| !g.archived)
-                    && app.concepts.get(&q.concept_id).is_some_and(|c| !c.archived)
-            })
-        {
-            return Ok(());
-        }
-        app.occurrence = None;
-    }
-    let focused = app
-        .goals
-        .values()
-        .any(|g| g.focused && !g.paused && !g.archived);
-    let cap = match app.preferences.pace.as_str() {
-        "light" => 3,
-        "intense" => 12,
-        _ => 6,
-    };
-    let introduced = app
-        .concepts
-        .values()
-        .filter(|c| c.introduced_ms.is_some_and(|t| t > now - DAY_MS))
-        .count();
-    let mut candidates = Vec::new();
-    for q in app.questions.values() {
-        let Some(g) = app.goals.get(&q.goal_id) else {
-            continue;
-        };
-        let Some(c) = app.concepts.get(&q.concept_id) else {
-            continue;
-        };
-        if q.archived || c.archived || g.archived || q.card.due_ms > now {
-            continue;
-        }
-        if app.events.iter().rev().any(|e| {
-            e.question_id == q.id
-                && !e.is_ungraded()
-                && e.result.rating == 0
-                && e.result.reviewed_ms > now - DAY_MS
-        }) {
-            continue;
-        }
-        let new = c.introduced_ms.is_none();
-        if q.card.state == learning::State::New && (g.paused || (focused && !g.focused)) {
-            continue;
-        }
-        if new
-            && (introduced >= cap
-                || c.prerequisites.iter().any(|p| {
-                    app.concepts
-                        .get(p)
-                        .is_none_or(|p| p.introduced_ms.is_none() || p.archived)
-                }))
-        {
-            continue;
-        }
-        // Due time and prerequisites retain priority. Equally due new material
-        // follows the notebook's authored sections and question order.
-        candidates.push((
-            new,
-            q.card.due_ms,
-            c.prerequisites.len(),
-            g.created_ms,
-            g.id.clone(),
-            g.concept_ids
-                .iter()
-                .position(|id| id == &c.id)
-                .unwrap_or(usize::MAX),
-            q.position,
-            q.id.clone(),
-        ));
-    }
-    candidates.sort();
-    if let Some((new, _, _, _, _, _, _, qid)) = candidates.first() {
-        let q = app.questions[qid].clone();
-        let assisted = app.concepts[&q.concept_id]
-            .exposure_ms
-            .is_some_and(|t| t > now - DAY_MS);
-        present(
-            app,
-            &q,
-            if *new { "intro" } else { "question" },
-            now,
-            seed,
-            assisted,
-        );
-        app.revision += 1;
-    }
-    Ok(())
-}
-
 pub fn authorize_work(app: &App, work_id: &str, now: i64) -> AppResult<()> {
     let token = app
         .jobs
         .get(work_id)
         .and_then(|j| j.acting_token.as_ref())
         .or_else(|| {
-            app.assessments
+            app.practice
+                .checks
                 .get(work_id)
-                .and_then(|a| a.acting_token.as_ref())
+                .and_then(|c| c.acting_token.as_ref())
         });
     if let Some(id) = token
         && app
@@ -1316,92 +673,17 @@ fn reserve(
 }
 
 /// Historical generation policy entrypoint retained for compatibility proof.
-/// The current runtime uses `claim_grading_work`, not this function.
+/// The runtime claims with `claim_check_work` alone, never this function.
 pub fn claim_work(
     app: &mut App,
     now: i64,
     lease: &str,
     config: &WorkConfig,
 ) -> AppResult<Option<Work>> {
-    claim_work_inner(app, now, lease, config, true)
-}
-
-/// Claim answer assessment only. Never publish, retry or reserve a historical
-/// content-generation/transcription/critic job, even with provider bindings.
-pub fn claim_grading_work(
-    app: &mut App,
-    now: i64,
-    lease: &str,
-    config: &WorkConfig,
-) -> AppResult<Option<Work>> {
-    claim_work_inner(app, now, lease, config, false)
-}
-
-fn claim_work_inner(
-    app: &mut App,
-    now: i64,
-    lease: &str,
-    config: &WorkConfig,
-    legacy_generation: bool,
-) -> AppResult<Option<Work>> {
     if app.restored_paused {
         return Ok(None);
     }
-    recover_inner(app, now, legacy_generation);
-    // Assessments take priority over generation, without blocking existing study.
-    let assessment = app
-        .assessments
-        .values()
-        .filter(|a| a.status == "queued")
-        .min_by_key(|a| a.created_ms)
-        .cloned();
-    if let Some(a) = assessment {
-        let Some(o) = app
-            .occurrence
-            .as_ref()
-            .filter(|o| {
-                o.id == a.occurrence_id
-                    && o.assessment_id.as_deref() == Some(&a.id)
-                    && o.phase == "checking"
-            })
-            .cloned()
-        else {
-            app.assessments.get_mut(&a.id).unwrap().status = "superseded".into();
-            app.revision += 1;
-            return Ok(None);
-        };
-        if !config.jev {
-            assessment_failed(
-                app,
-                &a.id,
-                "Meaning checking is not configured. Your answer is saved and remains ungraded.",
-                false,
-                now,
-            );
-            app.revision += 1;
-            return Ok(None);
-        }
-        if let Err(e) = reserve(app, &a.id, lease, &config.jev_model, "grade.jev", now) {
-            assessment_failed(app, &a.id, &e.message, false, now);
-            app.revision += 1;
-            return Ok(None);
-        }
-        let a_mut = app.assessments.get_mut(&a.id).unwrap();
-        a_mut.status = "sent".into();
-        a_mut.lease = Some(lease.into());
-        a_mut.started_ms = Some(now);
-        app.revision += 1;
-        return Ok(Some(Work {
-            id: a.id,
-            lease: lease.into(),
-            kind: "assessment".into(),
-            request: generation::assessment_request(&o, &a.answer, &config.jev_model),
-            photo_key: None,
-        }));
-    }
-    if !legacy_generation {
-        return Ok(None);
-    }
+    recover(app, now);
     let job = app
         .jobs
         .values()
@@ -1553,22 +835,131 @@ fn claim_work_inner(
     }))
 }
 
-fn assessment_failed(app: &mut App, id: &str, message: &str, unknown: bool, now: i64) {
-    if let Some(a) = app.assessments.get_mut(id) {
-        a.status = if unknown { "unknown" } else { "failed" }.into();
-        a.error = Some(message.into());
+/// Claim the oldest queued Check of a memorization answer, or close it unsent.
+/// A claimed Check has its reservation and lease saved before anything leaves
+/// Scry. Sent Checks are recovered first; nothing of the earlier concept
+/// notebook is read or changed.
+pub fn claim_check_work(
+    app: &mut App,
+    now: i64,
+    lease: &str,
+    config: &WorkConfig,
+) -> AppResult<Option<Work>> {
+    use crate::study::{CheckStatus, Status};
+    if app.restored_paused {
+        return Ok(None);
     }
-    if let Some(o) = app
-        .occurrence
-        .as_mut()
-        .filter(|o| o.assessment_id.as_deref() == Some(id) && o.phase == "checking")
+    recover_checks(app, now);
+    let Some(check) = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| c.status == CheckStatus::Queued)
+        .min_by_key(|c| (c.created_ms, c.sequence, &c.id))
+        .cloned()
+    else {
+        return Ok(None);
+    };
+    let attempt = app
+        .practice
+        .attempts
+        .get(&check.attempt_id)
+        .ok_or_else(AppError::conflict)?;
+    let recall = crate::study::recall_input(app, &attempt.prompt, &attempt.raw_answer);
+    let closed = if attempt
+        .judgment
+        .as_ref()
+        .is_none_or(|j| j.decided.is_some())
     {
-        o.phase = "self-check".into();
-        if let Some(c) = app.concepts.get_mut(&o.concept_id) {
-            c.exposure_ms = Some(now);
-        }
+        Some((
+            CheckStatus::Superseded,
+            "This answer already has its Verdict.".to_string(),
+        ))
+    } else if app
+        .practice
+        .studies
+        .get(&attempt.prompt.study_id)
+        .is_none_or(|s| s.status == Status::Dropped)
+    {
+        Some((
+            CheckStatus::Superseded,
+            "This Study was dropped before the check was sent.".into(),
+        ))
+    } else if !app.preferences.paid_judgment {
+        Some((
+            CheckStatus::Refused,
+            "Paid judgment was turned off before the check was sent.".into(),
+        ))
+    } else if !config.jev {
+        Some((
+            CheckStatus::Refused,
+            "Paid judgment is not available here. Nothing was sent.".into(),
+        ))
+    } else if recall.is_err() {
+        Some((
+            CheckStatus::Refused,
+            "This answer can no longer be sent. Nothing was sent.".into(),
+        ))
+    } else {
+        None
+    };
+    let request = recall
+        .ok()
+        .map(|input| generation::recall_request(&input, &config.jev_model));
+    let closed = closed.or_else(|| {
+        reserve(
+            app,
+            &check.id,
+            lease,
+            &config.jev_model,
+            "grade.recall",
+            now,
+        )
+        .err()
+        .map(|e| (CheckStatus::Refused, e.message))
+    });
+    app.revision += 1;
+    if let Some((status, reason)) = closed {
+        close_check(app, &check.id, status, &reason);
+        return Ok(None);
+    }
+    let sent = app
+        .practice
+        .checks
+        .get_mut(&check.id)
+        .expect("claimed Check");
+    sent.status = CheckStatus::Sent;
+    sent.lease = Some(lease.into());
+    sent.started_ms = Some(now);
+    Ok(Some(Work {
+        id: check.id,
+        lease: lease.into(),
+        kind: CHECK_WORK.into(),
+        request: request.expect("an open Check has its request"),
+        photo_key: None,
+    }))
+}
+/// The work kind of a memorization answer's Check.
+pub const CHECK_WORK: &str = "check";
+/// End a Check without a Verdict. The Attempt and its Cards are untouched.
+fn close_check(app: &mut App, id: &str, status: crate::study::CheckStatus, reason: &str) {
+    if let Some(check) = app.practice.checks.get_mut(id) {
+        check.status = status;
+        check.reason = Some(reason.into());
     }
 }
+/// Whether this work may still be sent: its Check is the one this lease
+/// claimed and has no outcome yet. Other work kinds have their own fences.
+pub fn awaits_send(app: &App, work: &Work) -> bool {
+    work.kind != CHECK_WORK || sent_check(app, work).is_some()
+}
+/// The sent Check this work belongs to, if it still awaits this lease.
+fn sent_check<'a>(app: &'a App, work: &Work) -> Option<&'a crate::study::Check> {
+    app.practice.checks.get(&work.id).filter(|c| {
+        c.status == crate::study::CheckStatus::Sent && c.lease.as_deref() == Some(&work.lease)
+    })
+}
+
 fn job_failed(app: &mut App, id: &str, message: &str, unknown: bool) {
     if let Some(j) = app.jobs.get_mut(id) {
         j.status = if unknown { "unknown" } else { "failed" }.into();
@@ -1581,22 +972,15 @@ fn job_failed(app: &mut App, id: &str, message: &str, unknown: bool) {
     }
 }
 
+/// Historical recovery of generation work, retained with `claim_work`: a sent
+/// job, like a sent Check, becomes unknown after the recovery time.
 pub fn recover(app: &mut App, now: i64) -> bool {
-    recover_inner(app, now, true)
-}
-
-pub fn recover_grading(app: &mut App, now: i64) -> bool {
-    recover_inner(app, now, false)
-}
-
-fn recover_inner(app: &mut App, now: i64, legacy_generation: bool) -> bool {
     let mut changed = false;
     let jobs: Vec<_> = app
         .jobs
         .values()
         .filter(|j| {
-            legacy_generation
-                && matches!(j.status.as_str(), "sent" | "critic-sent")
+            matches!(j.status.as_str(), "sent" | "critic-sent")
                 && j.started_ms.is_some_and(|t| now - t >= 90_000)
         })
         .map(|j| j.id.clone())
@@ -1610,24 +994,49 @@ fn recover_inner(app: &mut App, now: i64, legacy_generation: bool) -> bool {
         );
         changed = true;
     }
-    let assessments: Vec<_> = app
-        .assessments
-        .values()
-        .filter(|a| a.status == "sent" && a.started_ms.is_some_and(|t| now - t >= 90_000))
-        .map(|a| a.id.clone())
-        .collect();
-    for a in assessments {
-        assessment_failed(
-            app,
-            &a,
-            "The check stopped before its outcome was confirmed. Its reserved usage is retained. Your answer remains saved and ungraded.",
-            true,
-            now,
-        );
-        changed = true;
-    }
+    changed |= recover_sent_checks(app, now);
     if changed {
         app.revision += 1
+    }
+    changed
+}
+
+/// The recovery of grading: `recover_checks` under its earlier name.
+pub fn recover_grading(app: &mut App, now: i64) -> bool {
+    recover_checks(app, now)
+}
+
+/// A sent Check whose outcome can no longer arrive becomes unknown, with its
+/// reservation kept. This is all the recovery the runtime runs: from the alarm
+/// and before a Check is claimed. It reads nothing of the earlier concept
+/// notebook, so a check saved there as sent stays exactly as stored.
+pub fn recover_checks(app: &mut App, now: i64) -> bool {
+    let changed = recover_sent_checks(app, now);
+    if changed {
+        app.revision += 1
+    }
+    changed
+}
+
+fn recover_sent_checks(app: &mut App, now: i64) -> bool {
+    let checks: Vec<_> = app
+        .practice
+        .checks
+        .values()
+        .filter(|c| {
+            c.status == crate::study::CheckStatus::Sent
+                && c.started_ms.is_some_and(|t| now - t >= 90_000)
+        })
+        .map(|c| c.id.clone())
+        .collect();
+    let changed = !checks.is_empty();
+    for c in checks {
+        close_check(
+            app,
+            &c,
+            crate::study::CheckStatus::Unknown,
+            "The check stopped before its outcome was confirmed. Its reserved usage is retained. Your answer remains saved and not graded.",
+        );
     }
     changed
 }
@@ -1664,23 +1073,20 @@ pub fn finish_work(
             end -= 1;
         }
         let bounded = raw[..end].to_owned();
-        if work.kind == "assessment" {
-            if let Some(a) = app
-                .assessments
-                .get_mut(&work.id)
-                .filter(|a| a.lease.as_deref() == Some(&work.lease))
-            {
-                a.raw_response = Some(bounded);
-                a.status = if error.status == 409 {
-                    "superseded"
-                } else {
-                    "failed"
-                }
-                .into();
-                a.error = Some(error.message.clone());
-            }
-            if error.status != 409 {
-                assessment_failed(app, &work.id, &error.message, false, now);
+        if work.kind == CHECK_WORK {
+            // A response to a Check no longer waiting on this lease is ledgered
+            // only. One that fails a fence or cannot be read closes the Check.
+            if sent_check(app, work).is_some() {
+                close_check(
+                    app,
+                    &work.id,
+                    if error.status == 409 {
+                        crate::study::CheckStatus::Superseded
+                    } else {
+                        crate::study::CheckStatus::Failed
+                    },
+                    &error.message,
+                );
             }
         } else if let Some(j) = app
             .jobs
@@ -1789,7 +1195,7 @@ fn record_response(
 pub fn fail_received_work(
     app: &mut App,
     work: &Work,
-    now: i64,
+    _now: i64,
     raw: String,
     model: String,
     cost_micros: Option<u64>,
@@ -1804,14 +1210,21 @@ pub fn fail_received_work(
         end -= 1;
     }
     let bounded = raw[..end].to_owned();
-    if work.kind == "assessment" {
-        let assessment = next
-            .assessments
-            .get_mut(&work.id)
-            .filter(|a| a.lease.as_deref() == Some(work.lease.as_str()))
+    if work.kind == CHECK_WORK {
+        // The raw response lives in the ledger alone.
+        next.practice
+            .checks
+            .get(&work.id)
+            .filter(|c| c.lease.as_deref() == Some(work.lease.as_str()))
             .ok_or_else(AppError::conflict)?;
-        assessment.raw_response = Some(bounded);
-        assessment_failed(&mut next, &work.id, message, false, now);
+        if sent_check(&next, work).is_some() {
+            close_check(
+                &mut next,
+                &work.id,
+                crate::study::CheckStatus::Failed,
+                message,
+            );
+        }
     } else {
         let job = next
             .jobs
@@ -1862,49 +1275,52 @@ fn finish_work_inner(
             "The response exceeded the safe size limit. Its paid outcome was saved.",
         ));
     }
-    if work.kind == "assessment" {
-        let a = next
-            .assessments
-            .get(&work.id)
-            .filter(|a| a.status == "sent" && a.lease.as_deref() == Some(&work.lease))
-            .ok_or_else(AppError::conflict)?
-            .clone();
-        let o = next
-            .occurrence
-            .as_ref()
-            .filter(|o| {
-                o.id == a.occurrence_id
-                    && o.assessment_id.as_deref() == Some(&a.id)
-                    && o.phase == "checking"
-            })
-            .ok_or_else(AppError::conflict)?
-            .clone();
-        let q = next
-            .questions
-            .get(&a.question_id)
+    if work.kind == CHECK_WORK {
+        // Fences: this lease still awaits its response, the answer has no
+        // Verdict, its Version is as it was answered and its Study is kept.
+        let check = sent_check(&next, work).ok_or_else(AppError::conflict)?;
+        let attempt = next
+            .practice
+            .attempts
+            .get(&check.attempt_id)
             .ok_or_else(AppError::conflict)?;
-        if q.archived
-            || q.content().version != a.content_version
-            || q.schedule_version != a.schedule_version
-            || next.goals.get(&q.goal_id).is_none_or(|g| g.archived)
-            || next.concepts.get(&q.concept_id).is_none_or(|c| c.archived)
+        if attempt
+            .judgment
+            .as_ref()
+            .is_none_or(|j| j.decided.is_some())
+            || next
+                .library
+                .versions
+                .get(&attempt.version_id)
+                .is_none_or(|v| v.normalized_hash != attempt.version_hash)
+            || next
+                .practice
+                .studies
+                .get(&attempt.prompt.study_id)
+                .is_none_or(|s| s.status == crate::study::Status::Dropped)
         {
             return Err(AppError::conflict());
         }
-        next.assessments.get_mut(&a.id).unwrap().raw_response = Some(raw.clone());
-        match generation::assessment_decision(&raw, &o.presentation) {
-            Ok(Some(correct)) => {
-                next.assessments.get_mut(&a.id).unwrap().status = "complete".into();
-                commit_grade(&mut next, correct, false, "jev", now, &work.lease)?;
-            }
-            Ok(None) => {
-                next.assessments.get_mut(&a.id).unwrap().status = "unsure".into();
-                next.occurrence.as_mut().unwrap().phase = "self-check".into();
-                next.concepts.get_mut(&o.concept_id).unwrap().exposure_ms = Some(now);
-            }
-            Err(e) => {
-                assessment_failed(&mut next, &a.id, &e.message, false, now);
-            }
+        match generation::short_decision(&raw) {
+            Ok(decision) if decision.applied => crate::study::decide(
+                &mut next,
+                &work.id,
+                decision.outcome == "correct",
+                &model,
+                now,
+            )?,
+            Ok(_) => close_check(
+                &mut next,
+                &work.id,
+                crate::study::CheckStatus::Unsure,
+                "Jev could not decide this answer. It stays saved and not graded.",
+            ),
+            Err(e) => close_check(
+                &mut next,
+                &work.id,
+                crate::study::CheckStatus::Failed,
+                &e.message,
+            ),
         }
     } else {
         let j = next
@@ -2015,15 +1431,18 @@ pub fn fail_work(
     unknown: bool,
     _now: i64,
 ) -> AppResult<()> {
-    if work.kind == "assessment" {
-        let a = app
-            .assessments
-            .get(&work.id)
-            .ok_or_else(AppError::conflict)?;
-        if a.status != "sent" || a.lease.as_deref() != Some(&work.lease) {
-            return Err(AppError::conflict());
-        }
-        assessment_failed(app, &work.id, message, unknown, _now);
+    if work.kind == CHECK_WORK {
+        sent_check(app, work).ok_or_else(AppError::conflict)?;
+        close_check(
+            app,
+            &work.id,
+            if unknown {
+                crate::study::CheckStatus::Unknown
+            } else {
+                crate::study::CheckStatus::Failed
+            },
+            message,
+        );
     } else {
         let j = app.jobs.get(&work.id).ok_or_else(AppError::conflict)?;
         if !matches!(j.status.as_str(), "sent" | "critic-sent")
@@ -2283,7 +1702,10 @@ fn finish_critic_candidates(
     Ok(())
 }
 
-pub fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
+/// Authored generation content for `persistence`'s own unit tests. Not part of
+/// the product: no route, demo or test outside this crate seeds it.
+#[cfg(test)]
+pub(crate) fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
     if !app.goals.is_empty() || !app.events.is_empty() || !app.operations.is_empty() {
         return Err(AppError::new(
             409,
@@ -2293,7 +1715,7 @@ pub fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
     let gid = "fixture-http".to_string();
     let jid = "fixture-job".to_string();
     app.goals.insert(gid.clone(),Goal{id:gid.clone(),title:"Understand HTTP caching".into(),intent:"Understand why a browser can show an old version of a page, and how caches validate it.".into(),created_ms:now,revision:1,status:"ready".into(),paused:false,focused:false,archived:false,concept_ids:Vec::new(),job_id:jid.clone(),photo:None,transcript:None});
-    let batch:Batch=serde_json::from_value(json!({"title":"Understand HTTP caching","complete":true,"concepts":[{"key":"freshness","name":"Cache freshness","summary":"A fresh response can be reused without asking the origin.","note":"A cache stores a response and its freshness lifetime. During that lifetime, the browser can reuse it without contacting the origin. For example, Cache-Control: max-age=60 allows reuse for sixty seconds. When it becomes stale, the browser may need to validate it; stale does not mean the underlying content changed.","basis":"general","quotes":[],"prerequisites":[],"questions":[{"prompt":"A stored response has passed its freshness lifetime. What does that tell you?","kind":"choice","answer":"It may need validation before reuse","choices":["It may need validation before reuse","The origin content definitely changed","The browser must delete it forever"],"explanation":"Staleness is about permission to reuse the stored response without checking. The origin content may be unchanged.","basis":"general","quotes":[]},{"prompt":"Which response directive sets how long a cached response may be reused without validation?","kind":"recall","answer":"max-age","variants":["Cache-Control: max-age"],"choices":[],"explanation":"The max-age directive specifies the freshness lifetime in seconds. Once that time passes, validation may be required.","basis":"general","quotes":[]}]},{"key":"validation","name":"Conditional validation","summary":"A validator lets the origin confirm that a stored response is still current.","note":"An ETag is an opaque identifier for a representation. A browser can send If-None-Match with the saved ETag. If the representation has not changed, the server can answer 304 Not Modified; the browser reuses the stored body. Freshness decides when a check is needed, while validation decides whether the saved content is still suitable.","basis":"general","quotes":[],"prerequisites":["freshness"],"questions":[{"prompt":"What HTTP status tells a browser its cached representation can be reused after a conditional request?","kind":"recall","answer":"304","variants":["304 Not Modified"],"choices":[],"explanation":"304 Not Modified confirms the conditional request's validator still matches. The browser reuses the cached body rather than receiving another full representation.","basis":"general","quotes":[]}]}]})).unwrap();
+    let batch:Batch=serde_json::from_value(serde_json::json!({"title":"Understand HTTP caching","complete":true,"concepts":[{"key":"freshness","name":"Cache freshness","summary":"A fresh response can be reused without asking the origin.","note":"A cache stores a response and its freshness lifetime. During that lifetime, the browser can reuse it without contacting the origin. For example, Cache-Control: max-age=60 allows reuse for sixty seconds. When it becomes stale, the browser may need to validate it; stale does not mean the underlying content changed.","basis":"general","quotes":[],"prerequisites":[],"questions":[{"prompt":"A stored response has passed its freshness lifetime. What does that tell you?","kind":"choice","answer":"It may need validation before reuse","choices":["It may need validation before reuse","The origin content definitely changed","The browser must delete it forever"],"explanation":"Staleness is about permission to reuse the stored response without checking. The origin content may be unchanged.","basis":"general","quotes":[]},{"prompt":"Which response directive sets how long a cached response may be reused without validation?","kind":"recall","answer":"max-age","variants":["Cache-Control: max-age"],"choices":[],"explanation":"The max-age directive specifies the freshness lifetime in seconds. Once that time passes, validation may be required.","basis":"general","quotes":[]}]},{"key":"validation","name":"Conditional validation","summary":"A validator lets the origin confirm that a stored response is still current.","note":"An ETag is an opaque identifier for a representation. A browser can send If-None-Match with the saved ETag. If the representation has not changed, the server can answer 304 Not Modified; the browser reuses the stored body. Freshness decides when a check is needed, while validation decides whether the saved content is still suitable.","basis":"general","quotes":[],"prerequisites":["freshness"],"questions":[{"prompt":"What HTTP status tells a browser its cached representation can be reused after a conditional request?","kind":"recall","answer":"304","variants":["304 Not Modified"],"choices":[],"explanation":"304 Not Modified confirms the conditional request's validator still matches. The browser reuses the cached body rather than receiving another full representation.","basis":"general","quotes":[]}]}]})).unwrap();
     let job = Job {
         acting_token: None,
         id: jid.clone(),
@@ -2320,14 +1742,7 @@ pub fn seed_fixture(app: &mut App, now: i64) -> AppResult<()> {
         critic_inherited_keys: Vec::new(),
     };
     app.jobs.insert(jid, job.clone());
-    publish(app, &job, &batch, "authored-test-fixture", now)?;
-    // This is deliberately authored, already-read synthetic material, never provider quality or cold recall proof.
-    for c in app.concepts.values_mut() {
-        c.introduced_ms = Some(now - DAY_MS - 1);
-    }
-    app.revision += 1;
-    ensure_occurrence(app, now, "fixture-first")?;
-    Ok(())
+    publish(app, &job, &batch, "authored-test-fixture", now)
 }
 
 pub fn validate_app(app: &App) -> AppResult<()> {
@@ -2435,6 +1850,12 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
             app.assessments
                 .values()
                 .filter_map(|a| a.acting_token.as_ref()),
+        )
+        .chain(
+            app.practice
+                .checks
+                .values()
+                .filter_map(|c| c.acting_token.as_ref()),
         )
     {
         if !app.owner_tokens.contains_key(id) {
@@ -2935,7 +2356,9 @@ fn validate_app_checks(app: &App, checks: &mut ArchiveChecks) -> AppResult<()> {
                 || spend.id.starts_with("legacy-import-critic-spend-"))
             && spend.cost_micros.is_none()
             && spend.reserved_micros >= RESERVATION;
-        if (!app.jobs.contains_key(&spend.work_id) && !app.assessments.contains_key(&spend.work_id))
+        if (!app.jobs.contains_key(&spend.work_id)
+            && !app.assessments.contains_key(&spend.work_id)
+            && !app.practice.checks.contains_key(&spend.work_id))
             || (spend.reserved_micros != RESERVATION && !imported_reservation)
             || spend.model.as_ref().is_some_and(|model| model.len() > 256)
             || spend
@@ -3510,44 +2933,46 @@ fn archive_schedule_chains(app: &App, checks: &mut ArchiveChecks) -> AppResult<(
     Ok(())
 }
 
-/// Recovery never clones scheduler/job ownership or quietly sends paid work again.
+/// How the marker `pause_restored` stores in the backup status begins. It
+/// names the restore, not a failed backup.
+pub const RESTORE_MARKER: &str = "Restored into an isolated space at ";
+
+/// `pause_restored` under its earlier name.
 pub fn pause_for_restore(app: &mut App, now: i64) -> AppResult<()> {
+    pause_restored(app, now)
+}
+
+/// Recovery never clones scheduler/job ownership or quietly sends paid work
+/// again. The earlier concept notebook is restored exactly as it was saved: its
+/// checks, held question and Concepts are not read. Nothing claims them, so a
+/// check saved as queued or sent is never sent from the restored notebook.
+/// Retired generation jobs are history and stay byte for byte as stored:
+/// nothing claims, sends or recovers generation work in any state.
+pub fn pause_restored(app: &mut App, now: i64) -> AppResult<()> {
     let revision = app
         .revision
         .checked_add(1)
         .ok_or_else(|| AppError::new(422, "State revision exhausted."))?;
     app.restored_paused = true;
-    for j in app.jobs.values_mut() {
-        if matches!(j.status.as_str(), "sent" | "critic-sent") {
-            j.status = "unknown".into();
-            j.error = Some(
-                "Restored request has an uncertain paid outcome. Its usage is retained.".into(),
-            );
-        } else if matches!(j.status.as_str(), "queued" | "candidates") {
-            j.status = "paused".into();
-            j.error = Some("Preparation is paused in this restored learning space.".into());
-        }
-    }
-    let ids: Vec<_> = app
-        .assessments
-        .values()
-        .filter(|a| matches!(a.status.as_str(), "sent" | "queued"))
-        .map(|a| (a.id.clone(), a.status == "sent"))
-        .collect();
-    for (aid, sent) in ids {
-        assessment_failed(
-            app,
-            &aid,
-            "The check is paused after restore. Its saved answer can be checked by you.",
-            sent,
-            now,
-        );
-        if !sent {
-            app.assessments.get_mut(&aid).unwrap().status = "paused".into();
-        }
+    // A queued Check is never sent from a restored notebook; a sent one has an
+    // uncertain paid outcome. Either leaves its answer saved and not graded.
+    for check in app.practice.checks.values_mut() {
+        let (status, reason) = match check.status {
+            crate::study::CheckStatus::Queued => (
+                crate::study::CheckStatus::Refused,
+                "The check was not sent from this restored notebook. Your answer is saved and not graded.",
+            ),
+            crate::study::CheckStatus::Sent => (
+                crate::study::CheckStatus::Unknown,
+                "Restored check has an uncertain paid outcome. Its usage is retained.",
+            ),
+            _ => continue,
+        };
+        check.status = status;
+        check.reason = Some(reason.into());
     }
     app.backup.error = Some(format!(
-        "Restored into an isolated space at {now}; external work remains paused."
+        "{RESTORE_MARKER}{now}; external work remains paused."
     ));
     app.revision = revision;
     Ok(())

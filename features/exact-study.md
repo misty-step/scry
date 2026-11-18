@@ -3,27 +3,28 @@
 The owner studies a Library Version source, then explicitly quizzes from memory. He gets an
 exact verdict and a word-by-word Diff, and on his phone the Stream opens
 straight into the next due Unit. Behavior authority:
-[US-016](../SPEC.md#us-016-learn-a-version-unit-by-unit),
-[US-017](../SPEC.md#us-017-get-an-exact-verdict-and-a-word-by-word-diff),
-[US-018](../SPEC.md#us-018-practise-exact-recall-on-my-phone) and
-[US-007](../SPEC.md#us-007-correct-a-grade-in-one-tap).
+[SPEC § Study, then quiz from memory](../SPEC.md#study-then-quiz-from-memory),
+[Scheduling](../SPEC.md#scheduling), [Grading](../SPEC.md#grading) and
+[Texts and prayers](../SPEC.md#texts-and-prayers).
 
 ## Sub-features
 
 - `study-learn` creates one Study per Version (`scry learn`).
-- `study-prompt` shows source without an input, then Try from memory selects a hidden-source quiz with one field and one submit control. Historical phase-less API cues remain compatible.
+- `study-prompt` shows source without an input, then Try from memory selects a hidden-source quiz with one field and one submit control. This holds for every Kind and every client; a cue-bearing Prompt held from an older record can still be answered once.
 - `study-verdict` gives Good or Again with a Diff of correct, slipped, wrong, missing and extra words, held until Next.
-- `study-assist` records Show me or a cue as an assisted Attempt before showing it.
-- `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 under the [retirement amendment](../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406).
-- `study-caught-up` says when the next Card is due instead of inventing practice.
-- `study-cli` covers the same actions through `scry next`, `answer`, `due`, `history` and `export`.
+- `study-judged` (off unless the Owner turns on Paid judgment in Settings): a mismatch is saved with no Verdict and shows `[data-state="exact-checking"]`, which looks again by itself with JavaScript and offers Refresh without. Jev's answer becomes Good or Again labelled "Judged by Jev", with the Diff shown as "comparison, not the Verdict"; anything else is `[data-state="exact-ungraded"]`, "Saved, not graded", with its reason and Check again (`scry check ATTEMPT`, tool `scry_check`). A Card whose check is open is not served again.
+- `study-assist` records Show me as assistance before showing it; the retry that follows is assisted.
+- `study-correct` preserves immutable historical Corrections; new learner-supplied Verdicts return 410 at `/api/v1/correct` because self-grading is a [non-goal](../SPEC.md#purpose-and-non-goals), and the CLI has no `correct` command.
+- `study-control` pauses, resumes or drops a Study and chooses its Pace from the Version's Manage Study disclosure, `scry study pause|resume|drop|pace` or `/api/v1/studies/*`. A text's Version page counts new phrases ("Pause stops new phrases", "Pace · new phrases each day"); other Kinds count new Units. A text's stream has no earlier-notebook link; the Menu holds it.
+- `study-caught-up`: opening practice with nothing held selects nothing. It offers one Study action, or says Rest for now with Browse and the next scheduled review instead of inventing practice.
+- `study-cli` covers the same actions through `scry mix` (Study's mix), `next`, `answer`, `due`, `history` and `export`.
 - `study-history` reads saved Attempts and appended Corrections from the footer's
   History link, with frozen wording, Diff, Authority and per-Unit schedule effects.
 
 ## How to get to it (user POV)
 
 - Phone or desktop: choose Review (`/recall`). Before a Study, Library offers search or supplied
-  text and Learn; afterwards the current Prompt or held result opens directly.
+  text and Learn; afterwards a held Prompt or result opens directly, and with nothing held one Study action takes the next Prompt.
   Review Home is `/`; saved earlier practice remains separate at `/notebook`.
 - Terminal: `scry learn VERSION`, then `scry next`, `scry quiz PROMPT` to leave source study, and `scry answer PROMPT --text-stdin`
   (see the [command reference](../docs/owner-api.md#text-study-and-practice)).
@@ -38,12 +39,12 @@ Preconditions:
 - **Phone journey.** Run `.agents/skills/verify-scry/scripts/local-journeys.mjs`.
   `study.phone` runs `scry learn` and opens `/recall` at 390px touch. It requires
   `[data-state="exact-prompt"]` with one textarea, fills "Your answer", and
-  chooses Check my answer. It captures `[data-state="exact-result"]` on arrival
+  chooses Check. It captures `[data-state="exact-result"]` on arrival
   before scrolling or reloading, then requires the same held result on reload. `[data-verdict]` and every
   `[data-diff-kind]` must equal `scry next --json`'s Attempt grade. Next then
   advances, with no horizontal overflow.
 - **Interactive fixture.** `node qa/phone-serve.mjs PORT` prints a loopback URL
-  whose second Unit is already in Free recall. Drive it with Playwright or the
+  whose second Unit is held as a Free recall Quiz. Drive it with Playwright or the
   T3 preview; start another fixture for Show me before answering.
 - **First study.** `qa/phone-library.mjs` walks empty Library → supplied Version
   → Learn → source study → Try from memory → native quiz → held result, with CLI readback, dedupe, protected navigation, native
@@ -55,6 +56,17 @@ Preconditions:
   from real engine operations; `qa/study.mjs` retains SQLite/restart/R2 parity.
   Exact Prompt protection gates all historical wording; a protected legacy
   question gates exact Attempts and preserves its per-concept history fence.
+- **Paid judgment.** `node --test qa/judgment.test.mjs` drives the built Worker
+  against a synthetic Jev endpoint inside the test process, bound to a preview
+  at a `.invalid` host (outside production only such a host has model
+  authority; a real endpoint bound to a preview or development build sends
+  nothing): the switch, the three cases in which nothing is sent, every outcome of a check, exactly-once
+  sending, Check again, the API, CLI and tool server, the `judged-v4` archive and
+  phone-width pages with and without JavaScript. Set `SCRY_JUDGMENT_OLD_WORKER`
+  to a build of the source before paid judgment to run the previous-Worker
+  refusal, and `SCRY_JUDGMENT_SHOTS` to keep the screenshots elsewhere than
+  `target/judgment`. `tests/judgment.rs` and `tests/judgment_off.rs` hold the
+  native state machine and the proof that off is unchanged.
 - **Story walk.** `qa/walk --stories "US-016 US-017 US-018"` covers every
   criterion. The CLI-only US-016/017 walks need no browser. US-018 retains light
   and dark at 320/390/1280px, 100/200% text at 320/390px, keyboard and no-JS forms. Native Full answer
@@ -67,9 +79,13 @@ Preconditions:
 
 ## Gotchas
 
-- A new Card starts with an answer-bearing cue, so its first typed Attempt is
-  assisted and leaves the schedule unchanged ("Assisted practice · the schedule
-  stayed unchanged"). Free recall needs the fading in `qa/phone-stream.mjs`.
+- A new Unit is first held as source study, which accepts no answer. Its first
+  typed Attempt answers the Quiz after Try from memory and is Free recall. An
+  answer after Show me is assisted ("Assisted practice · the schedule stayed
+  unchanged").
+- `tests/fixtures/cue-ladder-legacy.json` holds notebooks stored under the
+  earlier cue ladder and quiz-first mappings. `tests/study_then_quiz.rs` proves
+  they restore and export unchanged and that a held cue is answered once.
 - Capture the result arrival before scrolling or reloading: verdict and the
   first changed word/replacement must be unobscured. Native Full answer holds
   the complete ordered Diff; the actions follow in ordinary flow.
@@ -83,20 +99,36 @@ Preconditions:
   `src/web.rs`, `src/bin/scry.rs`, `assets/app.js`; grading and scheduling in
   `src/grading` and `src/learning.rs`.
 
-## Forward keyed mappings (NATO first)
+## Keyed mappings (NATO first)
 
 Externally authored mapping manifests enter through `scry mapping add --file`
 and the shared Library API. Learn the returned Version and open Text practice.
-The first Prompt shows only the key, with one typed answer and Check my answer.
+A pair is first shown as its key with its value and Try from memory. The Quiz
+then shows only the key, with one typed answer and Check.
 Results show the canonical value and native exact-v2 Diff, held until Next.
 Mapping results have no self-rating or Owner Correction. Show me records durable
 assistance and leaves the schedule unchanged, including a later correct answer.
 
-`tests/keyed_mapping.rs`, `tests/keyed_mapping_library.rs` and
-`qa/keyed-mapping.test.mjs` own the bounded US-021 forward subset. The canonical
+A manifest declared `"direction": "both"` also practises each pair in reverse:
+its own Source study, led by the value, then a Quiz that shows the value and
+asks **Recall the matching key**. The pair counts once against Pace, each
+direction keeps its own Card, and the other direction of the pair just
+answered waits while anything else is eligible. An answer that is exactly
+another pair's value (or, in reverse, key) is Scry's own Again, named as the
+wrong key and never sent to Jev, with paid judgment on or off. A year value
+takes the year with or without AD or CE, as an exact number; a year before the
+common era is graded as written; an answer that is a year as typed (digits
+with an optional AD, CE, BC or BCE and nothing else) is never sent to Jev. Neither
+holds for a safety-bearing pair, which is graded as written. A pair flagged
+`safety_bearing` says **Safety practice: answer with the safe practice
+itself.** in study and Quiz, and may not be practised in reverse.
+
+`tests/keyed_mapping.rs`, `tests/keyed_mapping_library.rs`, `tests/mapping_spec.rs`,
+`tests/mapping_stored_bytes.rs`, `qa/keyed-mapping.test.mjs` and
+`qa/mapping-spec.test.mjs` own keyed mappings. The canonical
 `examples/nato-alphabet.json` is supplied content, not generated runtime output.
-Reverse directions, choice scaffolding, random-start sets, year tolerance and
-multimedia are not implemented by this subset; hosted #335 remains unverified.
+Choice scaffolding, random-start sets and multimedia are
+not implemented; hosted #335 remains unverified.
 
 
 ## Authored lessons (LESSON-01–06)

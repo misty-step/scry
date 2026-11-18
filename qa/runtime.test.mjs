@@ -8,6 +8,7 @@ import test from 'node:test';
 import {createRuntime,createSyntheticRuntime,Response,internalKey} from './runtime-helper.mjs';
 import {createServer} from 'node:net';
 import {historicalMutation} from './historical-fixture.mjs';
+import {seedEarlier} from './earlier-fixture.mjs';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
@@ -75,7 +76,8 @@ try {
     assert.equal(await response.text(),'backup_stale');
     assert.match(response.headers.get('Cache-Control'),/no-store/);
     const storage=await preview.unsafeGetDurableObjectStorage('scry-auth-smoke','LearningSpace',{name:baseBindings.SPACE_NAME});
-    assert.deepEqual(await storage.exec('SELECT key FROM records'),[]);
+    // Health only reads: it allocates neither the notebook nor its table.
+    assert.deepEqual(await storage.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='records'"),[]);
   });
   await check('drafts stay in their authenticated notebook and shared QA actors use their own scope',async()=>{
     const qaEmail='checkpoint-qa@agentmail.to';
@@ -99,6 +101,10 @@ try {
       assert.equal(fixtureCertRequests,1,'The isolated fixture caches its own issuer keys.');
       const start=await (await req('/?practice=nato',qaToken)).text();
       assert.equal((await post('/practice/nato/start',qaToken,fields(start,'/practice/nato/start'))).status,303);
+      // The first letter is studied before its Quiz; a draft belongs to the Quiz.
+      const source=await (await req('/?practice=nato',qaToken)).text();
+      assert.equal((await post('/practice/draft',qaToken,{...fields(source,'/practice/quiz'),operation_id:randomUUID(),generation:'0',answer:'QA_CHECKPOINT_SYNTHETIC'},{'X-Scry-Request':'page','X-Scry-Expected-Scope':qaScope})).status,409,'Source study accepts no draft.');
+      assert.equal((await post('/practice/quiz',qaToken,fields(source,'/practice/quiz'))).status,303);
       const question=await (await req('/?practice=nato',qaToken)).text();
       const draft={...fields(question,'/practice/answer'),generation:'0',answer:'QA_CHECKPOINT_SYNTHETIC'};
       const wrong=await post('/practice/draft',ownerToken,draft,{'X-Scry-Request':'page','X-Scry-Expected-Scope':qaScope});
@@ -159,7 +165,10 @@ try {
         {'X-Scry-Request':'page','X-Scry-Expected-Scope':'b'.repeat(64),'Content-Type':'application/x-www-form-urlencoded','X-Scry-Test-Origin':origin},
       ]) {
         const refused = await call(path,{method:'POST',headers,body:'x='.padEnd(5*1024*1024,'x')});
-        assert.ok([403,409].includes(refused.status)); assert.equal(refused.headers.get('X-Scry-Test-Body-Used'),'false');
+        // Save draft is a native form (SPEC § Experience): without the page header it is read like any
+        // form, but only up to the 128 KiB draft bound. A wrong scope is still refused before any read.
+        if (headers['X-Scry-Request']) { assert.equal(refused.status,409); assert.equal(refused.headers.get('X-Scry-Test-Body-Used'),'false'); }
+        else assert.equal(refused.status,413);
       }
       const missing = await call('/settings',{headers:{'X-Scry-Request':'poll'}});
       assert.equal(missing.status,409);
@@ -394,6 +403,9 @@ try {
   await check('independent complete restore is paused and refuses overwrite',async()=>{
     const response=await restore(archiveBytes);assert.equal(response.status,200);assert.match(await response.text(),/paused/);assert.equal((await restore(archiveBytes)).status,409);
     const ns=await restored.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName('fresh-isolated-restore-only'));const readback=await stub.fetch(`${origin}/export`,{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}});assert.equal(readback.status,200);const recovered=await readback.json();assert.equal(recovered.app.restored_paused,true);assert.equal(recovered.app.preferences.pace,'steady');assert.equal(Object.keys(recovered.app.goals).length,2);assert.equal(recovered.photos.length,1);assert.deepEqual(Buffer.from(recovered.photos[0].bytes,"base64"),photoBytes);assert.notEqual(recovered.photos[0].photo.key,JSON.parse(archiveBytes).photos[0].photo.key);assert.deepEqual(recovered.app.events,JSON.parse(archiveBytes).app.events);assert.deepEqual(recovered.app.operations,JSON.parse(archiveBytes).app.operations);
+    // SPEC § Retired generation records: restored exactly as stored, whatever their state.
+    const sourceJobs=JSON.parse(archiveBytes).app.jobs;
+    assert.equal(JSON.stringify(recovered.app.jobs),JSON.stringify(sourceJobs),'every retired generation job is restored byte for byte');
   });
   await check('learner Settings resume refuses CSRF, replays safely and preserves historical work',async()=>{
     const activeBindings={...baseBindings,SPACE_NAME:'fresh-isolated-restore-only',OPENROUTER_API_KEY:'synthetic-recovery-generator-key',OPENROUTER_MODEL:'synthetic-recovery-model'};
@@ -412,7 +424,7 @@ try {
       assert.equal((await state()).restored_paused,true);
       assert.equal(recoverySends,0);
     }
-    const resumed=await resume();assert.equal(resumed.status,303);assert.equal(resumed.headers.get('Location'),'/notebook');
+    const resumed=await resume();assert.equal(resumed.status,303);assert.equal(resumed.headers.get('Location'),'/settings');
     assert.equal((await resume()).status,303,'Lost-response replay reconciles the same operation.');
     assert.equal((await resume({...resumeFields,operation_id:'second-distinct-resume-operation'})).status,409);
     assert.equal((await req('/operator/resume-work',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'x-scry-operator-key':operatorKey}})).status,409);
@@ -440,106 +452,38 @@ try {
       const archive=await(await local.worker.fetch(`${localOrigin}/export`)).json();assert.equal(Object.keys(archive.app.goals).length,2);assert.equal(archive.photos.length,2);assert.equal(Object.keys(archive.app.operations).length,2);
     } finally {await local.mf.dispose();}
   });
-  await check('allowed reference reads mark future exposure while checking stays unaided and protected',async()=>{
-    const fixtureOrigin='http://127.0.0.1:8790',space='synthetic-exposure-only';let release,started;const sending=new Promise(resolve=>{started=resolve;});
-    const provider=async request=>{if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);assert.equal(request.url,'https://openrouter.ai/api/alpha/decisions');started();await new Promise(resolve=>{release=resolve;});return new Response(JSON.stringify({model:'synthetic-jev',usage:{cost:0.000001},answers:{verdict:{choice:'accept',probabilities:{accept:0.99,reject:0.005,unsure:0.005}},identity:{noul:0.01},injection:{noul:0.01}}}),{status:200});};
-    const fixture=await createRuntime({bindings:{SCRY_ENV:'development',CANONICAL_ORIGIN:fixtureOrigin,SPACE_NAME:space,INTERNAL_KEY:internalKey},name:'scry-exposure-smoke',artifact,egress:provider});
-    let current=fixture.worker,currentOrigin=fixtureOrigin;const req=(path,init={})=>current.fetch(`${currentOrigin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});const post=(path,fields)=>req(path,{method:'POST',headers:{'X-Scry-Test-Origin':currentOrigin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});
-    const fields=(html,action)=>{const form=[...html.matchAll(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/g)].find(m=>m[1]===action);assert.ok(form);return Object.fromEntries([...form[2].matchAll(/name="([^"]+)" value="([^"]*)"/g)].map(m=>[m[1],m[2]]));};
-    const peek=async()=>{const ns=await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');const stub=ns.get(ns.idFromName(space));assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',headers:{'x-scry-internal-key':internalKey,'x-scry-owner':'private-owner'}})).status,200);const bucket=await fixture.mf.getR2Bucket('SCRY_BACKUPS');const list=await bucket.list({prefix:`snapshots/${space}/`});const object=await bucket.get(list.objects.sort((a,b)=>b.uploaded-a.uploaded)[0].key);return(await object.json()).app;};
+  // The earlier concept notebook is history. qa/earlier-notebook.test.mjs proves
+  // it for every stored state; this is the same boundary on the authored demo,
+  // in the Owner's own space with Jev bound.
+  await check('reference reads write nothing, no gate stands before them and the held question cannot be answered',async()=>{
+    const space='synthetic-reference-only';let sent=0;
+    const provider=async request=>{if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);sent++;throw new Error('Nothing of the earlier concept notebook may be sent.');};
+    const fixture=await createRuntime({bindings:{...baseBindings,SPACE_NAME:space,JEV_API_KEY:'synthetic-reference-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'},name:'scry-reference-smoke',artifact,egress:provider,inspect:true});
+    const req=(path,init={})=>fixture.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});const post=(path,fields)=>req(path,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields)});
     try {
-      let html=await(await req('/notebook')).text();assert.equal((await post('/__fixture',fields(html,'/__fixture'))).status,303);let state=await peek();let occurrence=state.occurrence;const cold=occurrence.concept_id,goal=state.concepts[cold].goal_id,oldExposure=state.concepts[cold].exposure_ms;assert.equal(occurrence.assisted,false);
-      if(occurrence.presentation.kind==='choice'){assert.equal((await post(`/questions/${occurrence.question_id}/archive`,{csrf:state.csrf,operation_id:'synthetic-archive-choice-only'})).status,303);await req('/notebook');state=await peek();occurrence=state.occurrence;}assert.equal(occurrence.presentation.kind,'recall');assert.equal(occurrence.assisted,false);
-      const other=Object.keys(state.concepts).find(id=>id!==cold);assert.equal((await req(`/concepts/${other}`)).status,200);state=await peek();assert.ok(state.concepts[other].exposure_ms>oldExposure);assert.equal(state.concepts[cold].exposure_ms,oldExposure);
-      const active=await fixture.rebind({...baseBindings,SPACE_NAME:space,JEV_API_KEY:'synthetic-exposure-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'});current=active.worker;currentOrigin=origin;html=await(await req('/notebook')).text();assert.equal((await post('/review/answer',{...fields(html,'/review/answer'),answer:'A deliberately non-exact remembered response'})).status,303);await Promise.race([sending,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Synthetic meaning check did not start.')),5000))]);
-      for(const path of [`/concepts/${cold}`,`/goals/${goal}`,`/questions/${occurrence.question_id}/edit`,'/export']){const gated=await(await req(path)).text();assert.match(gated,/data-state="checking-reference"/);assert.doesNotMatch(gated,/A cache stores a response/);assert.doesNotMatch(gated,/action="\/review\/help"/,'Submitted checking answers cannot be retroactively marked helped.');}
-      state=await peek();assert.equal(state.occurrence.phase,'checking');assert.equal(state.occurrence.assisted,false);assert.equal(state.concepts[cold].exposure_ms,oldExposure);release();const deadline=Date.now()+5000;do{state=await peek();if(state.occurrence.phase==='result')break;await new Promise(r=>setTimeout(r,100));}while(Date.now()<deadline);assert.equal(state.events.length,1);assert.equal(state.events[0].assisted,false);const event=structuredClone(state.events[0]);await req(`/concepts/${cold}`);state=await peek();assert.ok(state.concepts[cold].exposure_ms>oldExposure);assert.deepEqual(state.events[0],event,'Later reference reads must preserve original answer evidence.');
-    } finally {release?.();await fixture.mf.dispose();}
-  });
-  // Generation/transcription/critic sends are retired. Exercise the same live
-  // transport failure/accounting boundaries through supported answer grading;
-  // historical generation transitions remain covered by native policy suites.
-  await check('native answer grading retains replay, stale-paid, bounded failures and unknown accounting',async()=>{
-    for(const mode of ['normal','network-error','oversize','http-error','malformed','http-success-shaped','delayed','over-allowance']){
-      console.log(JSON.stringify({native_grading_transport:mode,phase:'start'}));
-      const name=`scry-grading-transport-${mode}`,space=`synthetic-grading-${mode}`;
-      let transmissions=0,releaseBlocked,blockedStarted;
-      const started=new Promise(resolve=>{blockedStarted=resolve;});
-      let fixture,sql;
-      const rows=()=>sql.exec('SELECT key,value FROM records ORDER BY key');
-      const app=async()=>{const values=await rows();const meta=JSON.parse(values.find(r=>r.key==='meta').value);return {...meta,
-        goals:Object.fromEntries(values.filter(r=>r.key.startsWith('goals/')).map(r=>[r.key.slice(6),JSON.parse(r.value)])),
-        assessments:Object.fromEntries(values.filter(r=>r.key.startsWith('assessments/')).map(r=>[r.key.slice(12),JSON.parse(r.value)])),
-        events:values.filter(r=>r.key.startsWith('events/')).map(r=>JSON.parse(r.value)),spend:values.filter(r=>r.key.startsWith('spend/')).map(r=>JSON.parse(r.value))};};
-      const accepted=cost=>JSON.stringify({model:'synthetic-jev',usage:{cost},answers:{verdict:{choice:'accept',probabilities:{accept:0.99,reject:0.005,unsure:0.005}},identity:{noul:0.01},injection:{noul:0.01}}});
-      const provider=async request=>{
-        if(request.url===`https://${team}/cdn-cgi/access/certs`)return egress(request);
-        assert.equal(request.url,'https://openrouter.ai/api/alpha/decisions','Generation endpoint must never be called.');
-        assert.equal(request.headers.get('Authorization'),'Bearer synthetic-jev-key');transmissions++;
-        const payload=await request.json();assert.ok(payload.questions.verdict);
-        const current=await app(),reservation=current.spend.at(-1);assert.equal(reservation.reserved_micros,500000);assert.equal(reservation.status,'unknown');assert.equal(reservation.cost_micros,null);assert.equal(reservation.purpose,'grade.jev');assert.equal(reservation.model,'synthetic-jev');
-        if(mode==='network-error')throw new Error('Synthetic interrupted grading transport');
-        if(mode==='oversize')return new Response('x'.repeat(256*1024+1),{status:200});
-        if(mode==='http-error')return new Response('{}',{status:429});
-        if(mode==='http-success-shaped')return new Response(accepted(0.000456),{status:429});
-        if(mode==='malformed')return new Response('Controlled malformed JSON',{status:200});
-        if(mode==='delayed'){blockedStarted();await new Promise(resolve=>{releaseBlocked=resolve;});}
-        return new Response(accepted(mode==='over-allowance'?2000:0.000345),{headers:{'Content-Type':'application/json'}});
-      };
-      const bindings={...baseBindings,SPACE_NAME:space,OPENROUTER_API_KEY:'synthetic-generator-must-not-send',OPENROUTER_MODEL:'synthetic-generator',JEV_API_KEY:'synthetic-jev-key',JEV_MODEL:'synthetic-jev',JEV_URL:'https://openrouter.ai/api/alpha/decisions'};
-      fixture=await createRuntime({bindings,name,artifact,egress:provider,inspect:true});
-      const req=async(path,init={})=>{try{return await fixture.worker.fetch(`${origin}${path}`,{...init,redirect:'manual',headers:{'Cf-Access-Jwt-Assertion':jwt(),...init.headers}});}catch(error){throw new Error(`Native grading ${mode} ${init.method||'GET'} ${path}: ${error.message}`,{cause:error});}};
-      const post=(path,fields)=>req(path,{method:'POST',body:new URLSearchParams(fields),headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'}});
-      const wait=async predicate=>{const end=Date.now()+12000;do{const current=await app();if(predicate(current))return current;await new Promise(r=>setTimeout(r,50));}while(Date.now()<end);throw Error(`Synthetic grading ${mode} did not settle.`);};
-      try{
-        await req('/settings');sql=await fixture.mf.unsafeGetDurableObjectStorage(name,'LearningSpace',{name:space});
-        await historicalMutation(sql,{actions:[{kind:'seed_demo',now_ms:Date.now()}]});
-        let current=await app();const originalJobs=await sql.exec("SELECT key,value FROM records WHERE key LIKE 'jobs/%' OR key LIKE 'job_payload/%' ORDER BY key");
-        const rejected=await post('/create',{csrf:current.csrf,operation_id:`retired-configured-generation-${mode}`,intent:'Must not generate'});assert.equal(rejected.status,410);assert.equal(transmissions,0);
-        if(current.occurrence.presentation.kind==='choice')assert.equal((await post(`/questions/${current.occurrence.question_id}/archive`,{csrf:current.csrf,operation_id:`archive-choice-${mode}`})).status,303);
-        await req('/notebook');current=await app();assert.equal(current.occurrence.presentation.kind,'recall');
-        const answer={csrf:current.csrf,occurrence_id:current.occurrence.id,operation_id:`grading-transport-answer-${mode}`,answer:'A deliberately non-exact remembered response'};
-        assert.equal((await post('/review/answer',answer)).status,303);
-        if(mode==='delayed'){
-          await Promise.race([started,new Promise((_,reject)=>setTimeout(()=>reject(Error('Delayed grader did not start.')),5000))]);
-          const goal=current.goals[Object.keys(current.goals)[0]].id;
-          assert.equal((await post(`/goals/${goal}/archive`,{csrf:current.csrf,operation_id:'archive-stale-grading-goal'})).status,303);releaseBlocked();
-        }
-        const failed=['network-error','oversize','http-error','malformed','http-success-shaped'].includes(mode);
-        // Archiving the held occurrence marks the assessment superseded before
-        // the delayed paid response returns. Wait for its retained cost too,
-        // not that earlier state transition, before checking late accounting.
-        const settled=await wait(a=>a.spend.length===1&&a.assessments[Object.keys(a.assessments)[0]].status!=='sent'&&(mode!=='delayed'||a.spend[0].cost_micros!==null));
-        assert.equal(transmissions,1);assert.equal(settled.spend.length,1);
-        const paid=settled.spend[0];assert.equal(paid.purpose,'grade.jev');assert.equal(paid.reserved_micros,500000);
-        assert.equal(paid.status,failed&&mode!=='http-success-shaped'?'unknown':'known');
-        assert.equal(paid.cost_micros,failed?(mode==='http-success-shaped'?456:null):(mode==='over-allowance'?2_000_000_000:345));
-        if(failed||mode==='delayed')assert.equal(settled.events.length,0,'Unavailable or stale grading must not fabricate a learning verdict.');
-        else{assert.equal(settled.events.length,1);assert.equal(settled.events[0].result.authority,'jev');const event=structuredClone(settled.events[0]);assert.equal((await post('/review/answer',answer)).status,303);assert.deepEqual((await app()).events,[event]);}
-        if(['http-error','malformed','http-success-shaped'].includes(mode)){
-          // Spend SQL rows deliberately separate bulky raw payloads. Read the
-          // real archive codec after the answer settles to verify full custody.
-          const exported=await req('/export');assert.equal(exported.status,200);
-          const stored=(await exported.json()).app.spend.find(row=>row.id===paid.id);assert.ok(stored);
-          assert.ok(stored.raw_response);assert.equal(stored.response_hash,createHash('sha256').update(stored.raw_response).digest('hex'));assert.equal(stored.response_bytes,Buffer.byteLength(stored.raw_response));assert.equal(stored.response_outcome,mode==='malformed'?'received':'rejected');
-        }
-        for(const route of ['/review/self','/review/override'])assert.equal((await post(route,{csrf:current.csrf,operation_id:`retired-self-rating-${mode}`,correct:'true'})).status,410);
-        await new Promise(r=>setTimeout(r,1200));assert.equal(transmissions,1,'Unknown/unavailable grading must not resend automatically.');
-        if(mode==='over-allowance'){
-          const held=await app();assert.equal((await post('/review/next',{csrf:held.csrf,occurrence_id:held.occurrence.id,operation_id:'over-budget-next-question'})).status,303);
-          await req('/notebook');const next=await app();
-          if(next.occurrence?.phase==='intro')assert.equal((await post('/review/intro',{csrf:next.csrf,occurrence_id:next.occurrence.id,operation_id:'over-budget-introduce-next',known:'false'})).status,303);
-          const ready=await app();assert.ok(ready.occurrence,'Another native activity exists for budget admission proof.');
-          assert.equal((await post('/review/answer',{csrf:ready.csrf,occurrence_id:ready.occurrence.id,operation_id:'over-budget-next-answer',answer:'Another non-exact remembered response'})).status,303);
-          const blocked=await wait(a=>a.occurrence.phase==='self-check');assert.match(blocked.assessments[blocked.occurrence.assessment_id].error,/allowance is used/);assert.equal(transmissions,1);assert.equal(blocked.spend.length,1);
-        }
-        const ledger=(await app()).spend;const report=await(await req('/api/v1/spend?by=purpose')).json();assert.equal(report.entries.length,ledger.length);
-        for(const entry of report.entries){const row=ledger.find(s=>s.id===entry.id);assert.equal(entry.purpose,row.purpose);assert.equal(entry.model,row.model);assert.equal(entry.cost_micros,row.cost_micros);assert.equal(entry.work_id,row.work_id);}
-        if(failed&&mode!=='http-success-shaped')assert.ok(report.entries.some(e=>e.status==='unknown'&&e.unknown_held_micros===500000));
-        if(mode!=='delayed')assert.deepEqual(await sql.exec("SELECT key,value FROM records WHERE key LIKE 'jobs/%' OR key LIKE 'job_payload/%' ORDER BY key"),originalJobs,'Native grading never claims or rewrites historical content-generation jobs.');
-        console.log(JSON.stringify({native_grading_transport:mode,phase:'pass'}));
-      }catch(error){throw new Error(`Native grading transport ${mode}: ${error.message}`,{cause:error});}finally{releaseBlocked?.();await fixture.mf.dispose();}
-    }
+      // The earlier notebook as the retired authored demo left it, one question
+      // held unanswered, loaded from its fixture: no route or helper creates it.
+      const sql=await fixture.mf.unsafeGetDurableObjectStorage('scry-reference-smoke','LearningSpace',{name:space});
+      await seedEarlier(sql,'question-cold-choice',await fixture.mf.getR2Bucket('SCRY_ASSETS'));
+      const rows=()=>sql.exec('SELECT key,value FROM records ORDER BY key'),changes=()=>sql.exec('SELECT total_changes() AS n');
+      const before=await rows(),written=await changes(),meta=JSON.parse(before.find(row=>row.key==='meta').value),held=meta.occurrence;
+      assert.equal(held.phase,'question');assert.equal(held.assisted,false);
+      const question=JSON.parse(before.find(row=>row.key===`questions/${held.question_id}`).value);
+      for(const path of ['/notebook','/map','/history','/settings',`/concepts/${held.concept_id}`,`/goals/${question.goal_id}`,`/questions/${held.question_id}/edit`,'/gate','/export'])for(const method of ['GET','HEAD']){
+        const response=await req(path,{method});assert.equal(response.status,200,`${method} ${path}`);const text=await response.text();
+        assert.doesNotMatch(text,/data-state="(gate|checking-reference|question)"|Look it up|action="\/review\//,`${method} ${path}`);
+        assert.deepEqual(await rows(),before,`${method} ${path} wrote a row`);assert.deepEqual(await changes(),written,`${method} ${path} wrote`);
+      }
+      // The saved answer is readable on its Concept and in the export without recording anything.
+      assert.match(await(await req(`/concepts/${held.concept_id}`)).text(),/It may need validation before reuse/);
+      assert.match(await(await req('/notebook')).text(),/data-state="earlier-unanswered"/);
+      for(const [path,fields] of [['/review/answer',{answer:held.presentation.answer}],['/review/answer',{answer:'A deliberately non-exact remembered response'}],['/review/reveal',{}],['/review/help',{return_to:'/export'}],['/review/next',{}],[`/concepts/${held.concept_id}/practice`,{}]]){
+        const refused=await post(path,{csrf:meta.csrf,operation_id:'retired-earlier-'+randomUUID(),occurrence_id:held.id,...fields});
+        assert.equal(refused.status,410,path);assert.match(await refused.text(),/The earlier concept notebook is kept as history\./);
+      }
+      await new Promise(resolve=>setTimeout(resolve,1300));
+      assert.deepEqual(await rows(),before);assert.deepEqual(await changes(),written);assert.equal(sent,0);
+    } finally {await fixture.mf.dispose();}
   });
   for (const [label, changes, succeeds, snapshot] of [
     ['verified snapshot', {}, true, true],
@@ -574,11 +518,12 @@ try {
       for(const path of ['/','/create','/export'])assert.equal((await req(path)).status,200);
       for(const token of ['',jwt(),jwt({sub:'',common_name:'other.access'}),jwt({sub:owner,common_name:client}),jwt({sub:'',common_name:client,aud:['wrong']}),jwt({sub:'',common_name:client,iss:'https://wrong.invalid'}),jwt({sub:'',common_name:client,exp:epoch-1}),jwt({sub:'',common_name:client},{},generateKeyPairSync('rsa',{modulusLength:2048}).privateKey)])assert.equal((await req('/',token)).status,401);
       assert.equal((await req('/','',{headers:{'Cf-Access-Client-Id':client,'x-scry-owner':'private-owner','Cf-Access-Authenticated-User-Email':'owner@example.invalid'}})).status,401);
+      // The authored demo is retired: not offered, and refused, even here.
       const empty=await(await req('/notebook')).text();
-      assert.match(empty,/Explore an authored demo/);
-      const fixtureCsrf=/name="csrf" value="([^"]+)"/.exec(empty)[1];
-      assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,303);
+      assert.doesNotMatch(empty,/Explore an authored demo|action="\/__fixture"/);
       const fields=await savedRequestFields(await req('/settings'));
+      const demo=()=>req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fields.csrf,operation_id:'retired-demo-'+randomUUID()})});
+      assert.equal((await demo()).status,410);
       const submit=(originHeader,csrf=fields.csrf)=>req('/create',service,{method:'POST',headers:{'X-Scry-Test-Origin':originHeader,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,csrf,intent:'Synthetic service-token capture'})});
       assert.equal((await submit('https://attacker.invalid')).status,403);
       assert.equal((await submit(origin,'forged')).status,403);
@@ -588,8 +533,8 @@ try {
       const snapshots=await fixture.mf.getR2Bucket('SCRY_BACKUPS');
       const listed=await snapshots.list();
       const snapshot=await snapshots.get(listed.objects.at(-1).key);
-      assert.equal(Object.keys((await snapshot.json()).app.goals).length,1,'Retired capture leaves the authored demo unchanged and scheduled complete backup remains available.');
-      assert.equal((await req('/__fixture',service,{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:fixtureCsrf})})).status,409,'The authored demo never overwrites acknowledged synthetic work.');
+      assert.equal(Object.keys((await snapshot.json()).app.goals).length,0,'Neither retired capture nor the retired demo creates a Goal, and scheduled complete backup remains available.');
+      assert.equal((await demo()).status,410,'The retired demo seeds nothing, however often it is asked.');
       for(const changes of [{SCRY_ENV:'production'},{SCRY_ENV:'preview'}]){
         active=await fixture.rebind({...bindings,...changes});
         assert.equal((await req()).status,401,'Service identity must not authorize ordinary preview or production.');
@@ -601,7 +546,7 @@ try {
     } finally {await fixture.mf.dispose();}
   });
   for (const mode of ['preview', 'production']) {
-    await check(`${mode}: exact QA principal owns isolated SQLite, photos, backups and restarted alarms`, async () => {
+    await check(`${mode}: exact QA principal owns isolated SQLite and photos, and never backups or a backup alarm`, async () => {
       const client = 'dedicated-scry-qa.access';
       const serviceClaims = {sub:'', common_name:client};
       const service = jwt(serviceClaims);
@@ -702,31 +647,31 @@ try {
         active = await fixture.rebind({...bindings,ALTERNATE_HOSTS:'alternate-synthetic.invalid,unused.invalid'});
         ownerBackups = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
         assert.deepEqual((await exported(service)).app,qaArchive.app);
-        const initialSettings = fields(await (await req('/settings')).text());
-        assert.equal((await post('/settings/backup',initialSettings)).status,303);
-        const qaBefore = (await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects.map(o=>o.key);
+        // SPEC § Privacy: the verification space never reaches backups. Its
+        // Settings says so, a crafted request is refused before any write, and
+        // neither a deliberate action nor its restarted alarm takes one.
+        const initialHtml = await (await req('/settings')).text();
+        assert.match(initialHtml,/Backups do not apply to this verification space\./);
+        const initialSettings = fields(initialHtml);
         const qaStorage = await storage('scry-qa');
+        const qaRowsBefore = await qaStorage.exec('SELECT key,value FROM records ORDER BY key');
+        assert.equal((await post('/settings/backup',initialSettings)).status,403);
+        assert.deepEqual(await qaStorage.exec('SELECT key,value FROM records ORDER BY key'),qaRowsBefore);
         const meta = JSON.parse((await qaStorage.exec("SELECT value FROM records WHERE key='meta'"))[0].value);
         meta.backup.completed_ms = Date.now()-25*60*60*1000;
         await qaStorage.exec("UPDATE records SET value=? WHERE key='meta'",JSON.stringify(meta));
-        // Real request arming and timer delivery, not an invented inspection API.
-        await req('/settings');
-        const deadline = Date.now()+5000;
-        let snapshots;
-        do {
-          snapshots = await ownerBackups.list({prefix:'snapshots/scry-qa/'});
-          if (snapshots.objects.some(o=>!qaBefore.includes(o.key))) break;
-          await new Promise(resolve=>setTimeout(resolve,50));
-        } while (Date.now()<deadline);
-        const alarmSnapshot = snapshots.objects.find(o=>!qaBefore.includes(o.key));
-        assert.ok(alarmSnapshot,'Restarted QA alarm must create a QA-prefixed complete snapshot.');
-        const qaSnapshot = await (await ownerBackups.get(alarmSnapshot.key)).json();
-        assert.deepEqual(qaSnapshot.app.goals,qaArchive.app.goals);
-        assert.deepEqual(qaSnapshot.photos,qaArchive.photos);
-        assert.doesNotMatch(JSON.stringify(qaSnapshot),/OWNER_ONLY_NOTEBOOK_CANARY/);
+        await req('/settings');await new Promise(resolve=>setTimeout(resolve,1500));
+        // A deliberate action arms no backup alarm in the verification space.
+        assert.equal((await post('/practice/nato/start',{csrf:initialSettings.csrf,operation_id:'qa-arms-the-alarm-deliberately'})).status,303);
+        await new Promise(resolve=>setTimeout(resolve,2500));
+        assert.deepEqual((await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects,[],'The verification space never writes a snapshot.');
+        const freshNs = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
+        const qaAlarm = freshNs.get(freshNs.idFromName('scry-qa'));
+        try {assert.equal(await qaAlarm.qaAlarmTime(),null,'No backup alarm is armed for it.');assert.equal(await qaAlarm.qaAlarm(),200);} finally {qaAlarm[Symbol.dispose]?.();}
+        assert.deepEqual((await ownerBackups.list({prefix:'snapshots/scry-qa/'})).objects,[]);
         assert.deepEqual((await ownerBackups.list({prefix:`snapshots/${baseBindings.SPACE_NAME}/`})).objects.map(o=>o.key),ownerBefore);
         const qaSettings = fields(await (await req('/settings')).text());
-        assert.equal((await post('/settings/backup',qaSettings)).status,303,'QA may back up only its own notebook.');
+        assert.equal((await post('/settings/backup',qaSettings)).status,403,'QA never backs up, its own notebook included.');
         const ownerAfter = await exported(jwt());
         const ownerSnapshot = await (await ownerBackups.get(ownerAfter.app.backup.key)).json();
         assert.doesNotMatch(JSON.stringify(ownerSnapshot),/QA_ONLY_NOTEBOOK_CANARY/);
@@ -924,10 +869,10 @@ try {
         const report=await(await req('/api/v1/spend?by=purpose',jwt())).json();assert.equal(report.entries.length,1);assert.equal(report.entries[0].cost_micros,3_500_000);assert.equal(report.entries[0].purpose,'generate.concepts');
       }finally{await fixture.mf.dispose();}
     });
-    await check(`${mode}: QA keeps native local study and saved ungraded answers without self-grading or paid Jev`, async () => {
+    await check(`${mode}: QA keeps native local Study without earlier practice, self-grading or paid Jev`, async () => {
       const localOrigin = 'http://127.0.0.1:8792';
       const client = 'no-paid-checking-qa.access';
-      const fixture = await createRuntime({artifact,name:`scry-qa-checking-${mode}`,egress,
+      const fixture = await createRuntime({artifact,name:`scry-qa-checking-${mode}`,egress,inspect:true,
         bindings:{SCRY_ENV:'development',CANONICAL_ORIGIN:localOrigin,SPACE_NAME:'scry-qa',INTERNAL_KEY:internalKey}});
       let active = fixture,currentOrigin = localOrigin;
       const req = (path,init={}) => active.worker.fetch(`${currentOrigin}${path}`,{...init,redirect:'manual',
@@ -939,50 +884,56 @@ try {
       };
       const post = (path,values) => req(path,{method:'POST',body:new URLSearchParams(values),
         headers:{'X-Scry-Test-Origin':currentOrigin,'Content-Type':'application/x-www-form-urlencoded'}});
+      // The space's complete export, read inside the object: the verification
+      // space has no backups to read it back from (SPEC § Privacy).
       const snapshot = async identity => {
         const ns = await fixture.mf.getDurableObjectNamespace('LEARNING_SPACE');
         const stub = ns.get(ns.idFromName('scry-qa'));
-        assert.equal((await stub.fetch('https://internal.invalid/__internal/daily',{method:'POST',
-          headers:{'x-scry-internal-key':internalKey,'x-scry-owner':identity}})).status,200);
-        const bucket = await fixture.mf.getR2Bucket('SCRY_BACKUPS');
-        const objects = (await bucket.list({prefix:'snapshots/scry-qa/'})).objects;
-        return (await (await bucket.get(objects.sort((a,b)=>b.uploaded-a.uploaded)[0].key)).json()).app;
+        const response = await stub.fetch('https://internal.invalid/export',{headers:{'x-scry-internal-key':internalKey,'x-scry-owner':identity}});
+        assert.equal(response.status,200);
+        return (await response.json()).app;
       };
       try {
-        // Authored local setup only; ordinary QA cannot call the fixture route.
-        let html = await (await req('/notebook')).text();
-        assert.equal((await post('/__fixture',fields(html,'/__fixture'))).status,303);
+        // The earlier notebook as the retired authored demo left it, one question
+        // held unanswered, loaded from its fixture: no route can create it.
+        await seedEarlier(await fixture.mf.unsafeGetDurableObjectStorage(`scry-qa-checking-${mode}`,'LearningSpace',{name:'scry-qa'}),'question-cold-choice',await fixture.mf.getR2Bucket('SCRY_ASSETS'));
+        let html;
         let app = await snapshot('private-owner');
-        if (app.occurrence.presentation.kind === 'choice') {
-          assert.equal((await post(`/questions/${app.occurrence.question_id}/archive`,{
-            csrf:app.csrf,operation_id:'qa-archive-authored-choice-only'})).status,303);
-        }
+        const held = structuredClone(app.occurrence);
+        assert.equal(held.phase,'question');
         active = await fixture.rebind({...baseBindings,SCRY_ENV:mode,SCRY_QA_ACCESS_CLIENT_ID:client,
           JEV_API_KEY:'synthetic-owner-jev-key',JEV_MODEL:'synthetic-owner-jev',
           JEV_URL:'https://openrouter.ai/api/alpha/decisions'});
         currentOrigin = origin;
-        html = await (await req('/notebook')).text();
-        assert.equal((await post('/review/answer',{...fields(html,'/review/answer'),
-          answer:'A deliberately non-exact QA remembered response'})).status,303);
-        const deadline = Date.now()+5000;
-        do {
-          // Snapshotting arms the next timer; let the real one-second work
-          // alarm fire before requesting another complete backup.
-          await new Promise(resolve=>setTimeout(resolve,1100));
-          app = await snapshot('private-qa');
-          if (app.occurrence.phase === 'self-check') break;
-        } while (Date.now()<deadline);
-        assert.equal(app.occurrence.phase,'self-check');
-        assert.match(Object.values(app.assessments)[0].error,/Meaning checking is not configured/);
+        // The held earlier question cannot be answered here, as anywhere.
+        const refused = await post('/review/answer',{csrf:app.csrf,operation_id:'qa-earlier-answer-is-retired',
+          occurrence_id:held.id,answer:'A deliberately non-exact QA remembered response'});
+        assert.equal(refused.status,410);assert.match(await refused.text(),/The earlier concept notebook is kept as history\./);
+        // The Owner's Jev key is bound, and still paid judgment cannot be turned on in the QA space.
+        assert.equal((await post('/settings/judgment',{csrf:app.csrf,operation_id:'qa-cannot-turn-paid-judgment-on',paid_judgment:'on'})).status,409);
+        // Native local Study: a starter, Try from memory, and a mismatch graded here.
+        html = await (await req('/?practice=nato')).text();
+        assert.equal((await post('/practice/nato/start',fields(html,'/practice/nato/start'))).status,303);
+        html = await (await req('/?practice=nato')).text();
+        assert.equal((await post('/practice/quiz',fields(html,'/practice/quiz'))).status,303);
+        html = await (await req('/?practice=nato')).text();
+        assert.equal((await post('/practice/answer',{...fields(html,'/practice/answer'),answer:'Alpha'})).status,303);
+        // Let any timer a queued check would have armed fire; `egress` admits no provider.
+        await new Promise(resolve=>setTimeout(resolve,1300));
+        app = await snapshot('private-qa');
+        const attempts = Object.values(app.practice.attempts);
+        assert.equal(attempts.length,1);assert.equal(attempts[0].grade.verdict,'Again');assert.equal(attempts[0].judgment??null,null);
+        assert.deepEqual(app.practice.checks??{},{});assert.equal(app.preferences.paid_judgment??false,false);
         assert.deepEqual(app.spend,[]);
-        assert.equal(app.events.length,0);
+        assert.equal(app.events.length,0);assert.deepEqual(app.assessments,{});assert.deepEqual(app.occurrence,held);
         html = await (await req('/notebook')).text();
-        assert.match(html,/Your answer is saved, not graded/);assert.doesNotMatch(html,/action="\/review\/self"/);
+        assert.match(html,/data-state="earlier-unanswered"/);assert.doesNotMatch(html,/action="\/review\//);
         const before=structuredClone(app);
         for(const route of ['/review/self','/review/override'])assert.equal((await post(route,{csrf:app.csrf,operation_id:'retired-qa-self-rating-operation',correct:'true'})).status,410);
         app = await snapshot('private-qa');
         assert.deepEqual(app.events,[]);assert.deepEqual(app.occurrence,before.occurrence);
         assert.deepEqual(app.questions,before.questions);assert.deepEqual(app.operations,before.operations);assert.deepEqual(app.spend,[]);
+        assert.deepEqual(app.practice.attempts,before.practice.attempts);
       } finally {await fixture.mf.dispose();}
     });
   }
@@ -1029,15 +980,19 @@ try {
       assert.deepEqual(before.app.operations, source.app.operations);
       assert.equal((await active.worker.fetch(`${origin}/export`, {headers:{'x-scry-backup-key':backupKey}})).status, 401);
       const fields = await savedRequestFields(await req('/settings'));
-      const submit = () => req('/settings', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
-        body:new URLSearchParams({...fields, pace:'light'})});
-      const saved = await submit();
-      assert.equal(saved.status, 303);
-      assert.equal((await submit()).headers.get('Location'), saved.headers.get('Location'));
+      // The earlier notebook's pace is retired; creating an Owner token is the accepted write.
+      const pace = await req('/settings', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({...fields, operation_id:'retired-pace-'+randomUUID(), pace:'light'})});
+      assert.equal(pace.status, 410);
+      const submit = () => req('/tokens/create', {method:'POST', headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({...fields, name:'Synthetic accepted write beside custody'})});
+      assert.equal((await submit()).status, 200);
+      assert.equal((await submit()).status, 303, 'An exact retry replays the saved receipt.');
       active = await fixture.rebind(activeBindings);
       const after = await (await req('/export')).json();
       assert.deepEqual(after.app.revival_go, custody);
-      assert.deepEqual(after.app.goals,before.app.goals);assert.equal(after.app.preferences.pace,'light');
+      assert.deepEqual(after.app.goals,before.app.goals);assert.equal(after.app.preferences.pace,before.app.preferences.pace);
+      assert.deepEqual(Object.values(after.app.owner_tokens).map(token=>token.name),[...Object.values(before.app.owner_tokens??{}).map(token=>token.name),'Synthetic accepted write beside custody']);
       const response = await active.worker.fetch(`${origin}/internal/backup`, {method:'POST', headers:{'x-scry-backup-key':backupKey}});
       assert.equal(response.status, 200);
       const state = await (await req('/export')).json();
@@ -1097,14 +1052,17 @@ await test('listener allocation survives deterministic contention and concurrent
     const html=await response.text();assert.match(html,/Native content generation is retired/);
     const fields=await savedRequestFields(await fetch(listener+'/settings'));
     assert.ok(fields.csrf);
-    const submit=origin=>fetch(listener+'/settings',{method:'POST',redirect:'manual',headers:{Origin:origin},body:new URLSearchParams({...fields,pace:'light'})});
+    // A verified backup is the write; the earlier notebook's pace is retired.
+    const submit=origin=>fetch(listener+'/settings/backup',{method:'POST',redirect:'manual',headers:{Origin:origin},body:new URLSearchParams(fields)});
     assert.equal((await submit('https://foreign.invalid')).status,403);
     assert.equal((await submit(runtimes.find(other=>other!==local).url)).status,403);
     assert.equal((await fetch(listener+'/',{headers:{'X-Scry-Test-Host':'foreign.invalid'}})).status,421);
     assert.equal(Object.keys((await(await fetch(listener+'/export')).json()).app.goals).length,0);
     assert.equal((await submit(listener)).status,303,'A rejected write must not consume the operation.');
     assert.equal((await submit(listener)).status,303,'An exact retry must remain idempotent.');
-    const saved=(await(await fetch(listener+'/export')).json()).app;assert.equal(saved.preferences.pace,'light');assert.equal(Object.keys(saved.operations).length,1);assert.deepEqual(saved.goals,{});
+    const pace=await fetch(listener+'/settings',{method:'POST',redirect:'manual',headers:{Origin:listener},body:new URLSearchParams({...fields,operation_id:'retired-pace-'+randomUUID(),pace:'light'})});
+    assert.equal(pace.status,410,'The earlier pace is retired.');
+    const saved=(await(await fetch(listener+'/export')).json()).app;assert.equal(saved.preferences.pace,'steady');assert.ok(saved.backup.completed_ms);assert.equal(Object.keys(saved.operations).length,1);assert.deepEqual(saved.goals,{});
   }
   console.log(JSON.stringify({listener_allocation:'PASS',reclaimed_probe_port:port,concurrent_origins:runtimes.map(local=>local.url),isolated_receipts_per_runtime:1,foreign_origin_status:403,foreign_host_status:421,canonical_write_and_replay_status:303}));
 });

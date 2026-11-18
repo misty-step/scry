@@ -16,6 +16,98 @@ routine rollout needs no further approval. Private-data, credential, spend,
 irreversible-action and data-loss decisions retain their scoped authority.
 The dated receipts below remain historical evidence, not new rollout gates.
 
+## Custody — source as of 2026-11-15
+
+This describes source behavior on branch `custody-local`, not a deployed
+observation. Stored records and archive formats are unchanged.
+
+- **Storage capacity.** Only size refuses. A mutation that changes the
+  notebook, from the browser or the API, is refused with 413 and "Storage is
+  full. This would make the notebook too large for one complete backup, so
+  nothing was saved." when the result would pass the 16 MiB complete-archive
+  limit. The refused page keeps the typed answer; nothing is written. A replay
+  of a committed operation and a token revocation are never refused for
+  capacity. Records of paid work (a sent Check's outcome, its ledger entry, an
+  interrupted send's unknown spend) are saved through the work path without
+  asking.
+- **The edge left open.** Writes that never ask the rule (a failed backup's
+  status, a restore's marker and per-Check reasons, a paid Check's record) can
+  carry a notebook within a few hundred bytes of the limit past it. From then
+  on it cannot back up or export until an operator intervenes: every backup
+  fails and shows as failed, export answers 413, every growing write is
+  refused, `/healthz` reports the stale backup after 26 hours, and nothing is
+  deleted. The remedy is a reserve kept below the limit for those writes. It
+  was not shipped because the live notebook's size is unknown, and a reserve
+  that refuses ordinary growth could lock out a notebook already inside it.
+  `qa/custody.test.mjs` and `tests/custody.rs` pin this state as it is today.
+- **Size in Settings.** Over 12 MiB (three quarters of the limit) Settings
+  states the size in fineprint ("The notebook uses 13.0 MiB of the 16 MiB one
+  complete backup can hold."); under it, nothing.
+- **Unmeasurable archives.** A notebook whose archive cannot be built for a
+  reason other than size (a stored photo over the photo limit, conflicting
+  photo records) is answered exactly as before this rule: the earlier checked
+  browser writes (Save draft, discard, starting NATO or a lesson, Library adds
+  and edits) and every API mutation refuse with that reason; every other write
+  is admitted; its backups fail and show as failed.
+- **Full notebooks.** None is ever trimmed. Past the limit every page,
+  History, the Library and the API reads stay available; `/export` and
+  `/api/v1/export` answer 413 "Storage is full: the notebook is too large for
+  one complete export. …"; Settings says "Storage is full."; backups fail and
+  show as failed.
+- **Failed backup.** Settings leads with "The last backup failed." and the
+  last verified date, or "No verified backup exists.", outside any disclosure.
+  A failed backup asked for in Settings returns to Settings (303), keeps study
+  available and reports `backup_failure`.
+- **Verification space.** The `scry-qa` space never writes, reads or prunes
+  `SCRY_BACKUPS`: Settings says "Backups do not apply to this verification
+  space.", `POST /settings/backup` answers 403 before any write, and its alarm
+  arms and takes no backup. Earlier `snapshots/scry-qa/` objects are not
+  touched by this source; their removal is an operator decision. The Owner's
+  backups and `/healthz` are unchanged.
+- **Restore.** A restore leaves every retired generation job exactly as
+  stored; only practice Checks become refused (queued) or unknown (sent).
+  `revival/restore.mjs` reconciles on that basis. Until it backs up, a restored
+  notebook's Settings reads "Restored here; no backup has been taken here yet."
+  with the last verified date, if any; the restore marker kept in the backup
+  status is not shown as a failure.
+- **Cross-site reads.** A GET or HEAD with `Sec-Fetch-Site: cross-site` is
+  answered 403 before any access check or state read unless it is a top-level
+  navigation (`Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document`), which
+  includes the sign-in redirect back from Access. Requests without fetch
+  metadata are unchanged. `GET` and `HEAD /healthz` answer before this check.
+- **Owner tokens.** A token that expires cannot create one that expires later
+  or never.
+- **Triage.** Two categories join those listed below:
+  `access_keys_unavailable` (the Access certificate endpoint failed, timed
+  out, or returned keys that cannot be read; the answer stays the ordinary
+  401) and `backup_failure` (a backup asked for in Settings was not verified).
+
+## Failure reports and model authority — source as of 2026-11-15
+
+This describes source behavior, not a deployed observation.
+
+- **Triage reports.** The Worker sends one fixed category and its deployment
+  identity (`SENTRY_ENVIRONMENT`, `SCRY_VERSION`) through
+  `deploy/cloudflare-hosting/telemetry.mjs`, at most once a minute per isolate,
+  in `waitUntil`, never retried. Categories: `request_exception` (an error
+  escaped a request), `upstream_5xx` (a 5xx answer, such as a stored photo that
+  fails verification, a failed backup trigger, or `/healthz` unable to reach its
+  stored state), `alarm_failure` (the Durable Object alarm failed to load, back
+  up, claim or rearm) and `scheduled_failure` (a scheduled snapshot was not
+  verified). `/healthz` answering `backup_stale` or an unverified proof, and
+  every access denial or refusal below 500, are ordinary answers and send
+  nothing. A send needs `SENTRY_ENVIRONMENT` of `production` or
+  `synthetic-staging`.
+- **Model authority.** Only `SCRY_ENV=production` may send an answer to Jev.
+  `preview` may reach Jev only when `JEV_URL`'s host is under `.invalid`, the
+  controlled egress of the Worker QA, so a real key bound to a preview reaches
+  no provider and Settings says paid judgment is not available. Development,
+  restore and synthetic previews send nothing. A preview deployed from this
+  source therefore stops sending checks even if a provider key is still bound
+  to it. Paid judgment in production needs `JEV_API_KEY` (secret), `JEV_MODEL`
+  and `JEV_URL` on the production Worker; production bindings are unchanged by
+  this source.
+
 ## Canonical origin serving at 16:35 UTC, 2026-10-20
 
 The release watcher observed **https://scry.mistystep.io** as the canonical

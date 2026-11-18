@@ -73,6 +73,25 @@ notebook or create credentials as a shortcut. The [verification skill](../.agent
 describes the QA identity boundary. Report any unavailable live acceptance
 honestly; do not turn a missing observation into a claim of success.
 
+Unexpected failures reach the Owner's triage route as a fixed category and the
+deployment identity only; an unhealthy `/healthz` that names a stale backup,
+and ordinary denials, send nothing. Access signing keys the provider or the
+network cannot supply are reported as `access_keys_unavailable`, and a backup
+requested from Settings that fails as `backup_failure`
+([custody, 2026-11-15](runbook.md#custody--source-as-of-2026-11-15)). The
+verification space takes no backups. Only production holds model authority: a
+preview reaches Jev only at a `.invalid` test host. The
+[runbook](runbook.md#failure-reports-and-model-authority--source-as-of-2026-11-15)
+lists the categories and the bindings paid judgment needs.
+
+Storage capacity has one limit: a write that would pass the 16 MiB complete
+archive is refused, from the browser or the API. Writes that never ask (a
+failed backup's status, a restore's marker, a paid Check's record) can carry a
+notebook within a few hundred bytes of the limit past it; it then cannot back
+up or export until an operator intervenes, health reports the stale backup,
+and nothing is deleted. A reserve below the limit is the remedy; it was not
+shipped because the live notebook's size is unknown.
+
 Rollback is a deliberate deployment of compatible application code, never an
 automatic restore over current data. No cloud restore drill is part of normal
 shipping. Keep existing application backup/storage behavior; do not remove
@@ -104,10 +123,11 @@ writes. The archive fence also protects mixed-only session state; it does not
 claim old code can preserve that state when pointed directly at live rows.
 
 
-App source/quiz Studies, explicit presentation phases and transition receipts use
-`scry-rust-durable-sqlite-study-phase-v3`. A Study's mode survives an empty held
-prompt; a phase-less generic API Study remains legacy until explicitly selected
-for app study or quiz. New archives must be refused by the published predecessor
+Studies presented as study or Quiz, explicit presentation phases and transition
+receipts use `scry-rust-durable-sqlite-study-phase-v3`. Every new Prompt carries
+a phase, whichever client asked for it, and marks its Study, so the format
+survives an empty held prompt. A Study from an older record keeps its earlier
+format until its next Prompt is held. New archives must be refused by the published predecessor
 before restore writes. As above, this is an archive fence, not a claim that old
 code can preserve unknown fields when pointed directly at live rows. After
 source/quiz writes, rollback requires a compatible fix, never a direct downgrade.

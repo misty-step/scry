@@ -4,11 +4,13 @@ These records own technical decisions. [SPEC](../../SPEC.md) alone owns stories
 and behavior, [DESIGN](../../DESIGN.md) owns visuals, and [the runbook](../runbook.md)
 owns operational records. A decision is not proof of deployment or serving state.
 
-On 2026-10-20 SPEC made Scry exact-recall-first for one owner
-([Exact recall first](../../SPEC.md#exact-recall-first-2026-10-20)). Until the
-build tickets amend them, read ADR 004's "no API/CLI parity", "no generic agent
-layer" and QA-identity statements, and ADR 006's revival custody, as superseded
-in intent by SPEC AG1, US-014, US-019, retired S09.4 and amended D6.
+[SPEC](../../SPEC.md) is the present-tense target state. Read ADR 004's "no
+API/CLI parity", "no generic agent layer" and QA-identity statements, and ADR
+006's revival custody, as superseded in intent by SPEC's
+[Agent access](../../SPEC.md#agent-access), [Owner tokens](../../SPEC.md#owner-tokens),
+[Privacy](../../SPEC.md#privacy) and [Earlier material](../../SPEC.md#earlier-material).
+Identifiers such as `US-014` or `D6` in these records are defined in
+[SPEC at `979e432`](https://github.com/misty-step/scry/blob/979e432/SPEC.md).
 
 - [ADR 004: Rust Cloudflare candidate and one durable authority](004-rust-cloudflare-candidate.md): current candidate, not activation.
 - [ADR 005: Synthetic preview Access service identity](005-synthetic-preview-access.md): revocable machine QA, never production owner access.

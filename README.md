@@ -1,11 +1,13 @@
 # Scry
 
+> **Product contract (2026-11-17):** [PRODUCT.md](PRODUCT.md) is the product contract and [DESIGN.md](DESIGN.md) the visual one; the Go recompile reads only those two. `SPEC.md` and `VISION.md` are retired history under [docs/history/2026-11-17-retired](docs/history/2026-11-17-retired/README.md); they describe the current Rust code and matter only when maintaining it.
+
 Scry helps its owner memorize externally authored knowledge. Home leads to
 native review or the supplied NATO starter; Library is secondary. External
 agents supply content, while Scry grades answers and schedules recall. Native
 content generation is retired. Existing exact-text and concept-notebook
-material, interrupted practice and history remain preserved. [SPEC](SPEC.md)
-records the owner's 2026-10-27 direction and remaining acceptance work.
+material, interrupted practice and history remain preserved. [SPEC](docs/history/2026-11-17-retired/SPEC.md)
+is the present-tense target state.
 
 The application in this checkout is a ground-up **Rust + Cloudflare Workers**
 rewrite, authorized on October 7, 2026. A plain WASM Worker validates private
@@ -26,15 +28,14 @@ For the current origin and remaining proof, read the runbook's
 [dated promotion observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
 and the [current deployment procedure](docs/rust-cloudflare.md#reviewable-release-procedure).
 
-[Product intent](VISION.md) · [Stories and specification](SPEC.md) ·
+[Product intent](docs/history/2026-11-17-retired/VISION.md) · [Specification](docs/history/2026-11-17-retired/SPEC.md) ·
 [Design](DESIGN.md) · [Features](features/README.md) ·
 [Verification](docs/qa/system.md) · [Current production operations](docs/runbook.md)
 
 ## Start or resume work
 
-Read SPEC, especially its latest scope amendment and the relevant stories, before
-scoping work. GLOSSARY owns the words. VISION explains intent;
-USER_STORIES is only a compatibility index. Technical decisions live in ADRs.
+Read SPEC before scoping work; its Terms own the words. VISION explains
+intent. Technical decisions live in ADRs.
 Use the current operator request as authority; preserve overlapping work and
 inspect `git status --short --branch` and `git rev-parse HEAD` in the selected
 checkout. [GitHub issues](https://github.com/misty-step/scry/issues) own work
@@ -42,7 +43,7 @@ state: initiative [#273](https://github.com/misty-step/scry/issues/273) tracks i
 child issues. Legacy MIS, Linear, Powder and Glass identities are provenance. Link accepted
 scope, exact source, tests, and remaining evidence from the session/PR.
 
-[DESIGN](DESIGN.md) governs visual decisions; [SPEC](SPEC.md) alone governs
+[DESIGN](DESIGN.md) governs visual decisions; [SPEC](docs/history/2026-11-17-retired/SPEC.md) alone governs
 behavior. Do not synchronize requirements into work instructions or feature maps.
 
 ## Develop
@@ -66,9 +67,7 @@ operator/model/deployment capabilities out. It listens only on loopback; set
 repository `.env` or `.dev.vars` files. The printed directory owns that run's
 state; stop the process before removing only that directory.
 
-The empty notebook offers an explicitly authored demo only in isolated
-development. The demo uses no provider and is never advertised in production.
-New native content-generation requests are refused before creating work, even
+The authored demo is retired: no environment offers or accepts it. New native content-generation requests are refused before creating work, even
 when provider bindings exist. Local fixture mechanics do not prove live model usefulness,
 private HTTPS, remote R2 recovery, or phone acceptance.
 
@@ -118,7 +117,7 @@ source endpoints alone do not establish deployed recovery support.
 ## Durable boundaries
 
 [ADR 004](docs/adr/004-rust-cloudflare-candidate.md) owns architecture and module
-boundaries. [SPEC](SPEC.md#adopted-behavioral-policies) owns learning, privacy,
+boundaries. [SPEC](docs/history/2026-11-17-retired/SPEC.md#invariants) owns learning, privacy,
 spend and recovery policies; this entrypoint is not another copy.
 
 ## Deployment

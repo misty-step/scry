@@ -4,7 +4,7 @@ The active replacement source is Rust/WASM on a plain Cloudflare Worker with a
 singleton SQLite Durable Object and private R2.
 [The runbook's dated serving observation](../runbook.md#rust-production-serving--observed-2026-10-20)
 owns production serving state. [VISION](../../VISION.md)
-explains intent, [SPEC](../../SPEC.md) alone owns stories and acceptance, and
+explains intent, [SPEC](../../SPEC.md) alone owns target behavior, and
 [README](../../README.md#start-or-resume-work) identifies work ownership.
 
 A native test, a workerd fixture, a browser interaction, live-provider material,
@@ -14,11 +14,15 @@ Go/retired-Worker receipts are historical observations, not transferred passes.
 
 ## Current retirement policy
 
-The [2026-10-27 retirement amendment](../../SPEC.md#review-first-entry-and-retired-native-generation-2026-10-27-406) takes precedence over historical
+Content generation and self-grading are [SPEC non-goals](../../SPEC.md#purpose-and-non-goals), which take precedence over historical
 generation/self-grading journeys. Current HTTP writes to those retired actions
 must return 410 without jobs, assets, receipts, reservations or provider calls.
-Native exact, choice and meaning grading remain supported; unavailable grading
-keeps the answer saved and ungraded. Historical Attempts, Corrections, material,
+Study answers are graded natively; unavailable grading keeps the answer saved
+and ungraded. The earlier concept notebook is history: Scry no longer serves,
+schedules, grades or changes it: every write to it returns 410 (`/review/*`,
+any `/goals|concepts|questions/{id}/{action}`, its pace at exactly `/settings`
+and `POST /api/v1/settings`, and the authored demo at `/__fixture`), a replay of
+a committed one included, and no read writes to it. Historical Attempts, Corrections, material,
 usage and interrupted state remain unchanged. Test retained transition/recovery
 semantics only with validated synthetic historical fixtures, never a runtime
 backdoor. `tests/generation_retirement.rs` and
@@ -26,7 +30,7 @@ backdoor. `tests/generation_retirement.rs` and
 
 ## Choose proof before running checks
 
-Read the affected story/criterion and design decision, then choose the smallest
+Read the affected SPEC capability and design decision, then choose the smallest
 proof that exercises the changed boundary. Reuse valid receipts when their
 source, environment, and behavior still apply. A documentation edit alone does
 not justify a model call or deployment.
@@ -73,17 +77,17 @@ There is no remote restore or custody fingerprint prerequisite. See the
 | Changed boundary | Existing Rust checks | Additional observation |
 | --- | --- | --- |
 | Pure grading / scheduler | `tests/learning_policy.rs`, `tests/fsrs_golden.rs` | Full 260-trajectory comparison protects pinned Go FSRS state, not learning efficacy |
-| Concept evidence / pace / selection | `tests/concept_policy.rs`, `tests/application.rs` | Prerequisite intros, focused new concepts, paused new material, due work, 3/6/12 rolling-day caps, and separate exposure/help/unaided observations |
-| Durable review / retry | `tests/application.rs` | Real workerd SQLite, refresh/restart, concurrent tabs, response loss after commit, identical-operation replay, and one event/schedule transition |
-| Meaning checks / historical overrides | `tests/learning_policy.rs`, `tests/application.rs` | Exact/variant local resolution; independent short-v1 and rubric judgments; unsure/failed answers stay ungraded; immutable historical authority and corrections; bounded real holdout quality separately |
+| Concept evidence | `tests/concept_policy.rs` | Observed recalled, helped and missed counts and the capped tally of an earlier Concept, as stored; nothing selects, paces or estimates |
+| Meaning checks / historical overrides | `tests/learning_policy.rs`, `tests/judgment.rs`, `tests/archive_integrity.rs` | Exact/variant local resolution; independent short-v1 judgments; unsure/failed answers stay ungraded; stored authority and Corrections kept immutable by restore validation; bounded real holdout quality separately |
 | Historical generation / refinement compatibility | `tests/generation_policy.rs`, `tests/application.rs` | Actual word/phrase/ramble → useful reference + practice, exact evidence, optional photo transcription, genuine attempt/feedback refinement, slow/partial/failed/unknown outcomes |
 | Historical prepublication critic US-004 | `tests/learning_policy.rs`, `tests/generation_policy.rs`, `tests/application.rs` | Saved candidates before external checks, independent hard judgments, one send lease, shared allowance, unknown usage, critic-only new attempt, judgment reuse, and fenced publication |
-| HTML / assistance fence | `tests/web_render.rs` | Real pointer/keyboard, native forms without JS, hidden current answer/reference across navigation, held result, content draft/version fences, access loss |
+| Earlier concept notebook as history | `tests/earlier_history.rs`, `tests/earlier_notebook.rs`, `tests/web_render.rs`, `node --test qa/earlier-notebook.test.mjs`, `qa/walk --stories "US-002 US-010 US-011"` | Every stored state from `tests/fixtures/earlier-notebook.json` loaded into real workerd SQLite: zero requests reach a counting synthetic Jev across the alarm, every page, resume and a restart; a GET or HEAD changes no row, change count, persisted file or alarm; the export is the stored notebook; no earlier page has a form or a recall estimate; every retired write, and a replay of a committed one, answers 410 and leaves every row as stored; Study beside it leaves every earlier row as stored |
+| HTML / Study protection | `tests/web_render.rs`, `tests/study.rs` | Real pointer/keyboard, native forms without JS, a protected Study Prompt hides answer-bearing pages, held result, content draft/version fences, access loss |
 | Persistence / archives | `src/persistence.rs` unit tests, `tests/application.rs` | Real SQLite/R2 archive with every referenced photo, full-byte remote readback, independent fresh-space restore, paused uncertain work |
 | Private Library | `tests/library.rs`, `node --test qa/library.test.mjs`, `qa/walk --stories "US-015"` | Compiled CLI through built isolated Worker, SQLite rows and complete local R2 readback; real Study/Attempt deletion refusal also runs in `qa/study.test.mjs` |
 | Text Study and exact grading | `tests/study.rs`, `tests/exact_v2.rs`, `tests/fsrs_golden.rs`, `node --test qa/study.test.mjs`, `qa/walk --stories "US-016 US-017"` | Compiled CLI through built Worker, rolling cap/order, held feedback, assistance, replay/concurrency, Correction, byte-stable reads, restart and fresh local R2 restore; authored synthetic wording only |
 | Phone exact Stream | `tests/study.rs`, `tests/phone_library.rs`, `qa/walk --stories "US-018"` | First-study Library/native-form path and protected Library access (`qa/phone-library.mjs`); arrival viewport/hit-test proof and native Full answer (`qa/feedback-arrival.mjs`); same frozen Prompt through phone and compiled CLI, real native forms and keyboard, light/dark 320/390/1280 px, 200% text sizing, held Diff, disclosure Attempt, Correction, offline/unknown/stale/access loss; emulation is not hardware acceptance |
-| Exact History | `tests/study.rs`, `qa/study.mjs`, `qa/phone-history.mjs` through the existing Study and phone walks | Saved Attempts/Corrections and immutable wording, reveal versus empty-answer truth, mixed per-Unit effects, native details, protected History return, CLI/export parity and restart/local R2 preservation; legacy page exposure may still write and is not claimed globally byte-stable |
+| Exact History | `tests/study.rs`, `qa/study.mjs`, `qa/phone-history.mjs` through the existing Study and phone walks | Saved Attempts/Corrections and immutable wording, reveal versus empty-answer truth, mixed per-Unit effects, native details, protected History return, CLI/export parity and restart/local R2 preservation; the earlier notebook's answers are listed after Study's and reading them writes nothing |
 | Private Worker ingress | WASM check and runtime review | Actual owner JWT signature/issuer/audience/sub, anonymous/forged denial, Host/origin/CSRF, alternate-host write rejection, logout/account return |
 | Historical recovery | `bun run test:recovery` | Corresponding historical format/artifact only; do not reinterpret old snapshots as rewrite archives |
 
@@ -107,13 +111,18 @@ It does not source `.env`, `.dev.vars`, or historical operator configuration.
 The printed run directory identifies ownership; use an unused port via
 `SCRY_DEV_PORT` without stopping an unrelated service.
 
-Begin with the empty notebook. The isolated preview alone offers “Explore an
-authored demo,” a deliberate fixture action that refuses existing learning
-state. The fixture has HTTP cache freshness/validation explanations and three
-questions. It is authored data, not a provider call, real cold recall, or an AI
-quality result. New generation requests are refused regardless of model configuration.
-Answers whose native meaning grader is unavailable remain saved and ungraded.
-No production store is imported.
+Begin with the empty notebook. The authored demo (“Explore an authored demo”,
+`/__fixture`) is retired: no page offers it and its POST answers 410, in every
+environment. New generation requests are refused regardless of model
+configuration. No production store is imported.
+
+Every state of the earlier concept notebook comes from
+`tests/fixtures/earlier-notebook.json`. `qa/earlier-fixture.mjs` writes one
+state's exact rows, and the photo its archive carries, into an unused Durable
+Object; the walks, `qa/earlier-notebook.test.mjs`, `qa/runtime.test.mjs` and
+the browser recovery checks load their states that way, and native tests decode
+them. Nothing in the source can create them any more: the practice that did,
+and the builders, were deleted after `4e00be0`.
 
 Browser QA runs from a shell first:
 [verify-scry](../../.agents/skills/verify-scry/SKILL.md)'s Playwright helpers
@@ -124,22 +133,38 @@ status, open it if needed, and use its native pointer/keyboard tools and
 snapshots. The exe.dev VM scripts are historical. Do not silently replace a stalled
 harness with DOM `.click()` or mark unobserved cases passed. The Worker story
 walk must produce a fresh revision/environment/story-bound receipt; historical
-Go walks and their selectors are not rewrite proof. `qa/walk --all` discovers
-active US stories and their numbered criteria directly from SPEC; `--stories`
-selects a subset. It excludes superseded US-005, retired US-012, and stories whose
-evidence line reads `Evidence: pending`, without discarding their canonical
-definitions. The ticket that builds a pending story adds its walks and removes
-that line in the same change. Existing walk implementations and policy
-checks remain in `qa/walk-specs.mjs`; selection does not make them proof of all
-S criteria, real-provider quality, phone experience, or hosted recovery.
+Go walks and their selectors are not rewrite proof. `qa/walk --all` runs
+every journey in `qa/walk-specs.mjs`; `--stories` selects a subset. A journey ID
+such as `US-016` is the harness's stable name for a set of walks, which receipts
+and critic fingerprints cite. `qa/walk-specs.mjs` binds each journey to the
+SPEC capability heading it proves, and the walk refuses to start when that
+heading is missing. A change that adds behavior to a capability adds its walk
+in the same change. Selection does not make the walks proof of the whole
+capability, real-provider quality, phone experience, or hosted recovery.
 
-US-001.1 remains the retained Go schema 4→5 preservation contract. The gate
-archives only `go.mod`, `go.sum`, `internal/store`, and `internal/learning` at
-`c6ba395a63814c1f973d8cda5057d54fbb587e9b`, verifies its pinned checksum, and
-runs `TestSchemaV4ToV5MigrationUS001` with Go 1.27.1 against disposable fixtures.
-Its separate `retained-go-compatibility` receipt and exported archive do not
-certify a Rust import or migration. US-001.2 uses the current Rust Worker browser.
-No retained application or historical database is started by this check.
+Receipts and documents dated before 2026-11-14 cite numbered identifiers
+(`US-`, `S`, `D`, `UX`, `JEV-`, `NATO-` and similar) and dated headings. Those
+are defined in [SPEC at `979e432`](https://github.com/misty-step/scry/blob/979e432/SPEC.md),
+the last revision before the specification became one present-tense target
+state. They keep the meaning they had there.
+
+Journey US-001 proves that everything saved is reachable and exported
+unchanged: walk 1 names the native custody tests of the Archived notebook's
+retained bytes, walk 2 follows Menu → Earlier practice → Map → Goal →
+Concept → History in the Rust Worker browser and compares the export with the
+stored notebook, and walk 3 crawls every link from the Menu at 390 px and
+asserts that every stored Goal, Concept, note, question version, choice,
+unapplied draft, recorded answer, Correction, reset, feedback entry, saved
+check and photo link is on a page it reached, with no horizontal scrolling
+and no row written. `tests/earlier_reachable.rs` runs the same crawl natively
+over all 29 stored states, and `qa/earlier-notebook.test.mjs` on the built
+Worker with rows, SQLite change count and alarm compared. Since 2026-11-15 it no longer runs the retained Go schema 4→5
+migration test, and no gate needs a Go toolchain; receipts that cite
+`retained-go-compatibility` keep their original meaning. The pinned retained
+source (`go.mod`, `go.sum`, `internal/store`, `internal/learning` at
+`c6ba395a63814c1f973d8cda5057d54fbb587e9b`, checksum in
+`scripts/retained-go-source.py`) is still archived for the revival inspector's
+schema; nothing builds or runs it.
 
 Stop the run-owned process before cleanup. Preserve evidence and remove only
 its verified temporary directory. To reset, start a new run/namespace; never
@@ -158,10 +183,16 @@ recovery expectations below retain their original meanings.
 
 ### Historical journey compatibility
 
-Items 1, 2 and 5 below describe retired write paths, not current supported
-features. Preserve their historical fixtures and custody assertions. In item 3,
-replace active self-check with saved/ungraded on unavailable native grading.
-Items 4, 6, 7 and 8 remain current safety, resilience and usability requirements.
+Items 1 to 6 below describe retired write paths, not current supported
+features. Preserve their historical fixtures and custody assertions. The earlier
+concept notebook they drove is now history: for items 3 to 5 assert the
+read-only views, the 410 refusals and unchanged rows, and that no assistance
+gate, exposure write or selection happens on a read. Item 6 keeps its
+references and observed counts and loses nothing by navigation; its focus,
+pause and pace controls, recall estimate and archive, edit and dispute are
+retired: assert they are absent, their POSTs answer 410 and every row is
+unchanged. Items 7 and 8 remain current resilience
+and usability requirements, exercised on Study answers.
 
 1. Create: a word, a phrase, and a long dictated-text request are valid without
    setup or a mode chooser. Capture saves one goal/operation; pasted URLs remain

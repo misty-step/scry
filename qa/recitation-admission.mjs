@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 
 // Run inside the existing compiled CLI → Worker → isolated SQLite journey.
 // Admission and answers use the real API; every refusal retains persisted rows.
-export async function recitationAdmission({add, ok, cli, next, answer, stopCurrent, rows, record, req, transcript}) {
+export async function recitationAdmission({add, ok, cli, next, quiz, answer, stopCurrent, rows, record, req, transcript}) {
   const refuse = async (study, scope, section, status, bound) => {
     const held = (await record('meta')).practice.current;
     const fields = {operation_id: randomUUID(), after: held.prompt.id, study_id: study, recite: scope, ...(section ? {section_id: section} : {})};
@@ -23,7 +23,9 @@ export async function recitationAdmission({add, ok, cli, next, answer, stopCurre
     const v = await add(`Admission ${words} words`, text);
     const section = (await ok(['version', 'show', v])).version.sections[0].id;
     const study = (await ok(['learn', v])).practice.study.id;
+    // The new Unit is studied, then missed in its Quiz, before any Recitation.
     await next(['--study', study]);
+    await quiz();
     await answer('');
     for (const scope of ['whole', 'section']) {
       if (words === 1000) {
@@ -47,7 +49,9 @@ export async function recitationAdmission({add, ok, cli, next, answer, stopCurre
     assert.equal((await ok(['version', 'show', sibling])).work.id, shown.work.id, 'The capacity case must use a sibling of the same Work.');
     const section = shown.version.sections[0].id;
     const study = (await ok(['learn', v])).practice.study.id;
+    // The new Unit is studied, then missed in its Quiz, before any Recitation.
     await next(['--study', study]);
+    await quiz();
     await answer('');
     for (const scope of ['whole', 'section']) {
       if (words === 2000) {

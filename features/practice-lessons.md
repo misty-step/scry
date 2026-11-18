@@ -1,18 +1,23 @@
 # Choose and practise lessons
 
 Choose a topic visually, select its edition or mystery set, and practise with
-native feedback. [SPEC](../SPEC.md#visual-practice-chooser-2026-11-01) owns acceptance.
+native feedback. [SPEC § Lessons](../SPEC.md#lessons) owns the target behavior.
 
 ## Sub-features
 
 - The topic shelf groups NATO, Saint Michael editions and Rosary mystery sets.
 - Current-session return preserves the prompt and typed draft.
-- With JavaScript enabled, Save draft stores acknowledged text for the current unanswered prompt in the notebook. Anyone with access to that notebook can read it. Discard saved draft explicitly removes it after confirmation.
-- While editing in the foreground, quiet snapshots can save automatically; the page distinguishes saved text from newer unsaved edits. Automatic saving has a notebook-wide limit and pauses on a capacity refusal; Save draft remains available.
+- Save draft stores acknowledged text for the current unanswered prompt in the notebook, with or without JavaScript: without it, the button submits the answer form natively and a page drawn before any newer write is refused as stale, keeping the typed text. Anyone with access to that notebook can read it. Discard saved draft removes it (after confirmation with JavaScript).
+- While editing in the foreground, quiet snapshots can save automatically; the page distinguishes saved text from newer unsaved edits. Automatic saving has no lifetime limit: the notebook keeps receipts for only its newest 512 automatic saves. It pauses only when Scry refuses it for capacity; Save draft remains available.
 - With JavaScript enabled, an enhanced in-page switch away from a nonempty unsubmitted answer asks for confirmation. A confirmed switch keeps the answer read-only while its outcome is unresolved.
 - Prayer practice separates source study from hidden phrase, joined and whole-prayer quizzes.
 - A mistaken phrase shows expected wording and retries the same phrase.
+- A Rosary set not yet practised is shown whole, its five mysteries in order,
+  before its whole-sequence Quiz. An ordered list is never drilled item by item.
 - Rosary sequence practice identifies missing or misplaced mysteries.
+- A text that Study's mix reached first, outside the mix, is ordinary Study
+  practice with a working Next until every phrase has a Card; lesson
+  controls (Next phrase, Join, Full text) appear once the lesson is entered.
 
 ## How to get to it (user POV)
 
@@ -25,8 +30,8 @@ separate. Return goes to the held current session, not a promised cross-lesson r
 
 `node --test qa/keyed-mapping.test.mjs` calls `lessonJourney` and `lessonWalk`
 from `qa/lessons.mjs`. Source study has no answer field; Try from memory is a fenced native transition.
-The browser journey starts a set through its native form,
-types a partial answer into `#answer`, opens/closes `.lesson-picker > summary`,
+The browser journey starts a set through its native form, studies it, tries it
+from memory, types a partial answer into `#answer`, opens/closes `.lesson-picker > summary`,
 and verifies the draft and frozen prompt are unchanged. It selects the prayer,
 types the next line by mistake, verifies the full expected current line, retries,
 and advances to phrase 2 only after the correct phrase. It also covers whole
