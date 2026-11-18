@@ -157,8 +157,8 @@ func TestRule_Prices_SmallBaseCappedAllowanceAndTopUpsBeyondIt(t *testing.T) {
 	if got := app.Cost(ai.Usage{Model: "claude-opus-5-5", InputTokens: 1000, OutputTokens: 1000}); got != 24_000 {
 		t.Errorf("opus cost = %d micro-dollars, want 24000", got)
 	}
-	if got := app.Cost(ai.Usage{Model: "claude-haiku-5-5", InputTokens: 1000, OutputTokens: 1000}); got != 600 {
-		t.Errorf("haiku cost = %d micro-dollars, want 600", got)
+	if got := app.Cost(ai.Usage{Model: "test-judge", InputTokens: 1000, OutputTokens: 1000}); got != 600 {
+		t.Errorf("fixture judge cost = %d micro-dollars, want 600", got)
 	}
 	// A model with no known price is charged at the top rate: costs cannot run away.
 	if app.Cost(ai.Usage{Model: "mystery", InputTokens: 1000}) < app.Cost(ai.Usage{Model: "claude-opus-5-5", InputTokens: 1000}) {

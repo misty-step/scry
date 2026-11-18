@@ -10,6 +10,7 @@ import (
 
 // Usage is what one call cost, in the provider's units.
 type Usage struct {
+	CostMicros   *int64 // known provider cost, or a documented estimate, in micro-dollars
 	Model        string
 	InputTokens  int64
 	OutputTokens int64

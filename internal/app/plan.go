@@ -26,7 +26,6 @@ type rate struct{ in, out float64 }
 // rates is what the provider charges, per token. Usage is metered at
 // cost; the margin lives in the plan's fixed prices.
 var rates = map[string]rate{
-	"claude-haiku-5-5":  {0.10, 0.50},
 	"claude-sonnet-5-5": {2, 10},
 	"claude-opus-5-5":   {4, 20},
 	"claude-fable-5-2":  {8, 40},
@@ -40,6 +39,9 @@ const speechMicrosPerSecond = 50
 // Cost prices one model call in micro-dollars. A model Scry has no price
 // for is charged at the highest rate it knows, so costs cannot run away.
 func Cost(u ai.Usage) int64 {
+	if u.CostMicros != nil {
+		return *u.CostMicros
+	}
 	r, ok := rates[u.Model]
 	if !ok {
 		r = rates["claude-fable-5-2"]
