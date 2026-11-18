@@ -43,6 +43,8 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
  await page.setViewport({width:1280,height:1000});
  await page.click("[data-mic]");await page.waitForSelector(".is-listening");
  await pause(1700);assert.equal(speech,0,"must not upload while recording");
+ assert.equal(await page.$eval("#answer",e=>e.value),"","D1: no live transcription");
+ assert((await page.$eval("[data-status]",e=>e.textContent)).includes("listening"));
  await page.click("[data-mic]");
  await page.waitForFunction(()=>!document.querySelector(".is-listening"));
  console.log("speech result",await page.$eval("[data-status]",e=>e.textContent),await page.$eval("#answer",e=>e.value),errors);

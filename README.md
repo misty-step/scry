@@ -292,3 +292,4 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Monitoring reporting and operator-only drill | TestSentryErrors; TestOperatorFaultDrill |
 | Verified Clerk identity and browser session | TestClerkVerifiedEmail; TestClerkSessionStandIn; TestClerkMissingKeysNoNetwork |
 | Concurrent monthly cap | TestAcceptedTopupConcurrentCap |
+| D1 after-stop voice text | TestG12_SpeechUploadsOnlyAtStop; TestReviewBrowserSmoke |

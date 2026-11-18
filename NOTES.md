@@ -645,3 +645,7 @@ all pass. Smoke uses an isolated httptest server, not the preview. Logs:
  /tmp/rulings-final.log and /tmp/rulings-smoke.log.
 The capped top-up transaction also commits decline records before returning
 the decline, preserving the existing card-failure behavior.
+
+Accepted chat:phaedrus/t3579u, D1: preserve one transcription after stop.
+DESIGN now describes the unchanged answer line and listening label, not live
+transcription. Chromium smoke asserts no upload or new words while listening.

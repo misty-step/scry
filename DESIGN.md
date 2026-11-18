@@ -94,7 +94,7 @@ States: typing; checking (instant; no spinner unless a check takes over 400 ms, 
 
 ### Voice answer
 
-Space or the single round mic control starts listening. Words appear on the answer line as live text, set exactly like typed text. While listening, the answer line's hairline gently swells and a mono label reads "listening". States: listening, heard (text settles; Enter checks), couldn't hear ("Didn't catch that. Try again or type it."), microphone blocked (one line telling the learner how to allow it).
+Space or the single round mic control starts listening. Words appear on the answer line after listening stops, set exactly like typed text; transcription is requested once, not repeatedly while speaking. While listening, the answer line stays empty (or keeps any text already typed), its hairline gently swells, and a mono label reads "listening". States: listening, heard (text settles; Enter checks), couldn't hear ("Didn't catch that. Try again or type it."), microphone blocked (one line telling the learner how to allow it).
 
 ### The answer judgment
 
