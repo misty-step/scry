@@ -40,12 +40,12 @@ func scanSub(row interface{ Scan(...any) error }) (Subscription, error) {
 
 // Subscription loads the learner's plan; ErrNotFound if they have none.
 func (u *UserStore) Subscription(ctx context.Context) (Subscription, error) {
-	return scanSub(u.s.db.QueryRowContext(ctx, `SELECT `+subCols+` FROM subscriptions WHERE user_id = ?`, u.uid))
+	return scanSub(u.s.billingDB(ctx).QueryRowContext(ctx, `SELECT `+subCols+` FROM subscriptions WHERE user_id = ?`, u.uid))
 }
 
 // SaveSubscription writes the learner's plan.
 func (u *UserStore) SaveSubscription(ctx context.Context, s Subscription) error {
-	_, err := u.s.db.ExecContext(ctx, `
+	_, err := u.s.billingDB(ctx).ExecContext(ctx, `
 		INSERT INTO subscriptions (`+subCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET customer_ref = excluded.customer_ref, subscription_ref = excluded.subscription_ref,
 		  payment_ref = excluded.payment_ref, status = excluded.status, trial_end = excluded.trial_end,
@@ -60,7 +60,7 @@ func (u *UserStore) SaveSubscription(ctx context.Context, s Subscription) error 
 
 // SubscriptionByRef finds a plan by the processor's subscription id.
 func (s *Store) SubscriptionByRef(ctx context.Context, ref string) (Subscription, error) {
-	return scanSub(s.db.QueryRowContext(ctx, `SELECT `+subCols+` FROM subscriptions WHERE subscription_ref = ?`, ref))
+	return scanSub(s.billingDB(ctx).QueryRowContext(ctx, `SELECT `+subCols+` FROM subscriptions WHERE subscription_ref = ?`, ref))
 }
 
 // SubscriptionsDue lists live plans whose period ended at or before now.
@@ -94,7 +94,7 @@ type LedgerEntry struct {
 
 // AddLedger appends a line to the billing history, once per ref.
 func (u *UserStore) AddLedger(ctx context.Context, e LedgerEntry) error {
-	_, err := u.s.db.ExecContext(ctx, `
+	_, err := u.s.billingDB(ctx).ExecContext(ctx, `
 		INSERT OR IGNORE INTO ledger (user_id, at, kind, description, amount_cents, status, ref) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		u.uid, ts(e.At), e.Kind, e.Description, e.AmountCents, e.Status, e.Ref)
 	return err
@@ -102,7 +102,7 @@ func (u *UserStore) AddLedger(ctx context.Context, e LedgerEntry) error {
 
 // Ledger lists the billing history, newest first.
 func (u *UserStore) Ledger(ctx context.Context) ([]LedgerEntry, error) {
-	rows, err := u.s.db.QueryContext(ctx, `
+	rows, err := u.s.billingDB(ctx).QueryContext(ctx, `
 		SELECT id, at, kind, description, amount_cents, status, ref FROM ledger WHERE user_id = ? ORDER BY at DESC, id DESC`, u.uid)
 	if err != nil {
 		return nil, err
@@ -134,24 +134,21 @@ type Usage struct {
 // Spend records metered usage and draws it from the allowance first, then
 // from top-up credit.
 func (u *UserStore) Spend(ctx context.Context, use Usage, now time.Time) error {
-	tx, err := u.s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `
+	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
+		if _, err := u.s.billingDB(ctx).ExecContext(ctx, `
 		INSERT INTO usage (user_id, at, kind, model, input_tokens, output_tokens, seconds, cost_micros) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		u.uid, ts(now), use.Kind, use.Model, use.InputTokens, use.OutputTokens, use.Seconds, use.CostMicros); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
+			u.uid, ts(now), use.Kind, use.Model, use.InputTokens, use.OutputTokens, use.Seconds, use.CostMicros); err != nil {
+			return err
+		}
+		if _, err := u.s.billingDB(ctx).ExecContext(ctx, `
 		UPDATE subscriptions SET
-		  topup_micros = MAX(0, topup_micros - MAX(0, ?1 - MAX(0, allowance_micros - period_used_micros))),
+		  topup_micros = topup_micros - MAX(0, ?1 - MAX(0, allowance_micros - period_used_micros)),
 		  period_used_micros = MIN(allowance_micros, period_used_micros + ?1)
 		WHERE user_id = ?2`, use.CostMicros, u.uid); err != nil {
-		return err
-	}
-	return tx.Commit()
+			return err
+		}
+		return nil
+	})
 }
 
 // CreditTopUp atomically deduplicates a paid operation and grants its credit.
@@ -178,6 +175,6 @@ func (u *UserStore) CreditTopUp(ctx context.Context, e LedgerEntry, credit int64
 }
 func (u *UserStore) HasLedgerRef(ctx context.Context, ref string) (bool, error) {
 	var n int
-	err := u.s.db.QueryRowContext(ctx, "SELECT count(*) FROM ledger WHERE user_id=? AND ref=?", u.uid, ref).Scan(&n)
+	err := u.s.billingDB(ctx).QueryRowContext(ctx, "SELECT count(*) FROM ledger WHERE user_id=? AND ref=?", u.uid, ref).Scan(&n)
 	return n > 0, err
 }

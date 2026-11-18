@@ -24,28 +24,34 @@ func (a *App) Learn(ctx context.Context, u store.User, query string) (int64, err
 	if len(query) > 300 {
 		return 0, fieldErr("q", "Keep it under 300 characters.")
 	}
-	sub, err := a.Plan(ctx, u.ID)
+	_, err := a.Plan(ctx, u.ID)
 	if err != nil {
 		return 0, err
 	}
 	us := a.Store.For(u.ID)
-	if !CanSpend(sub) {
+	reservation, err := a.reserve(ctx, u.ID, ai.DraftBudgetMicros)
+	if errors.Is(err, ErrAllowance) {
 		return us.CreateDraft(ctx, query, "allowance", a.now())
+	}
+	if err != nil {
+		return 0, err
 	}
 	id, err := us.CreateDraft(ctx, query, "drafting", a.now())
 	if err != nil {
+		a.settle(u.ID, reservation, "draft", ai.Usage{}, 0)
 		return 0, err
 	}
 	a.drafts.Add(1)
 	go func() {
 		defer a.drafts.Done()
+		defer a.settle(u.ID, reservation, "draft", ai.Usage{}, 0)
 		defer func() {
 			if r := recover(); r != nil {
 				a.Alert.Notify(context.Background(), "Drafting panicked", fmt.Sprint(r))
 				_ = us.UpdateDraft(context.Background(), store.Draft{ID: id, Status: "failed", Note: "Something went wrong while drafting. Ask again."})
 			}
 		}()
-		a.runDraft(context.Background(), u, id, query)
+		a.runDraft(context.Background(), u, id, query, reservation)
 	}()
 	return id, nil
 }
@@ -73,7 +79,7 @@ func (a *App) Profile(ctx context.Context, u store.User) (ai.Learner, error) {
 	return l, err
 }
 
-func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string) {
+func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string, reservation string) {
 	us := a.Store.For(u.ID)
 	d := store.Draft{ID: id, Query: query, Kind: "topic", Title: query, Status: "drafting"}
 	fail := func(err error) {
@@ -112,7 +118,7 @@ func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string
 	}
 	res, use, err := a.Model.Draft(ctx, ai.DraftInput{Query: query, Learner: profile}, sink)
 	if use.Model != "" {
-		a.meter(ctx, u.ID, "draft", use, 0)
+		a.settle(u.ID, reservation, "draft", use, 0)
 	}
 	if err != nil {
 		fail(err)
@@ -222,13 +228,15 @@ var ErrSpeechUnavailable = errors.New("speech is unavailable")
 
 // Transcribe hears a spoken answer. Empty text means nothing was caught.
 func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) (string, error) {
-	sub, err := a.Plan(ctx, u.ID)
+	_, err := a.Plan(ctx, u.ID)
 	if err != nil {
 		return "", err
 	}
-	if !CanSpend(sub) {
-		return "", ErrAllowance
+	reservation, err := a.reserve(ctx, u.ID, 6000)
+	if err != nil {
+		return "", err
 	}
+	defer a.settle(u.ID, reservation, "speech", ai.Usage{}, 0)
 	if audio.Seconds <= 0 || audio.Seconds > 120 {
 		audio.Seconds = min(max(float64(len(audio.Data))/4000, 0.5), 120)
 	}
@@ -240,6 +248,6 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 		a.Alert.Notify(ctx, "Spoken answers cannot be heard", err.Error())
 		return "", ErrSpeechUnavailable
 	}
-	a.meter(ctx, u.ID, "speech", ai.Usage{Model: a.Speech.Name()}, audio.Seconds)
+	a.settle(u.ID, reservation, "speech", ai.Usage{Model: a.Speech.Name()}, audio.Seconds)
 	return strings.Join(strings.Fields(text), " "), nil
 }

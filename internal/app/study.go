@@ -124,18 +124,20 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		// Nothing was offered, so there is nothing to judge.
 		r.Verdict, r.Reason, r.Judge = srs.Missed, "You gave no answer.", "none"
 	default:
-		sub, err := a.Plan(ctx, u.ID)
+		_, err := a.Plan(ctx, u.ID)
 		if err != nil {
 			return store.Review{}, err
 		}
-		if !CanSpend(sub) {
-			return store.Review{}, ErrAllowance
+		reservation, err := a.reserve(ctx, u.ID, ai.JudgeBudgetMicros)
+		if err != nil {
+			return store.Review{}, err
 		}
+		defer a.settle(u.ID, reservation, "judge", ai.Usage{}, 0)
 		jctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 		j, use, err := a.Model.Judge(jctx, ai.JudgeInput{Question: item.Prompt, Expected: item.Answer, Answer: answer})
 		cancel()
 		if use.Model != "" {
-			a.meter(ctx, u.ID, "judge", use, 0)
+			a.settle(u.ID, reservation, "judge", use, 0)
 		}
 		if err != nil || !j.Verdict.Valid() || strings.TrimSpace(j.Reason) == "" {
 			if err == nil {

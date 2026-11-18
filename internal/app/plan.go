@@ -311,18 +311,25 @@ func (a *App) RunRenewals(ctx context.Context) error {
 	return nil
 }
 
-// meter records what a model call cost against the learner's allowance.
-func (a *App) meter(ctx context.Context, userID int64, kind string, u ai.Usage, seconds float64) {
+// reserve claims a worst-case provider budget before any work starts.
+func (a *App) reserve(ctx context.Context, userID int64, amount int64) (string, error) {
+	id := randomToken(24)
+	err := a.Store.For(userID).Reserve(ctx, id, amount)
+	if errors.Is(err, store.ErrBudget) {
+		return "", ErrAllowance
+	}
+	return id, err
+}
+func (a *App) settle(userID int64, id, kind string, u ai.Usage, seconds float64) {
 	cost := Cost(u)
 	if kind == "speech" {
 		cost = int64(math.Ceil(seconds * speechMicrosPerSecond))
 	}
-	if cost <= 0 {
-		return
-	}
-	err := a.Store.For(userID).Spend(ctx, store.Usage{Kind: kind, Model: u.Model, InputTokens: u.InputTokens,
-		OutputTokens: u.OutputTokens, Seconds: seconds, CostMicros: cost}, a.now())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := a.Store.For(userID).Settle(ctx, id, store.Usage{Kind: kind, Model: u.Model, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, Seconds: seconds, CostMicros: cost}, a.now())
 	if err != nil {
-		a.Log.ErrorContext(ctx, "metering failed", "err", err, "user", userID, "kind", kind)
+		a.Log.ErrorContext(ctx, "reservation settlement failed", "err", err, "user", userID)
+		a.Alert.Notify(ctx, "Usage settlement failed", "A reservation remains held; reconcile before releasing it.")
 	}
 }

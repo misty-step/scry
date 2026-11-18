@@ -81,6 +81,9 @@ func (c *Claude) Judge(ctx context.Context, in JudgeInput) (Judgment, Usage, err
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	user := "<question>" + in.Question + "</question>\n<reference_answer>" + in.Expected + "</reference_answer>\n<learner_answer>" + in.Answer + "</learner_answer>"
+	if len(user)+len(judgeSystem) > 8192 {
+		return Judgment{}, Usage{}, fmt.Errorf("judge input exceeds budget")
+	}
 	params := anthropic.MessageNewParams{
 		Model:     c.JudgeModel,
 		MaxTokens: 1024,
@@ -165,14 +168,15 @@ func (c *Claude) Draft(ctx context.Context, in DraftInput, sink DraftSink) (Draf
 	}
 	user.WriteString("</learner>\n<request>" + in.Query + "</request>")
 
-	// A policy decline is re-served by a fallback model inside the same call.
+	// Bound input and output before calling; automatic fallbacks could multiply cost.
+	if len(user.String())+len(draftSystem) > 32000 {
+		return DraftResult{}, Usage{}, fmt.Errorf("draft input exceeds budget")
+	}
 	stream := c.client.Beta.Messages.NewStreaming(ctx, anthropic.BetaMessageNewParams{
 		Model:     c.DraftModel,
-		MaxTokens: 32000,
+		MaxTokens: 16000,
 		System:    []anthropic.BetaTextBlockParam{{Text: draftSystem}},
 		Messages:  []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(user.String()))},
-		Betas:     []anthropic.AnthropicBeta{anthropic.AnthropicBetaServerSideFallback2026_07_01},
-		Fallbacks: anthropic.BetaFallbacksParamOfDefault(),
 	})
 	var (
 		msg  anthropic.BetaMessage

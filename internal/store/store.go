@@ -63,7 +63,8 @@ func (s *Store) migrate() error {
 		return err
 	}
 	if v >= 1 {
-		return nil
+		_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0))`)
+		return err
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -76,7 +77,11 @@ func (s *Store) migrate() error {
 	if _, err := tx.Exec(`PRAGMA user_version = 1`); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0))`)
+	return err
 }
 
 // Close closes the database.
