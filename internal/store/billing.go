@@ -153,3 +153,31 @@ func (u *UserStore) Spend(ctx context.Context, use Usage, now time.Time) error {
 	}
 	return tx.Commit()
 }
+
+// CreditTopUp atomically deduplicates a paid operation and grants its credit.
+func (u *UserStore) CreditTopUp(ctx context.Context, e LedgerEntry, credit int64) error {
+	tx, err := u.s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO ledger (user_id,at,kind,description,amount_cents,status,ref) VALUES (?,?,?,?,?,?,?)", u.uid, ts(e.At), e.Kind, e.Description, e.AmountCents, e.Status, e.Ref)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		if _, err = tx.ExecContext(ctx, "UPDATE subscriptions SET topup_micros=topup_micros+?, card_error='' WHERE user_id=?", credit, u.uid); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+func (u *UserStore) HasLedgerRef(ctx context.Context, ref string) (bool, error) {
+	var n int
+	err := u.s.db.QueryRowContext(ctx, "SELECT count(*) FROM ledger WHERE user_id=? AND ref=?", u.uid, ref).Scan(&n)
+	return n > 0, err
+}
