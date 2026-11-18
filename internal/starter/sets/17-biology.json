@@ -9,7 +9,7 @@
       "links": ["DNA and the genetic code", "Energy in living things"],
       "items": [
         {"q": "What is the main difference between a prokaryotic cell and a eukaryotic cell?", "a": "A eukaryotic cell has a nucleus and membrane-bound organelles; a prokaryotic cell has neither"},
-        {"q": "Which organelle produces most of the ATP in a eukaryotic cell?", "a": "The mitochondrion"},
+        {"q": "During aerobic respiration in a typical animal cell, which organelle produces most of the ATP?", "a": "The mitochondrion"},
         {"q": "Which structure in a cell builds proteins?", "a": "The ribosome"},
         {"q": "What is a cell's outer membrane mainly made of?", "a": "A phospholipid bilayer with proteins embedded in it"}
       ]
@@ -20,7 +20,7 @@
       "links": ["Cells", "Inheritance", "chemistry:Chemical bonds"],
       "items": [
         {"q": "In DNA, which base pairs with adenine?", "a": "Thymine"},
-        {"q": "What does the central dogma of molecular biology describe?", "a": "Information flows from DNA to RNA to protein"},
+        {"q": "What does the central dogma of molecular biology describe?", "a": "Sequence information can pass from nucleic acids to protein, but not from protein back to nucleic acids or other proteins"},
         {"q": "What is the process called in which a cell copies a gene's DNA into messenger RNA?", "a": "Transcription"},
         {"q": "In the genetic code, how many bases make up one codon, the unit that specifies an amino acid?", "a": "Three"},
         {"q": "Which two scientists proposed the double helix structure of DNA in 1953?", "a": "James Watson and Francis Crick, drawing on Rosalind Franklin's X-ray images"}

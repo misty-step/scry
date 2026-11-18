@@ -9,7 +9,7 @@
       "links": ["APR and APY", "Debt", "Inflation and real return"],
       "items": [
         {"q": "What is compound interest?", "a": "Interest earned on both the original amount and the interest already added to it"},
-        {"q": "What is the rule of 72?", "a": "Divide 72 by the annual interest rate to estimate the years it takes money to double"},
+        {"q": "What is the rule of 72?", "a": "Divide 72 by the annual percentage growth rate (6 for 6%) to estimate the years needed to double"},
         {"q": "By the rule of 72, about how long does money take to double at 6% a year?", "a": "About 12 years"},
         {"q": "By the rule of 72, what annual return doubles your money in about 9 years?", "a": "About 8%"},
         {"q": "Why does starting to save ten years earlier make such a large difference to the final sum?", "a": "The early money compounds for longer, and most compound growth comes in the later years"}
@@ -39,11 +39,11 @@
     },
     {
       "title": "Index funds and diversification",
-      "summary": "An index fund buys a whole market cheaply, spreading risk across many holdings instead of betting on a few.",
+      "summary": "An index fund tracks a chosen index; broad-market funds can spread exposure across many holdings.",
       "links": ["Compound interest", "Inflation and real return"],
       "items": [
         {"q": "What is an index fund?", "a": "A fund that holds the securities in a market index, aiming to match its return, not beat it"},
-        {"q": "In investing, what is diversification?", "a": "Spreading money across many investments so that no single loss does serious harm"},
+        {"q": "In investing, what is diversification?", "a": "Spreading investments across holdings and asset types to reduce concentration risk; it cannot eliminate all risk"},
         {"q": "What is a fund's expense ratio?", "a": "The yearly fee, as a percentage of the money you have invested in the fund"},
         {"q": "What is the difference between a stock and a bond?", "a": "A stock is a share of ownership in a company; a bond is a loan to a company or government"},
         {"q": "What is dollar-cost averaging?", "a": "Investing a fixed amount at regular intervals, whatever the price"}
@@ -54,9 +54,9 @@
       "summary": "Interest on debt compounds against you, so high-rate debt is usually the first thing to clear.",
       "links": ["Compound interest", "APR and APY", "The emergency fund"],
       "items": [
-        {"q": "To pay the least interest overall, which of several debts should you pay off first?", "a": "The one with the highest interest rate (the avalanche method)"},
+        {"q": "With fixed rates and no prepayment penalties, after all minimum payments, which debt should receive extra payments to minimize interest?", "a": "The one with the highest interest rate (the avalanche method)"},
         {"q": "What is the debt snowball method?", "a": "Paying off the smallest balance first, to build momentum, while paying the minimum on the rest"},
-        {"q": "Why is paying only the minimum on a credit card costly?", "a": "Most of each payment goes to interest, so the balance shrinks slowly and the total interest is large"}
+        {"q": "Why is paying only the minimum on a credit card costly?", "a": "The balance is repaid slowly, so interest can accrue for much longer than if you paid more each month"}
       ]
     },
     {
@@ -65,7 +65,7 @@
       "links": ["Compound interest", "Index funds and diversification"],
       "items": [
         {"q": "What is inflation?", "a": "A general rise in prices over time, which reduces what each unit of money can buy"},
-        {"q": "What is the real return on an investment?", "a": "The return left after subtracting inflation"},
+        {"q": "What is the real return on an investment?", "a": "The inflation-adjusted return: (1 + nominal return) / (1 + inflation rate) - 1; subtraction is an approximation"},
         {"q": "If an investment returns 7% in a year when inflation is 3%, roughly what is the real return?", "a": "About 4%"}
       ]
     }

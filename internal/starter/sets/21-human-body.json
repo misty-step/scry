@@ -52,7 +52,7 @@
       "summary": "Bones give the body its frame, and muscles move it by pulling on them across joints.",
       "links": ["Nerves and the brain"],
       "items": [
-        {"q": "How many bones does an adult human have?", "a": "206"},
+        {"q": "What is the conventional number of bones in a typical adult human skeleton?", "a": "206"},
         {"q": "What is the longest bone in the human body?", "a": "The femur, or thigh bone"},
         {"q": "In the human body, what kind of tissue connects a muscle to a bone?", "a": "A tendon"},
         {"q": "In the human body, what kind of tissue connects one bone to another at a joint?", "a": "A ligament"}
@@ -63,7 +63,7 @@
       "summary": "The body holds its inner conditions steady, and its immune system learns to recognize what does not belong.",
       "links": ["Heart and blood", "Food, fuel and waste", "biology:Cells"],
       "items": [
-        {"q": "What is normal human body temperature?", "a": "About 37 °C (98.6 °F)"},
+        {"q": "What is the traditional reference value for normal human body temperature, in Celsius and Fahrenheit?", "a": "About 37 °C (98.6 °F)"},
         {"q": "In physiology, what is homeostasis?", "a": "Keeping the body's internal conditions stable as conditions outside change"},
         {"q": "In the immune system, what do antibodies do?", "a": "They bind to specific foreign molecules, marking invaders for destruction"},
         {"q": "How does a vaccine protect a person against a disease?", "a": "It trains the immune system to recognize the germ without causing the illness"}

@@ -22,7 +22,7 @@
         {"q": "Which Russian chemist published his periodic table of the elements in 1869?", "a": "Dmitri Mendeleev"},
         {"q": "What are the vertical columns of the periodic table called?", "a": "Groups"},
         {"q": "What name is given to group 18 of the periodic table, the unreactive gases such as helium, neon and argon?", "a": "The noble gases"},
-        {"q": "Why do elements in the same group of the periodic table tend to react in similar ways?", "a": "They have the same number of outer (valence) electrons"}
+        {"q": "Why do elements in the same group of the periodic table tend to react in similar ways?", "a": "They have similar valence-electron configurations, which govern much of their chemical behavior"}
       ]
     },
     {
@@ -64,8 +64,8 @@
       "links": ["Energy, rate and equilibrium", "mathematics:Exponentials and logarithms"],
       "items": [
         {"q": "What is the pH of pure water at 25 °C?", "a": "7"},
-        {"q": "On the pH scale, which values mark a solution as acidic?", "a": "Values below 7"},
-        {"q": "How does the hydrogen ion concentration of a solution change when its pH drops by one unit?", "a": "It becomes ten times greater"},
+        {"q": "In dilute aqueous solutions at 25 °C, which pH values mark a solution as acidic?", "a": "Values below 7"},
+        {"q": "In a dilute aqueous solution, approximately how does hydrogen ion concentration change when pH drops by one unit?", "a": "It becomes ten times greater"},
         {"q": "In the Bronsted-Lowry definition, what is an acid?", "a": "A proton donor: a substance that gives up a hydrogen ion"}
       ]
     }

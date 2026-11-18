@@ -8,9 +8,9 @@
       "summary": "American volume measures nest in threes, sixteens and twos.",
       "links": ["Weight and metric"],
       "items": [
-        {"q": "How many teaspoons are in a tablespoon?", "a": "3"},
-        {"q": "How many tablespoons are in a cup?", "a": "16"},
-        {"q": "How many tablespoons are in a quarter cup?", "a": "4"},
+        {"q": "In US customary cooking measures, how many teaspoons are in a tablespoon?", "a": "3"},
+        {"q": "In US customary cooking measures, how many tablespoons are in a cup?", "a": "16"},
+        {"q": "In US customary cooking measures, how many tablespoons are in a quarter cup?", "a": "4"},
         {"q": "How many fluid ounces are in a US cup?", "a": "8"},
         {"q": "How many cups are in a US quart?", "a": "4"},
         {"q": "How many quarts are in a US gallon?", "a": "4"}
@@ -26,7 +26,7 @@
         {"q": "About how many grams are in a pound?", "a": "About 454 grams"},
         {"q": "About how many milliliters does a US cup hold?", "a": "About 240 milliliters"},
         {"q": "How much does a US stick of butter weigh, and how many tablespoons is it?", "a": "About 113 grams (4 ounces), which is 8 tablespoons"},
-        {"q": "About how much does a cup of all-purpose flour weigh?", "a": "About 120 to 125 grams"}
+        {"q": "About how much does a level US cup of all-purpose flour weigh when spooned in lightly, not packed?", "a": "About 120 to 125 grams"}
       ]
     },
     {
@@ -48,9 +48,9 @@
       "links": ["Weight and metric"],
       "items": [
         {"q": "What is the classic ratio of oil to vinegar in a vinaigrette?", "a": "3 parts oil to 1 part vinegar"},
-        {"q": "What is the usual ratio of water to long-grain white rice, by volume?", "a": "2 parts water to 1 part rice"},
+        {"q": "For stovetop absorption cooking, what common starting ratio of water to regular long-grain white rice is used by volume?", "a": "2 parts water to 1 part rice"},
         {"q": "By weight, what is the baker's ratio of flour to water to salt in a basic lean bread?", "a": "100 flour to about 65 water to 2 salt"},
-        {"q": "How much salt per liter makes pasta water properly seasoned, roughly?", "a": "About 10 grams per liter (about 1%)"}
+        {"q": "How many grams of salt per liter of water give a roughly 1% salt concentration for cooking pasta?", "a": "About 10 grams per liter (about 1%)"}
       ]
     }
   ]

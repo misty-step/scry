@@ -54,7 +54,7 @@
         {"q": "In calculus, what does the derivative of a function measure?", "a": "Its instantaneous rate of change: the slope of its graph at a point"},
         {"q": "What is the derivative of x^2 with respect to x?", "a": "2x"},
         {"q": "In calculus, what does the definite integral of a positive function between two points give, as a picture?", "a": "The area under its graph between those two points"},
-        {"q": "What does the fundamental theorem of calculus say about differentiation and integration?", "a": "They are inverse operations: each undoes the other"},
+        {"q": "What does the fundamental theorem of calculus say about differentiation and integration?", "a": "For continuous functions, differentiating an integral recovers the function; integrating a derivative gives the net change"},
         {"q": "Which two people developed calculus independently in the late 1600s?", "a": "Isaac Newton and Gottfried Wilhelm Leibniz"}
       ]
     },

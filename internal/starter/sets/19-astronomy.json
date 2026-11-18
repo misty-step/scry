@@ -9,7 +9,7 @@
       "links": ["Earth, Moon and sky", "physics:Gravity", "earth-and-climate:Earth's layers and age"],
       "items": [
         {"q": "About how old is the solar system?", "a": "About 4.6 billion years"},
-        {"q": "In astronomy, what is an astronomical unit (AU)?", "a": "The average distance from Earth to the Sun, about 150 million km"},
+        {"q": "In astronomy, what is an astronomical unit (AU)?", "a": "Exactly 149,597,870,700 meters, approximately the mean Earth-Sun distance"},
         {"q": "About how long does light from the Sun take to reach Earth?", "a": "About 8 minutes"},
         {"q": "According to Kepler's first law, what shape is a planet's orbit around the Sun?", "a": "An ellipse, with the Sun at one focus"}
       ]

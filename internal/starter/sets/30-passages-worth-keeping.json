@@ -19,7 +19,7 @@
     },
     {
       "title": "Psalm 23",
-      "summary": "The shepherd psalm, in the English of the King James Version of 1611.",
+      "summary": "The shepherd psalm in the standard modern-spelling King James Version (1769 tradition).",
       "links": ["world-religions:Judaism", "world-religions:Christianity"],
       "exact": {
         "title": "Psalm 23 (King James Version)",
@@ -57,7 +57,7 @@
     },
     {
       "title": "Ozymandias",
-      "summary": "Shelley's 1818 sonnet on a ruined statue in the desert, and how power and pride pass away.",
+      "summary": "Shelley's sonnet on passing power and pride, in Thomas Hutchinson's 1914 Complete Poetical Works.",
       "links": ["world-history:Rome and its successors"],
       "exact": {
         "title": "Ozymandias, by Percy Bysshe Shelley",

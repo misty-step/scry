@@ -20,8 +20,8 @@
       "summary": "An algorithm is a precise step-by-step procedure, and big O notation says how its cost grows with its input.",
       "links": ["Data structures", "Computation and its limits", "mathematics:Exponentials and logarithms"],
       "items": [
-        {"q": "In computer science, what does big O notation describe?", "a": "How an algorithm's running time or memory use grows as its input grows"},
-        {"q": "What is the time complexity of binary search on a sorted list of n items?", "a": "O(log n)"},
+        {"q": "In computer science, what does big O notation describe?", "a": "An asymptotic upper bound on how a cost, such as running time or memory use, grows with input size"},
+        {"q": "What is the worst-case time complexity of binary search on a sorted array of n items?", "a": "O(log n)"},
         {"q": "What is the worst-case time complexity of merge sort on n items?", "a": "O(n log n)"},
         {"q": "In programming, what is recursion?", "a": "A function solving a problem by calling itself on smaller versions of it"}
       ]
@@ -54,7 +54,7 @@
       "links": ["Bits and binary", "Computation and its limits"],
       "items": [
         {"q": "What is the central idea of the stored-program, or von Neumann, design of a computer?", "a": "Program instructions and data are held in the same memory"},
-        {"q": "In programming, what does a compiler do?", "a": "It translates source code into machine code or another lower-level language"},
+        {"q": "In programming, what does a compiler do?", "a": "It translates source code into another language or representation, often machine code or bytecode"},
         {"q": "What is the job of a computer's operating system?", "a": "It manages the hardware and shares it among the running programs"},
         {"q": "Which logic gate outputs 1 only when both of its inputs are 1?", "a": "The AND gate"}
       ]

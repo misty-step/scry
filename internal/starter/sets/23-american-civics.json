@@ -22,7 +22,7 @@
         {"q": "What are the three branches of the United States federal government?", "a": "Legislative, executive and judicial"},
         {"q": "What is the name for the system in which each branch of the US government can limit the power of the others?", "a": "Checks and balances"},
         {"q": "Which 1803 Supreme Court case established judicial review, the power to strike down laws as unconstitutional?", "a": "Marbury v. Madison"},
-        {"q": "How many justices sit on the United States Supreme Court?", "a": "Nine"}
+        {"q": "How many seats has the United States Supreme Court had by statute since 1869?", "a": "Nine"}
       ]
     },
     {
@@ -30,7 +30,7 @@
       "summary": "Congress has two chambers: a House sized by population and a Senate with two members for every state.",
       "links": ["Three branches", "How a bill becomes law"],
       "items": [
-        {"q": "How many voting members does the US House of Representatives have?", "a": "435"},
+        {"q": "What is the statutory number of voting seats in the US House of Representatives, excluding temporary admission-related increases?", "a": "435"},
         {"q": "How many senators does the United States have, and how many come from each state?", "a": "100, two from each state"},
         {"q": "How long are the terms of a US representative and a US senator?", "a": "Two years for a representative, six years for a senator"},
         {"q": "Which chamber of Congress confirms presidential appointments and approves treaties?", "a": "The Senate"}
@@ -44,7 +44,7 @@
         {"q": "In which chamber of Congress must bills for raising revenue begin?", "a": "The House of Representatives"},
         {"q": "What must happen to a bill in Congress before it can be sent to the president?", "a": "Both the House and the Senate must pass it in identical form"},
         {"q": "What vote does Congress need to override a presidential veto?", "a": "Two-thirds of both the House and the Senate"},
-        {"q": "What is a pocket veto?", "a": "An unsigned bill dies because Congress adjourned during the president's ten days to act on it"}
+        {"q": "What is a pocket veto?", "a": "A bill fails when not signed within ten days (Sundays excluded) and congressional adjournment prevents its return"}
       ]
     },
     {
@@ -63,9 +63,9 @@
       "summary": "Amendments after the Civil War ended slavery, promised equal protection and steadily widened the right to vote.",
       "links": ["The Bill of Rights", "passages-worth-keeping:Gettysburg Address, opening"],
       "items": [
-        {"q": "What did the Thirteenth Amendment to the US Constitution do, in 1865?", "a": "It abolished slavery"},
+        {"q": "What did the Thirteenth Amendment to the US Constitution do, in 1865?", "a": "It abolished slavery and involuntary servitude, except as punishment for a crime after due conviction"},
         {"q": "Which amendment to the US Constitution, ratified in 1868, defines citizenship and guarantees equal protection of the laws?", "a": "The Fourteenth Amendment"},
-        {"q": "Which amendment to the US Constitution guaranteed women the right to vote, and in what year was it ratified?", "a": "The Nineteenth Amendment, in 1920"},
+        {"q": "Which US constitutional amendment prohibited denying voting rights on account of sex, and when was it ratified?", "a": "The Nineteenth Amendment, in 1920"},
         {"q": "What fraction of the states must ratify an amendment to the US Constitution?", "a": "Three-fourths (38 of the 50 states)"}
       ]
     }

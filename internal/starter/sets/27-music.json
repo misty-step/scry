@@ -54,7 +54,7 @@
       "items": [
         {"q": "In 4/4 time, how many beats are in a measure, and which note gets one beat?", "a": "Four beats; the quarter note gets one"},
         {"q": "In written music, what does a dot placed after a note do to its length?", "a": "It adds half the note's value"},
-        {"q": "In which time signature is a waltz written?", "a": "3/4"},
+        {"q": "In which time signature is a waltz usually written?", "a": "3/4"},
         {"q": "In music, what is tempo, and in what unit is it measured?", "a": "The speed of the beat, in beats per minute"}
       ]
     },

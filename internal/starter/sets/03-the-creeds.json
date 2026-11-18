@@ -5,7 +5,7 @@
   "ideas": [
     {
       "title": "Apostles' Creed",
-      "summary": "The short baptismal creed of the Western church, in its traditional English.",
+      "summary": "The short baptismal creed of the Western church, in the English of the 1662 Book of Common Prayer.",
       "links": ["Nicene Creed", "Where the Creeds come from"],
       "exact": {
         "title": "Apostles' Creed",
@@ -19,7 +19,7 @@
           "He ascended into heaven, And sitteth on the right hand of God the Father Almighty;",
           "From thence he shall come to judge the quick and the dead.",
           "I believe in the Holy Ghost;",
-          "The holy Catholic Church; The Communion of Saints;",
+          "The holy Catholick Church; The Communion of Saints;",
           "The Forgiveness of sins;",
           "The Resurrection of the body, And the Life everlasting. Amen."
         ]
@@ -51,7 +51,7 @@
           "Who proceedeth from the Father and the Son,",
           "Who with the Father and the Son together is worshipped and glorified,",
           "Who spake by the Prophets.",
-          "And I believe one Catholic and Apostolic Church.",
+          "And I believe one Catholick and Apostolick Church.",
           "I acknowledge one Baptism for the remission of sins.",
           "And I look for the Resurrection of the dead,",
           "And the life of the world to come. Amen."
@@ -64,7 +64,7 @@
       "links": ["Nicene Creed"],
       "items": [
         {"q": "Which council first issued the Nicene Creed, and in what year?", "a": "The First Council of Nicaea, in 325"},
-        {"q": "Which council expanded the Nicene Creed into the form recited today, and in what year?", "a": "The First Council of Constantinople, in 381"},
+        {"q": "Which council is traditionally credited with the expanded Nicene Creed of 381, before the later Western filioque addition?", "a": "The First Council of Constantinople, in 381"},
         {"q": "Which teaching, named for an Alexandrian priest, was the Nicene Creed written against?", "a": "Arianism, the teaching of Arius that the Son was created and not eternal"},
         {"q": "What Greek word, rendered \"of one substance with the Father\", was the crux of the Nicene Creed?", "a": "Homoousios"},
         {"q": "What is the filioque, the phrase that divides Eastern and Western versions of the Nicene Creed?", "a": "\"And the Son\": the West says the Spirit proceeds from the Father and the Son"}

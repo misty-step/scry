@@ -689,3 +689,14 @@ Visually checked D6 long/short pairs and D9 newest/receded states at 1280x800
 and 390x844; screenshots are in /home/user/verify/accepted-design/.
 D6 geometry also passed at 900 and 600 pixels. Reading-page paragraph measure
 checks passed on Billing and Settings. The preview and port 18080 were not used.
+
+## MIS-1210 starter accuracy pass
+
+- "Every major subject" has no enumerated syllabus. Kept the existing 30 sets;
+  coverage limitations and all 742-item review results are in AUDIT-STARTER.md.
+- Exact texts need an edition choice. Used 1662 BCP, modern-spelling KJV
+  (1769 tradition), 1787 engrossed Preamble, 1864 Bliss Gettysburg copy,
+  Hutchinson 1914 Shelley, and the 1956 NATO alphabet. Details in the audit.
+- Standardized ambiguous prompts by naming the relevant measurement convention,
+  theorem assumptions, historical period or usage sense rather than demanding
+  that the semantic grader infer unstated conditions.
