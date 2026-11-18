@@ -43,8 +43,26 @@
   var go = { s: "/study", l: "/library", i: "/inbox", n: "/learn", b: "/billing" };
   var pendingG = 0;
   doc.addEventListener("keydown", function (e) {
-    if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (typing(e.target)) {
+      if (e.key === "Escape") { e.preventDefault(); e.target.blur(); }
+      return;
+    }
     if (!$(".nav a[href='/study']")) return; // signed out
+    var next = $("[data-next]"), answer = $("[data-answer-form]"), again = $("[data-again]");
+    if ((e.key === "a" || e.key === "A") && again) {
+      e.preventDefault(); again.click(); return;
+    }
+    // Buttons and links retain their native Enter/Space activation.
+    var nativeControl = e.target.closest("button, a, input, select");
+    if (e.key === "Enter" && !nativeControl && (next || answer)) {
+      e.preventDefault();
+      if (next) next.click(); else answer.requestSubmit();
+      return;
+    }
+    if (e.key === " " && !nativeControl && $("[data-mic]")) {
+      e.preventDefault(); $("[data-mic]").click(); return;
+    }
     if (pendingG && Date.now() - pendingG < 1200 && go[e.key]) {
       pendingG = 0;
       e.preventDefault();
@@ -228,9 +246,6 @@
       busy = true;
       var extra = e.submitter && e.submitter.name === "again" ? { again: "1" } : null;
       post(form, extra).then(function (r) { swap(r.html, r.url); }).catch(function () { form.submit(); });
-    });
-    form.addEventListener("keydown", function (e) {
-      if (again && (e.key === "a" || e.key === "A")) { e.preventDefault(); again.click(); }
     });
   }
 

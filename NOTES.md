@@ -645,3 +645,47 @@ all pass. Smoke uses an isolated httptest server, not the preview. Logs:
  /tmp/rulings-final.log and /tmp/rulings-smoke.log.
 The capped top-up transaction also commits decline records before returning
 the decline, preserving the existing card-failure behavior.
+
+Accepted chat:phaedrus/t3579u, D1: preserve one transcription after stop.
+DESIGN now describes the unchanged answer line and listening label, not live
+transcription. Chromium smoke asserts no upload or new words while listening.
+
+D6: preserve intrinsic Judgment widths rather than shrinking flex children
+before wrapping. If the two answers do not fit, they stack left-aligned with
+the phone spacing; long individual answers still wrap without overflow.
+Smoke checks the real missed state at 1280, 900, 600 and 390 pixels.
+
+D8: 68ch applies to reading pages, not inbox/draft/scrollback rows. Existing
+reading paragraphs and ledes already use the 68ch measure; no CSS change.
+TestD8_ReadingMeasure locks the existing reading-page constraints.
+
+D9: retain the newest right answer's why only until another answer arrives.
+Existing behavior already handled right-to-right and right-to-pending-miss;
+fixed the remaining case where Next on a miss resurrected that miss's reason
+in scrollback. Chromium verifies visibility, removal and non-resurrection,
+with desktop/mobile screenshots of both retained and receded states.
+
+D11: dedicated keys cover the five primary navigation destinations, search,
+and study Check/Next, mic start/stop and exact Again. Settings and other
+controls remain Tab/Enter, as explicitly accepted. Escape leaves an input to
+make navigation available without stealing typed characters. Study shortcuts
+now also work outside their forms; native focused-button activation is kept.
+Footer and study hints document the keys. Inbox/draft extras are unchanged.
+
+Desktop/mobile check found two D6 details: the flex pair needs min-width:0
+inside its grid track to prevent intrinsic-width overflow, and the 200ms
+strike animation must release its clip afterwards so wrapped lines remain
+visible. Both are corrected without changing timing or reduced motion.
+Screenshots under /home/user/verify/accepted-design show full long answers
+stacking, and the newest right reason disappearing after the next answer.
+The mobile fixed Next behavior is unchanged (D12 is outside this work).
+Smoke also exercises primary navigation, search, Escape, Space start/stop,
+Enter Check/Next and exact-text Again with A on a real isolated session.
+
+Final t3579u verification: go build ./..., go vet ./..., and fresh
+go test -race -count=1 ./... all PASS (/tmp/design-final-tests.log).
+Chromium smoke PASS (/tmp/design-smoke.log), including actual keyboard flows.
+Visually checked D6 long/short pairs and D9 newest/receded states at 1280x800
+and 390x844; screenshots are in /home/user/verify/accepted-design/.
+D6 geometry also passed at 900 and 600 pixels. Reading-page paragraph measure
+checks passed on Billing and Settings. The preview and port 18080 were not used.

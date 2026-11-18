@@ -391,8 +391,8 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 .judged-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s4); }
 
 /* Missed: the one hard moment. */
-.judgment-pair { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3) var(--s6); }
-.judgment { max-width: 100%; overflow-wrap: anywhere; }
+.judgment-pair { min-width: 0; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s3) var(--s6); }
+.judgment { flex: 0 0 auto; width: max-content; max-width: 100%; overflow-wrap: anywhere; }
 .judgment-struck { color: var(--ink-muted); }
 .struck { position: relative; display: inline; }
 .struck-text { text-decoration: line-through; text-decoration-color: var(--missed); text-decoration-thickness: 0.06em; }
@@ -604,5 +604,5 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
 a.row-main { min-height: var(--touch); }
 
 .wordmark, .nav a, [data-again] { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; }
-.struck-text { animation: strike 200ms ease-out both; }
+.struck-text { animation: strike 200ms ease-out; }
 @media (prefers-reduced-motion: reduce) { .struck-text { animation: none; } }

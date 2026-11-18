@@ -9,7 +9,7 @@ Accepted by Phaedrus on 2026-11-17 (chat with Draper, shaped under [MIS-1210](ht
 - **Words first.** Every state is said in words. Color, highlight and strike back the words up and never carry the meaning alone.
 - **One thing at a time.** Each screen has one job and one main action.
 - **Quiet everywhere, one hard moment.** Pages are calm and exact. The moment a miss is judged is the one place the type gets loud.
-- **Keyboard first, touch equal.** Every action has a key and a 44 px touch target.
+- **Keyboard first, touch equal.** Navigation and study actions have dedicated keys. Everything else is reachable by Tab and Enter. Every action has a 44 px touch target.
 - **Never:** streaks, confetti, mascots, badges, points, glows, violet gradients, gradient text, shadows under cards, icon-card grids, stock imagery, eyebrow labels over every heading, or the Inter typeface.
 
 ## Type
@@ -58,7 +58,7 @@ The accent appears at most once as a filled control per screen. Mode follows the
 - Surfaces are square (radius 0). Controls and fields are 4 px. Nothing is a pill.
 - 1 px hairlines separate things; no shadows, no gradients, no blur.
 - Spacing steps: 4, 8, 16, 24, 32, 48, 64, 96 px. Section padding is 56 px on desktop, 40 px on phones.
-- Reading measure is at most 68 characters. The page frame is at most 1120 px.
+- Reading pages have a measure of at most 68 characters. Inbox, draft and study scrollback rows are exempt. The page frame is at most 1120 px.
 - The study session sits on a faint 22 px dot grid (ink-ghost at about 6%) with short tick marks along its left and right edges. No other screen has a texture.
 
 ## Motion
@@ -85,16 +85,16 @@ Shown when the library is empty and reachable later from the library. Title "Sta
 
 The center of Scry. The session reads like scrollback:
 
-- Answered items recede above the current one in ink-muted, one line each, with a mono verdict tag at the right edge ("right", "close", "missed").
+- Answered items recede above the current one in ink-muted, one line each, with a mono verdict tag at the right edge ("right", "close", "missed"). The newest right answer keeps its one-line why underneath until the next answer arrives, then shrinks to one line like the rest.
 - The current prompt sits in the middle at Display size, with the answer line under it and a block caret.
 - Upcoming items fade below in ink-ghost, at most three.
-- The left margin holds the idea's name and the count ("4 / 11") in mono. The bottom right holds the key hints: "enter to check · space to speak".
+- The left margin holds the idea's name and the count ("4 / 11") in mono. The bottom right holds the key hints: "enter to check · space to start/stop speaking (empty answer)".
 
 States: typing; checking (instant; no spinner unless a check takes over 400 ms, then the tag reads "checking" in mono); judged (see below); session end.
 
 ### Voice answer
 
-Space or the single round mic control starts listening. Words appear on the answer line as live text, set exactly like typed text. While listening, the answer line's hairline gently swells and a mono label reads "listening". States: listening, heard (text settles; Enter checks), couldn't hear ("Didn't catch that. Try again or type it."), microphone blocked (one line telling the learner how to allow it).
+Space or the single round mic control starts listening. Words appear on the answer line after listening stops, set exactly like typed text; transcription is requested once, not repeatedly while speaking. While listening, the answer line stays empty (or keeps any text already typed), its hairline gently swells, and a mono label reads "listening". States: listening, heard (text settles; Enter checks), couldn't hear ("Didn't catch that. Try again or type it."), microphone blocked (one line telling the learner how to allow it).
 
 ### The answer judgment
 
@@ -102,7 +102,7 @@ Instant, under the answer.
 
 - **Right:** a green mono "right" tag and the one-line why in body text. The item moves up into the scrollback.
 - **Close:** the parts that were close are marked with the highlighter, the tag reads "close", and the why says what differed.
-- **Missed:** the moment the type gets loud. The learner's answer is set at Judgment size and struck with a missed-red line that draws across; the right answer is set beside it at the same size in ink. Below, the tag "missed" and the one-line why. Keys: Enter for next.
+- **Missed:** the moment the type gets loud. The learner's answer is set at Judgment size and struck with a missed-red line that draws across; the right answer is set beside it at the same size in ink. If the pair cannot fit side by side without wrapping either answer, stack the answers in that order, left-aligned with a 16 px gap, just as on phones. Each stacked answer may wrap within the available width; never shrink the Judgment type to fit. Below, the tag "missed" and the one-line why. Keys: Enter for next.
 - **Exact texts** (texts the learner marked exact) are judged word for word in place: correct words stay plain ink, missing words are inserted and highlighted, wrong words are struck in ink-muted with the right word set right after them. A mono label above names the text and line ("Exact text · Nicene Creed · line 1"). The why counts the differences in words ("One word missing, one swapped."). Actions: "Again" (text button) and "Next" (accent).
 
 ### Session end
@@ -129,6 +129,12 @@ One prompt field at Display size: "What do you want to know?" with a mono hint u
 ### Billing and allowance
 
 A ledger page. Top: the plan and price in one sentence. The allowance as one sentence ("You've used 62% of this month's allowance. It resets on December 1.") with a thin 2 px meter under it, accent on a line-colored track. "Top up" is one button with its price on it ("Top up · $5"). Below, a ruled history of charges and top-ups with dates and amounts in tabular figures. Cancel is a plain text link with a one-step confirmation that states the end date. States: on trial (trial end date and the first charge), active, allowance near its limit (the sentence says so; no color alarm), allowance reached, card failed (the reason and "Update card").
+
+## Keys
+
+Outside text fields: g s Study, g l Library, g i Inbox, g n Learn, g b Billing; / focuses search where shown. Escape leaves a text field so navigation keys can be used without changing the answer. In study, Enter checks the answer or continues to Next; Space starts or stops listening (on an empty answer line, or outside fields); A repeats an exact text when Again is available. Focused controls retain their normal Enter and Space actions. Hints use Micro in the existing footer and study hint line.
+
+Top up, cancel, + Add, item rows, Settings and similar actions use Tab and Enter; they do not need dedicated shortcuts. Existing inbox and draft row keys remain: J/K or arrows move, A approves, D dismisses.
 
 ## Phones
 
