@@ -560,3 +560,10 @@ fresh go test -race -count=1 ./... all PASS. Output is in
 /tmp/judge-default-final-tests.log; initial regressions are recorded in
 /tmp/default-change-red.log and /tmp/cost-log-red.log. No live evaluation was
 rerun. The optional Chromium smoke was not rerun for this routing/log-only change.
+
+Verifier follow-up (partial): D2 maps invalid/too-short audio to the specified
+retry sentence; D5 uses concise pointer-appropriate permission guidance.
+D3 applies the existing one-shot 200ms strike animation (static with reduced
+motion). D7 gives wordmark/navigation/Again minimum 44px targets. D10 gives
+allowance-refused drafts a real Display heading. Regression assertions were
+run failing before implementation. F1 and F2 remain outstanding.

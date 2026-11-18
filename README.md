@@ -280,3 +280,5 @@ total_usage_cost is null if any call's cost is unknown, never silently free.
 Contracts: [TypeSafe System One](https://docs.typesafe.ai/api/system-one),
 [OpenRouter Decisions](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request),
 and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streaming).
+
+| Verifier design regressions D2/D3/D5/D7/D10 | TestVerifierDesignRegressions |

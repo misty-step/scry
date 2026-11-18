@@ -73,3 +73,23 @@ func TestG14_InlineLinksKeepTouchTargets(t *testing.T) {
 		t.Fatal("inline links override 44px minimum")
 	}
 }
+
+func TestVerifierDesignRegressions(t *testing.T) {
+	for file, wants := range map[string][]string{
+		"static/app.js":        {"res.status === 400", "Allow mic in site settings.", "Allow mic, then retry."},
+		"static/app.css":       {"animation: strike 200ms", ".wordmark, .nav a, [data-again]"},
+		"templates/draft.html": {"Not enough allowance"},
+	} {
+		var b []byte
+		if strings.HasPrefix(file, "static/") {
+			b, _ = staticFS.ReadFile(file)
+		} else {
+			b, _ = templateFS.ReadFile(file)
+		}
+		for _, want := range wants {
+			if !strings.Contains(string(b), want) {
+				t.Errorf("%s missing %s", file, want)
+			}
+		}
+	}
+}

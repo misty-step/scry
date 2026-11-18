@@ -602,3 +602,7 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
 
 /* All actionable links retain a full touch target, including item rows. */
 a.row-main { min-height: var(--touch); }
+
+.wordmark, .nav a, [data-again] { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; }
+.struck-text { animation: strike 200ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { .struck-text { animation: none; } }

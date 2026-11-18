@@ -160,7 +160,7 @@
         startVoice(stream);
       }).catch(function (err) {
         if (err && (err.name === "NotAllowedError" || err.name === "SecurityError")) {
-          say("The microphone is blocked. Allow it for this site from the address bar, then press space again.");
+          say(window.matchMedia("(pointer: coarse)").matches ? "Allow mic in site settings." : "Allow mic, then retry.");
         } else {
           say("No microphone was found. Type your answer instead.");
         }
@@ -208,7 +208,7 @@
         method: "POST", body: new Blob([buffer], { type: "audio/wav" }), credentials: "same-origin",
         headers: { "Content-Type": "audio/wav", "X-CSRF-Token": form.elements.csrf.value }
       }).then(function (res) { return res.json().then(function (j) {
-        if (!res.ok) { say(j.error || "Scry can't listen just now. Type your answer instead."); return; }
+        if (!res.ok) { say(res.status === 400 ? "Didn't catch that. Try again or type it." : j.error || "Scry can't listen just now. Type your answer instead."); return; }
         if (j.text) { input.value = j.text; via.value = "spoken"; placeCaret(); say("heard · enter to check"); }
         else say("Didn't catch that. Try again or type it.");
       }); }).catch(function () { say("Couldn't reach Scry. Type your answer instead."); })

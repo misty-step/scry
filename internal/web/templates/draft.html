@@ -4,7 +4,7 @@
   <header class="list-head">
     <div>
       <p class="meta">{{.Kind}}</p>
-      <h1 class="display">{{.Draft.Title}}</h1>
+      <h1 class="display">{{if eq .Draft.Status "allowance"}}Not enough allowance{{else}}{{.Draft.Title}}{{end}}</h1>
     </div>
     {{if eq .Draft.Status "drafting"}}
       <p class="meta list-count" role="status">drafting{{if .Pending}} · {{plural .Ideas "idea" "ideas"}} so far{{end}}</p>
