@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {createInterface} from 'node:readline';
 import {once} from 'node:events';
+import {stdinStopped} from './cli-process.mjs';
 
 const binary = process.env.SCRY_MCP_BIN || resolve('target/debug/scry-mcp');
 const cliBinary = join(dirname(binary),'scry');
@@ -58,9 +59,8 @@ async function fixture(t, {configExists = true} = {}) {
   // The server reads frames until EOF, so a failed write means it stopped early.
   // That fails the request in flight and the cleanup assertion below; it is
   // never ignored and never an uncaught exception.
-  let stdinError = null, stop;
-  const stopped = new Promise((_,reject) => { stop = reject; }); stopped.catch(() => {});
-  child.stdin.on('error', error => { stdinError ??= error; stop(Error('MCP stopped reading stdin.',{cause:error})); });
+  let stdinError = null;
+  const stopped = stdinStopped(child); child.stdin.on('error', error => { stdinError ??= error; });
   const send = message => child.stdin.write(JSON.stringify(message)+'\n');
   const request = (method,params={},id=++serial) => Promise.race([stopped,new Promise(resolve => {
     waiting.set(id,resolve); send({jsonrpc:'2.0',id,method,params});

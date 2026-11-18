@@ -16,6 +16,7 @@ import {dirname,join,resolve} from 'node:path';
 import {createInterface} from 'node:readline';
 import {once} from 'node:events';
 import {createRuntime,Response,internalKey} from './runtime-helper.mjs';
+import {stdinStopped} from './cli-process.mjs';
 
 const artifact=resolve(process.env.SCRY_WORKER_ARTIFACT||'build');
 // The previous Worker's build, for the refusal journey: a directory holding the
@@ -837,9 +838,9 @@ test('the API, the CLI and the tool server report the judgment state and can ask
   assert.equal(n.jev.sent.length,4);
   // The tool server, over stdio, with the same login.
   child=spawn(mcp,['--config',config],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});closed=once(child,'close');
-  let serial=0;const waiting=new Map();
+  let serial=0;const waiting=new Map(),stopped=stdinStopped(child);
   createInterface({input:child.stdout}).on('line',line=>{assert.ok(!line.includes(paid),'The tool server never emits the Owner token.');const value=JSON.parse(line);waiting.get(value.id)?.(value);waiting.delete(value.id);});
-  const request=(method,params={})=>new Promise(done=>{const id=++serial;waiting.set(id,done);child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');});
+  const request=(method,params={})=>Promise.race([stopped,new Promise(done=>{const id=++serial;waiting.set(id,done);child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');})]);
   const tool=async(name,args)=>(await request('tools/call',{name,arguments:args})).result;
   assert.equal((await request('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'judgment-journey',version:'1'}})).result.protocolVersion,'2025-11-25');
   child.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');

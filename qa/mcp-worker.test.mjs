@@ -10,6 +10,7 @@ import {createInterface} from 'node:readline';
 import {once} from 'node:events';
 import {isDeepStrictEqual} from 'node:util';
 import {createRuntime,internalKey} from './runtime-helper.mjs';
+import {stdinStopped} from './cli-process.mjs';
 
 const binary=process.env.SCRY_MCP_BIN || resolve('target/debug/scry-mcp');
 if(!process.env.SCRY_MCP_BIN){
@@ -63,8 +64,7 @@ test('Compiled MCP authors NATO, learns, grades/replays once, and preserves nati
  // The server reads frames until EOF, so a failed write means it stopped early.
  // That fails the request in flight and the cleanup assertion above; it is
  // never ignored and never an uncaught exception.
- let stop;const stopped=new Promise((_,reject)=>{stop=reject;});stopped.catch(()=>{});
- child.stdin.on('error',error=>{stdinError??=error;stop(Error('MCP stopped reading stdin.',{cause:error}));});
+ const stopped=stdinStopped(child);child.stdin.on('error',error=>{stdinError??=error;});
  let serial=0,stderr='';const pending=new Map();child.stderr.on('data',v=>stderr+=v);
  createInterface({input:child.stdout}).on('line',line=>{
   assert.ok(!line.includes(secret),'MCP never emits the Owner credential.');
@@ -195,12 +195,13 @@ test('Compiled MCP takes Study\'s mix and a supplied mapping lesson once, withou
  const issued=await runtime.worker.fetch(origin+'/tokens/create',{method:'POST',headers:{'X-Scry-Test-Origin':origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...fields,name:'Synthetic MCP mix proof; unpaid'})});
  const secret=/<textarea[^>]*>([^<]+)<\/textarea>/.exec(await issued.text())?.[1];assert.ok(secret);
  const login=spawn(join(dirname(binary),'scry'),['login','--url',origin,'--token-stdin','--config',config,'--json'],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});
- const loginClosed=once(login,'close');login.stdin.end(secret+'\n');assert.equal((await loginClosed)[0],0);
+ let loginStdinError=null;login.stdin.on('error',error=>{if(error.code!=='EPIPE')loginStdinError=error;});
+ const loginClosed=once(login,'close');login.stdin.end(secret+'\n');assert.equal((await loginClosed)[0],0);assert.ifError(loginStdinError);
  child=spawn(binary,['--config',config],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});closed=once(child,'close');
- let serial=0;const pending=new Map();
+ let serial=0;const pending=new Map(),stopped=stdinStopped(child);
  createInterface({input:child.stdout}).on('line',line=>{assert.ok(!line.includes(secret));const value=JSON.parse(line);pending.get(value.id)(value);pending.delete(value.id);});
  const send=value=>child.stdin.write(JSON.stringify(value)+'\n');
- const request=(method,params={})=>new Promise(done=>{const id=++serial;pending.set(id,done);send({jsonrpc:'2.0',id,method,params});});
+ const request=(method,params={})=>Promise.race([stopped,new Promise(done=>{const id=++serial;pending.set(id,done);send({jsonrpc:'2.0',id,method,params});})]);
  const call=async(tool,args={})=>(await request('tools/call',{name:tool,arguments:args})).result;
  const ok=async(tool,args={})=>{const r=await call(tool,args);assert.equal(r.isError,false,JSON.stringify(r.structuredContent));return r.structuredContent;};
  const refused=async(tool,args,code)=>{const before=await rows();const r=await call(tool,args);assert.equal(r.isError,true);assert.equal(r.structuredContent.error.code,code);assert.ok(isDeepStrictEqual(await rows(),before),'Refusal leaves every row unchanged.');};
