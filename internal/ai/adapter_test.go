@@ -14,8 +14,8 @@ func TestG11_AnthropicShapeAndSingleAttempt(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
-		if r.URL.Path != "/v1/messages" || r.Header.Get("X-Api-Key") != "local-test-key" {
-			t.Errorf("bad endpoint or auth")
+		if r.URL.Path != "/v1/messages" || r.Header.Get("Authorization") != "Bearer local-test-key" {
+			t.Errorf("bad endpoint or auth: %s %v", r.URL.Path, r.Header)
 		}
 		var body map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
