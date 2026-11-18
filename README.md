@@ -28,7 +28,8 @@ use only test card 4242 4242 4242 4242, a future expiry, and CVC 123.
 fixture, not a correctness assessment. Tests inject close/missed results.
 Exact texts use the real word diff. Drafts use built-in examples or labelled
 placeholders, not general knowledge generation. Speech is simulated, though
-the browser can request microphone permission and send audio to this service.
+the browser can request microphone permission and send validated PCM WAV audio
+to this service once recording stops (no repeated live transcription).
 SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 
 ## Environment and adapters
@@ -179,3 +180,27 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Rule: outages noticed/fixed without prompting | TestRule_Reliability_HealthzStructuredLogsAndAlertsWithoutBeingAsked |
 
 Additional regression tests cover snapshot/per-user recovery, conflicting restore identities, test-mode alert isolation, scripted judgments, and design details.
+
+
+## Review-remediation verification and allowance safety
+
+Provider cost is now reserved atomically before calls; insufficient unreserved
+budget stops work even if a small positive balance remains. Requests are bounded
+(judge: 8,192 input bytes / 1,024 output tokens; draft: 32,000 / 16,000).
+Conservative reservations include framing margin and the highest configured
+rates; actual usage settlement refunds unused budget. Automatic model retries
+and fallback are disabled. Review the price table before changing model pricing.
+
+Unknown outcomes retain durable reservations. Reconcile them against provider
+usage before releasing holds; do not blindly delete reservations after a crash.
+The reservation table is part of private backups and selective recovery.
+Older snapshots need whole restore/migration before selective recovery.
+
+Optional local browser regression (requires Chromium and puppeteer-core):
+
+    SCRY_BROWSER_SMOKE=1 NODE_PATH=/path/to/tooling/node_modules       go test -race ./internal/web -run TestReviewBrowserSmoke -count=1 -v
+
+The smoke blocks external requests, uses synthetic microphone input and test
+adapters, measures Check contrast in both modes and at desktop/phone widths,
+and verifies one transcription upload at stop, visible reasons and wrapping
+strikes. All provider-contract tests use local stand-ins, never real keys.

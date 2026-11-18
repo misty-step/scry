@@ -14,7 +14,7 @@ The first build lane (Claude Code, Fable 5.2) stopped on a usage limit at commit
 ### First-lane decisions (trace handoff supplied by the user)
 
 - Go 1.27 with toolchain go1.27.4: the original box had 1.23.4, so GOTOOLCHAIN=auto installs the selected toolchain. Pure-Go modernc SQLite keeps the binary static, without cgo.
-- The model adapter uses Anthropic Go SDK v2: structured JSON judgments, streaming drafts, server-side fallback model. The continuation replaced the fake's keyword matcher with scripted fixtures; exact texts alone use the word diff.
+- The model adapter uses Anthropic Go SDK v2: structured JSON judgments and streaming drafts (the continuation now disables automatic fallback/retries to bound call cost). The continuation replaced the fake's keyword matcher with scripted fixtures; exact texts alone use the word diff.
 - Geist Sans and Geist Mono variable fonts were obtained from the npm geist package and are self-hosted with their OFL license.
 - The 30 starter JSON sets (742 items, about 24 per set) were completed by three first-lane helpers. Set 30 is passages, learned line by line. Validation limits questions to 170 characters, answers to 140, and requires valid cross-links. They are complete and were not rewritten.
 - SeedDemo is idempotent: an ordinary demo account with over 100 items, at least 10 due, seven suggestions, 62% allowance used and an established trial/plan history. TestRule_SeededDemoData pins the fixture.
@@ -67,8 +67,7 @@ implementation was consulted.
   return tomorrow; exact “Again” is practice, not another scheduled review.
   Due-today uses the learner's timezone (browser-detected, otherwise UTC).
 - Exact means ordered words, ignoring case, surrounding punctuation and curly
-  apostrophe spelling; missing/swapped/extra words are counted. Close is at
-  most two differing words or 10% of the text; otherwise missed.
+  apostrophe spelling; missing/swapped/extra words are counted. Any word difference is missed; only a zero-difference result is right (G4/D2).
 - General answers are judged only through the model interface. With providers
   deliberately disabled, test mode returns an explicit scripted fixture
   independent of the answer; it cannot assess actual correctness. Tests inject
@@ -129,10 +128,11 @@ implementation was consulted.
   at 640px. Decorative upcoming text is ghost; required reading uses body/meta.
   Non-keyboard test-mode notice uses meta, not micro.
 - Scrollback shows at most five desktop/two phone entries on one visible line;
-  reasons remain accessible but visually hidden. Up next is capped at three/one.
+  right-answer reasons remain visible in body text (G3 overrides the earlier hiding decision). Up next is capped at three/one.
 - Space starts voice only from an empty answer (or stops a recording), preserving
-  normal spaces in typed answers. Live transcription is chunked about every
-  1.2 seconds with a 20-second recording cap; no looping visual animation.
+  normal spaces in typed answers. Recording uses PCM samples with a 20-second browser cap, then one upload at stop.
+  The server counts samples (up to 120 seconds); there is no repeated live
+  transcription or looping visual animation (G12 supersedes the earlier choice).
 - Draft streaming is progressively revealed by short polling; without JS,
   server-rendered forms still work but voice/automatic polling do not.
   Checking appears after 400ms, not a spinner. Motion is 150–250ms and reduced
@@ -205,7 +205,7 @@ implementation was consulted.
   are not tested; actual unattended host recovery requires installing the
   provided watchdog or configuring platform liveness and monitoring.
 
-## Review remediation (2026-11-18, partial)
+## Initial review remediation (2026-11-18; superseded by completed continuation below)
 
 The review supersedes the earlier acceptance/completion statement. This build
 must not be treated as accepted until the remaining requested gaps are fixed.
@@ -215,11 +215,11 @@ must not be treated as accepted until the remaining requested gaps are fixed.
 - G4/D2: exact verdicts are right for zero word differences and missed otherwise.
   Changed the regression first and observed its failure against the old threshold.
   Updated the HTTP exact-text story expectations to match; the word diff remains.
-- Still outstanding: G1, G2, G5, G6, G7, G8, G10/D3, G11, G12,
-  G14, G15, G16, G17, G19, and the requested new browser smoke.
-- Correction to prior Ambiguities: usage is currently checked, NOT reserved
-  before calls. The concurrency cap defect G2 is unresolved. The old exact-text
-  close threshold described there is now removed.
+- At this initial stopping point the other gaps were outstanding; all requested
+  remainder items are now addressed in the completed continuation below.
+- The review correctly found that the previous reservation claim was false.
+  G2 now implements actual durable atomic reservations, with bounded requests
+  and transactional settlement. G4 removed the old exact-text close threshold.
 
 ## Open spec questions
 
@@ -229,3 +229,105 @@ Reserved for Phaedrus via Kaylee; no implementation choice made in this pass:
 - What top-up limits should apply?
 - What password reset and verification flows are required?
 - Which production monitoring agent owns incident detection and repair?
+
+## Completed review remediation (2026-11-18)
+
+All remaining items from the supplied fix brief are implemented. The five
+Open spec questions above remain undecided. No existing Scry source was sought,
+fetched or used. Adapter requests in verification went only to local stand-ins;
+all keys in those tests are synthetic strings, not real credentials.
+
+Each gap had a red regression before the corresponding implementation fix;
+the provider-coverage bundle uncovered three SDK requests for one judge call,
+and the browser pass found additional contrast/recording failures before they
+were corrected. Subsequent commits retain the required model trailer.
+
+| Gap | Fix and regression proof |
+| --- | --- |
+| G1 | Both operation keys and confirmed payment references are deduplicated. Ledger insertion, operation marker and credit increment commit together; retry after a local failure remains safe. TestG1_TopUpCreditsOncePerPayment first reproduced 12,000,000 credit from one 4,000,000-credit payment; TestG1_OnePaymentReferenceCannotCreditTwice also rejects a replay under a different operation key. The existing per-minute idempotency window is unchanged; this is not a new top-up limit. |
+| G2 | SQLite reservations atomically require enough unreserved allowance BEFORE judge, draft or speech calls. Actual usage and reservation removal settle in one transaction. TestG2_ConcurrentDraftsCannotSpendLastMicro first admitted 25 calls, now none. TestG2_ReservationHeldUntilProviderCompletes covers overlapping requests and refund to actual cost. TestG2_UnknownProviderOutcomeKeepsReservation covers ambiguous errors. |
+| G3 | Previously fixed: right reasons visible in body text. Browser smoke now verifies actual dimensions, not merely template presence. |
+| G4/D2 | Previously fixed: exact is right only for zero differences, missed otherwise; no tuned close threshold. Diff and difference counts remain visible. |
+| G5 | Webhook subscription/ledger effects and processed marker share one transaction. A failed write rolls back the marker too. TestG5_FailedEventCanBeRedelivered injects a SQLite failure then redelivers, and checks duplicate replay adds no extra ledger entry. |
+| G6 | Removed checkbox-label class from Check. Removed accent opacity/background transitions that transiently lowered contrast. TestG6_CheckUsesAccentForeground plus real Chromium measurements: 5.2501:1 light, 5.8932:1 dark, at both desktop and phone widths. |
+| G7 | Native text-decoration strikes wrap with the answer, no duplicate overlay. TestG7_MissedStrikeFollowsText plus desktop/phone screenshots and computed-style assertions. The old overlay draw animation is intentionally superseded by the brief's native decoration requirement. |
+| G8 | All four provider adapters redact their configured key at the error boundary, before application logs/alerts. TestG8_ProviderKeyNeverLeavesAdapter first demonstrated a transport error containing the key; it now returns a redacted error. |
+| G10/D3 | Empty non-exact answers follow the same one-call judge path. TestG10_EmptyAnswerCallsJudgeOnce. No local empty-answer verdict remains. |
+| G11 | Local tests exercise signed Stripe events (valid, tampered, missing, stale, future, live-mode refusal), Identity Toolkit request/error mapping, Anthropic structured judgment parsing/request shape/streaming draft bounds, and speech multipart upload. TestG11_* tests use no real service. SDK automatic retries disabled: one invocation sends one request. Installed SDK bearer-auth header is asserted. |
+| G12 | Browser captures mono PCM WAV to a silent audio sink, uploads once at stop. Server validates RIFF/PCM framing, sample rate/alignment/length, counts samples, ignores client duration, rejects unsupported/malformed audio. TestG12_SpeechDurationComesFromAudio first billed 1 micro instead of 50 for one second; now 50. TestG12_ValidatedSampleDuration tests malformed/truncated headers. TestG12_SpeechUploadsOnlyAtStop and the browser's real Web Audio/fake-device flow prove no uploads while listening and one at stop. |
+| G14 | Removed inline-link height exemption. TestG14_InlineLinksKeepTouchTargets plus browser measurements of visible links on library, inbox, billing and settings. |
+| G15 | Plan, trial, cancellation and ledger dates all use learner timezone, without mutating stored timestamps. TestG15_AllBillingDatesUseLearnerTimezone crosses a UTC/local midnight boundary. |
+| G16 | Cancel, card changes and failure messages mutate a freshly read row under one write transaction; top-up uses an atomic increment; events already run transactionally; opening a plan preserves current credit and refuses to replace an active plan. TestG16_CancelCannotOverwriteConcurrentUsage injects metering during the processor call and proves usage survives. |
+| G17 | Long answers are cut at a UTF-8 rune boundary, still within 2,000 bytes. TestG17_LongAnswerNeverSplitsRune first passed invalid UTF-8 to the spy judge, now preserves valid text. |
+| G19 | go mod tidy declares the three direct imports correctly and resolves dependency checksums. TestG19_DirectDependenciesAreDeclaredDirect failed on all three former indirect declarations. |
+
+### Allowance and recording operational details
+
+- Model requests have explicit input-byte/output-token ceilings: judge
+  8,192/1,024; drafts 32,000/16,000. Reservations use the highest configured
+  price rates, plus 1,024 input tokens of framing margin: 114,688 micro-dollars
+  for a judgment and 904,192 for a draft. This intentionally refuses a request
+  when remaining allowance cannot cover its worst case, even if it is not zero.
+  Unused budget is released when actual usage is known.
+- Automatic SDK retries and draft fallback are disabled, so they cannot multiply
+  an authorized request's cost. The largest known input/output prices bound
+  configured models; the rate table still needs explicit maintenance before a
+  future price/model change. No claim of live-provider pricing verification.
+- Uncertain provider outcomes (lost responses, panic, process death) retain
+  their reservation instead of silently forgiving potentially incurred costs.
+  Known actual usage is charged without clamping away excess. Operators must
+  reconcile held reservations against provider records before releasing them;
+  there is no automatic expiry or invented monitoring agent. Pre-provider
+  draft creation/profile failures release the unused reservation.
+- Reservations are durable, per-user, and included in snapshots/export/selective
+  recovery. Snapshots predating this table need whole restore/migration before
+  selective restore; never restore over running provider work.
+- The new audio path does not provide live transcription during listening:
+  the fix brief's one-upload-at-stop requirement supersedes that earlier design
+  implementation. The listening state remains; heard text appears before Check.
+  Browser cap is 20 seconds; server accepts validated PCM up to 120 seconds and
+  6 MiB, reserving at most 6,000 micro-dollars. Unsupported codecs fail closed.
+  Test-only say: fixtures remain restricted to the test speech adapter.
+- Chromium smoke found that a speakerless host could stall the recording graph.
+  A silent sink fixes that without a real microphone/provider. Unsupported audio
+  environments still allow typing.
+
+### Reproducible browser smoke
+
+The optional TestReviewBrowserSmoke starts the real HTTP app with scripted
+judgments and a fake speech provider, then drives Chromium via puppeteer-core.
+It exercises signup, test-card trial, shelf, typed and spoken study, right/missed
+judgments, library, inbox, billing and settings. Network interception allows only
+that local test server. Chrome's synthetic microphone drives actual Web Audio,
+not a stubbed upload. No production-only test hooks were added.
+
+    SCRY_BROWSER_SMOKE=1 NODE_PATH=/tmp/shots/node_modules       go test -race ./internal/web -run TestReviewBrowserSmoke -count=1 -v
+
+For another environment install puppeteer-core in a tooling directory, set
+NODE_PATH accordingly and optionally CHROME_BIN. Default Go tests skip this
+opt-in browser test. Screenshots are in /tmp/scry-remediation-smoke; inspected the
+phone/light multi-line miss to verify the strike follows each wrapped line.
+
+### Final verification of completed remediation
+
+- go build ./...: PASS.
+- go vet ./...: PASS.
+- go test -race -count=1 ./...: PASS, with fresh execution (the opt-in browser
+  smoke is skipped by this command and run separately).
+- SCRY_BROWSER_SMOKE=1 NODE_PATH=/tmp/shots/node_modules go test -race
+  ./internal/web -run TestReviewBrowserSmoke -count=1 -v: PASS. No external
+  browser requests or JavaScript errors. Checks at 1280 and 390 pixels in both
+  themes; measured button contrast 5.2501 and 5.8932, 44px targets, no horizontal
+  overflow, native multiline strike, visible right reason, single audio upload
+  only at stop. Also checked sign-up/card/shelf and authenticated main pages.
+- make run PORT=18086 with fresh SCRY_DB=/tmp/scry-review-final/demo.db:
+  detached successfully in test mode; /healthz was 200/ok/test, /signup was
+  200, demo login redirected to an authenticated /study with the form rendered.
+- make docker: PASS on the available Docker daemon, rebuilding the static
+  non-root image with the updated code, embedded JS/CSS and tidied modules.
+- Raw verification logs: /tmp/scry-remediation-final-race.log,
+  /tmp/scry-remediation-final-browser.log, /tmp/scry-remediation-final-docker.log.
+  Red regression logs are /tmp/G*-red (including G1-ref-red and G2-unknown-red).
+- No remaining requested recompiler misses. The unresolved owner questions stay
+  in Open spec questions; real-provider integration, actual model quality and
+  production monitoring ownership have not been asserted or silently decided.
