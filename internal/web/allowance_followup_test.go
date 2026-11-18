@@ -1,8 +1,15 @@
 package web_test
 
 import (
+	"context"
+	"errors"
+	"net/http"
+	"net/url"
+	"scry/internal/auth"
+	"scry/internal/store"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestF1_TrialDraftRefusalAgreesWithBilling(t *testing.T) {
@@ -62,5 +69,123 @@ func TestF2_ConcurrentTopupsReportOneCredit(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("reported %d credits, want 1", count)
+	}
+}
+
+func TestAcceptedTopupMonthCap(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("cap@example.com")
+	u := w.user("cap@example.com")
+	for i := 0; i < 4; i++ {
+		if err := w.app.TopUp(ctx, u.ID); err != nil {
+			t.Fatal(err)
+		}
+		w.advance(time.Minute)
+	}
+	if err := w.app.TopUp(ctx, u.ID); !errors.Is(err, store.ErrTopupCap) {
+		t.Fatal(err)
+	}
+	has(t, b.mustGet("/billing"), "Monthly $20 top-up limit reached", "disabled", "December 1")
+	w.advance(31 * 24 * time.Hour)
+	if err := w.app.TopUp(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClerkUnconfiguredAndVerificationGate(t *testing.T) {
+	w := newWorld(t)
+	w.app.Auth = &auth.Clerk{}
+	b := w.browser()
+	has(t, b.mustGet("/signin"), "Sign-in not configured")
+	has(t, b.mustGet("/signup"), "Sign-in not configured")
+	b.get("/billing")
+	if b.path != "/signin?next=%2Fbilling" && !strings.HasPrefix(b.path, "/signin") {
+		t.Fatal(b.path)
+	}
+}
+
+func TestOperatorFaultDrill(t *testing.T) {
+	t.Setenv("SCRY_FAULT_DRILL", "1")
+	t.Setenv("SCRY_FAULT_DRILL_TOKEN", "local-drill")
+	w := newWorld(t)
+	req, _ := http.NewRequest("POST", w.srv.URL+"/ops/fault-drill", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Fatal(resp.StatusCode)
+	}
+	req.Header.Set("Authorization", "Bearer local-drill")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 500 || !strings.Contains(w.logs.String(), `"level":"ERROR"`) {
+		t.Fatal(resp.StatusCode, w.logs.String())
+	}
+}
+
+func TestClerkSessionStandIn(t *testing.T) {
+	w := newWorld(t)
+	w.app.Auth = &auth.Clerk{SecretKey: "stand-in-only", Resolve: func(_ context.Context, token, origin string) (string, string, error) {
+		if token != "verified" {
+			return "", "", errors.New("verify email")
+		}
+		return "clerk-stand-in", "verified@example.com", nil
+	}}
+	b := w.browser()
+	target, _ := url.Parse(w.srv.URL)
+	b.c.Jar.SetCookies(target, []*http.Cookie{{Name: "__session", Value: "unverified"}})
+	b.get("/billing")
+	if !strings.HasPrefix(b.path, "/signin") {
+		t.Fatal(b.path)
+	}
+	b.c.Jar.SetCookies(target, []*http.Cookie{{Name: "__session", Value: "verified"}})
+	b.get("/billing")
+	if b.path != "/signup/card" {
+		t.Fatal(b.path)
+	}
+}
+
+func TestAcceptedTopupConcurrentCap(t *testing.T) {
+	w := newWorld(t)
+	w.browser().signUp("caprace@example.com")
+	u := w.user("caprace@example.com")
+	for i := 0; i < 3; i++ {
+		if err := w.app.TopUp(ctx, u.ID); err != nil {
+			t.Fatal(err)
+		}
+		w.advance(time.Minute)
+	}
+	results := make(chan bool, 12)
+	for i := 0; i < 12; i++ {
+		go func() {
+			added, err := w.app.TopUpResult(ctx, u.ID)
+			if err != nil && !errors.Is(err, store.ErrTopupCap) {
+				t.Error(err)
+			}
+			results <- added
+		}()
+	}
+	n := 0
+	for i := 0; i < 12; i++ {
+		if <-results {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatal(n)
+	}
+	sub, _ := w.store.For(u.ID).Subscription(ctx)
+	if sub.TopupMicros != 4*w.app.Cfg.TopupMicros {
+		t.Fatal(sub)
+	}
+	w.advance(time.Minute)
+	if _, err := w.app.TopUpResult(ctx, u.ID); !errors.Is(err, store.ErrTopupCap) {
+		t.Fatal(err)
 	}
 }

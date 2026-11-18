@@ -160,16 +160,41 @@ func (a *App) TopUp(ctx context.Context, userID int64) error {
 
 // TopUpResult reports whether this request actually granted credit.
 func (a *App) TopUpResult(ctx context.Context, userID int64) (bool, error) {
-	us := a.Store.For(userID)
 	sub, err := a.Plan(ctx, userID)
 	if err != nil {
 		return false, err
 	}
+	var added bool
+	var decline error
+	err = a.Store.BillingTransaction(ctx, func(ctx context.Context) error {
+		var e error
+		added, e = a.topUpLocked(ctx, userID, sub)
+		var d *billing.DeclineError
+		if errors.As(e, &d) {
+			decline = e
+			return nil
+		}
+		return e
+	})
+	if err == nil && decline != nil {
+		return false, decline
+	}
+	return added, err
+}
+func (a *App) topUpLocked(ctx context.Context, userID int64, sub store.Subscription) (bool, error) {
+	us := a.Store.For(userID)
 	now := a.now()
 	// One key per learner per minute: a double-clicked button charges once.
 	key := fmt.Sprintf("topup-%d-%d", userID, now.Unix()/60)
 	if done, err := a.Store.HasProcessedEvent(ctx, key); err != nil || done {
 		return false, err
+	}
+	count, err := us.MonthTopups(ctx, now)
+	if err != nil {
+		return false, err
+	}
+	if count >= 4 {
+		return false, store.ErrTopupCap
 	}
 	ref, err := a.Pay.Charge(ctx, sub.CustomerRef, sub.PaymentRef, a.Cfg.TopupCents, "Scry top-up", key)
 	var d *billing.DeclineError

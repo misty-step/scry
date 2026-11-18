@@ -429,7 +429,7 @@ func TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinu
 	}
 	// ...set on the answer line, and checked like any typed answer.
 	body = b.answer(first, first.Answer, "via", "spoken")
-	has(t, body, `<span class="tag tag-right">right</span>`)
+	has(t, body, `<span class="tag tag-right">correct</span>`)
 	hist, _ := lib.History(ctx, first.ID)
 	if len(hist) != 1 || hist[0].Via != "spoken" || hist[0].Verdict != srs.Right {
 		t.Fatalf("spoken answer recorded as %+v", hist)
@@ -480,21 +480,21 @@ func TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason(t 
 	// reference is right when the model says so...
 	w.model.script = []ai.Judgment{{Verdict: srs.Right, Reason: "Yes: the first code word, with the common spelling."}}
 	body = b.answer(first, "alpha, the first one")
-	has(t, body, `<span class="tag tag-right">right</span>`, "Yes: the first code word, with the common spelling.")
+	has(t, body, `<span class="tag tag-right">correct</span>`, "Yes: the first code word, with the common spelling.")
 
 	// ...and an answer that is letter for letter the reference is missed
 	// when the model says so. No string comparison short-circuits it.
 	second, _ := b.current(body)
 	w.model.script = []ai.Judgment{{Verdict: srs.Missed, Reason: "The model has the final word in this test."}}
 	body = b.answer(second, second.Answer)
-	has(t, body, `<span class="tag tag-missed">missed</span>`, "The model has the final word in this test.")
+	has(t, body, `<span class="tag tag-missed">incorrect</span>`, "The model has the final word in this test.")
 	body = b.next()
 
 	// "Close" comes with the parts that were close.
 	third, _ := b.current(body)
 	w.model.script = []ai.Judgment{{Verdict: srs.Close, Reason: "Right word, but it is spelled Charlie.", Close: []string{"Charly"}}}
 	body = b.answer(third, "Charly")
-	has(t, body, `<span class="tag tag-close">close</span>`, "<mark>Charly</mark>", "Right word, but it is spelled Charlie.")
+	has(t, body, `<span class="tag tag-close">almost correct</span>`, "<mark>Charly</mark>", "Right word, but it is spelled Charlie.")
 	b.next()
 
 	// Every answer went to the model, exactly once each.
@@ -578,7 +578,7 @@ func TestStory_TextsIMarkExactAreJudgedWordForWord(t *testing.T) {
 		`<del class="x-wrong"><span class="sr">you wrote: </span>Lord</del>`,
 		`<span class="x-fix"><span class="sr">the text has: </span>Father</span>`,
 		"One word missing, one swapped.",
-		`<span class="tag tag-missed">missed</span>`,
+		`<span class="tag tag-missed">incorrect</span>`,
 		">Again</button>", ">Next</button>")
 	// No model was involved: this is the one exception.
 	if n := w.model.judgeCalls(); n != 0 {
@@ -598,7 +598,7 @@ func TestStory_TextsIMarkExactAreJudgedWordForWord(t *testing.T) {
 		t.Fatal("Again did not bring the line back")
 	}
 	body = b.answer(again, "i believe in one god the father almighty")
-	has(t, body, "Word for word.", `<span class="tag tag-right">right</span>`)
+	has(t, body, "Word for word.", `<span class="tag tag-right">correct</span>`)
 	// The retry is practice: the schedule set by the first attempt stands.
 	if got := mustItem(t, lib, line1.ID).Sched.Due; !got.Equal(dueAfterFirst) {
 		t.Errorf("practice moved the due date: %v -> %v", dueAfterFirst, got)

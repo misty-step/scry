@@ -262,7 +262,7 @@ were corrected. Subsequent commits retain the required model trailer.
 | G7 | Native text-decoration strikes wrap with the answer, no duplicate overlay. TestG7_MissedStrikeFollowsText plus desktop/phone screenshots and computed-style assertions. The old overlay draw animation is intentionally superseded by the brief's native decoration requirement. |
 | G8 | All four provider adapters redact their configured key at the error boundary, before application logs/alerts. TestG8_ProviderKeyNeverLeavesAdapter first demonstrated a transport error containing the key; it now returns a redacted error. |
 | G10/D3 | Empty non-exact answers follow the same one-call judge path. TestG10_EmptyAnswerCallsJudgeOnce. No local empty-answer verdict remains. |
-| G11 | Local tests exercise signed Stripe events (valid, tampered, missing, stale, future, live-mode refusal), Identity Toolkit request/error mapping, Anthropic structured judgment parsing/request shape/streaming draft bounds, and speech multipart upload. TestG11_* tests use no real service. SDK automatic retries disabled: one invocation sends one request. Installed SDK bearer-auth header is asserted. |
+| G11 | Local tests exercise signed Stripe events (valid, tampered, missing, stale, future, live-mode refusal), retired auth adapter request/error mapping, Anthropic structured judgment parsing/request shape/streaming draft bounds, and speech multipart upload. TestG11_* tests use no real service. SDK automatic retries disabled: one invocation sends one request. Installed SDK bearer-auth header is asserted. |
 | G12 | Browser captures mono PCM WAV to a silent audio sink, uploads once at stop. Server validates RIFF/PCM framing, sample rate/alignment/length, counts samples, ignores client duration, rejects unsupported/malformed audio. TestG12_SpeechDurationComesFromAudio first billed 1 micro instead of 50 for one second; now 50. TestG12_ValidatedSampleDuration tests malformed/truncated headers. TestG12_SpeechUploadsOnlyAtStop and the browser's real Web Audio/fake-device flow prove no uploads while listening and one at stop. |
 | G14 | Removed inline-link height exemption. TestG14_InlineLinksKeepTouchTargets plus browser measurements of visible links on library, inbox, billing and settings. |
 | G15 | Plan, trial, cancellation and ledger dates all use learner timezone, without mutating stored timestamps. TestG15_AllBillingDatesUseLearnerTimezone crosses a UTC/local midnight boundary. |
@@ -587,3 +587,61 @@ go test -race -count=1 ./... pass. Chromium TestReviewBrowserSmoke passes
 against its isolated httptest server (SCRY_BROWSER_SMOKE=1). The F2 race
 regression also confirms eight concurrent requests report exactly one credit.
 No preview files or process on port 18080 were touched.
+
+MIS-1210 ruling 6: remove all punctuation, including apostrophes, within
+whitespace-delimited words before comparing; preserve original words in the
+plain diff. No fuzzy matching.
+
+MIS-1210 ruling 4: $5 top-ups, four per UTC calendar month. PRODUCT did not
+state credit amount: preserve $4 credit per $5. Serialize the charge and credit
+under the existing billing transaction, with a second cap check at credit.
+Billing disables top-ups and states the reset date; minute dedup remains.
+
+MIS-1210 rulings 2 and 3: Clerk replaces the former password provider entirely.
+The official Go SDK verifies each browser session; only a verified primary
+email can resolve to a Scry account. Agent bearer tokens are unchanged.
+No Clerk keys means a visible sign-in-not-configured page, not an auth startup
+failure. Configure CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY in the environment.
+In Clerk Dashboard enable email/password, require email verification and enable
+email password reset; disable social and passwordless sign-in. Built-in SignUp
+and SignIn components provide verification and Forgot password flows. Real key
+provisioning, allowed origins and delivery configuration remain operator work.
+SDK/component references: https://clerk.com/docs/go/getting-started/quickstart
+and https://clerk.com/docs/js-frontend/getting-started/quickstart .
+
+MIS-1210 ruling 1: PRODUCT used no grade labels, so learner labels are correct,
+almost correct, incorrect. Stored scheduling grades stay stable. The one choice
+question uses plain instructions and label-only criteria (the API's fixed
+choice set), not the old rubric. Explanation seam and its existing strings are
+unchanged; refusals/missing/none_of_these still abstain once with cost logged.
+
+## docs/runbook — MIS-1210 monitoring fault drill
+
+Set SENTRY_DSN in the service environment; unset is a no-op. Error-level
+structured events (including recovered panics, background failures and every
+HTTP 5xx) report sanitized event names to Sentry. /healthz checks SQLite.
+Configure an external continuous health probe and Sentry alert routing to the
+incident agent. The agent itself is outside this implementation.
+
+For an operator-controlled drill, temporarily set SCRY_FAULT_DRILL=1 and a
+random SCRY_FAULT_DRILL_TOKEN in the environment, restart, then POST
+/ops/fault-drill with Authorization: Bearer <that token>. It returns 500 and
+reports an error event. Verify Sentry receipt, agent alert, triage and proposed
+or shipped fix. Record incident link and timestamps. Remove both drill
+variables, restart and verify the endpoint is 404 and /healthz is healthy.
+Never put the token in a URL or commit it. No drill was run on production.
+
+Accepted-rulings verification supplement: Clerk identity tests reject unverified
+and banned users and exercise verified/unverified browser stand-ins without
+network. Pending sessions are rejected. The component does not redirect an
+unverified user into a study/sign-in loop. Concurrent cap testing starts with
+three paid top-ups and confirms twelve racing requests add exactly one more.
+Live Clerk delivery and a real Sentry-to-agent drill require external account
+configuration; these cannot be proven with local stand-ins.
+
+Final accepted-rulings checks: go mod tidy, go build ./..., go vet ./...,
+go test -race -count=1 ./..., and the real Chromium TestReviewBrowserSmoke
+all pass. Smoke uses an isolated httptest server, not the preview. Logs:
+ /tmp/rulings-final.log and /tmp/rulings-smoke.log.
+The capped top-up transaction also commits decline records before returning
+the decline, preserving the existing card-failure behavior.

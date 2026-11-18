@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"scry/internal/app"
+	"scry/internal/auth"
 	"scry/internal/store"
 )
 
@@ -88,6 +90,16 @@ func New(a *app.App, log *slog.Logger) *Server {
 		fileServer.ServeHTTP(w, r)
 	})))
 	mux.HandleFunc("GET /healthz", s.healthz)
+	if os.Getenv("SCRY_FAULT_DRILL") == "1" && os.Getenv("SCRY_FAULT_DRILL_TOKEN") != "" {
+		secret := os.Getenv("SCRY_FAULT_DRILL_TOKEN")
+		mux.HandleFunc("POST /ops/fault-drill", func(w http.ResponseWriter, r *http.Request) {
+			if subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+secret)) != 1 {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, "operator fault drill", 500)
+		})
+	}
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "User-agent: *\nAllow: /$\nAllow: /signup\nDisallow: /\n")
 	})
@@ -227,8 +239,17 @@ func (s *Server) secure(next http.Handler) http.Handler {
 			script, frame, connect = "'self' https://js.stripe.com", "https://js.stripe.com", "'self' https://api.stripe.com"
 		}
 		h := w.Header()
+		if provider, ok := s.App.Auth.(*auth.Clerk); ok && provider.Configured() {
+			origin := "https://" + provider.Domain()
+			script += " " + origin + " https://challenges.cloudflare.com"
+			connect += " " + origin + " https://challenges.cloudflare.com"
+			frame = "https://challenges.cloudflare.com"
+		}
 		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; script-src "+script+
 			"; frame-src "+frame+"; connect-src "+connect+"; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+		if provider, ok := s.App.Auth.(*auth.Clerk); ok && provider.Configured() {
+			h.Set("Content-Security-Policy", strings.Replace(h.Get("Content-Security-Policy"), "style-src 'self'", "style-src 'self' 'unsafe-inline'", 1))
+		}
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
 		h.Set("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
@@ -251,15 +272,37 @@ func (s *Server) setCookie(w http.ResponseWriter, r *http.Request, token string,
 // checks the CSRF token.
 func (s *Server) load(w http.ResponseWriter, r *http.Request) (*rc, bool) {
 	c := &rc{}
-	if ck, err := r.Cookie(cookieName); err == nil {
-		if u, se, err := s.App.SessionUser(r.Context(), ck.Value); err == nil {
-			c.user, c.sess, c.token, c.signedIn = u, se, ck.Value, true
-			c.us = s.App.Store.For(u.ID)
-			if s.App.KeepSession(r.Context(), ck.Value, se) {
-				s.setCookie(w, r, ck.Value, app.SessionTTL)
+	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
+		if ck, err := r.Cookie("__session"); err == nil {
+			scheme := "https"
+			if !s.Secure && r.TLS == nil {
+				scheme = "http"
 			}
-			if info, ok := r.Context().Value(logKey{}).(*logInfo); ok {
-				info.user = u.ID
+			subject, email, err := provider.Verify(r.Context(), ck.Value, scheme+"://"+r.Host)
+			if err == nil {
+				u, e := s.App.Store.UserBySubject(r.Context(), subject)
+				if errors.Is(e, store.ErrNotFound) {
+					u, e = s.App.Store.CreateUser(r.Context(), email, subject, "UTC", s.App.Now())
+				}
+				if e == nil {
+					c.user = u
+					c.signedIn = true
+					c.us = s.App.Store.For(u.ID)
+					c.sess.CSRF = provider.CSRF(subject)
+				}
+			}
+		}
+	} else {
+		if ck, err := r.Cookie(cookieName); err == nil {
+			if u, se, err := s.App.SessionUser(r.Context(), ck.Value); err == nil {
+				c.user, c.sess, c.token, c.signedIn = u, se, ck.Value, true
+				c.us = s.App.Store.For(u.ID)
+				if s.App.KeepSession(r.Context(), ck.Value, se) {
+					s.setCookie(w, r, ck.Value, app.SessionTTL)
+				}
+				if info, ok := r.Context().Value(logKey{}).(*logInfo); ok {
+					info.user = u.ID
+				}
 			}
 		}
 	}
@@ -332,6 +375,14 @@ func (s *Server) member(h handler) http.Handler {
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, c *rc, status int, page string, data map[string]any) error {
+	if data == nil {
+		data = map[string]any{}
+	}
+	if provider, ok := s.App.Auth.(*auth.Clerk); ok && provider.Configured() {
+		data["ClerkKey"] = provider.PublishableKey
+		data["ClerkScript"] = "https://" + provider.Domain() + "/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+	}
+
 	t, ok := s.pages[page]
 	if !ok {
 		return fmt.Errorf("no template %q", page)

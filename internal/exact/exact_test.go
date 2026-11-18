@@ -65,3 +65,16 @@ func TestExtraAndMissed(t *testing.T) {
 		t.Fatalf("why = %q", r.Why())
 	}
 }
+
+func TestAcceptedFolding(t *testing.T) {
+	for _, answer := range []string{"DONT stop", "Don't stop!", "DON’T stop."} {
+		r := Diff("Don't stop.", answer)
+		if r.Missing+r.Swapped+r.Extra != 0 {
+			t.Fatal(r)
+		}
+	}
+	r := Diff("Don't stop.", "don't go")
+	if r.Swapped != 1 || len(r.Ops) != 2 {
+		t.Fatal(r)
+	}
+}

@@ -27,7 +27,7 @@
   {{if .History}}
   <ul class="rows">
     {{range .History}}
-    <li class="row history-row"><span class="meta">{{short .At}}</span><span class="history-why">{{.Reason}}</span><span class="tag tag-{{.Verdict}}">{{.Verdict}}</span></li>
+    <li class="row history-row"><span class="meta">{{short .At}}</span><span class="history-why">{{.Reason}}</span><span class="tag tag-{{.Verdict}}">{{.Verdict.Label}}</span></li>
     {{end}}
   </ul>
   {{else}}<p class="lede">Not reviewed yet.</p>{{end}}

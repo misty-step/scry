@@ -37,14 +37,12 @@ type Result struct {
 // norm folds a word for comparison: case and surrounding punctuation are
 // not words, so they do not count as differences.
 func norm(s string) string {
-	s = strings.Map(func(r rune) rune {
-		switch r {
-		case '’', '‘', 'ʼ':
-			return '\''
+	return strings.Map(func(r rune) rune {
+		if unicode.IsPunct(r) {
+			return -1
 		}
 		return unicode.ToLower(r)
 	}, s)
-	return strings.TrimFunc(s, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
 }
 
 func words(s string) []string {

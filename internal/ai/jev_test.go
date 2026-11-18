@@ -55,11 +55,11 @@ func TestJev_RoutesAndUntrustedInjection(t *testing.T) {
 					t.Fatal("answer escaped state boundary")
 				}
 				for _, o := range judgeOptions {
-					if q.Criteria[o.ID] != o.Reason {
+					if q.Criteria[o.ID] != o.ID {
 						t.Fatal("mutable criteria")
 					}
 				}
-				json.NewEncoder(w).Encode(jevResponse("missed", 1))
+				json.NewEncoder(w).Encode(jevResponse("incorrect", 1))
 			}))
 			defer srv.Close()
 			j := &Jev{APIKey: "local-secret", OpenRouter: route == "openrouter", BaseURL: srv.URL, Log: slog.New(slog.NewJSONHandler(&logs, nil))}
@@ -92,7 +92,7 @@ func TestJev_FailsClosedWithoutRetries(t *testing.T) {
 					http.Redirect(w, r, "/again", 307)
 					return
 				}
-				b := jevResponse("right", 1)
+				b := jevResponse("correct", 1)
 				a := b["answers"].(map[string]any)["judgment"].(map[string]any)
 				switch kind {
 				case "refusal":
@@ -107,8 +107,8 @@ func TestJev_FailsClosedWithoutRetries(t *testing.T) {
 					a["confidence"] = 0.1
 				case "ambiguous":
 					p := a["probabilities"].(map[string]float64)
-					p["right"] = 0.5
-					p["missed"] = 0.5
+					p["correct"] = 0.5
+					p["incorrect"] = 0.5
 				case "invalid":
 					a["choice"] = "invented"
 				case "missing":
@@ -164,7 +164,7 @@ func TestJev_EachFixedChoiceAndRouteSelection(t *testing.T) {
 func TestJev_OpenRouterMissingCostAndEchoedKey(t *testing.T) {
 	var logs bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b := jevResponse("right", 1)
+		b := jevResponse("correct", 1)
 		b["model"] = "echo-local-secret"
 		delete(b["usage"].(map[string]any), "cost")
 		json.NewEncoder(w).Encode(b)
@@ -186,7 +186,7 @@ func TestDecisionUsageCostLogsValueOrUnknown(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/known=%t", format, known), func(t *testing.T) {
 				var logs bytes.Buffer
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					b := jevResponse("right", 1)
+					b := jevResponse("correct", 1)
 					if !known {
 						delete(b["usage"].(map[string]any), "cost")
 					}

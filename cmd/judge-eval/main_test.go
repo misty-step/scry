@@ -19,9 +19,9 @@ func TestEval_LocalModelsMetrics(t *testing.T) {
 		if r.URL.Path != "/api/alpha/decisions" || b["model"] == nil {
 			t.Error("wrong endpoint")
 		}
-		choice := "right"
+		choice := "correct"
 		if calls%2 == 0 {
-			choice = "missed"
+			choice = "incorrect"
 		}
 		json.NewEncoder(w).Encode(map[string]any{"model": b["model"], "answers": map[string]any{"judgment": map[string]string{"type": "choice", "choice": choice}}, "usage": map[string]any{"input_tokens": 1, "output_tokens": 1, "cost": 0.0000012}})
 	}))
