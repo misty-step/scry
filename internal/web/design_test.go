@@ -102,3 +102,18 @@ func TestD8_ReadingMeasure(t *testing.T) {
 		}
 	}
 }
+
+func TestD11_KeyHints(t *testing.T) {
+	b, _ := templateFS.ReadFile("templates/layout.html")
+	for _, hint := range []string{"g s study", "g l library", "g i inbox", "g n learn", "g b billing", "/ search", "esc leave field", "tab/enter other actions"} {
+		if !strings.Contains(string(b), hint) {
+			t.Errorf("missing key hint %s", hint)
+		}
+	}
+	b, _ = templateFS.ReadFile("templates/study.html")
+	for _, hint := range []string{"a again", "enter for next", "enter to check", "space to start/stop speaking"} {
+		if !strings.Contains(string(b), hint) {
+			t.Errorf("missing study hint %s", hint)
+		}
+	}
+}

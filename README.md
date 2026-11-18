@@ -296,3 +296,4 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | D6 intrinsic missed-pair stacking | TestReviewBrowserSmoke (1280/900/600/390 geometry and screenshots) |
 | D8 reading-page measure, row exemptions | TestD8_ReadingMeasure |
 | D9 newest-right why lifetime | TestReviewBrowserSmoke (newest-right, next answer, Next, screenshots) |
+| D11 navigation/study keys and Tab/Enter elsewhere | TestReviewBrowserSmoke; TestD11_KeyHints |

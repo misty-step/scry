@@ -664,3 +664,10 @@ Existing behavior already handled right-to-right and right-to-pending-miss;
 fixed the remaining case where Next on a miss resurrected that miss's reason
 in scrollback. Chromium verifies visibility, removal and non-resurrection,
 with desktop/mobile screenshots of both retained and receded states.
+
+D11: dedicated keys cover the five primary navigation destinations, search,
+and study Check/Next, mic start/stop and exact Again. Settings and other
+controls remain Tab/Enter, as explicitly accepted. Escape leaves an input to
+make navigation available without stealing typed characters. Study shortcuts
+now also work outside their forms; native focused-button activation is kept.
+Footer and study hints document the keys. Inbox/draft extras are unchanged.

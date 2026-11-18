@@ -9,7 +9,7 @@ Accepted by Phaedrus on 2026-11-17 (chat with Draper, shaped under [MIS-1210](ht
 - **Words first.** Every state is said in words. Color, highlight and strike back the words up and never carry the meaning alone.
 - **One thing at a time.** Each screen has one job and one main action.
 - **Quiet everywhere, one hard moment.** Pages are calm and exact. The moment a miss is judged is the one place the type gets loud.
-- **Keyboard first, touch equal.** Every action has a key and a 44 px touch target.
+- **Keyboard first, touch equal.** Navigation and study actions have dedicated keys. Everything else is reachable by Tab and Enter. Every action has a 44 px touch target.
 - **Never:** streaks, confetti, mascots, badges, points, glows, violet gradients, gradient text, shadows under cards, icon-card grids, stock imagery, eyebrow labels over every heading, or the Inter typeface.
 
 ## Type
@@ -129,6 +129,12 @@ One prompt field at Display size: "What do you want to know?" with a mono hint u
 ### Billing and allowance
 
 A ledger page. Top: the plan and price in one sentence. The allowance as one sentence ("You've used 62% of this month's allowance. It resets on December 1.") with a thin 2 px meter under it, accent on a line-colored track. "Top up" is one button with its price on it ("Top up · $5"). Below, a ruled history of charges and top-ups with dates and amounts in tabular figures. Cancel is a plain text link with a one-step confirmation that states the end date. States: on trial (trial end date and the first charge), active, allowance near its limit (the sentence says so; no color alarm), allowance reached, card failed (the reason and "Update card").
+
+## Keys
+
+Outside text fields: g s Study, g l Library, g i Inbox, g n Learn, g b Billing; / focuses search where shown. Escape leaves a text field so navigation keys can be used without changing the answer. In study, Enter checks the answer or continues to Next; Space starts or stops listening (on an empty answer line, or outside fields); A repeats an exact text when Again is available. Focused controls retain their normal Enter and Space actions. Hints use Micro in the existing footer and study hint line.
+
+Top up, cancel, + Add, item rows, Settings and similar actions use Tab and Enter; they do not need dedicated shortcuts. Existing inbox and draft row keys remain: J/K or arrows move, A approves, D dismisses.
 
 ## Phones
 
