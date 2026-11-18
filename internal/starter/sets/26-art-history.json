@@ -8,7 +8,7 @@
       "summary": "Renaissance artists used linear perspective and close study of nature to make a flat surface look deep and real.",
       "links": ["Light and shadow", "Reading a picture", "world-history:The printing press"],
       "items": [
-        {"q": "In linear perspective, what is the vanishing point?", "a": "The point on the horizon line where parallel lines appear to meet"},
+        {"q": "In linear perspective, what is the vanishing point?", "a": "The point where the projections of a set of parallel lines receding into depth appear to meet"},
         {"q": "Which Florentine architect is credited with working out linear perspective in the early 1400s?", "a": "Filippo Brunelleschi"},
         {"q": "Who painted the ceiling of the Sistine Chapel between 1508 and 1512?", "a": "Michelangelo"},
         {"q": "What is sfumato, the technique Leonardo da Vinci used in the Mona Lisa?", "a": "Soft, smoky blending of tones, with no hard outlines"}
@@ -44,7 +44,7 @@
       "items": [
         {"q": "Which movement, begun by Picasso and Braque around 1907, shows a subject from several viewpoints at once?", "a": "Cubism"},
         {"q": "Who painted Guernica in 1937, in response to the bombing of a Spanish town?", "a": "Pablo Picasso"},
-        {"q": "What is abstract art?", "a": "Art that does not depict recognizable things, relying instead on color, shape and line"},
+        {"q": "What is abstract art?", "a": "Art that departs from literal representation through shape, color and form; it may retain recognizable subjects"},
         {"q": "Which movement of the 1920s, including Dalí and Magritte, drew on dreams and the unconscious?", "a": "Surrealism"},
         {"q": "What did Marcel Duchamp call an ordinary manufactured object presented as art, like his 1917 Fountain?", "a": "A readymade"}
       ]

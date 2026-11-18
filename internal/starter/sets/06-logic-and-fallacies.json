@@ -10,7 +10,7 @@
       "items": [
         {"q": "In logic, what makes an argument valid?", "a": "If its premises are true, its conclusion must be true"},
         {"q": "In logic, what makes an argument sound?", "a": "It is valid and all its premises are true"},
-        {"q": "What is the difference between deductive and inductive reasoning?", "a": "Deduction guarantees its conclusion; induction only makes it probable, generalizing from observed cases"},
+        {"q": "What is the difference between deductive and inductive reasoning?", "a": "Valid deduction guarantees a true conclusion from true premises; induction supports a conclusion without guaranteeing it"},
         {"q": "\"All fish can fly; a trout is a fish; so a trout can fly.\" This argument is valid. Why is it not sound?", "a": "Its first premise is false"}
       ]
     },

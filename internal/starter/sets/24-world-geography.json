@@ -10,8 +10,8 @@
       "items": [
         {"q": "Which continent is the largest in both area and population?", "a": "Asia"},
         {"q": "Which is the largest and deepest of the world's oceans?", "a": "The Pacific Ocean"},
-        {"q": "Which continent is the smallest by land area?", "a": "Australia (Oceania)"},
-        {"q": "Which continent has the most countries?", "a": "Africa, with 54"},
+        {"q": "In the seven-continent model, which continent is smallest by land area?", "a": "Australia"},
+        {"q": "Which continent has the most UN member states?", "a": "Africa, with 54"},
         {"q": "Which ocean lies between Africa and Australia?", "a": "The Indian Ocean"}
       ]
     },

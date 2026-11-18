@@ -57,7 +57,7 @@
         {"q": "What is the greenhouse effect?", "a": "Gases in the atmosphere absorb heat radiated by Earth's surface, keeping the planet warmer"},
         {"q": "Which greenhouse gas, released by burning fossil fuels, is the main cause of present-day global warming?", "a": "Carbon dioxide (CO2)"},
         {"q": "What was the concentration of carbon dioxide in Earth's atmosphere before the industrial era?", "a": "About 280 parts per million"},
-        {"q": "By roughly how much has Earth's average surface temperature risen since the late 1800s?", "a": "A little more than 1 °C"},
+        {"q": "According to IPCC AR6, how much warmer was global surface temperature in 2011–2020 than in 1850–1900?", "a": "About 1.1 °C"},
         {"q": "Which process takes carbon dioxide out of the air and stores its carbon in plants?", "a": "Photosynthesis"},
         {"q": "What are the slow cycles in Earth's orbit and tilt called that set the rhythm of the ice ages?", "a": "Milankovitch cycles"}
       ]

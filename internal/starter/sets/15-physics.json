@@ -19,7 +19,7 @@
       "summary": "Every mass attracts every other mass, with a force that weakens as the square of the distance between them.",
       "links": ["Newton's laws of motion", "Relativity and the quantum", "astronomy:The solar system"],
       "items": [
-        {"q": "How does the gravitational force between two bodies change if the distance between them doubles?", "a": "It falls to one quarter, because gravity follows an inverse square law"},
+        {"q": "How does Newtonian gravitational force between two point masses change if their separation doubles?", "a": "It falls to one quarter, because gravity follows an inverse square law"},
         {"q": "What is the acceleration of a freely falling object near Earth's surface?", "a": "About 9.8 m/s^2"},
         {"q": "In physics, what is the difference between mass and weight?", "a": "Mass is the amount of matter in an object; weight is the force of gravity on it"},
         {"q": "In which book, published in 1687, did Isaac Newton set out his laws of motion and of universal gravitation?", "a": "The Principia (Philosophiae Naturalis Principia Mathematica)"}
@@ -43,7 +43,7 @@
       "items": [
         {"q": "What does the second law of thermodynamics say about the entropy of an isolated system?", "a": "It never decreases: it rises or, at best, stays the same"},
         {"q": "What is absolute zero in degrees Celsius?", "a": "-273.15 °C, which is 0 kelvin"},
-        {"q": "At the level of particles, what does the temperature of a substance measure?", "a": "The average kinetic energy of the random motion of its particles"},
+        {"q": "For a classical ideal gas, what particle-motion quantity is proportional to its absolute temperature?", "a": "The average translational kinetic energy per particle"},
         {"q": "Left to itself, in which direction does heat flow between two bodies in contact?", "a": "From the hotter body to the colder one"}
       ]
     },

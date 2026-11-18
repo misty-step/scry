@@ -59,7 +59,7 @@
         {"q": "In reasoning about probability, what is a base rate?", "a": "How often something happens in general in the relevant group, before you look at the particular case"},
         {"q": "What does the Pareto principle, or 80/20 rule, say?", "a": "Roughly 80% of effects come from 20% of causes"},
         {"q": "What is a margin of safety, in engineering and in investing?", "a": "A buffer between what you expect and what you can survive, so that errors do not ruin you"},
-        {"q": "What does regression to the mean predict after an unusually extreme result?", "a": "That the next result will probably be closer to the average"}
+        {"q": "What does regression to the mean predict after an unusually extreme result?", "a": "With imperfectly correlated repeated measurements, an extreme result tends to be followed by one closer to the mean"}
       ]
     }
   ]

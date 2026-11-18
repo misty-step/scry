@@ -655,7 +655,7 @@ func TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea(t *testing.T) {
 	}
 	page = b.mustGet(fmt.Sprintf("/library/ideas/%d", spoons.ID))
 	has(t, page, `aria-label="How this idea connects"`, fmt.Sprintf(`<a class="links-box" href="/library/ideas/%d">Weight and metric</a>`, weight.ID),
-		"<line ", "How many teaspoons are in a tablespoon?", "due today")
+		"<line ", "In US customary cooking measures, how many teaspoons are in a tablespoon?", "due today")
 
 	// An idea with no links has no diagram at all.
 	lonely, err := lib.CreateIdea(ctx, 0, "Unconnected", "An idea with no links.", "", w.now())
@@ -748,7 +748,7 @@ func TestStory_MyLibraryAndHistoryAreMineAlone(t *testing.T) {
 	hasNot(t, mallory.mustGet("/library?q=NATO"), "NATO alphabet: A")
 	_, export := mallory.get("/settings/export")
 	hasNot(t, export, "NATO alphabet", "alice@example.com", "Meditations")
-	has(t, export, "mallory@example.com", "How many teaspoons are in a tablespoon?")
+	has(t, export, "mallory@example.com", "In US customary cooking measures, how many teaspoons are in a tablespoon?")
 
 	// The same holds one layer down: Mallory's store cannot name Alice's rows.
 	if _, err := m.Item(ctx, first.ID); err != store.ErrNotFound {
