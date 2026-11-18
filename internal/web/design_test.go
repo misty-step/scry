@@ -44,3 +44,14 @@ func TestG6_CheckUsesAccentForeground(t *testing.T) {
 		}
 	}
 }
+
+func TestG7_MissedStrikeFollowsText(t *testing.T) {
+	b, _ := templateFS.ReadFile("templates/study.html")
+	if strings.Contains(string(b), `class="struck-line"`) {
+		t.Fatal("overlay strike cannot follow wrapped text")
+	}
+	css, _ := staticFS.ReadFile("static/app.css")
+	if !strings.Contains(string(css), ".struck-text { text-decoration: line-through;") {
+		t.Fatal("missing native multiline strike")
+	}
+}

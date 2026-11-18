@@ -396,11 +396,7 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 .judgment { max-width: 100%; overflow-wrap: anywhere; }
 .judgment-struck { color: var(--ink-muted); }
 .struck { position: relative; display: inline; }
-.struck-line {
-  position: absolute; inset: 0; color: transparent; pointer-events: none; user-select: none;
-  text-decoration: line-through; text-decoration-color: var(--missed); text-decoration-thickness: 0.06em;
-  animation: strike 200ms var(--ease) both;
-}
+.struck-text { text-decoration: line-through; text-decoration-color: var(--missed); text-decoration-thickness: 0.06em; }
 .judgment-right { color: var(--ink); }
 
 /* Exact texts, judged in place. */

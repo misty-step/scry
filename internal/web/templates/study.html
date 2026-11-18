@@ -34,7 +34,7 @@
       {{else if eq .Judged.Kind "missed"}}
         <h1 class="prompt prompt-receded">{{.Item.Prompt}}</h1>
         <div class="judgment-pair">
-          {{if .Judged.Answer}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text">{{.Judged.Answer}}</span><span class="struck-line" aria-hidden="true">{{.Judged.Answer}}</span></span></p>{{end}}
+          {{if .Judged.Answer}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text">{{.Judged.Answer}}</span></span></p>{{end}}
           <p class="judgment judgment-right"><span class="sr">The answer: </span>{{.Judged.Expected}}</p>
         </div>
         <p class="verdict"><span class="tag tag-missed">missed</span> <span class="why">{{.Judged.Why}}</span></p>
