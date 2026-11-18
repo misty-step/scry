@@ -43,12 +43,15 @@ func main() {
 	if env("LOG_LEVEL", "") == "debug" {
 		level = slog.LevelDebug
 	}
-	if err := sentry.Init(sentry.ClientOptions{Dsn: env("SENTRY_DSN", ""), SendDefaultPII: false}); err != nil {
-		fmt.Fprintln(os.Stderr, "invalid Sentry configuration")
-		os.Exit(1)
+	test := env("SCRY_MODE", "live") == "test"
+	if !test {
+		if err := sentry.Init(sentry.ClientOptions{Dsn: env("SENTRY_DSN", ""), SendDefaultPII: false}); err != nil {
+			fmt.Fprintln(os.Stderr, "invalid Sentry configuration")
+			os.Exit(1)
+		}
+		defer sentry.Flush(2 * time.Second)
 	}
-	defer sentry.Flush(2 * time.Second)
-	log := slog.New(alert.SentryHandler{Handler: slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})})
+	log := slog.New(operatorHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}), test))
 	slog.SetDefault(log)
 	cmd := "serve"
 	if len(os.Args) > 1 {
@@ -73,7 +76,15 @@ func main() {
 	}
 }
 
-// build wires the app: test-mode adapters with no keys, or the real ones
+func operatorHandler(base slog.Handler, test bool) slog.Handler {
+	if test {
+		return base
+	}
+	return alert.SentryHandler{Handler: base}
+}
+
+// build wires auth and billing independently in test mode; model and speech
+// stay fake. Live mode uses only real adapters
 // with credentials from the environment. Outside test mode a missing
 // credential stops the process; nothing falls back to a test adapter.
 func build(log *slog.Logger) (*app.App, error) {
@@ -86,6 +97,12 @@ func build(log *slog.Logger) (*app.App, error) {
 	if err != nil {
 		return nil, err
 	}
+	ok := false
+	defer func() {
+		if !ok {
+			st.Close()
+		}
+	}()
 	cfg := app.DefaultConfig()
 	cfg.TestMode = test
 	cfg.BackupDir = env("BACKUP_DIR", "")
@@ -121,13 +138,23 @@ func build(log *slog.Logger) (*app.App, error) {
 		}
 		return v
 	}
+	pk, sk := env("CLERK_PUBLISHABLE_KEY", ""), env("CLERK_SECRET_KEY", "")
+	stripeSK, stripePK, price, wh := env("STRIPE_SECRET_KEY", ""), env("STRIPE_PUBLISHABLE_KEY", ""), env("STRIPE_PRICE_ID", ""), env("STRIPE_WEBHOOK_SECRET", "")
 	if test {
 		a.Auth = &auth.Local{DB: st.DB()}
+		if pk != "" && sk != "" {
+			a.Auth = &auth.Clerk{PublishableKey: pk, SecretKey: sk}
+		}
 		a.Pay = billing.Fake{}
+		if stripeSK != "" && stripePK != "" && price != "" && wh != "" {
+			if a.Pay, err = billing.NewStripe(stripeSK, stripePK, price, wh); err != nil {
+				return nil, err
+			}
+		}
 		a.Model = &ai.Fake{Delay: 350 * time.Millisecond}
 		a.Speech = speech.Fake{Phrase: env("SCRY_TEST_SPEECH", "")}
 	} else {
-		a.Auth = &auth.Clerk{PublishableKey: env("CLERK_PUBLISHABLE_KEY", ""), SecretKey: env("CLERK_SECRET_KEY", "")}
+		a.Auth = &auth.Clerk{PublishableKey: need("CLERK_PUBLISHABLE_KEY"), SecretKey: need("CLERK_SECRET_KEY")}
 		judge, jerr := ai.NewJev(env("TYPESAFE_API_KEY", ""), env("OPENROUTER_API_KEY", ""), log)
 		if jerr != nil {
 			missing = append(missing, "OPENROUTER_API_KEY or TYPESAFE_API_KEY")
@@ -146,7 +173,14 @@ func build(log *slog.Logger) (*app.App, error) {
 		}
 	}
 	log.Info("adapters", "mode", mode, "auth", a.Auth.Name(), "billing", a.Pay.Name(), "model", a.Model.Name(), "speech", a.Speech.Name())
+	ok = true
 	return a, nil
+}
+
+// Clerk owns its accounts: skip the entire local demo fixture with Clerk.
+func shouldSeedDemo(a *app.App) bool {
+	_, local := a.Auth.(*auth.Local)
+	return a.Cfg.TestMode && local && env("SCRY_SEED_DEMO", "") == "1"
 }
 
 func serve(log *slog.Logger) error {
@@ -166,7 +200,7 @@ func serve(log *slog.Logger) error {
 		return err
 	}
 	seeded := false
-	if a.Cfg.TestMode && env("SCRY_SEED_DEMO", "") == "1" {
+	if shouldSeedDemo(a) {
 		if err := a.SeedDemo(ctx); err != nil {
 			return fmt.Errorf("seed demo data: %w", err)
 		}

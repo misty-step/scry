@@ -5,7 +5,7 @@ You are building Scry from scratch. PRODUCT.md is what it does. DESIGN.md is how
 ## Rules
 - Language: Go (current stable), one deployable service. Server-rendered HTML with light progressive enhancement; keyboard first. SQLite for data unless you have a stronger reason.
 - Every PRODUCT.md user story and business rule must be implemented and have an automated test that names it. Every DESIGN.md token, layout and state must be implemented.
-- External services (email/password auth provider, Stripe billing, the AI model provider, speech) sit behind small interfaces with a test-mode adapter that runs with no keys. Real adapters read credentials from environment variables and are never committed. Stripe stays in test mode.
+- External services (email/password auth provider, Stripe billing, the AI model provider, speech) sit behind small interfaces with a test-mode adapter that runs with no keys. In test mode, auth uses Clerk only with both Clerk keys and billing uses Stripe only with all four Stripe settings; otherwise each uses its fake. Model and speech stay fake, and no operator alerts are sent. Live mode requires all adapter credentials from environment variables; credentials are never committed. Stripe stays in test mode.
 - Judging an answer must use a model with a one-line reason. No keyword, fuzzy or heuristic matcher decides correctness, except texts marked exact, which are judged word for word.
 - Data durability: your design must make per-user data private and recoverable. Document backup in README.md.
 - Reliability: expose /healthz and structured logs so outages are noticed.

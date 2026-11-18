@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"scry/internal/auth"
@@ -187,5 +188,25 @@ func TestAcceptedTopupConcurrentCap(t *testing.T) {
 	w.advance(time.Minute)
 	if _, err := w.app.TopUpResult(ctx, u.ID); !errors.Is(err, store.ErrTopupCap) {
 		t.Fatal(err)
+	}
+}
+
+func TestClerkConfiguredFormsUsePublishableDomain(t *testing.T) {
+	w := newWorld(t)
+	w.app.Auth = &auth.Clerk{
+		PublishableKey: "pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk",
+		SecretKey:      "stand-in-only",
+	}
+	b := w.browser()
+	for _, path := range []string{"/signup", "/signin"} {
+		body := b.mustGet(path)
+		has(t, body, "https://example.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js")
+		has(t, body, "/static/clerk.js")
+		has(t, body, "Verify your email")
+		has(t, body, "Forgot password")
+		has(t, body, fmt.Sprintf("data-signup=%q", fmt.Sprint(path == "/signup")))
+		if strings.Contains(body, "Sign-in not configured") {
+			t.Fatal("configured Clerk did not render")
+		}
 	}
 }
