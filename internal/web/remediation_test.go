@@ -7,8 +7,10 @@ import (
 	"scry/internal/billing"
 	"scry/internal/speech"
 	"scry/internal/store"
+	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 type idempotentPay struct {
@@ -223,5 +225,23 @@ func TestG16_CancelCannotOverwriteConcurrentUsage(t *testing.T) {
 	sub, _ := us.Subscription(ctx)
 	if sub.UsedMicros != 73 || !sub.CancelAtEnd {
 		t.Fatalf("lost concurrent update: %+v", sub)
+	}
+}
+
+func TestG17_LongAnswerNeverSplitsRune(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("rune@example.com")
+	b.addSet("nato-alphabet")
+	it, _ := b.current(b.mustGet("/study"))
+	b.answer(it, strings.Repeat("a", 1999)+"🙂")
+	w.model.mu.Lock()
+	defer w.model.mu.Unlock()
+	if len(w.model.judged) != 1 {
+		t.Fatal("missing model call")
+	}
+	got := w.model.judged[0].Answer
+	if !utf8.ValidString(got) || len(got) > 2000 {
+		t.Fatalf("invalid UTF-8 answer: %q", got[len(got)-8:])
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"scry/internal/ai"
 	"scry/internal/exact"
@@ -105,7 +106,11 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 	item := cur.Item
 	answer = strings.Join(strings.Fields(answer), " ")
 	if len(answer) > 2000 {
-		answer = answer[:2000]
+		end := 2000
+		for end > 0 && !utf8.RuneStart(answer[end]) {
+			end--
+		}
+		answer = answer[:end]
 	}
 	if via != "spoken" {
 		via = "typed"
