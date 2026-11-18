@@ -49,12 +49,24 @@ func (c *Clerk) Verify(ctx context.Context, token, origin string) (string, strin
 		return "", "", errors.New("sign-in not configured")
 	}
 	cfg := &clerk.ClientConfig{BackendConfig: clerk.BackendConfig{Key: &c.SecretKey}}
-	claims, err := jwt.Verify(ctx, &jwt.VerifyParams{Token: token, JWKSClient: jwks.NewClient(cfg), AuthorizedPartyHandler: func(azp string) bool { return azp == origin }})
+	type statusClaims struct {
+		Status string `json:"sts"`
+	}
+	claims, err := jwt.Verify(ctx, &jwt.VerifyParams{CustomClaimsConstructor: func(context.Context) any { return &statusClaims{} }, Token: token, JWKSClient: jwks.NewClient(cfg), AuthorizedPartyHandler: func(azp string) bool { return azp == origin }})
 	if err != nil {
+		return "", "", ErrBadCredentials
+	}
+	if status, ok := claims.Custom.(*statusClaims); ok && status.Status != "" && status.Status != "active" {
 		return "", "", ErrBadCredentials
 	}
 	u, err := user.NewClient(cfg).Get(ctx, claims.Subject)
 	if err != nil || u == nil || u.Banned || u.Locked {
+		return "", "", ErrBadCredentials
+	}
+	return verifiedIdentity(u)
+}
+func verifiedIdentity(u *clerk.User) (string, string, error) {
+	if u == nil || u.Banned || u.Locked {
 		return "", "", ErrBadCredentials
 	}
 	for _, e := range u.EmailAddresses {

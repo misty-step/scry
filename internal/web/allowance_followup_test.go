@@ -1,8 +1,10 @@
 package web_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"scry/internal/auth"
 	"scry/internal/store"
 	"strings"
@@ -124,5 +126,66 @@ func TestOperatorFaultDrill(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != 500 || !strings.Contains(w.logs.String(), `"level":"ERROR"`) {
 		t.Fatal(resp.StatusCode, w.logs.String())
+	}
+}
+
+func TestClerkSessionStandIn(t *testing.T) {
+	w := newWorld(t)
+	w.app.Auth = &auth.Clerk{SecretKey: "stand-in-only", Resolve: func(_ context.Context, token, origin string) (string, string, error) {
+		if token != "verified" {
+			return "", "", errors.New("verify email")
+		}
+		return "clerk-stand-in", "verified@example.com", nil
+	}}
+	b := w.browser()
+	target, _ := url.Parse(w.srv.URL)
+	b.c.Jar.SetCookies(target, []*http.Cookie{{Name: "__session", Value: "unverified"}})
+	b.get("/billing")
+	if !strings.HasPrefix(b.path, "/signin") {
+		t.Fatal(b.path)
+	}
+	b.c.Jar.SetCookies(target, []*http.Cookie{{Name: "__session", Value: "verified"}})
+	b.get("/billing")
+	if b.path != "/signup/card" {
+		t.Fatal(b.path)
+	}
+}
+
+func TestAcceptedTopupConcurrentCap(t *testing.T) {
+	w := newWorld(t)
+	w.browser().signUp("caprace@example.com")
+	u := w.user("caprace@example.com")
+	for i := 0; i < 3; i++ {
+		if err := w.app.TopUp(ctx, u.ID); err != nil {
+			t.Fatal(err)
+		}
+		w.advance(time.Minute)
+	}
+	results := make(chan bool, 12)
+	for i := 0; i < 12; i++ {
+		go func() {
+			added, err := w.app.TopUpResult(ctx, u.ID)
+			if err != nil && !errors.Is(err, store.ErrTopupCap) {
+				t.Error(err)
+			}
+			results <- added
+		}()
+	}
+	n := 0
+	for i := 0; i < 12; i++ {
+		if <-results {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatal(n)
+	}
+	sub, _ := w.store.For(u.ID).Subscription(ctx)
+	if sub.TopupMicros != 4*w.app.Cfg.TopupMicros {
+		t.Fatal(sub)
+	}
+	w.advance(time.Minute)
+	if _, err := w.app.TopUpResult(ctx, u.ID); !errors.Is(err, store.ErrTopupCap) {
+		t.Fatal(err)
 	}
 }

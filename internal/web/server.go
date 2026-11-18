@@ -241,8 +241,8 @@ func (s *Server) secure(next http.Handler) http.Handler {
 		h := w.Header()
 		if provider, ok := s.App.Auth.(*auth.Clerk); ok && provider.Configured() {
 			origin := "https://" + provider.Domain()
-			script += " " + origin
-			connect += " " + origin
+			script += " " + origin + " https://challenges.cloudflare.com"
+			connect += " " + origin + " https://challenges.cloudflare.com"
 			frame = "https://challenges.cloudflare.com"
 		}
 		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; script-src "+script+

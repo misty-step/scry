@@ -1,6 +1,4 @@
-// Package auth puts the email-and-password provider behind a small
-// interface. Scry keeps its own browser sessions; the provider only
-// answers "who is this, and is the password right".
+// Package auth contains the Clerk browser identity adapter and a local test stand-in.
 package auth
 
 import (

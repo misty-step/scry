@@ -630,3 +630,11 @@ reports an error event. Verify Sentry receipt, agent alert, triage and proposed
 or shipped fix. Record incident link and timestamps. Remove both drill
 variables, restart and verify the endpoint is 404 and /healthz is healthy.
 Never put the token in a URL or commit it. No drill was run on production.
+
+Accepted-rulings verification supplement: Clerk identity tests reject unverified
+and banned users and exercise verified/unverified browser stand-ins without
+network. Pending sessions are rejected. The component does not redirect an
+unverified user into a study/sign-in loop. Concurrent cap testing starts with
+three paid top-ups and confirms twelve racing requests add exactly one more.
+Live Clerk delivery and a real Sentry-to-agent drill require external account
+configuration; these cannot be proven with local stand-ins.

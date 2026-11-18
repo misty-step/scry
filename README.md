@@ -290,3 +290,5 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Clerk sign-in, verified-email gate and built-in email reset | TestClerkUnconfiguredAndVerificationGate |
 | Accepted decisions labels, single attempt and cost | TestJev_RoutesAndUntrustedInjection; TestDecisionUsageCostLogsValueOrUnknown |
 | Monitoring reporting and operator-only drill | TestSentryErrors; TestOperatorFaultDrill |
+| Verified Clerk identity and browser session | TestClerkVerifiedEmail; TestClerkSessionStandIn; TestClerkMissingKeysNoNetwork |
+| Concurrent monthly cap | TestAcceptedTopupConcurrentCap |
