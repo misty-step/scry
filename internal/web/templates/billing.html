@@ -19,7 +19,8 @@
     {{if .B.CanTopUp}}
     <form method="post" action="/billing/topup" class="topup">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button class="btn{{if and (ne .B.State "card-failed") (ne .B.State "ended")}} btn-accent{{end}}">Top up · {{money .TopupPrice}}</button>
+      {{if .TopupCapped}}<p>Monthly $20 top-up limit reached. Resets {{.TopupReset}}.</p>{{end}}
+      <button {{if .TopupCapped}}disabled{{end}} class="btn{{if and (ne .B.State "card-failed") (ne .B.State "ended")}} btn-accent{{end}}">Top up · {{money .TopupPrice}}</button>
       {{if .TopupError}}<p class="field-error" role="alert">{{.TopupError}} <a class="link" href="/billing/card">Update card</a></p>{{end}}
     </form>
     {{end}}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"scry/internal/ai"
 	"scry/internal/app"
@@ -280,6 +281,12 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if err != nil {
 		return err
 	}
+	count, err := c.us.MonthTopups(r.Context(), s.App.Now())
+	if err != nil {
+		return err
+	}
+	now := s.App.Now().UTC()
+	reset := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 	flash := map[string]string{
 		"duplicate": "This top-up was already processed. No additional credit was added.",
 		"topup":     "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added.",
@@ -289,12 +296,16 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 	}[r.URL.Query().Get("ok")]
 	return s.render(w, r, c, http.StatusOK, "billing.html", map[string]any{
 		"Title": "Billing", "Nav": "billing", "B": s.billingView(c, sub, ledger, reserved), "Flash": flash,
+		"TopupCapped": count >= 4, "TopupReset": reset.Format("January 2, 2006") + " UTC",
 		"TopupPrice": s.App.Cfg.TopupCents, "Price": s.App.Cfg.PriceCents, "TopupError": r.URL.Query().Get("declined"),
 	})
 }
 
 func (s *Server) billingTopup(w http.ResponseWriter, r *http.Request, c *rc) error {
 	added, err := s.App.TopUpResult(r.Context(), c.user.ID)
+	if errors.Is(err, store.ErrTopupCap) {
+		return back(w, r, "/billing")
+	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
 		return back(w, r, "/billing?declined="+url.QueryEscape(d.Reason))

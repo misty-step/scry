@@ -18,7 +18,7 @@ Scry gets what's worth knowing into your head and keeps it there, for the fewest
 ## Business rules
 
 - No free tier. There's a 7-day trial with a card up front.
-- Prices cover costs plus a small margin, only to protect against abuse and runaway costs: a small monthly base with a capped allowance, and top-ups beyond it.
+- Prices cover costs plus a small margin, only to protect against abuse and runaway costs: a small monthly base with a capped allowance, and top-ups beyond it. Top-ups cost $5 each, up to $20 per person per calendar month; the limit resets at the start of each month.
 - Phaedrus is the first customer, with no special powers in the product.
 - Reliable from day one: outages are noticed and fixed without anyone being asked.
 

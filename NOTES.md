@@ -591,3 +591,8 @@ No preview files or process on port 18080 were touched.
 MIS-1210 ruling 6: remove all punctuation, including apostrophes, within
 whitespace-delimited words before comparing; preserve original words in the
 plain diff. No fuzzy matching.
+
+MIS-1210 ruling 4: $5 top-ups, four per UTC calendar month. PRODUCT did not
+state credit amount: preserve $4 credit per $5. Serialize the charge and credit
+under the existing billing transaction, with a second cap check at credit.
+Billing disables top-ups and states the reset date; minute dedup remains.

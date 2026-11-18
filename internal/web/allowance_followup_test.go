@@ -1,8 +1,11 @@
 package web_test
 
 import (
+	"errors"
+	"scry/internal/store"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestF1_TrialDraftRefusalAgreesWithBilling(t *testing.T) {
@@ -62,5 +65,26 @@ func TestF2_ConcurrentTopupsReportOneCredit(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("reported %d credits, want 1", count)
+	}
+}
+
+func TestAcceptedTopupMonthCap(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("cap@example.com")
+	u := w.user("cap@example.com")
+	for i := 0; i < 4; i++ {
+		if err := w.app.TopUp(ctx, u.ID); err != nil {
+			t.Fatal(err)
+		}
+		w.advance(time.Minute)
+	}
+	if err := w.app.TopUp(ctx, u.ID); !errors.Is(err, store.ErrTopupCap) {
+		t.Fatal(err)
+	}
+	has(t, b.mustGet("/billing"), "Monthly $20 top-up limit reached", "disabled", "December 1")
+	w.advance(31 * 24 * time.Hour)
+	if err := w.app.TopUp(ctx, u.ID); err != nil {
+		t.Fatal(err)
 	}
 }

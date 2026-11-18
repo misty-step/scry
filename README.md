@@ -285,3 +285,4 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Trial drafting refusal and truthful spendable allowance (F1) | TestF1_TrialDraftRefusalAgreesWithBilling |
 | Truthful repeated top-up confirmation (F2) | TestF2_RepeatedTopupIsTruthful |
 | Exact folding and near-miss diff | TestAcceptedFolding |
+| Monthly top-up cap and rollover; concurrent dedup | TestAcceptedTopupMonthCap; TestF2_ConcurrentTopupsReportOneCredit |
