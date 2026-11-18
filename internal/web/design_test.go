@@ -23,8 +23,8 @@ func TestDesign_TouchTargetsAndFocusedInbox(t *testing.T) {
 }
 func TestDesign_ScrollbackIsOneLineAndMicroIsOnlyForKeys(t *testing.T) {
 	b, _ := templateFS.ReadFile("templates/study.html")
-	if !strings.Contains(string(b), "answered-why sr") {
-		t.Fatal("scrollback reasons must not create extra visible lines")
+	if strings.Contains(string(b), "answered-why sr") {
+		t.Fatal("right-answer reasons must remain visible")
 	}
 	b, _ = templateFS.ReadFile("templates/layout.html")
 	if !strings.Contains(string(b), `class="meta">test mode`) {

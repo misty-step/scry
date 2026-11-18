@@ -42,7 +42,7 @@ func TestOneMissingOneSwapped(t *testing.T) {
 			t.Fatalf("missing = %+v", o)
 		}
 	}
-	if r.Verdict() != "close" {
+	if r.Verdict() != "missed" {
 		t.Fatalf("verdict = %s", r.Verdict())
 	}
 }

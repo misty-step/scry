@@ -128,8 +128,6 @@ func (r Result) Verdict() string {
 	switch {
 	case d == 0:
 		return "right"
-	case d <= max(2, r.Words/10):
-		return "close"
 	default:
 		return "missed"
 	}
