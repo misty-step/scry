@@ -31,3 +31,16 @@ func TestDesign_ScrollbackIsOneLineAndMicroIsOnlyForKeys(t *testing.T) {
 		t.Fatal("non-keyboard text must use meta, not micro")
 	}
 }
+
+func TestG6_CheckUsesAccentForeground(t *testing.T) {
+	b, _ := templateFS.ReadFile("templates/study.html")
+	if strings.Contains(string(b), "btn-accent check") {
+		t.Fatal("checkbox label color overrides accent contrast")
+	}
+	css, _ := staticFS.ReadFile("static/app.css")
+	for _, token := range []string{"--on-accent: #FFFFFF;", "--on-accent: #12101A;", "color: var(--on-accent);"} {
+		if !strings.Contains(string(css), token) {
+			t.Fatalf("missing accent contrast token: %s", token)
+		}
+	}
+}
