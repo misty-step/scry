@@ -578,14 +578,14 @@ func TestStory_TextsIMarkExactAreJudgedWordForWord(t *testing.T) {
 		`<del class="x-wrong"><span class="sr">you wrote: </span>Lord</del>`,
 		`<span class="x-fix"><span class="sr">the text has: </span>Father</span>`,
 		"One word missing, one swapped.",
-		`<span class="tag tag-close">close</span>`,
+		`<span class="tag tag-missed">missed</span>`,
 		">Again</button>", ">Next</button>")
 	// No model was involved: this is the one exception.
 	if n := w.model.judgeCalls(); n != 0 {
 		t.Fatalf("an exact text was sent to the model (%d calls)", n)
 	}
 	hist, _ := lib.History(ctx, line1.ID)
-	if len(hist) != 1 || hist[0].Judge != "exact" || hist[0].Verdict != srs.Close {
+	if len(hist) != 1 || hist[0].Judge != "exact" || hist[0].Verdict != srs.Missed {
 		t.Fatalf("history = %+v", hist)
 	}
 	dueAfterFirst := mustItem(t, lib, line1.ID).Sched.Due

@@ -204,3 +204,28 @@ implementation was consulted.
   operational limits honestly: external-model quality and real provider uptime
   are not tested; actual unattended host recovery requires installing the
   provided watchdog or configuring platform liveness and monitoring.
+
+## Review remediation (2026-11-18, partial)
+
+The review supersedes the earlier acceptance/completion statement. This build
+must not be treated as accepted until the remaining requested gaps are fixed.
+
+- G3: right-answer reasons are visible body text again. Inverted the design
+  regression; observed it fail before removing the screen-reader-only class.
+- G4/D2: exact verdicts are right for zero word differences and missed otherwise.
+  Changed the regression first and observed its failure against the old threshold.
+  Updated the HTTP exact-text story expectations to match; the word diff remains.
+- Still outstanding: G1, G2, G5, G6, G7, G8, G10/D3, G11, G12,
+  G14, G15, G16, G17, G19, and the requested new browser smoke.
+- Correction to prior Ambiguities: usage is currently checked, NOT reserved
+  before calls. The concurrency cap defect G2 is unresolved. The old exact-text
+  close threshold described there is now removed.
+
+## Open spec questions
+
+Reserved for Phaedrus via Kaylee; no implementation choice made in this pass:
+- What is Jev?
+- Which authentication provider should be used?
+- What top-up limits should apply?
+- What password reset and verification flows are required?
+- Which production monitoring agent owns incident detection and repair?

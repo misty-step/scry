@@ -121,8 +121,7 @@ func (r Result) Differences() int { return r.Missing + r.Swapped + r.Extra }
 // Perfect reports a word-for-word match.
 func (r Result) Perfect() bool { return r.Differences() == 0 }
 
-// Verdict grades the attempt: right only when word for word; close when
-// at most two words (or a tenth of the text) differ; otherwise missed.
+// Verdict is right only when word for word; any difference is missed.
 func (r Result) Verdict() string {
 	d := r.Differences()
 	switch {
