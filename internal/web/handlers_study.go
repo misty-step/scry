@@ -144,7 +144,7 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 		for i := range rows[:n-1] {
 			rows[i].Why = ""
 		}
-		if pendingReview != nil {
+		if pendingReview != nil || rows[n-1].Verdict != srs.Right {
 			rows[n-1].Why = ""
 		}
 		if n > 6 {

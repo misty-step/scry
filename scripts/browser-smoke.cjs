@@ -54,8 +54,15 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
  const visible=await page.$eval(".answered-why",e=>{let s=getComputedStyle(e),r=e.getBoundingClientRect();return r.height>20&&r.width>40&&s.clipPath==="none";});
  assert(visible,"right reason must be visible body text");
  console.log("voice: one upload at stop; right reason visible");
+ for(const width of [1280,390]){
+ await page.setViewport({width,height:width===390?844:800});
+ assert.equal(await page.$$eval(".answered-why",es=>es.length),1);
+ await page.screenshot({path:out+"/d9-newest-right-"+width+".png",fullPage:true});
+ }
+ await page.setViewport({width:1280,height:800});
  await page.type("#answer","This deliberately incorrect answer wraps across several lines on a small phone.");
  await page.click("[data-check]");await page.waitForSelector(".struck-text");
+ assert.equal(await page.$(".answered-why"),null,"D9: prior why clears when next answer arrives");
  for(const width of [1280,900,600,390])for(const theme of ["light","dark"]){
   await page.setViewport({width,height:width===390?844:800});
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
@@ -66,6 +73,13 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
   assert.equal(await page.$(".struck-line"),null);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:out+"/missed-"+width+"-"+theme+".png",fullPage:true});
+ }
+ await page.click("[data-next]");
+ await page.waitForSelector("[data-answer-form]");
+ assert.equal(await page.$(".answered-why"),null,"D9: advancing a miss must not resurrect its why in scrollback");
+ for(const width of [1280,390]){
+ await page.setViewport({width,height:width===390?844:800});
+ await page.screenshot({path:out+"/d9-receded-"+width+".png",fullPage:true});
  }
  for(const path of ["/library","/inbox","/billing","/settings"]){
   await go(path);

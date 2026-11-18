@@ -85,7 +85,7 @@ Shown when the library is empty and reachable later from the library. Title "Sta
 
 The center of Scry. The session reads like scrollback:
 
-- Answered items recede above the current one in ink-muted, one line each, with a mono verdict tag at the right edge ("right", "close", "missed").
+- Answered items recede above the current one in ink-muted, one line each except the newest right answer: its one-line why stays underneath until the next answer arrives, then it shrinks to one line like the rest, with a mono verdict tag at the right edge ("right", "close", "missed").
 - The current prompt sits in the middle at Display size, with the answer line under it and a block caret.
 - Upcoming items fade below in ink-ghost, at most three.
 - The left margin holds the idea's name and the count ("4 / 11") in mono. The bottom right holds the key hints: "enter to check · space to speak".

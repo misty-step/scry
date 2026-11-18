@@ -658,3 +658,9 @@ Smoke checks the real missed state at 1280, 900, 600 and 390 pixels.
 D8: 68ch applies to reading pages, not inbox/draft/scrollback rows. Existing
 reading paragraphs and ledes already use the 68ch measure; no CSS change.
 TestD8_ReadingMeasure locks the existing reading-page constraints.
+
+D9: retain the newest right answer's why only until another answer arrives.
+Existing behavior already handled right-to-right and right-to-pending-miss;
+fixed the remaining case where Next on a miss resurrected that miss's reason
+in scrollback. Chromium verifies visibility, removal and non-resurrection,
+with desktop/mobile screenshots of both retained and receded states.
