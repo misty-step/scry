@@ -44,7 +44,7 @@ export async function keyedMappingFixture({capturePredecessor=false,captureMappi
   const api=(path,payload)=>runtime.worker.fetch(origin+path,{...(payload?{method:'POST',body:JSON.stringify(payload)}:{}),headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'}});
   const cli=(args,input='',login=config)=>new Promise((done,reject)=>{
    const child=spawn(resolve(process.env.SCRY_STUDY_CLI||'target/debug/scry'),[...args,'--json','--config',login],{env:{PATH:process.env.PATH,HOME:temp},stdio:['pipe','pipe','pipe']});let out='',err='';
-   child.stdout.on('data',s=>out+=s);child.stderr.on('data',s=>err+=s);child.on('error',reject);child.on('close',code=>{try{assert.ok(!out.includes(secret)&&!err.includes(secret));const value=JSON.parse(out);transcript.push({command:['scry',...args.map(s=>s.replaceAll(temp,'<fixture>')), '--json'].join(' '),exit:code,output_sha256:sha(out)});done({code,value});}catch(e){reject(e);}});child.stdin.end(input);
+   child.stdout.on('data',s=>out+=s);child.stderr.on('data',s=>err+=s);child.on('error',reject);child.on('close',code=>{try{assert.ok(!out.includes(secret)&&!err.includes(secret));const value=JSON.parse(out);transcript.push({command:['scry',...args.map(s=>s.replaceAll(temp,'<fixture>')), '--json'].join(' '),exit:code,output_sha256:sha(out)});done({code,value});}catch(e){reject(e);}});child.stdin.on('error',error=>{if(error.code!=='EPIPE')reject(error);});child.stdin.end(input);
   });
   const ok=async(args,input='',login=config)=>{const r=await cli(args,input,login);assert.equal(r.code,0,JSON.stringify(r.value));return r.value;};
   const settings=await(await runtime.worker.fetch(origin+'/settings')).text();

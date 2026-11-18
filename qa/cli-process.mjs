@@ -1,5 +1,13 @@
 import {spawn} from 'node:child_process';
 
+// A long-lived child that reads frames until EOF (the MCP server) only fails a
+// stdin write when it has stopped early. The returned promise rejects then;
+// race each request against it so that is a test failure, not an uncaught one.
+export function stdinStopped(child) {
+ const stopped=new Promise((_,reject)=>child.stdin.on('error',error=>reject(Error('MCP stopped reading stdin.',{cause:error}))));
+ stopped.catch(()=>{});return stopped;
+}
+
 // Captured subprocess boundary for the Library journey; no retries.
 export function cliProcess(binary,args,{env=process.env,input=''}={}) {
  return new Promise((done,reject)=>{

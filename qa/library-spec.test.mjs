@@ -12,7 +12,7 @@ import {createInterface} from 'node:readline';
 import {once} from 'node:events';
 import {isDeepStrictEqual} from 'node:util';
 import {createRuntime,internalKey} from './runtime-helper.mjs';
-import {cliProcess} from './cli-process.mjs';
+import {cliProcess,stdinStopped} from './cli-process.mjs';
 
 const mcpBinary=process.env.SCRY_MCP_BIN||resolve('target/debug/scry-mcp');
 const cliBinary=join(dirname(mcpBinary),'scry');
@@ -55,9 +55,9 @@ test('SPEC § Library: duplicates, corrections, Provenance and Relations through
  const library=async()=>(await apiJson('/api/v1/library/export')).body;
 
  child=spawn(mcpBinary,['--config',config],{env:{PATH:process.env.PATH,HOME:directory},stdio:['pipe','pipe','pipe']});closed=once(child,'close');
- let serial=0;const pending=new Map();
+ let serial=0;const pending=new Map(),stopped=stdinStopped(child);
  createInterface({input:child.stdout}).on('line',line=>{assert.ok(!line.includes(secret));const value=JSON.parse(line);pending.get(value.id)(value);pending.delete(value.id);});
- const rpc=(method,params={})=>new Promise(done=>{const id=++serial;pending.set(id,done);child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');});
+ const rpc=(method,params={})=>Promise.race([stopped,new Promise(done=>{const id=++serial;pending.set(id,done);child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method,params})+'\n');})]);
  const tool=async(name,args)=>{const r=await rpc('tools/call',{name,arguments:args});assert.equal(r.error,undefined);return r.result;};
  const toolOk=async(name,args)=>{const r=await tool(name,args);assert.equal(r.isError,false,JSON.stringify(r.structuredContent));return r.structuredContent;};
  assert.equal((await rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'scry-library-spec',version:'1'}})).result.protocolVersion,'2025-11-25');
