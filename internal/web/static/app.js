@@ -169,7 +169,8 @@
 
     function startVoice(stream) {
       var Ctx = window.AudioContext || window.webkitAudioContext;
-      var ac = new Ctx(), source = ac.createMediaStreamSource(stream);
+      // A silent sink does not depend on a working output speaker.
+      var ac = new Ctx({ sinkId: { type: "none" } }), source = ac.createMediaStreamSource(stream);
       var processor = ac.createScriptProcessor(4096, 1, 1);
       var v = { stream: stream, ac: ac, source: source, processor: processor, chunks: [], done: null };
       voice = v;
