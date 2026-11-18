@@ -185,6 +185,14 @@ type billingView struct {
 func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.LedgerEntry) billingView {
 	cfg := s.App.Cfg
 	loc := c.user.Location()
+	sub.TrialEnd = sub.TrialEnd.In(loc)
+	sub.PeriodStart = sub.PeriodStart.In(loc)
+	sub.PeriodEnd = sub.PeriodEnd.In(loc)
+	sub.PastDueSince = sub.PastDueSince.In(loc)
+	ledger = append([]store.LedgerEntry(nil), ledger...)
+	for i := range ledger {
+		ledger[i].At = ledger[i].At.In(loc)
+	}
 	date := func(t interface{ Format(string) string }) string { return t.Format("January 2") }
 	card := "your card"
 	if sub.CardBrand != "" {
