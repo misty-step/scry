@@ -66,6 +66,10 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 		if log == nil {
 			log = slog.Default()
 		}
+		var usageCost any = "unknown"
+		if use.CostUSD != nil {
+			usageCost = *use.CostUSD
+		}
 		var cost any
 		if use.CostMicros != nil {
 			cost = *use.CostMicros
@@ -74,7 +78,7 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 		if j.APIKey != "" {
 			resolved = strings.ReplaceAll(resolved, j.APIKey, "[redacted]")
 		}
-		log.InfoContext(ctx, "judge decision", "requested_model", requested, "resolved_model", resolved, "usage_cost", use.CostUSD, "cost_micros", cost, "cost_source", costSource, "latency_ms", time.Since(start).Milliseconds(), "accepted", retErr == nil)
+		log.InfoContext(ctx, "judge decision", "requested_model", requested, "resolved_model", resolved, "usage_cost", usageCost, "cost_micros", cost, "cost_source", costSource, "latency_ms", time.Since(start).Milliseconds(), "accepted", retErr == nil)
 	}()
 	if j.APIKey == "" {
 		return out, use, errors.New("Jev key is missing")

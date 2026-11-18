@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -176,5 +177,56 @@ func TestJev_OpenRouterMissingCostAndEchoedKey(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "local-secret") || !strings.Contains(logs.String(), `"cost_micros":null`) {
 		t.Fatal("unsafe or misleading telemetry", logs.String())
+	}
+}
+
+func TestDecisionUsageCostLogsValueOrUnknown(t *testing.T) {
+	for _, format := range []string{"text", "json"} {
+		for _, known := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/known=%t", format, known), func(t *testing.T) {
+				var logs bytes.Buffer
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					b := jevResponse("right", 1)
+					if !known {
+						delete(b["usage"].(map[string]any), "cost")
+					}
+					json.NewEncoder(w).Encode(b)
+				}))
+				defer srv.Close()
+				var handler slog.Handler = slog.NewTextHandler(&logs, nil)
+				if format == "json" {
+					handler = slog.NewJSONHandler(&logs, nil)
+				}
+				j := &Jev{APIKey: "local-secret", OpenRouter: true, BaseURL: srv.URL, Log: slog.New(handler)}
+				_, _, err := j.Judge(context.Background(), JudgeInput{})
+				if (err == nil) != known {
+					t.Fatalf("known=%t error=%v", known, err)
+				}
+				if strings.Contains(logs.String(), "0x") || strings.Contains(logs.String(), "local-secret") {
+					t.Fatalf("unsafe log: %s", logs.String())
+				}
+				if format == "text" {
+					expected := "usage_cost=unknown"
+					if known {
+						expected = "usage_cost=4.2e-06"
+					}
+					if !strings.Contains(logs.String(), expected) {
+						t.Fatalf("wanted %s in %s", expected, logs.String())
+					}
+				} else {
+					var record map[string]any
+					if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+						t.Fatal(err)
+					}
+					var want any = "unknown"
+					if known {
+						want = float64(0.0000042)
+					}
+					if record["usage_cost"] != want {
+						t.Fatalf("usage_cost=%v, want %v", record["usage_cost"], want)
+					}
+				}
+			})
+		}
 	}
 }
