@@ -158,7 +158,7 @@ func (s *Store) TokenByHash(ctx context.Context, hash string, now time.Time) (Ag
 
 // MarkEvent records a processor event id and reports whether it is new.
 func (s *Store) MarkEvent(ctx context.Context, id string, now time.Time) (bool, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO processed_events (id, at) VALUES (?, ?)`, id, ts(now))
+	res, err := s.billingDB(ctx).ExecContext(ctx, `INSERT OR IGNORE INTO processed_events (id, at) VALUES (?, ?)`, id, ts(now))
 	if err != nil {
 		return false, err
 	}

@@ -112,3 +112,39 @@ func TestG2_ReservationHeldUntilProviderCompletes(t *testing.T) {
 		t.Fatalf("actual usage not settled: %+v", sub)
 	}
 }
+
+func TestG5_FailedEventCanBeRedelivered(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("event@example.com")
+	u := w.user("event@example.com")
+	us := w.store.For(u.ID)
+	sub, _ := us.Subscription(ctx)
+	ev := billing.Event{ID: "retryable", Kind: billing.InvoicePaid, SubscriptionRef: sub.SubscriptionRef, At: w.now(), PeriodStart: w.now(), PeriodEnd: w.now().AddDate(0, 1, 0), AmountCents: 500}
+	_, err := w.store.DB().Exec("CREATE TRIGGER fail_event BEFORE UPDATE ON subscriptions BEGIN SELECT RAISE(FAIL,'temporary failure'); END")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = w.app.ApplyEvent(ctx, ev); err == nil {
+		t.Fatal("expected write failure")
+	}
+	_, err = w.store.DB().Exec("DROP TRIGGER fail_event")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = w.app.ApplyEvent(ctx, ev); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ = us.Subscription(ctx)
+	if sub.Status != "active" {
+		t.Fatalf("redelivery lost: %s", sub.Status)
+	}
+	if err = w.app.ApplyEvent(ctx, ev); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	_ = w.store.DB().QueryRow("SELECT count(*) FROM ledger WHERE ref='retryable'").Scan(&n)
+	if n != 1 {
+		t.Fatalf("ledger effects: %d", n)
+	}
+}

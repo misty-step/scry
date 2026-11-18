@@ -246,6 +246,9 @@ func period(start, end time.Time) string {
 // ApplyEvent brings a plan up to date with something the processor did.
 // Events are applied once; a replay is ignored.
 func (a *App) ApplyEvent(ctx context.Context, ev billing.Event) error {
+	return a.Store.BillingTransaction(ctx, func(ctx context.Context) error { return a.applyEvent(ctx, ev) })
+}
+func (a *App) applyEvent(ctx context.Context, ev billing.Event) error {
 	sub, err := a.Store.SubscriptionByRef(ctx, ev.SubscriptionRef)
 	if errors.Is(err, store.ErrNotFound) {
 		a.Log.WarnContext(ctx, "billing event for unknown subscription", "event", ev.ID, "kind", ev.Kind)
