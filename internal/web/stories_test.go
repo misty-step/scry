@@ -69,7 +69,7 @@ func TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute(t *testing.T) {
 	if _, ok := b.current(study); !ok {
 		t.Fatal("no item is waiting for an answer on the study page")
 	}
-	has(t, study, "NATO alphabet: A", "enter to check · space to speak")
+	has(t, study, "NATO alphabet: A", "enter to check · space to start/stop speaking (empty answer)")
 
 	// "Within a minute": six pages and four forms, no email to confirm,
 	// nothing to configure.

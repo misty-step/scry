@@ -297,3 +297,4 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | D8 reading-page measure, row exemptions | TestD8_ReadingMeasure |
 | D9 newest-right why lifetime | TestReviewBrowserSmoke (newest-right, next answer, Next, screenshots) |
 | D11 navigation/study keys and Tab/Enter elsewhere | TestReviewBrowserSmoke; TestD11_KeyHints |
+| D9 right-to-right and right-to-missed lifetime | TestD9_NewestRightReasonLifetime |

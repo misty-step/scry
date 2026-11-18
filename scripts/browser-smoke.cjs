@@ -41,16 +41,16 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
   await page.screenshot({path:out+"/study-"+width+"-"+theme+".png",fullPage:true});
  }
  await page.setViewport({width:1280,height:1000});
- await page.click("[data-mic]");await page.waitForSelector(".is-listening");
+ await page.keyboard.press("Escape");await page.keyboard.press("Space");await page.waitForSelector(".is-listening");
  await pause(1700);assert.equal(speech,0,"must not upload while recording");
  assert.equal(await page.$eval("#answer",e=>e.value),"","D1: no live transcription");
  assert((await page.$eval("[data-status]",e=>e.textContent)).includes("listening"));
- await page.click("[data-mic]");
+ await page.keyboard.press("Space");
  await page.waitForFunction(()=>!document.querySelector(".is-listening"));
  console.log("speech result",await page.$eval("[data-status]",e=>e.textContent),await page.$eval("#answer",e=>e.value),errors);
  assert((await page.$eval("[data-status]",e=>e.textContent)).includes("heard"));
  assert.equal(speech,1);assert((await page.$eval("#answer",e=>e.value)).length>0);
- await page.click("[data-check]");await page.waitForSelector(".answered-why");
+ await page.keyboard.press("Enter");await page.waitForSelector(".answered-why");
  const visible=await page.$eval(".answered-why",e=>{let s=getComputedStyle(e),r=e.getBoundingClientRect();return r.height>20&&r.width>40&&s.clipPath==="none";});
  assert(visible,"right reason must be visible body text");
  console.log("voice: one upload at stop; right reason visible");
@@ -67,14 +67,26 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
   await page.setViewport({width,height:width===390?844:800});
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
   await page.evaluate(()=>document.fonts.ready);
+  await pause(300);
   const pair=await page.$eval(".judgment-pair",e=>{const [a,b]=[...e.children].map(x=>x.getBoundingClientRect());return {left:a.left,otherLeft:b.left,bottom:a.bottom,top:b.top};});
   assert(Math.abs(pair.left-pair.otherLeft)<1 && pair.top>=pair.bottom+15,"D6: pair must stack at "+width+JSON.stringify(pair));
   assert.equal(await page.$eval(".struck-text",e=>getComputedStyle(e).textDecorationLine),"line-through");
   assert.equal(await page.$(".struck-line"),null);
-  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),JSON.stringify(await page.$$eval("*",es=>[innerWidth,document.documentElement.scrollWidth,...es.filter(e=>e.scrollWidth>e.clientWidth+1).map(e=>[e.className,e.clientWidth,e.scrollWidth])])));
   await page.screenshot({path:out+"/missed-"+width+"-"+theme+".png",fullPage:true});
  }
- await page.click("[data-next]");
+ // A short pair fits beside itself on desktop, but still stacks on phones.
+ await page.$eval(".struck-text",e=>e.textContent="No");
+ await page.$eval(".judgment-right",e=>e.textContent="Yes");
+ for(const width of [1280,390]){
+ await page.setViewport({width,height:width===390?844:800});
+ const rects=await page.$eval(".judgment-pair",e=>[...e.children].map(x=>{const r=x.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left};}));
+ if(width===1280) assert(Math.abs(rects[0].top-rects[1].top)<1,"short pair should fit side by side");
+ else assert(rects[1].top>=rects[0].bottom+15,"phones always stack");
+ await page.screenshot({path:out+"/d6-short-"+width+".png",fullPage:true});
+ }
+ await page.evaluate(()=>document.activeElement.blur());
+ await page.keyboard.press("Enter");
  await page.waitForSelector("[data-answer-form]");
  assert.equal(await page.$(".answered-why"),null,"D9: advancing a miss must not resurrect its why in scrollback");
  for(const width of [1280,390]){
@@ -82,12 +94,51 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
  await page.screenshot({path:out+"/d9-receded-"+width+".png",fullPage:true});
  }
  for(const path of ["/library","/inbox","/billing","/settings"]){
-  await go(path);
-  const short=await page.$$eval("a.link",els=>els.filter(e=>e.getClientRects().length&&e.getBoundingClientRect().height<44).map(e=>e.textContent));
+  if(path==="/settings") { await go(path); } else {
+ await page.keyboard.press("Escape");
+ const key={"/library":"l","/inbox":"i","/billing":"b"}[path];
+ await Promise.all([page.waitForNavigation({waitUntil:"networkidle0"}),(async()=>{await page.keyboard.press("g");await page.keyboard.press(key);})()]);
+ assert.equal(new URL(page.url()).pathname,path);
+ }
+ if(path==="/library") {
+ await page.keyboard.press("/");
+ assert(await page.$eval("[data-search]",e=>e===document.activeElement));
+ }
+ if(path==="/billing"||path==="/settings") {
+ const tooWide=await page.$$eval("main p",es=>es.filter(e=>e.getBoundingClientRect().width>parseFloat(getComputedStyle(e).maxWidth)+1).map(e=>e.className));
+ assert.deepEqual(tooWide,[],"D8: reading paragraphs exceed measure");
+ }
+ const short=await page.$$eval("a.link",els=>els.filter(e=>e.getClientRects().length&&e.getBoundingClientRect().height<44).map(e=>e.textContent));
   assert.deepEqual(short,[],"short touch targets on "+path);
  }
  await page.click('input[name=theme][value=light]');await submit('form[action="/settings/theme"] button');
  assert.equal(await page.evaluate(()=>document.documentElement.dataset.theme),"light");
+ // Complete the remaining primary navigation keys.
+ for(const [key,path] of [["n","/learn"],["s","/study"]]){
+ await page.keyboard.press("Escape");
+ await Promise.all([page.waitForNavigation({waitUntil:"networkidle0"}),(async()=>{await page.keyboard.press("g");await page.keyboard.press(key);})()]);
+ assert.equal(new URL(page.url()).pathname,path);
+ }
+ const context=await browser.createBrowserContext();
+ const exact=await context.newPage();
+ const exactSubmit=selector=>Promise.all([exact.waitForNavigation({waitUntil:"networkidle0"}),exact.click(selector)]);
+ await exact.goto(base+"/signup",{waitUntil:"networkidle0"});
+ await exact.type("#email","exact-browser@example.com");await exact.type("#password","browser-password");
+ await exactSubmit("form button");
+ await exact.type("#number","4242424242424242");await exact.type("#expiry","12/30");await exact.type("#cvc","123");
+ await exactSubmit("form button");
+ await exact.goto(base+"/library/texts/new",{waitUntil:"networkidle0"});
+ await exact.type("#title","Key exercise");await exact.type("#text","Remember this line.");
+ await exactSubmit("form button");
+ await exact.goto(base+"/study",{waitUntil:"networkidle0"});
+ await exact.type("#answer","wrong");await exact.keyboard.press("Enter");await exact.waitForSelector("[data-again]");
+ await exact.evaluate(()=>document.activeElement.blur());await exact.keyboard.press("a");
+ await exact.waitForSelector("[data-answer-form]");
+ assert((await exact.$eval(".exact-label",e=>e.textContent)).includes("again"));
+ await exact.type("#answer","Remember this line.");await exact.keyboard.press("Enter");await exact.waitForSelector("[data-next]");
+ await exact.evaluate(()=>document.activeElement.blur());await exact.keyboard.press("Enter");
+ await exact.waitForSelector(".done");
+ await context.close();
  assert.deepEqual(errors,[]);
  console.log("signup, trial, shelf, typed/spoken study, missed, library, inbox, billing, settings: PASS");
  }finally{await browser.close();}
