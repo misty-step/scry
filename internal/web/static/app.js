@@ -152,7 +152,7 @@
 
     function toggleVoice() {
       if (voice) { stopVoice(); return; }
-      if (!navigator.mediaDevices || !window.MediaRecorder) {
+      if (!navigator.mediaDevices || !(window.AudioContext || window.webkitAudioContext)) {
         say("This browser can't record. Type your answer instead.");
         return;
       }
@@ -168,41 +168,18 @@
     }
 
     function startVoice(stream) {
-      var rec = new MediaRecorder(stream);
-      voice = { rec: rec, stream: stream, chunks: [], started: Date.now(), seq: 0, shown: 0, done: null };
-      form.classList.add("is-listening");
-      mic.setAttribute("aria-pressed", "true");
-      say("listening");
-      rec.addEventListener("dataavailable", function (e) {
-        if (e.data && e.data.size) voice.chunks.push(e.data);
-        if (rec.state === "recording") hear(false);
-      });
-      rec.start(1200); // a slice every 1.2s gives live text
-      voice.timer = setTimeout(function () { stopVoice(); }, 20000);
-    }
-
-    // hear sends what has been recorded so far and shows the words heard.
-    function hear(final) {
-      var v = voice;
-      if (!v || !v.chunks.length) return Promise.resolve("");
-      var seq = ++v.seq;
-      var blob = new Blob(v.chunks, { type: v.rec.mimeType || "audio/webm" });
-      return fetch("/study/speech", {
-        method: "POST", body: blob, credentials: "same-origin",
-        headers: {
-          "Content-Type": blob.type || "audio/webm",
-          "X-CSRF-Token": form.elements.csrf.value,
-          "X-Audio-Seconds": String((Date.now() - v.started) / 1000)
-        }
-      }).then(function (res) { return res.json().then(function (j) { return { ok: res.ok, j: j }; }); })
-        .then(function (r) {
-          if (!r.ok) { v.error = r.j.error || "Scry can't listen just now. Type your answer instead."; return ""; }
-          if (seq > v.shown && (final || voice === v)) {
-            v.shown = seq;
-            if (r.j.text) { input.value = r.j.text; via.value = "spoken"; placeCaret(); }
-          }
-          return r.j.text || "";
-        }).catch(function () { v.error = "Couldn't reach Scry. Type your answer instead."; return ""; });
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      var ac = new Ctx(), source = ac.createMediaStreamSource(stream);
+      var processor = ac.createScriptProcessor(4096, 1, 1);
+      var v = { stream: stream, ac: ac, source: source, processor: processor, chunks: [], done: null };
+      voice = v;
+      processor.onaudioprocess = function (event) {
+        if (voice === v && !v.done) v.chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+      };
+      source.connect(processor); processor.connect(ac.destination);
+      ac.resume();
+      form.classList.add("is-listening"); mic.setAttribute("aria-pressed", "true"); say("listening");
+      v.timer = setTimeout(stopVoice, 20000);
     }
 
     function stopVoice() {
@@ -210,21 +187,33 @@
       if (!v) return Promise.resolve();
       if (v.done) return v.done;
       clearTimeout(v.timer);
-      v.done = new Promise(function (resolve) {
-        v.rec.addEventListener("stop", function () {
-          v.stream.getTracks().forEach(function (t) { t.stop(); });
-          hear(true).then(function (text) {
-            voice = null;
-            form.classList.remove("is-listening");
-            mic.setAttribute("aria-pressed", "false");
-            if (v.error) say(v.error);
-            else if (!text && !input.value) say("Didn't catch that. Try again or type it.");
-            else say("heard · enter to check");
-            resolve();
-          });
+      v.processor.disconnect(); v.source.disconnect();
+      v.stream.getTracks().forEach(function (t) { t.stop(); });
+      var count = v.chunks.reduce(function (n, c) { return n + c.length; }, 0);
+      var buffer = new ArrayBuffer(44 + count * 2), data = new DataView(buffer);
+      function chars(at, s) { for (var i = 0; i < s.length; i++) data.setUint8(at + i, s.charCodeAt(i)); }
+      chars(0, "RIFF"); data.setUint32(4, 36 + count * 2, true); chars(8, "WAVEfmt ");
+      data.setUint32(16, 16, true); data.setUint16(20, 1, true); data.setUint16(22, 1, true);
+      data.setUint32(24, v.ac.sampleRate, true); data.setUint32(28, v.ac.sampleRate * 2, true);
+      data.setUint16(32, 2, true); data.setUint16(34, 16, true); chars(36, "data");
+      data.setUint32(40, count * 2, true);
+      var at = 44;
+      v.chunks.forEach(function (c) { c.forEach(function (x) {
+        x = Math.max(-1, Math.min(1, x)); data.setInt16(at, x < 0 ? x * 32768 : x * 32767, true); at += 2;
+      }); });
+      v.ac.close();
+      // Exactly one provider upload, after recording stops; no client duration.
+      v.done = fetch("/study/speech", {
+        method: "POST", body: new Blob([buffer], { type: "audio/wav" }), credentials: "same-origin",
+        headers: { "Content-Type": "audio/wav", "X-CSRF-Token": form.elements.csrf.value }
+      }).then(function (res) { return res.json().then(function (j) {
+        if (!res.ok) { say(j.error || "Scry can't listen just now. Type your answer instead."); return; }
+        if (j.text) { input.value = j.text; via.value = "spoken"; placeCaret(); say("heard · enter to check"); }
+        else say("Didn't catch that. Try again or type it.");
+      }); }).catch(function () { say("Couldn't reach Scry. Type your answer instead."); })
+        .finally(function () {
+          voice = null; form.classList.remove("is-listening"); mic.setAttribute("aria-pressed", "false");
         });
-        if (v.rec.state !== "inactive") v.rec.stop(); else v.rec.dispatchEvent(new Event("stop"));
-      });
       return v.done;
     }
   }

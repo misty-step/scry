@@ -2,8 +2,10 @@ package web_test
 
 import (
 	"context"
+	"encoding/binary"
 	"scry/internal/ai"
 	"scry/internal/billing"
+	"scry/internal/speech"
 	"sync"
 	"testing"
 )
@@ -159,5 +161,37 @@ func TestG10_EmptyAnswerCallsJudgeOnce(t *testing.T) {
 	b.answer(it, "")
 	if w.model.judgeCalls() != before+1 {
 		t.Fatal("empty answer bypassed judge")
+	}
+}
+
+func wavSecond() []byte {
+	b := make([]byte, 44+48000*2)
+	copy(b, "RIFF")
+	binary.LittleEndian.PutUint32(b[4:], uint32(len(b)-8))
+	copy(b[8:], "WAVEfmt ")
+	binary.LittleEndian.PutUint32(b[16:], 16)
+	binary.LittleEndian.PutUint16(b[20:], 1)
+	binary.LittleEndian.PutUint16(b[22:], 1)
+	binary.LittleEndian.PutUint32(b[24:], 48000)
+	binary.LittleEndian.PutUint32(b[28:], 96000)
+	binary.LittleEndian.PutUint16(b[32:], 2)
+	binary.LittleEndian.PutUint16(b[34:], 16)
+	copy(b[36:], "data")
+	binary.LittleEndian.PutUint32(b[40:], 96000)
+	return b
+}
+func TestG12_SpeechDurationComesFromAudio(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("speech@example.com")
+	u := w.user("speech@example.com")
+	us := w.store.For(u.ID)
+	before, _ := us.Subscription(ctx)
+	if _, err := w.app.Transcribe(ctx, u, speech.Audio{Data: wavSecond(), MIME: "audio/wav", Seconds: 0.01}); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := us.Subscription(ctx)
+	if after.UsedMicros-before.UsedMicros != 50 {
+		t.Fatalf("client controlled metering: %d", after.UsedMicros-before.UsedMicros)
 	}
 }

@@ -55,3 +55,14 @@ func TestG7_MissedStrikeFollowsText(t *testing.T) {
 		t.Fatal("missing native multiline strike")
 	}
 }
+
+func TestG12_SpeechUploadsOnlyAtStop(t *testing.T) {
+	b, _ := staticFS.ReadFile("static/app.js")
+	s := string(b)
+	if strings.Contains(s, "hear(false)") || strings.Contains(s, "X-Audio-Seconds") {
+		t.Fatal("repeated transcription or untrusted duration")
+	}
+	if !strings.Contains(s, "audio/wav") {
+		t.Fatal("must send sample-counted PCM")
+	}
+}

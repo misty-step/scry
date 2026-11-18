@@ -265,9 +265,11 @@ func (s *Server) studySpeech(w http.ResponseWriter, r *http.Request, c *rc) erro
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "That recording is too long. Try a shorter answer, or type it."})
 		return nil
 	}
-	seconds, _ := strconv.ParseFloat(r.Header.Get("X-Audio-Seconds"), 64)
-	text, err := s.App.Transcribe(r.Context(), c.user, speech.Audio{Data: data, MIME: r.Header.Get("Content-Type"), Seconds: seconds})
+	text, err := s.App.Transcribe(r.Context(), c.user, speech.Audio{Data: data, MIME: r.Header.Get("Content-Type")})
 	switch {
+	case errors.Is(err, speech.ErrAudio):
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+
 	case errors.Is(err, app.ErrAllowance):
 		writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": "You've reached this month's allowance, so Scry can't listen right now. Type your answer, or top up in Billing."})
 	case errors.Is(err, app.ErrSpeechUnavailable):

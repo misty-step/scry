@@ -228,6 +228,17 @@ var ErrSpeechUnavailable = errors.New("speech is unavailable")
 
 // Transcribe hears a spoken answer. Empty text means nothing was caught.
 func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) (string, error) {
+	// Test text fixtures are explicit and never accepted by live adapters.
+	if a.Cfg.TestMode && a.Speech.Name() == "test" && strings.HasPrefix(string(audio.Data), "say:") {
+		audio.Seconds = 1
+	} else {
+		seconds, err := speech.Duration(audio.Data)
+		if err != nil {
+			return "", err
+		}
+		audio.Seconds = seconds
+		audio.MIME = "audio/wav"
+	}
 	_, err := a.Plan(ctx, u.ID)
 	if err != nil {
 		return "", err
@@ -237,9 +248,6 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 		return "", err
 	}
 	defer a.settle(u.ID, reservation, "speech", ai.Usage{}, 0)
-	if audio.Seconds <= 0 || audio.Seconds > 120 {
-		audio.Seconds = min(max(float64(len(audio.Data))/4000, 0.5), 120)
-	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	text, err := a.Speech.Transcribe(ctx, audio)
