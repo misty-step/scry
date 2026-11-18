@@ -10,6 +10,7 @@ import (
 
 	"scry/internal/ai"
 	"scry/internal/app"
+	"scry/internal/auth"
 	"scry/internal/billing"
 	"scry/internal/store"
 )
@@ -24,6 +25,10 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, c *rc) error {
 }
 
 func (s *Server) signupForm(w http.ResponseWriter, r *http.Request, c *rc) error {
+	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
+		return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{"Title": "Sign in", "Bare": true, "Configured": provider.Configured(), "SignUp": r.URL.Path == "/signup"})
+	}
+
 	if c.signedIn {
 		return back(w, r, "/study")
 	}
@@ -31,6 +36,10 @@ func (s *Server) signupForm(w http.ResponseWriter, r *http.Request, c *rc) error
 }
 
 func (s *Server) signup(w http.ResponseWriter, r *http.Request, c *rc) error {
+	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
+		return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{"Title": "Sign in", "Bare": true, "Configured": provider.Configured(), "SignUp": r.URL.Path == "/signup"})
+	}
+
 	email, password := strings.TrimSpace(r.FormValue("email")), r.FormValue("password")
 	u, err := s.App.SignUp(r.Context(), email, password, r.FormValue("tz"))
 	var fe *app.FieldError
@@ -50,6 +59,10 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request, c *rc) error {
 }
 
 func (s *Server) signinForm(w http.ResponseWriter, r *http.Request, c *rc) error {
+	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
+		return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{"Title": "Sign in", "Bare": true, "Configured": provider.Configured(), "SignUp": r.URL.Path == "/signup"})
+	}
+
 	if c.signedIn {
 		return back(w, r, "/study")
 	}
@@ -71,6 +84,10 @@ func safeNext(next string) string {
 }
 
 func (s *Server) signin(w http.ResponseWriter, r *http.Request, c *rc) error {
+	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
+		return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{"Title": "Sign in", "Bare": true, "Configured": provider.Configured(), "SignUp": r.URL.Path == "/signup"})
+	}
+
 	email, password := strings.TrimSpace(r.FormValue("email")), r.FormValue("password")
 	fail := func(msg string, status int) error {
 		return s.render(w, r, c, status, "signin.html", map[string]any{

@@ -4,7 +4,9 @@ Scry gets what's worth knowing into your head and keeps it there, for the fewest
 
 ## User stories
 
-- As a newcomer, I can find Scry, sign up with email and password, start a trial and be studying within a minute.
+- As a newcomer, I can find Scry, sign up and sign in through Clerk with email and password, start a trial and be studying within a minute.
+- As a newcomer, I must verify my email before I can study or use billing.
+- As a returning learner who forgot my password, I can reset it by email and sign in with my new password.
 - As a new user with an empty library, I can pick from about 30 excellent starter sets (kitchen numbers, the NATO alphabet, the Creeds, core ideas in every major subject, vocabulary, mental models) and start right away.
 - As a learner, I can ask Scry for material on any topic and get it, shaped to me.
 - As a learner, I can turn a favorite book into a set of its core ideas.

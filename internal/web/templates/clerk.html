@@ -1,0 +1,9 @@
+{{define "main"}}
+<section class="measure">
+<h1 class="display">Sign in</h1>
+{{if .Configured}}
+<p>Use your email and password. Verify your email before continuing to study or billing. Forgotten your password? Choose “Forgot password” below to reset it by email.</p>
+<div id="clerk-auth" data-signup="{{.SignUp}}"></div>
+{{else}}<p role="status">Sign-in not configured. Please try again when the operator has connected Clerk.</p>{{end}}
+</section>
+{{end}}

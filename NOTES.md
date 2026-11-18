@@ -262,7 +262,7 @@ were corrected. Subsequent commits retain the required model trailer.
 | G7 | Native text-decoration strikes wrap with the answer, no duplicate overlay. TestG7_MissedStrikeFollowsText plus desktop/phone screenshots and computed-style assertions. The old overlay draw animation is intentionally superseded by the brief's native decoration requirement. |
 | G8 | All four provider adapters redact their configured key at the error boundary, before application logs/alerts. TestG8_ProviderKeyNeverLeavesAdapter first demonstrated a transport error containing the key; it now returns a redacted error. |
 | G10/D3 | Empty non-exact answers follow the same one-call judge path. TestG10_EmptyAnswerCallsJudgeOnce. No local empty-answer verdict remains. |
-| G11 | Local tests exercise signed Stripe events (valid, tampered, missing, stale, future, live-mode refusal), Identity Toolkit request/error mapping, Anthropic structured judgment parsing/request shape/streaming draft bounds, and speech multipart upload. TestG11_* tests use no real service. SDK automatic retries disabled: one invocation sends one request. Installed SDK bearer-auth header is asserted. |
+| G11 | Local tests exercise signed Stripe events (valid, tampered, missing, stale, future, live-mode refusal), retired auth adapter request/error mapping, Anthropic structured judgment parsing/request shape/streaming draft bounds, and speech multipart upload. TestG11_* tests use no real service. SDK automatic retries disabled: one invocation sends one request. Installed SDK bearer-auth header is asserted. |
 | G12 | Browser captures mono PCM WAV to a silent audio sink, uploads once at stop. Server validates RIFF/PCM framing, sample rate/alignment/length, counts samples, ignores client duration, rejects unsupported/malformed audio. TestG12_SpeechDurationComesFromAudio first billed 1 micro instead of 50 for one second; now 50. TestG12_ValidatedSampleDuration tests malformed/truncated headers. TestG12_SpeechUploadsOnlyAtStop and the browser's real Web Audio/fake-device flow prove no uploads while listening and one at stop. |
 | G14 | Removed inline-link height exemption. TestG14_InlineLinksKeepTouchTargets plus browser measurements of visible links on library, inbox, billing and settings. |
 | G15 | Plan, trial, cancellation and ledger dates all use learner timezone, without mutating stored timestamps. TestG15_AllBillingDatesUseLearnerTimezone crosses a UTC/local midnight boundary. |
@@ -596,3 +596,15 @@ MIS-1210 ruling 4: $5 top-ups, four per UTC calendar month. PRODUCT did not
 state credit amount: preserve $4 credit per $5. Serialize the charge and credit
 under the existing billing transaction, with a second cap check at credit.
 Billing disables top-ups and states the reset date; minute dedup remains.
+
+MIS-1210 rulings 2 and 3: Clerk replaces the former password provider entirely.
+The official Go SDK verifies each browser session; only a verified primary
+email can resolve to a Scry account. Agent bearer tokens are unchanged.
+No Clerk keys means a visible sign-in-not-configured page, not an auth startup
+failure. Configure CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY in the environment.
+In Clerk Dashboard enable email/password, require email verification and enable
+email password reset; disable social and passwordless sign-in. Built-in SignUp
+and SignIn components provide verification and Forgot password flows. Real key
+provisioning, allowed origins and delivery configuration remain operator work.
+SDK/component references: https://clerk.com/docs/go/getting-started/quickstart
+and https://clerk.com/docs/js-frontend/getting-started/quickstart .

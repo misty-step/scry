@@ -4,18 +4,12 @@
 package auth
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"net/http"
-	"scry/internal/safeerr"
 	"strings"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -85,71 +79,4 @@ func (l *Local) SignIn(ctx context.Context, email, password string) (string, err
 		return "", ErrBadCredentials
 	}
 	return subject, nil
-}
-
-// IdentityToolkit is the real adapter: Google Identity Platform (Firebase
-// Authentication) email-and-password accounts over its REST API.
-// The API key comes from the environment (IDENTITY_API_KEY).
-type IdentityToolkit struct {
-	APIKey  string
-	BaseURL string // defaults to the public endpoint; tests point it at a fake
-	HTTP    *http.Client
-}
-
-func (i *IdentityToolkit) Name() string { return "identity-toolkit" }
-
-func (i *IdentityToolkit) call(ctx context.Context, method, email, password string) (result string, retErr error) {
-	defer func() { retErr = safeerr.Redact(retErr, i.APIKey) }()
-	base := i.BaseURL
-	if base == "" {
-		base = "https://identitytoolkit.googleapis.com"
-	}
-	client := i.HTTP
-	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
-	}
-	body, _ := json.Marshal(map[string]any{"email": email, "password": password, "returnSecureToken": true})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/accounts:"+method+"?key="+i.APIKey, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("auth provider unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-	var out struct {
-		LocalID string `json:"localId"`
-		Error   struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("auth provider: status %d", resp.StatusCode)
-	}
-	if resp.StatusCode == http.StatusOK && out.LocalID != "" {
-		return out.LocalID, nil
-	}
-	msg := out.Error.Message
-	switch {
-	case strings.HasPrefix(msg, "EMAIL_EXISTS"):
-		return "", ErrEmailTaken
-	case strings.HasPrefix(msg, "WEAK_PASSWORD"):
-		return "", ErrWeakPassword
-	case strings.HasPrefix(msg, "INVALID_EMAIL"), strings.HasPrefix(msg, "MISSING_EMAIL"):
-		return "", ErrInvalidEmail
-	case strings.HasPrefix(msg, "INVALID_LOGIN_CREDENTIALS"), strings.HasPrefix(msg, "EMAIL_NOT_FOUND"),
-		strings.HasPrefix(msg, "INVALID_PASSWORD"), strings.HasPrefix(msg, "USER_DISABLED"), strings.HasPrefix(msg, "MISSING_PASSWORD"):
-		return "", ErrBadCredentials
-	}
-	return "", fmt.Errorf("auth provider: status %d %s", resp.StatusCode, msg)
-}
-
-func (i *IdentityToolkit) SignUp(ctx context.Context, email, password string) (string, error) {
-	return i.call(ctx, "signUp", email, password)
-}
-
-func (i *IdentityToolkit) SignIn(ctx context.Context, email, password string) (string, error) {
-	return i.call(ctx, "signInWithPassword", email, password)
 }

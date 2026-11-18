@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"errors"
+	"scry/internal/auth"
 	"scry/internal/store"
 	"strings"
 	"testing"
@@ -86,5 +87,17 @@ func TestAcceptedTopupMonthCap(t *testing.T) {
 	w.advance(31 * 24 * time.Hour)
 	if err := w.app.TopUp(ctx, u.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClerkUnconfiguredAndVerificationGate(t *testing.T) {
+	w := newWorld(t)
+	w.app.Auth = &auth.Clerk{}
+	b := w.browser()
+	has(t, b.mustGet("/signin"), "Sign-in not configured")
+	has(t, b.mustGet("/signup"), "Sign-in not configured")
+	b.get("/billing")
+	if b.path != "/signin?next=%2Fbilling" && !strings.HasPrefix(b.path, "/signin") {
+		t.Fatal(b.path)
 	}
 }

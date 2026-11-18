@@ -121,7 +121,7 @@ func build(log *slog.Logger) (*app.App, error) {
 		a.Model = &ai.Fake{Delay: 350 * time.Millisecond}
 		a.Speech = speech.Fake{Phrase: env("SCRY_TEST_SPEECH", "")}
 	} else {
-		a.Auth = &auth.IdentityToolkit{APIKey: need("IDENTITY_API_KEY")}
+		a.Auth = &auth.Clerk{PublishableKey: env("CLERK_PUBLISHABLE_KEY", ""), SecretKey: env("CLERK_SECRET_KEY", "")}
 		judge, jerr := ai.NewJev(env("TYPESAFE_API_KEY", ""), env("OPENROUTER_API_KEY", ""), log)
 		if jerr != nil {
 			missing = append(missing, "OPENROUTER_API_KEY or TYPESAFE_API_KEY")

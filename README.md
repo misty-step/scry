@@ -51,7 +51,7 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 Interfaces isolate auth, billing, model, speech, and alerts. Test adapters use
 local bcrypt auth, fake cards, scripted judgments, simulated speech, and log-only
 alerts. **No keys are needed or used.** Inactive provider adapters are included:
-Identity Toolkit (IDENTITY_API_KEY), Jev (OPENROUTER_API_KEY or TYPESAFE_API_KEY),
+Clerk (CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY), Jev (OPENROUTER_API_KEY or TYPESAFE_API_KEY),
 Anthropic drafting only (ANTHROPIC_API_KEY; optional SCRY_DRAFT_MODEL), speech (OPENAI_API_KEY; optional
 SCRY_SPEECH_MODEL), Stripe (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY,
 STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET). Do not enable them for this delivery.
@@ -286,3 +286,5 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Truthful repeated top-up confirmation (F2) | TestF2_RepeatedTopupIsTruthful |
 | Exact folding and near-miss diff | TestAcceptedFolding |
 | Monthly top-up cap and rollover; concurrent dedup | TestAcceptedTopupMonthCap; TestF2_ConcurrentTopupsReportOneCredit |
+
+| Clerk sign-in, verified-email gate and built-in email reset | TestClerkUnconfiguredAndVerificationGate |

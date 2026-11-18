@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/app.js" defer></script>
 {{block "head" .}}{{end}}
+{{if .ClerkKey}}<script defer crossorigin="anonymous" data-clerk-publishable-key="{{.ClerkKey}}" src="{{.ClerkScript}}"></script><script defer src="/static/clerk.js"></script>{{end}}
 </head>
 <body{{if .Session}} class="in-session"{{end}}>
 <a class="skip" href="#main">Skip to content</a>
