@@ -230,8 +230,14 @@ Reserved for Phaedrus via Kaylee; no implementation choice made in this pass:
 - What password reset and verification flows are required?
 - Which production monitoring agent owns incident detection and repair?
 - What exact-text folding rules should apply? OPEN; existing folding is unchanged.
-- Fixed verdict/why descriptions for Jev: Kaylee recommends the table below,
-  pending Phaedrus's approval. Keep the option set centralized and provisional.
+- One-line explanation remains OPEN for Phaedrus:
+  (a) Show the winning correctness criterion description: no extra provider
+  call, but generic rather than tailored to the particular answer.
+  (b) Make one small LLM call only after the verdict, solely to explain it:
+  tailored feedback, but adds cost, latency and a failure mode and must not
+  change the verdict. Neither option is approved. Only (a) is temporarily wired
+  at explainDecision, explicitly marked pending. The old verdict/reason-label
+  design is withdrawn, not pending approval.
 
 ## Completed review remediation (2026-11-18)
 
@@ -335,7 +341,7 @@ phone/light multi-line miss to verify the strike follows each wrapped line.
   in Open spec questions; real-provider integration, actual model quality and
   production monitoring ownership have not been asserted or silently decided.
 
-## Jev judge swap (MIS-1210)
+## Initial Jev judge swap (MIS-1210; SUPERSEDED by Phaedrus correction below)
 
 Scope: judging only. Auth, top-up policy, password reset/verification,
 monitoring ownership and exact folding remain OPEN and were not changed.
@@ -434,3 +440,76 @@ reason, wrapped miss, library/inbox/billing/settings; both themes at 1280/390).
 go mod tidy -diff reports no changes. Logs: /tmp/jev-final-race.log and
 /tmp/jev-final-browser.log. No live provider was called; semantic accuracy,
 threshold calibration and Phaedrus's wording approval remain unverified.
+
+## Phaedrus correction applied — current judge contract
+
+This section supersedes the initial seven-option judge swap above. The request
+is one general correctness choice with right/close/missed (Scry's existing
+vocabulary) plus none_of_these, not verdict-and-reason labels. State contains
+card_prompt, accepted_answers (array; existing card answer is the fallback)
+and learner_answer. No text matcher or extra classifier/explanation call.
+
+SCRY_JUDGE_MODEL is restored as the sole model override. Default on OpenRouter
+is ~typesafe/jev-latest; optional direct default is jev-latest. No whitelist or
+resolved-version-specific parser: the named examples in Phaedrus's correction
+use exactly the same adapter. Required response keys/type/choice are checked.
+Refusals, missing named answers, unexpected answer types, invalid choices and
+none_of_these enter not-answered once. Confidence/probabilities are optional
+per the generic Decisions schema; when present the earlier validation and
+low-concentration gates still apply. This permits models which return only
+the required choice fields without fabricating probabilities.
+
+All cost comes from response usage.cost, on both routes; no token-price estimate.
+Exact dollar cost is logged with resolved model and latency and preserved for
+evaluation; metering still rounds upward to micro-dollars. A missing cost fails
+closed and retains the existing reservation. In particular the published
+direct TypeSafe schema does not guarantee cost: deployments whose direct
+responses omit it must use OpenRouter for metered judging. No key or raw
+provider body reaches logs. No live calls were made to test this.
+
+Explanation alternatives are recorded neutrally in Open spec questions.
+explainDecision is the single pending seam, temporarily returning the criterion
+description. See README for the exact four criteria. No extra LLM is wired.
+Auth, top-up limits, reset/verification, monitoring and exact folding remain OPEN
+and unchanged.
+
+### SDK removal and preserved drafting
+
+Removed the Anthropic SDK entirely (including transitive dependencies via
+go mod tidy). Drafting retains its existing provider/model, prompt, JSON-lines
+outline behavior, input/output caps and no-retry policy using net/http and a
+bounded SSE reader. The local stand-in verifies both rejection and streaming
+head/item delivery with token accounting. No generative judging was reintroduced.
+
+### Offline sample and comparison command
+
+Added testdata/judge-eval.jsonl: 60 variants from Kitchen numbers, NATO alphabet,
+and Mental models, labeled correct/close/incorrect with explicit source paths.
+Includes partial/synonym/vocabulary-typo close examples, correct alternatives,
+wrong answers, blanks and the injection attempt. Labels are an initial,
+reviewable evaluation set, not a claim that a real model was benchmarked.
+
+cmd/judge-eval takes comma-separated -models or positional model slugs and
+optional -data. It sends each sample once per model using the same Decisions
+adapter. Prints per-model JSON: accuracy, confusion counts, total exact
+usage.cost (null if incomplete), known cost and unknown-cost count, and
+nearest-rank p50/p95 latency. Not-answered counts in the accuracy denominator.
+There is no live evaluation output: only httptest-server metrics tests ran.
+
+### Regression-first evidence and verification
+
+The new configurable-model/cost test failed before Model/CostUSD existed
+(/tmp/correction-red.log); the SDK removal test failed on the old dependency
+(/tmp/sdk-red.log); evaluation tests failed before the harness existed
+(/tmp/eval-red.log). Added cases for refusal, missing answer key and unexpected
+type; retained injection, both route shapes, exact bypass, no retry, redaction
+and ordinary failure-path tests. Harness tests cover model iteration, exact cost
+sum, accuracy/confusion/latency, refusals and missing-cost accounting locally.
+
+Final correction results: go build ./..., go vet ./... and
+go test -race -count=1 ./... all PASS. The separate opt-in Chromium smoke under
+-race also PASSed at desktop/phone sizes in both themes, including synthetic
+microphone recording. go mod tidy -diff is clean; go.mod/go.sum contain no
+Anthropic SDK. testdata/judge-eval.jsonl has exactly 60 rows. Logs are
+/tmp/correction-race.log and /tmp/correction-browser.log. No comparison was run
+against any network provider; no live model accuracy or robustness is claimed.
