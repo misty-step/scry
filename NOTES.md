@@ -574,3 +574,16 @@ reservations from remaining spendable credit, subtracting in-flight holds;
 it explains the $0.90 start requirement and actual-cost settlement. Learn
 and refused drafts explicitly say not enough allowance left for a draft.
 The trial-until-refused HTTP regression failed before the copy change.
+
+F2: Preserve minute-key double-click deduplication. The credit transaction now
+reports whether it added credit (including payment-reference deduplication);
+the HTTP handler shows success only for an actual credit, otherwise an
+explicit already-processed/no-additional-credit notice. Existing internal
+TopUp callers retain their idempotent error-only API. The repeat HTTP
+regression failed before implementation.
+
+Final F1/F2 verification: go build ./..., go vet ./..., and
+go test -race -count=1 ./... pass. Chromium TestReviewBrowserSmoke passes
+against its isolated httptest server (SCRY_BROWSER_SMOKE=1). The F2 race
+regression also confirms eight concurrent requests report exactly one credit.
+No preview files or process on port 18080 were touched.

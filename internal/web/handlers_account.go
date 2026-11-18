@@ -281,10 +281,11 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 		return err
 	}
 	flash := map[string]string{
-		"topup":   "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added.",
-		"card":    "Your card was updated.",
-		"resumed": "Your plan continues.",
-		"started": "Welcome back. Your plan is active again.",
+		"duplicate": "This top-up was already processed. No additional credit was added.",
+		"topup":     "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added.",
+		"card":      "Your card was updated.",
+		"resumed":   "Your plan continues.",
+		"started":   "Welcome back. Your plan is active again.",
 	}[r.URL.Query().Get("ok")]
 	return s.render(w, r, c, http.StatusOK, "billing.html", map[string]any{
 		"Title": "Billing", "Nav": "billing", "B": s.billingView(c, sub, ledger, reserved), "Flash": flash,
@@ -293,13 +294,16 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 }
 
 func (s *Server) billingTopup(w http.ResponseWriter, r *http.Request, c *rc) error {
-	err := s.App.TopUp(r.Context(), c.user.ID)
+	added, err := s.App.TopUpResult(r.Context(), c.user.ID)
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
 		return back(w, r, "/billing?declined="+url.QueryEscape(d.Reason))
 	}
 	if err != nil {
 		return err
+	}
+	if !added {
+		return back(w, r, "/billing?ok=duplicate")
 	}
 	return back(w, r, "/billing?ok=topup")
 }

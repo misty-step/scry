@@ -154,8 +154,9 @@ func (u *UserStore) Spend(ctx context.Context, use Usage, now time.Time) error {
 
 // CreditTopUp atomically deduplicates a paid operation and grants its credit.
 
-func (u *UserStore) CreditTopUp(ctx context.Context, e LedgerEntry, credit int64, key string) error {
-	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
+func (u *UserStore) CreditTopUp(ctx context.Context, e LedgerEntry, credit int64, key string) (bool, error) {
+	added := false
+	err := u.s.BillingTransaction(ctx, func(ctx context.Context) error {
 		fresh, err := u.s.MarkEvent(ctx, key, e.At)
 		if err != nil || !fresh {
 			return err
@@ -169,11 +170,14 @@ func (u *UserStore) CreditTopUp(ctx context.Context, e LedgerEntry, credit int64
 			return err
 		}
 		if n > 0 {
+			added = true
 			_, err = u.s.billingDB(ctx).ExecContext(ctx, "UPDATE subscriptions SET topup_micros=topup_micros+?,card_error='' WHERE user_id=?", credit, u.uid)
 		}
 		return err
 	})
+	return added && err == nil, err
 }
+
 func (s *Store) HasProcessedEvent(ctx context.Context, key string) (bool, error) {
 	var n int
 	err := s.billingDB(ctx).QueryRowContext(ctx, "SELECT count(*) FROM processed_events WHERE id=?", key).Scan(&n)

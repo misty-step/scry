@@ -154,27 +154,33 @@ func (a *App) StartTrial(ctx context.Context, u store.User, cardToken string) er
 
 // TopUp charges the card on file for one top-up and adds its credit.
 func (a *App) TopUp(ctx context.Context, userID int64) error {
+	_, err := a.TopUpResult(ctx, userID)
+	return err
+}
+
+// TopUpResult reports whether this request actually granted credit.
+func (a *App) TopUpResult(ctx context.Context, userID int64) (bool, error) {
 	us := a.Store.For(userID)
 	sub, err := a.Plan(ctx, userID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	now := a.now()
 	// One key per learner per minute: a double-clicked button charges once.
 	key := fmt.Sprintf("topup-%d-%d", userID, now.Unix()/60)
 	if done, err := a.Store.HasProcessedEvent(ctx, key); err != nil || done {
-		return err
+		return false, err
 	}
 	ref, err := a.Pay.Charge(ctx, sub.CustomerRef, sub.PaymentRef, a.Cfg.TopupCents, "Scry top-up", key)
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
 		_, _ = us.ChangeSubscription(ctx, func(s *store.Subscription) { s.CardError = d.Reason })
 		_ = us.AddLedger(ctx, store.LedgerEntry{At: now, Kind: "topup", Description: "Top-up (card failed)", AmountCents: a.Cfg.TopupCents, Status: "failed", Ref: key + "-failed"})
-		return err
+		return false, err
 	}
 	if err != nil {
 		a.Alert.Notify(ctx, "Card processor is failing", err.Error())
-		return err
+		return false, err
 	}
 	return us.CreditTopUp(ctx, store.LedgerEntry{At: now, Kind: "topup", Description: "Top-up", AmountCents: a.Cfg.TopupCents, Status: "paid", Ref: ref}, a.Cfg.TopupMicros, key)
 }
