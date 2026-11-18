@@ -18,8 +18,8 @@ func TestStory_JevAbstainsOnceAndExactBypassesJev(t *testing.T) {
 		calls++
 		json.NewEncoder(rw).Encode(map[string]any{"model": "jev-1.14.0", "answers": map[string]any{"judgment": map[string]any{
 			"type": "choice", "choice": "none_of_these", "confidence": 1, "probabilities": map[string]float64{
-				"correct": 0, "correct_minor_slip": 0, "partially_correct_missing_key_part": 0, "partially_correct_inaccurate_detail": 0, "incorrect_wrong_concept": 0, "incorrect_blank_or_irrelevant": 0, "none_of_these": 1}}},
-			"usage": map[string]any{"input_tokens": 100, "output_tokens": 30}})
+				"right": 0, "close": 0, "missed": 0, "none_of_these": 1}}},
+			"usage": map[string]any{"input_tokens": 100, "output_tokens": 30, "cost": 0.0000042}})
 	}))
 	defer srv.Close()
 	w.app.Model = ai.Split{JudgeProvider: &ai.Jev{APIKey: "local-secret", BaseURL: srv.URL, Log: w.app.Log}, DraftProvider: w.model}

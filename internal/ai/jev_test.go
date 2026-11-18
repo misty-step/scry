@@ -35,7 +35,7 @@ func TestJev_RoutesAndUntrustedInjection(t *testing.T) {
 				}
 				var b struct {
 					Model     string
-					State     map[string]string
+					State     map[string]any
 					Questions map[string]struct {
 						Type, Instructions string
 						Criteria           map[string]string
@@ -58,7 +58,7 @@ func TestJev_RoutesAndUntrustedInjection(t *testing.T) {
 						t.Fatal("mutable criteria")
 					}
 				}
-				json.NewEncoder(w).Encode(jevResponse("incorrect_blank_or_irrelevant", 1))
+				json.NewEncoder(w).Encode(jevResponse("missed", 1))
 			}))
 			defer srv.Close()
 			j := &Jev{APIKey: "local-secret", OpenRouter: route == "openrouter", BaseURL: srv.URL, Log: slog.New(slog.NewJSONHandler(&logs, nil))}
@@ -91,7 +91,7 @@ func TestJev_FailsClosedWithoutRetries(t *testing.T) {
 					http.Redirect(w, r, "/again", 307)
 					return
 				}
-				b := jevResponse("correct", 1)
+				b := jevResponse("right", 1)
 				a := b["answers"].(map[string]any)["judgment"].(map[string]any)
 				switch kind {
 				case "none":
@@ -100,12 +100,12 @@ func TestJev_FailsClosedWithoutRetries(t *testing.T) {
 					a["confidence"] = 0.1
 				case "ambiguous":
 					p := a["probabilities"].(map[string]float64)
-					p["correct"] = 0.5
-					p["incorrect_wrong_concept"] = 0.5
+					p["right"] = 0.5
+					p["missed"] = 0.5
 				case "invalid":
 					a["choice"] = "invented"
 				case "missing":
-					delete(a, "probabilities")
+					delete(a, "choice")
 				}
 				json.NewEncoder(w).Encode(b)
 			}))
@@ -157,7 +157,7 @@ func TestJev_EachFixedChoiceAndRouteSelection(t *testing.T) {
 func TestJev_OpenRouterMissingCostAndEchoedKey(t *testing.T) {
 	var logs bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b := jevResponse("correct", 1)
+		b := jevResponse("right", 1)
 		b["model"] = "echo-local-secret"
 		delete(b["usage"].(map[string]any), "cost")
 		json.NewEncoder(w).Encode(b)

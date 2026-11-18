@@ -10,7 +10,8 @@ import (
 
 // Usage is what one call cost, in the provider's units.
 type Usage struct {
-	CostMicros   *int64 // known provider cost, or a documented estimate, in micro-dollars
+	CostUSD      *float64 // exact response usage.cost for reporting; never inferred
+	CostMicros   *int64   // known provider cost, or a documented estimate, in micro-dollars
 	Model        string
 	InputTokens  int64
 	OutputTokens int64
@@ -18,9 +19,10 @@ type Usage struct {
 
 // JudgeInput is one answer to judge.
 type JudgeInput struct {
-	Question string
-	Expected string
-	Answer   string
+	AcceptedAnswers []string // optional alternatives; Expected is the single-answer fallback
+	Question        string
+	Expected        string
+	Answer          string
 }
 
 // Judgment is the model's decision, always with a one-line reason.

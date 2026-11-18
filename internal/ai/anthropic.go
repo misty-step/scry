@@ -2,16 +2,16 @@ package ai
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"scry/internal/safeerr"
 	"strings"
 	"time"
-
-	"github.com/anthropics/anthropic-sdk-go/v2"
-	"github.com/anthropics/anthropic-sdk-go/v2/option"
 )
 
 // Claude is the real model adapter, on the Anthropic API. The key comes
@@ -20,7 +20,8 @@ import (
 // Drafting alone uses this generative adapter; Jev makes study decisions.
 type Claude struct {
 	secret     string
-	client     anthropic.Client
+	BaseURL    string
+	HTTP       *http.Client
 	DraftModel string
 }
 
@@ -31,12 +32,11 @@ const (
 
 // NewClaude builds the adapter. Extra options let tests point it at a
 // stand-in server.
-func NewClaude(apiKey, draftModel string, opts ...option.RequestOption) *Claude {
+func NewClaude(apiKey, draftModel string) *Claude {
 	if draftModel == "" {
 		draftModel = DefaultDraftModel
 	}
-	opts = append([]option.RequestOption{option.WithAPIKey(apiKey), option.WithMaxRetries(0)}, opts...)
-	return &Claude{secret: apiKey, client: anthropic.NewClient(opts...), DraftModel: draftModel}
+	return &Claude{secret: apiKey, DraftModel: draftModel}
 }
 
 func (c *Claude) Name() string { return "anthropic" }
@@ -87,18 +87,36 @@ func (c *Claude) Draft(ctx context.Context, in DraftInput, sink DraftSink) (retD
 	if len(user.String())+len(draftSystem) > 32000 {
 		return DraftResult{}, Usage{}, fmt.Errorf("draft input exceeds budget")
 	}
-	stream := c.client.Beta.Messages.NewStreaming(ctx, anthropic.BetaMessageNewParams{
-		Model:     c.DraftModel,
-		MaxTokens: 16000,
-		System:    []anthropic.BetaTextBlockParam{{Text: draftSystem}},
-		Messages:  []anthropic.BetaMessageParam{anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(user.String()))},
-	})
-	var (
-		msg  anthropic.BetaMessage
-		buf  strings.Builder
-		res  DraftResult
-		done bool
-	)
+	payload, _ := json.Marshal(map[string]any{"model": c.DraftModel, "max_tokens": 16000, "stream": true, "system": draftSystem, "messages": []map[string]string{{"role": "user", "content": user.String()}}})
+	base := c.BaseURL
+	if base == "" {
+		base = "https://api.anthropic.com"
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", base+"/v1/messages", bytes.NewReader(payload))
+	if err != nil {
+		return DraftResult{}, Usage{}, errors.New("invalid drafting endpoint")
+	}
+	req.Header.Set("x-api-key", c.secret)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Content-Type", "application/json")
+	client := http.Client{Timeout: 5 * time.Minute}
+	if c.HTTP != nil {
+		client = *c.HTTP
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := client.Do(req)
+	if err != nil {
+		return DraftResult{}, Usage{}, errors.New("draft provider unreachable")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		return DraftResult{}, Usage{}, fmt.Errorf("draft provider status %d", response.StatusCode)
+	}
+	var buf strings.Builder
+	var res DraftResult
+	var done bool
+	use := Usage{}
+	stopped := false
 	handle := func(line string) error {
 		line = strings.TrimSpace(line)
 		if line == "" || !strings.HasPrefix(line, "{") {
@@ -149,61 +167,89 @@ func (c *Claude) Draft(ctx context.Context, in DraftInput, sink DraftSink) (retD
 		}
 		return nil
 	}
-	for stream.Next() {
-		event := stream.Current()
-		if err := msg.Accumulate(event); err != nil {
-			return res, Usage{}, err
+	scan := bufio.NewScanner(io.LimitReader(response.Body, 4<<20))
+	scan.Buffer(make([]byte, 4096), 1<<20)
+	var eventData []string
+	process := func() error {
+		if len(eventData) == 0 {
+			return nil
 		}
-		if delta, ok := event.AsAny().(anthropic.BetaRawContentBlockDeltaEvent); ok {
-			if t, ok := delta.Delta.AsAny().(anthropic.BetaTextDelta); ok {
-				buf.WriteString(t.Text)
-				// Hand over every complete line; keep the unfinished tail.
+		raw := strings.Join(eventData, "\n")
+		eventData = nil
+		var ev struct {
+			Type    string
+			Message struct {
+				Model string
+				Usage struct {
+					Input  int64 `json:"input_tokens"`
+					Output int64 `json:"output_tokens"`
+				}
+			}
+			Delta struct {
+				Type, Text string
+				StopReason string `json:"stop_reason"`
+			}
+			Usage struct {
+				Output int64 `json:"output_tokens"`
+			}
+		}
+		if err := json.Unmarshal([]byte(raw), &ev); err != nil {
+			return errors.New("invalid draft stream")
+		}
+		switch ev.Type {
+		case "message_start":
+			use = Usage{Model: ev.Message.Model, InputTokens: ev.Message.Usage.Input, OutputTokens: ev.Message.Usage.Output}
+		case "content_block_delta":
+			if ev.Delta.Type == "text_delta" {
+				buf.WriteString(ev.Delta.Text)
 				text := buf.String()
-				if i := strings.LastIndexByte(text, '\n'); i >= 0 {
-					sc := bufio.NewScanner(strings.NewReader(text[:i]))
-					sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
-					for sc.Scan() {
-						if err := handle(sc.Text()); err != nil {
-							return res, Usage{}, err
+				if idx := strings.LastIndexByte(text, '\n'); idx >= 0 {
+					for _, line := range strings.Split(text[:idx], "\n") {
+						if err := handle(line); err != nil {
+							return err
 						}
 					}
 					buf.Reset()
-					buf.WriteString(text[i+1:])
+					buf.WriteString(text[idx+1:])
 				}
 			}
+		case "message_delta":
+			use.OutputTokens = ev.Usage.Output
+			if ev.Delta.StopReason == "refusal" {
+				return errors.New("draft provider declined")
+			}
+		case "message_stop":
+			stopped = true
+		case "error":
+			return errors.New("draft provider stream failed")
+		}
+		return nil
+	}
+	for scan.Scan() {
+		line := scan.Text()
+		if line == "" {
+			if err := process(); err != nil {
+				return res, use, err
+			}
+		} else if strings.HasPrefix(line, "data:") {
+			eventData = append(eventData, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 		}
 	}
-	use := Usage{Model: c.DraftModel, InputTokens: msg.Usage.InputTokens, OutputTokens: msg.Usage.OutputTokens}
-	if err := stream.Err(); err != nil {
-		return res, use, describe(err)
+	if err := scan.Err(); err != nil {
+		return res, use, errors.New("draft stream interrupted")
+	}
+	if err := process(); err != nil {
+		return res, use, err
+	}
+	if !stopped {
+		return res, use, errors.New("draft stream ended before completion")
 	}
 	if err := handle(buf.String()); err != nil {
 		return res, use, err
-	}
-	if msg.StopReason == anthropic.BetaStopReasonRefusal {
-		return DraftResult{Note: "Scry can't write material on that. Try a different topic."}, use, nil
 	}
 	if res.Ideas == 0 && res.Note == "" {
 		res.Note = "Scry couldn't find anything useful on that. Try a narrower topic, a question, or a book's title."
 	}
 	_ = done
 	return res, use, nil
-}
-
-// describe turns an SDK error into one that says whether retrying helps.
-func describe(err error) error {
-	var apiErr *anthropic.Error
-	if errors.As(err, &apiErr) {
-		switch {
-		case apiErr.StatusCode == 401 || apiErr.StatusCode == 403:
-			return fmt.Errorf("model provider rejected the API key (status %d)", apiErr.StatusCode)
-		case apiErr.StatusCode == 429:
-			return fmt.Errorf("model provider is rate limiting (status 429): %w", err)
-		case apiErr.StatusCode >= 500:
-			return fmt.Errorf("model provider is failing (status %d): %w", apiErr.StatusCode, err)
-		default:
-			return fmt.Errorf("model provider refused the request (status %d): %w", apiErr.StatusCode, err)
-		}
-	}
-	return fmt.Errorf("model provider unreachable: %w", err)
 }

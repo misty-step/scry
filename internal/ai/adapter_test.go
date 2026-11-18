@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"github.com/anthropics/anthropic-sdk-go/v2/option"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -26,7 +25,8 @@ func TestG11_AnthropicDraftRequestIsBoundedAndStreaming(t *testing.T) {
 		w.Write([]byte(`{"type":"error","error":{"type":"invalid_request_error","message":"local rejection"}}`))
 	}))
 	defer srv.Close()
-	c := NewClaude("local-test-key", "", option.WithBaseURL(srv.URL))
+	c := NewClaude("local-test-key", "")
+	c.BaseURL = srv.URL
 	_, _, err := c.Draft(context.Background(), DraftInput{Query: "physics"}, DraftSink{})
 	if err == nil || calls.Load() != 1 {
 		t.Fatalf("calls=%d err=%v", calls.Load(), err)

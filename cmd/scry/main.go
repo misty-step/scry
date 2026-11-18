@@ -126,6 +126,9 @@ func build(log *slog.Logger) (*app.App, error) {
 		if jerr != nil {
 			missing = append(missing, "OPENROUTER_API_KEY or TYPESAFE_API_KEY")
 		}
+		if judge != nil {
+			judge.Model = env("SCRY_JUDGE_MODEL", "")
+		}
 		a.Model = ai.Split{JudgeProvider: judge, DraftProvider: ai.NewClaude(need("ANTHROPIC_API_KEY"), env("SCRY_DRAFT_MODEL", ""))}
 		a.Speech = speech.OpenAI{APIKey: need("OPENAI_API_KEY"), Model: env("SCRY_SPEECH_MODEL", "")}
 		sk, pk, price, wh := need("STRIPE_SECRET_KEY"), need("STRIPE_PUBLISHABLE_KEY"), need("STRIPE_PRICE_ID"), need("STRIPE_WEBHOOK_SECRET")
