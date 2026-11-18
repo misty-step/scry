@@ -608,3 +608,9 @@ and SignIn components provide verification and Forgot password flows. Real key
 provisioning, allowed origins and delivery configuration remain operator work.
 SDK/component references: https://clerk.com/docs/go/getting-started/quickstart
 and https://clerk.com/docs/js-frontend/getting-started/quickstart .
+
+MIS-1210 ruling 1: PRODUCT used no grade labels, so learner labels are correct,
+almost correct, incorrect. Stored scheduling grades stay stable. The one choice
+question uses plain instructions and label-only criteria (the API's fixed
+choice set), not the old rubric. Explanation seam and its existing strings are
+unchanged; refusals/missing/none_of_these still abstain once with cost logged.

@@ -18,7 +18,7 @@ func TestStory_JevAbstainsOnceAndExactBypassesJev(t *testing.T) {
 		calls++
 		json.NewEncoder(rw).Encode(map[string]any{"model": "jev-1.14.0", "answers": map[string]any{"judgment": map[string]any{
 			"type": "choice", "choice": "none_of_these", "confidence": 1, "probabilities": map[string]float64{
-				"right": 0, "close": 0, "missed": 0, "none_of_these": 1}}},
+				"correct": 0, "almost correct": 0, "incorrect": 0, "none_of_these": 1}}},
 			"usage": map[string]any{"input_tokens": 100, "output_tokens": 30, "cost": 0.0000042}})
 	}))
 	defer srv.Close()

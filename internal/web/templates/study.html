@@ -11,7 +11,7 @@
       {{range .Answered}}
       <li class="answered">
         <span class="answered-q">{{.Prompt}}</span>
-        <span class="tag tag-{{.Verdict}}">{{.Verdict}}</span>
+        <span class="tag tag-{{.Verdict}}">{{.Verdict.Label}}</span>
         {{if .Why}}<p class="answered-why">{{.Why}}</p>{{end}}
       </li>
       {{end}}
@@ -24,7 +24,7 @@
         <p class="meta exact-label">{{.ExactLabel}}</p>
         <h1 class="prompt prompt-receded">{{.Item.Prompt}}</h1>
         <p class="exact-line display">{{range .Judged.Ops}}{{if eq .Kind "same"}}<span class="x-same">{{.Word}}</span> {{else if eq .Kind "missing"}}<ins class="x-missing"><span class="sr">missing: </span>{{.Word}}</ins> {{else if eq .Kind "wrong"}}<del class="x-wrong"><span class="sr">you wrote: </span>{{.Word}}</del> <span class="x-fix"><span class="sr">the text has: </span>{{.Fix}}</span> {{else}}<del class="x-wrong"><span class="sr">not in the text: </span>{{.Word}}</del> {{end}}{{end}}</p>
-        <p class="verdict"><span class="tag tag-{{.Judged.Verdict}}">{{.Judged.Verdict}}</span> <span class="why">{{.Judged.Why}}</span></p>
+        <p class="verdict"><span class="tag tag-{{.Judged.Verdict}}">{{.Judged.Verdict.Label}}</span> <span class="why">{{.Judged.Why}}</span></p>
         <form method="post" action="/study/next" class="judged-actions" data-next-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           <button class="link" name="again" value="1" data-again>Again</button>
@@ -37,7 +37,7 @@
           {{if .Judged.Answer}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text">{{.Judged.Answer}}</span></span></p>{{end}}
           <p class="judgment judgment-right"><span class="sr">The answer: </span>{{.Judged.Expected}}</p>
         </div>
-        <p class="verdict"><span class="tag tag-missed">missed</span> <span class="why">{{.Judged.Why}}</span></p>
+        <p class="verdict"><span class="tag tag-missed">incorrect</span> <span class="why">{{.Judged.Why}}</span></p>
         <form method="post" action="/study/next" class="judged-actions" data-next-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           <button class="btn btn-accent" autofocus data-next>Next</button>
@@ -46,7 +46,7 @@
       {{else}}
         <h1 class="prompt display">{{.Item.Prompt}}</h1>
         <p class="answer-given display"><span class="sr">Your answer: </span>{{.Judged.Marked}}</p>
-        <p class="verdict"><span class="tag tag-close">close</span> <span class="why">{{.Judged.Why}}</span></p>
+        <p class="verdict"><span class="tag tag-close">almost correct</span> <span class="why">{{.Judged.Why}}</span></p>
         <p class="expected"><span class="meta">answer</span> {{.Judged.Expected}}</p>
         <form method="post" action="/study/next" class="judged-actions" data-next-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">

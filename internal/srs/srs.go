@@ -109,3 +109,16 @@ func Next(s State, v Verdict, now time.Time) State {
 	n.Due = now.Add(time.Duration(days*24) * time.Hour)
 	return n
 }
+
+// Label is the accepted learner-facing vocabulary; stored grades stay stable.
+func (v Verdict) Label() string {
+	switch v {
+	case Right:
+		return "correct"
+	case Close:
+		return "almost correct"
+	case Missed:
+		return "incorrect"
+	}
+	return string(v)
+}

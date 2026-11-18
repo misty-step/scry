@@ -288,3 +288,4 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Monthly top-up cap and rollover; concurrent dedup | TestAcceptedTopupMonthCap; TestF2_ConcurrentTopupsReportOneCredit |
 
 | Clerk sign-in, verified-email gate and built-in email reset | TestClerkUnconfiguredAndVerificationGate |
+| Accepted decisions labels, single attempt and cost | TestJev_RoutesAndUntrustedInjection; TestDecisionUsageCostLogsValueOrUnknown |
