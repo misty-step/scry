@@ -138,13 +138,13 @@ func (a *App) StartTrial(ctx context.Context, u store.User, cardToken string) er
 	}
 	if hadPlan {
 		sub.Status, sub.AllowanceMicros, sub.TrialEnd = "active", a.Cfg.AllowanceMicros, old.TrialEnd
-		if err := us.SaveSubscription(ctx, sub); err != nil {
+		if err := us.OpenPlan(ctx, sub); err != nil {
 			return err
 		}
 		return us.AddLedger(ctx, store.LedgerEntry{At: now, Kind: "charge", Description: "Scry, one month", AmountCents: a.Cfg.PriceCents, Status: "paid", Ref: res.ChargeRef})
 	}
 	sub.Status, sub.AllowanceMicros, sub.TrialEnd = "trialing", a.Cfg.TrialMicros, p.TrialEnd
-	if err := us.SaveSubscription(ctx, sub); err != nil {
+	if err := us.OpenPlan(ctx, sub); err != nil {
 		return err
 	}
 	return us.AddLedger(ctx, store.LedgerEntry{At: now, Kind: "trial", Description: fmt.Sprintf("%d-day trial started", a.Cfg.TrialDays), Status: "none", Ref: "trial-" + res.SubscriptionRef})
@@ -166,8 +166,7 @@ func (a *App) TopUp(ctx context.Context, userID int64) error {
 	_, err = a.Pay.Charge(ctx, sub.CustomerRef, sub.PaymentRef, a.Cfg.TopupCents, "Scry top-up", key)
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
-		sub.CardError = d.Reason
-		_ = us.SaveSubscription(ctx, sub)
+		_, _ = us.ChangeSubscription(ctx, func(s *store.Subscription) { s.CardError = d.Reason })
 		_ = us.AddLedger(ctx, store.LedgerEntry{At: now, Kind: "topup", Description: "Top-up (card failed)", AmountCents: a.Cfg.TopupCents, Status: "failed", Ref: key + "-failed"})
 		return err
 	}
@@ -190,8 +189,7 @@ func (a *App) SetCancel(ctx context.Context, userID int64, cancel bool) (store.S
 		a.Alert.Notify(ctx, "Card processor is failing", err.Error())
 		return sub, err
 	}
-	sub.CancelAtEnd = cancel
-	return sub, us.SaveSubscription(ctx, sub)
+	return us.ChangeSubscription(ctx, func(s *store.Subscription) { s.CancelAtEnd = cancel })
 }
 
 // UpdateCard replaces the card on file.
@@ -212,8 +210,10 @@ func (a *App) UpdateCard(ctx context.Context, userID int64, cardToken string) er
 		}
 		return err
 	}
-	sub.PaymentRef, sub.CardBrand, sub.CardLast4, sub.CardError = payRef, card.Brand, card.Last4, ""
-	if err := us.SaveSubscription(ctx, sub); err != nil {
+	sub, err = us.ChangeSubscription(ctx, func(s *store.Subscription) {
+		s.PaymentRef, s.CardBrand, s.CardLast4, s.CardError = payRef, card.Brand, card.Last4, ""
+	})
+	if err != nil {
 		return err
 	}
 	if sub.Status == "past_due" {

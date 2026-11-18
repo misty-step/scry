@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -177,4 +178,38 @@ func (u *UserStore) HasLedgerRef(ctx context.Context, ref string) (bool, error) 
 	var n int
 	err := u.s.billingDB(ctx).QueryRowContext(ctx, "SELECT count(*) FROM ledger WHERE user_id=? AND ref=?", u.uid, ref).Scan(&n)
 	return n > 0, err
+}
+
+// ChangeSubscription reads the latest row under the same write transaction
+// as its update, preserving concurrent usage, credits and unrelated fields.
+func (u *UserStore) ChangeSubscription(ctx context.Context, change func(*Subscription)) (Subscription, error) {
+	var sub Subscription
+	err := u.s.BillingTransaction(ctx, func(ctx context.Context) error {
+		var err error
+		sub, err = u.Subscription(ctx)
+		if err != nil {
+			return err
+		}
+		change(&sub)
+		return u.SaveSubscription(ctx, sub)
+	})
+	return sub, err
+}
+
+// OpenPlan only creates a missing plan or replaces an ended one. Credits
+// are copied from the current row, never from a pre-provider stale snapshot.
+func (u *UserStore) OpenPlan(ctx context.Context, next Subscription) error {
+	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
+		current, err := u.Subscription(ctx)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+		if err == nil {
+			if current.Status != "ended" {
+				return nil
+			}
+			next.TopupMicros = current.TopupMicros
+		}
+		return u.SaveSubscription(ctx, next)
+	})
 }

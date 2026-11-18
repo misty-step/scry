@@ -6,6 +6,7 @@ import (
 	"scry/internal/ai"
 	"scry/internal/billing"
 	"scry/internal/speech"
+	"scry/internal/store"
 	"sync"
 	"testing"
 )
@@ -193,5 +194,34 @@ func TestG12_SpeechDurationComesFromAudio(t *testing.T) {
 	after, _ := us.Subscription(ctx)
 	if after.UsedMicros-before.UsedMicros != 50 {
 		t.Fatalf("client controlled metering: %d", after.UsedMicros-before.UsedMicros)
+	}
+}
+
+type meteringPay struct {
+	billing.Fake
+	during func()
+}
+
+func (p meteringPay) SetCancelAtPeriodEnd(context.Context, string, bool) error {
+	p.during()
+	return nil
+}
+func TestG16_CancelCannotOverwriteConcurrentUsage(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("atomic@example.com")
+	u := w.user("atomic@example.com")
+	us := w.store.For(u.ID)
+	w.app.Pay = meteringPay{during: func() {
+		if err := us.Spend(ctx, store.Usage{Kind: "judge", Model: "test", CostMicros: 73}, w.now()); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	if _, err := w.app.SetCancel(ctx, u.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ := us.Subscription(ctx)
+	if sub.UsedMicros != 73 || !sub.CancelAtEnd {
+		t.Fatalf("lost concurrent update: %+v", sub)
 	}
 }
