@@ -654,3 +654,7 @@ D6: preserve intrinsic Judgment widths rather than shrinking flex children
 before wrapping. If the two answers do not fit, they stack left-aligned with
 the phone spacing; long individual answers still wrap without overflow.
 Smoke checks the real missed state at 1280, 900, 600 and 390 pixels.
+
+D8: 68ch applies to reading pages, not inbox/draft/scrollback rows. Existing
+reading paragraphs and ledes already use the 68ch measure; no CSS change.
+TestD8_ReadingMeasure locks the existing reading-page constraints.

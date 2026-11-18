@@ -93,3 +93,12 @@ func TestVerifierDesignRegressions(t *testing.T) {
 		}
 	}
 }
+
+func TestD8_ReadingMeasure(t *testing.T) {
+	b, _ := staticFS.ReadFile("static/app.css")
+	for _, rule := range []string{"--measure: 68ch;", "p { max-width: var(--measure); }", ".lede { font-size: var(--reading); max-width: var(--measure); }"} {
+		if !strings.Contains(string(b), rule) {
+			t.Errorf("reading measure missing %s", rule)
+		}
+	}
+}

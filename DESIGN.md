@@ -58,7 +58,7 @@ The accent appears at most once as a filled control per screen. Mode follows the
 - Surfaces are square (radius 0). Controls and fields are 4 px. Nothing is a pill.
 - 1 px hairlines separate things; no shadows, no gradients, no blur.
 - Spacing steps: 4, 8, 16, 24, 32, 48, 64, 96 px. Section padding is 56 px on desktop, 40 px on phones.
-- Reading measure is at most 68 characters. The page frame is at most 1120 px.
+- Reading pages have a measure of at most 68 characters. Inbox, draft and study scrollback rows are exempt. The page frame is at most 1120 px.
 - The study session sits on a faint 22 px dot grid (ink-ghost at about 6%) with short tick marks along its left and right edges. No other screen has a texture.
 
 ## Motion
