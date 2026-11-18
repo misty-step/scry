@@ -160,10 +160,10 @@ func (a *App) TopUp(ctx context.Context, userID int64) error {
 	now := a.now()
 	// One key per learner per minute: a double-clicked button charges once.
 	key := fmt.Sprintf("topup-%d-%d", userID, now.Unix()/60)
-	if done, err := us.HasLedgerRef(ctx, key); err != nil || done {
+	if done, err := a.Store.HasProcessedEvent(ctx, key); err != nil || done {
 		return err
 	}
-	_, err = a.Pay.Charge(ctx, sub.CustomerRef, sub.PaymentRef, a.Cfg.TopupCents, "Scry top-up", key)
+	ref, err := a.Pay.Charge(ctx, sub.CustomerRef, sub.PaymentRef, a.Cfg.TopupCents, "Scry top-up", key)
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
 		_, _ = us.ChangeSubscription(ctx, func(s *store.Subscription) { s.CardError = d.Reason })
@@ -174,7 +174,7 @@ func (a *App) TopUp(ctx context.Context, userID int64) error {
 		a.Alert.Notify(ctx, "Card processor is failing", err.Error())
 		return err
 	}
-	return us.CreditTopUp(ctx, store.LedgerEntry{At: now, Kind: "topup", Description: "Top-up", AmountCents: a.Cfg.TopupCents, Status: "paid", Ref: key}, a.Cfg.TopupMicros)
+	return us.CreditTopUp(ctx, store.LedgerEntry{At: now, Kind: "topup", Description: "Top-up", AmountCents: a.Cfg.TopupCents, Status: "paid", Ref: ref}, a.Cfg.TopupMicros, key)
 }
 
 // SetCancel schedules the plan to end when the paid period (or the

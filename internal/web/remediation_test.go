@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -263,5 +264,29 @@ func TestG2_UnknownProviderOutcomeKeepsReservation(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatal("unknown provider cost was released, permitting unbounded retries")
+	}
+}
+
+type replayChargePay struct{ billing.Fake }
+
+func (replayChargePay) Charge(context.Context, string, string, int64, string, string) (string, error) {
+	return "same-confirmed-payment", nil
+}
+func TestG1_OnePaymentReferenceCannotCreditTwice(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("replay@example.com")
+	u := w.user("replay@example.com")
+	w.app.Pay = replayChargePay{}
+	if err := w.app.TopUp(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	w.advance(2 * time.Minute)
+	if err := w.app.TopUp(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ := w.store.For(u.ID).Subscription(ctx)
+	if sub.TopupMicros != w.app.Cfg.TopupMicros {
+		t.Fatalf("same payment credited twice: %d", sub.TopupMicros)
 	}
 }

@@ -153,30 +153,30 @@ func (u *UserStore) Spend(ctx context.Context, use Usage, now time.Time) error {
 }
 
 // CreditTopUp atomically deduplicates a paid operation and grants its credit.
-func (u *UserStore) CreditTopUp(ctx context.Context, e LedgerEntry, credit int64) error {
-	tx, err := u.s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO ledger (user_id,at,kind,description,amount_cents,status,ref) VALUES (?,?,?,?,?,?,?)", u.uid, ts(e.At), e.Kind, e.Description, e.AmountCents, e.Status, e.Ref)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		if _, err = tx.ExecContext(ctx, "UPDATE subscriptions SET topup_micros=topup_micros+?, card_error='' WHERE user_id=?", credit, u.uid); err != nil {
+
+func (u *UserStore) CreditTopUp(ctx context.Context, e LedgerEntry, credit int64, key string) error {
+	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
+		fresh, err := u.s.MarkEvent(ctx, key, e.At)
+		if err != nil || !fresh {
 			return err
 		}
-	}
-	return tx.Commit()
+		res, err := u.s.billingDB(ctx).ExecContext(ctx, "INSERT OR IGNORE INTO ledger (user_id,at,kind,description,amount_cents,status,ref) VALUES (?,?,?,?,?,?,?)", u.uid, ts(e.At), e.Kind, e.Description, e.AmountCents, e.Status, e.Ref)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			_, err = u.s.billingDB(ctx).ExecContext(ctx, "UPDATE subscriptions SET topup_micros=topup_micros+?,card_error='' WHERE user_id=?", credit, u.uid)
+		}
+		return err
+	})
 }
-func (u *UserStore) HasLedgerRef(ctx context.Context, ref string) (bool, error) {
+func (s *Store) HasProcessedEvent(ctx context.Context, key string) (bool, error) {
 	var n int
-	err := u.s.billingDB(ctx).QueryRowContext(ctx, "SELECT count(*) FROM ledger WHERE user_id=? AND ref=?", u.uid, ref).Scan(&n)
+	err := s.billingDB(ctx).QueryRowContext(ctx, "SELECT count(*) FROM processed_events WHERE id=?", key).Scan(&n)
 	return n > 0, err
 }
 
