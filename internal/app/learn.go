@@ -44,7 +44,6 @@ func (a *App) Learn(ctx context.Context, u store.User, query string) (int64, err
 	a.drafts.Add(1)
 	go func() {
 		defer a.drafts.Done()
-		defer a.settle(u.ID, reservation, "draft", ai.Usage{}, 0)
 		defer func() {
 			if r := recover(); r != nil {
 				a.Alert.Notify(context.Background(), "Drafting panicked", fmt.Sprint(r))
@@ -90,6 +89,7 @@ func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string
 	}
 	profile, err := a.Profile(ctx, u)
 	if err != nil {
+		a.settle(u.ID, reservation, "draft", ai.Usage{}, 0)
 		fail(err)
 		return
 	}
@@ -247,7 +247,6 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 	if err != nil {
 		return "", err
 	}
-	defer a.settle(u.ID, reservation, "speech", ai.Usage{}, 0)
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	text, err := a.Speech.Transcribe(ctx, audio)

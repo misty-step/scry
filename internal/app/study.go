@@ -134,7 +134,6 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		if err != nil {
 			return store.Review{}, err
 		}
-		defer a.settle(u.ID, reservation, "judge", ai.Usage{}, 0)
 		jctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 		j, use, err := a.Model.Judge(jctx, ai.JudgeInput{Question: item.Prompt, Expected: item.Answer, Answer: answer})
 		cancel()

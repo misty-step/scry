@@ -169,7 +169,7 @@ func LatestSnapshot(dir string) (string, time.Time) {
 // userTables lists every table holding learner-owned rows, parents first.
 // Export, per-user restore and the privacy tests all walk this list.
 var userTables = []string{
-	"subscriptions", "ledger", "usage", "ideas", "idea_links", "items",
+	"subscriptions", "reservations", "ledger", "usage", "ideas", "idea_links", "items",
 	"study_sessions", "session_items", "reviews", "drafts", "suggestions", "agent_tokens",
 }
 

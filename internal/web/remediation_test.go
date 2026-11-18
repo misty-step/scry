@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"scry/internal/ai"
 	"scry/internal/billing"
 	"scry/internal/speech"
@@ -243,5 +244,24 @@ func TestG17_LongAnswerNeverSplitsRune(t *testing.T) {
 	got := w.model.judged[0].Answer
 	if !utf8.ValidString(got) || len(got) > 2000 {
 		t.Fatalf("invalid UTF-8 answer: %q", got[len(got)-8:])
+	}
+}
+
+func TestG2_UnknownProviderOutcomeKeepsReservation(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("uncertain@example.com")
+	u := w.user("uncertain@example.com")
+	w.model.err = errors.New("connection lost after request")
+	if _, err := w.app.Learn(ctx, u, "physics"); err != nil {
+		t.Fatal(err)
+	}
+	w.app.WaitDrafts()
+	var n int
+	if err := w.store.DB().QueryRow("SELECT count(*) FROM reservations WHERE user_id=?", u.ID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatal("unknown provider cost was released, permitting unbounded retries")
 	}
 }
