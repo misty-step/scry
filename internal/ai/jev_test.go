@@ -153,3 +153,22 @@ func TestJev_EachFixedChoiceAndRouteSelection(t *testing.T) {
 		}
 	}
 }
+
+func TestJev_OpenRouterMissingCostAndEchoedKey(t *testing.T) {
+	var logs bytes.Buffer
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b := jevResponse("correct", 1)
+		b["model"] = "echo-local-secret"
+		delete(b["usage"].(map[string]any), "cost")
+		json.NewEncoder(w).Encode(b)
+	}))
+	defer srv.Close()
+	j := &Jev{APIKey: "local-secret", OpenRouter: true, BaseURL: srv.URL, Log: slog.New(slog.NewJSONHandler(&logs, nil))}
+	_, use, err := j.Judge(context.Background(), JudgeInput{})
+	if err == nil || use.Model != "" {
+		t.Fatal("unknown cost must retain reservation")
+	}
+	if strings.Contains(logs.String(), "local-secret") || !strings.Contains(logs.String(), `"cost_micros":null`) {
+		t.Fatal("unsafe or misleading telemetry", logs.String())
+	}
+}
