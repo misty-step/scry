@@ -148,3 +148,16 @@ func TestG5_FailedEventCanBeRedelivered(t *testing.T) {
 		t.Fatalf("ledger effects: %d", n)
 	}
 }
+
+func TestG10_EmptyAnswerCallsJudgeOnce(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("empty@example.com")
+	b.addSet("nato-alphabet")
+	it, _ := b.current(b.mustGet("/study"))
+	before := w.model.judgeCalls()
+	b.answer(it, "")
+	if w.model.judgeCalls() != before+1 {
+		t.Fatal("empty answer bypassed judge")
+	}
+}

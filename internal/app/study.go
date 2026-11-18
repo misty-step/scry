@@ -120,9 +120,6 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		d := exact.Diff(item.Answer, answer)
 		r.Verdict, r.Reason, r.Judge = srs.Verdict(d.Verdict()), d.Why(), "exact"
 		detail.Ops, detail.Diff = d.Ops, &exactCount{d.Missing, d.Swapped, d.Extra}
-	case answer == "":
-		// Nothing was offered, so there is nothing to judge.
-		r.Verdict, r.Reason, r.Judge = srs.Missed, "You gave no answer.", "none"
 	default:
 		_, err := a.Plan(ctx, u.ID)
 		if err != nil {
