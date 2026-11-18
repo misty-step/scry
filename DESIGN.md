@@ -102,7 +102,7 @@ Instant, under the answer.
 
 - **Right:** a green mono "right" tag and the one-line why in body text. The item moves up into the scrollback.
 - **Close:** the parts that were close are marked with the highlighter, the tag reads "close", and the why says what differed.
-- **Missed:** the moment the type gets loud. The learner's answer is set at Judgment size and struck with a missed-red line that draws across; the right answer is set beside it at the same size in ink. Below, the tag "missed" and the one-line why. Keys: Enter for next.
+- **Missed:** the moment the type gets loud. The learner's answer is set at Judgment size and struck with a missed-red line that draws across; the right answer is set beside it at the same size in ink. If the pair cannot fit side by side without wrapping either answer, stack the answers in that order, left-aligned with a 16 px gap, just as on phones. Each stacked answer may wrap within the available width; never shrink the Judgment type to fit. Below, the tag "missed" and the one-line why. Keys: Enter for next.
 - **Exact texts** (texts the learner marked exact) are judged word for word in place: correct words stay plain ink, missing words are inserted and highlighted, wrong words are struck in ink-muted with the right word set right after them. A mono label above names the text and line ("Exact text · Nicene Creed · line 1"). The why counts the differences in words ("One word missing, one swapped."). Actions: "Again" (text button) and "Next" (accent).
 
 ### Session end

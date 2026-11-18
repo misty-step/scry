@@ -293,3 +293,4 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Verified Clerk identity and browser session | TestClerkVerifiedEmail; TestClerkSessionStandIn; TestClerkMissingKeysNoNetwork |
 | Concurrent monthly cap | TestAcceptedTopupConcurrentCap |
 | D1 after-stop voice text | TestG12_SpeechUploadsOnlyAtStop; TestReviewBrowserSmoke |
+| D6 intrinsic missed-pair stacking | TestReviewBrowserSmoke (1280/900/600/390 geometry and screenshots) |

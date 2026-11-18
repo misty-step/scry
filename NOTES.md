@@ -649,3 +649,8 @@ the decline, preserving the existing card-failure behavior.
 Accepted chat:phaedrus/t3579u, D1: preserve one transcription after stop.
 DESIGN now describes the unchanged answer line and listening label, not live
 transcription. Chromium smoke asserts no upload or new words while listening.
+
+D6: preserve intrinsic Judgment widths rather than shrinking flex children
+before wrapping. If the two answers do not fit, they stack left-aligned with
+the phone spacing; long individual answers still wrap without overflow.
+Smoke checks the real missed state at 1280, 900, 600 and 390 pixels.

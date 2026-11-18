@@ -56,9 +56,12 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
  console.log("voice: one upload at stop; right reason visible");
  await page.type("#answer","This deliberately incorrect answer wraps across several lines on a small phone.");
  await page.click("[data-check]");await page.waitForSelector(".struck-text");
- for(const width of [1280,390])for(const theme of ["light","dark"]){
-  await page.setViewport({width,height:1000});
+ for(const width of [1280,900,600,390])for(const theme of ["light","dark"]){
+  await page.setViewport({width,height:width===390?844:800});
   await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+  await page.evaluate(()=>document.fonts.ready);
+  const pair=await page.$eval(".judgment-pair",e=>{const [a,b]=[...e.children].map(x=>x.getBoundingClientRect());return {left:a.left,otherLeft:b.left,bottom:a.bottom,top:b.top};});
+  assert(Math.abs(pair.left-pair.otherLeft)<1 && pair.top>=pair.bottom+15,"D6: pair must stack at "+width+JSON.stringify(pair));
   assert.equal(await page.$eval(".struck-text",e=>getComputedStyle(e).textDecorationLine),"line-through");
   assert.equal(await page.$(".struck-line"),null);
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
