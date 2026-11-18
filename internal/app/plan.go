@@ -165,11 +165,20 @@ func (a *App) TopUpResult(ctx context.Context, userID int64) (bool, error) {
 		return false, err
 	}
 	var added bool
+	var decline error
 	err = a.Store.BillingTransaction(ctx, func(ctx context.Context) error {
 		var e error
 		added, e = a.topUpLocked(ctx, userID, sub)
+		var d *billing.DeclineError
+		if errors.As(e, &d) {
+			decline = e
+			return nil
+		}
 		return e
 	})
+	if err == nil && decline != nil {
+		return false, decline
+	}
 	return added, err
 }
 func (a *App) topUpLocked(ctx context.Context, userID int64, sub store.Subscription) (bool, error) {

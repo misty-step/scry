@@ -638,3 +638,10 @@ unverified user into a study/sign-in loop. Concurrent cap testing starts with
 three paid top-ups and confirms twelve racing requests add exactly one more.
 Live Clerk delivery and a real Sentry-to-agent drill require external account
 configuration; these cannot be proven with local stand-ins.
+
+Final accepted-rulings checks: go mod tidy, go build ./..., go vet ./...,
+go test -race -count=1 ./..., and the real Chromium TestReviewBrowserSmoke
+all pass. Smoke uses an isolated httptest server, not the preview. Logs:
+ /tmp/rulings-final.log and /tmp/rulings-smoke.log.
+The capped top-up transaction also commits decline records before returning
+the decline, preserving the existing card-failure behavior.
