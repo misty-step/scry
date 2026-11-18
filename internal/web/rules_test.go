@@ -350,6 +350,11 @@ func TestRule_Reliability_HealthzStructuredLogsAndAlertsWithoutBeingAsked(t *tes
 	// The server is still serving afterwards.
 	b.mustGet("/study")
 
+	// Add room for independently testing multiple failed providers: unknown
+	// outcomes correctly retain their conservative allowance reservations.
+	if err := w.app.TopUp(ctx, w.user("learner@example.com").ID); err != nil {
+		t.Fatal(err)
+	}
 	// A failing dependency is alerted the moment it is noticed.
 	w.model.err = fmt.Errorf("provider is down")
 	b.post("/study/answer", "item_id", fmt.Sprint(first.ID), "answer", "x")
