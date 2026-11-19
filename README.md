@@ -90,18 +90,11 @@ host and route log alerts to an operator. Restarting fixes transient failures,
 not corrupt disks or arbitrary bugs; use recovery procedures as needed.
 No real monitoring service was contacted in this build.
 
-For a plain Docker host without orchestrator liveness, install the included
-deploy/watchdog.sh in a root-owned directory and run it every minute from the
-Docker operator's cron (absolute path, container name as argument). It restarts
-only running unhealthy containers, leaves healthy/starting/manually stopped
-containers alone, and emits an error if health information is unavailable.
-Capture cron output in host monitoring. Example crontab entry:
-
-    * * * * * /opt/scry/deploy/watchdog.sh scry
-
-Access to Docker is privileged; do not grant it to untrusted users. The watchdog
-is covered by TestRule_Reliability_WatchdogRestartsOnlyUnhealthyContainers
-in cmd/scry; platform liveness is preferable when available.
+Run `cmd/scry-watch` beside the service as the single health/restart owner.
+Disable the old watchdog cron and competing platform health restarters when
+using `SCRY_WATCH_RESTART_CMD`. The legacy watchdog script remains tested for
+deployments not using the incident watcher. See NOTES.md's MIS-1210 monitoring
+runbook for configuration and the end-to-end drill.
 
 ## Durability, privacy and backup
 
@@ -164,6 +157,7 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 
 | Contract | Test |
 | --- | --- |
+| Operator story: continuous monitoring, incident triage, fix proposal and fault drill | `TestStory_ContinuousMonitoringFaultDrillRestartRecovery`, `TestMonitoringDedupTriageFixQuietDurability` (internal/watch) |
 | Story: signup, trial and study within a minute | TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute |
 | Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
 | Story: any topic shaped to learner | TestStory_AskForAnyTopic_AndGetItShapedToMe |
