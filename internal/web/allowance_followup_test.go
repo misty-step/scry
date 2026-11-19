@@ -99,7 +99,7 @@ func TestClerkUnconfiguredAndVerificationGate(t *testing.T) {
 	w.app.Auth = &auth.Clerk{}
 	b := w.browser()
 	has(t, b.mustGet("/signin"), "Sign-in not configured")
-	has(t, b.mustGet("/signup"), "Sign-in not configured")
+	has(t, b.mustGet("/signup"), "Sign-up not configured")
 	b.get("/billing")
 	if b.path != "/signin?next=%2Fbilling" && !strings.HasPrefix(b.path, "/signin") {
 		t.Fatal(b.path)
@@ -202,8 +202,11 @@ func TestClerkConfiguredFormsUsePublishableDomain(t *testing.T) {
 		body := b.mustGet(path)
 		has(t, body, "https://example.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js")
 		has(t, body, "/static/clerk.js")
-		has(t, body, "Verify your email")
-		has(t, body, "Forgot password")
+		if path == "/signup" {
+			has(t, body, "Create your account", "Verify your email")
+		} else {
+			has(t, body, "Use your email and password", "Forgot password")
+		}
 		has(t, body, fmt.Sprintf("data-signup=%q", fmt.Sprint(path == "/signup")))
 		if strings.Contains(body, "Sign-in not configured") {
 			t.Fatal("configured Clerk did not render")

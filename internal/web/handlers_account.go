@@ -24,20 +24,38 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, c *rc) error {
 	})
 }
 
+// clerkForm keeps the server-rendered copy aligned with the mounted component.
+func (s *Server) clerkForm(w http.ResponseWriter, r *http.Request, c *rc, provider *auth.Clerk) error {
+	signup := r.URL.Path == "/signup"
+	title, lede := "Sign in", "Use your email and password. Forgotten your password? Choose “Forgot password” below to reset it by email."
+	if signup {
+		title, lede = "Sign up", "Create your account with email and password. Verify your email before continuing to study or billing."
+	}
+	if !provider.Configured() {
+		title, lede = "Sign-in not configured", "Please try again when the operator has connected Clerk."
+		if signup {
+			title = "Sign-up not configured"
+		}
+	}
+	return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{
+		"Title": title, "Lede": lede, "Bare": true, "Configured": provider.Configured(), "SignUp": signup,
+	})
+}
+
 func (s *Server) signupForm(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
-		return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{"Title": "Sign in", "Bare": true, "Configured": provider.Configured(), "SignUp": r.URL.Path == "/signup"})
+		return s.clerkForm(w, r, c, provider)
 	}
 
 	if c.signedIn {
 		return back(w, r, "/study")
 	}
-	return s.render(w, r, c, http.StatusOK, "signup.html", map[string]any{"Title": "Start your trial", "Bare": true, "TrialDays": s.App.Cfg.TrialDays})
+	return s.render(w, r, c, http.StatusOK, "signup.html", map[string]any{"Title": "Sign up", "Bare": true, "TrialDays": s.App.Cfg.TrialDays})
 }
 
 func (s *Server) signup(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
-		return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{"Title": "Sign in", "Bare": true, "Configured": provider.Configured(), "SignUp": r.URL.Path == "/signup"})
+		return s.clerkForm(w, r, c, provider)
 	}
 
 	email, password := strings.TrimSpace(r.FormValue("email")), r.FormValue("password")
@@ -45,7 +63,7 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request, c *rc) error {
 	var fe *app.FieldError
 	if errors.As(err, &fe) {
 		return s.render(w, r, c, http.StatusUnprocessableEntity, "signup.html", map[string]any{
-			"Title": "Start your trial", "Bare": true, "Email": email, "Field": fe.Field, "Error": fe.Msg, "TrialDays": s.App.Cfg.TrialDays})
+			"Title": "Sign up", "Bare": true, "Email": email, "Field": fe.Field, "Error": fe.Msg, "TrialDays": s.App.Cfg.TrialDays})
 	}
 	if err != nil {
 		return err
@@ -60,7 +78,7 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request, c *rc) error {
 
 func (s *Server) signinForm(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
-		return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{"Title": "Sign in", "Bare": true, "Configured": provider.Configured(), "SignUp": r.URL.Path == "/signup"})
+		return s.clerkForm(w, r, c, provider)
 	}
 
 	if c.signedIn {
@@ -85,7 +103,7 @@ func safeNext(next string) string {
 
 func (s *Server) signin(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if provider, ok := s.App.Auth.(*auth.Clerk); ok {
-		return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{"Title": "Sign in", "Bare": true, "Configured": provider.Configured(), "SignUp": r.URL.Path == "/signup"})
+		return s.clerkForm(w, r, c, provider)
 	}
 
 	email, password := strings.TrimSpace(r.FormValue("email")), r.FormValue("password")
