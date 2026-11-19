@@ -18,3 +18,6 @@ You are building Scry from scratch. PRODUCT.md is what it does. DESIGN.md is how
 
 ## Deliver
 Work in this directory. Commit as you go with git. Finish with everything building and tests green, and write NOTES.md listing every place PRODUCT.md or DESIGN.md was ambiguous or silent and the choice you made.
+
+## Monitoring layout
+- cmd/scry-watch and internal/watch own durable incidents and service restarts separately from app SQLite. deploy/fault-drill.py exercises a disposable preview.

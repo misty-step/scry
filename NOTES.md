@@ -620,16 +620,50 @@ unchanged; refusals/missing/none_of_these still abstain once with cost logged.
 Set SENTRY_DSN in the service environment; unset is a no-op. Error-level
 structured events (including recovered panics, background failures and every
 HTTP 5xx) report sanitized event names to Sentry. /healthz checks SQLite.
-Configure an external continuous health probe and Sentry alert routing to the
-incident agent. The agent itself is outside this implementation.
+Run `go build -o /tmp/scry-watch ./cmd/scry-watch` then
+`/tmp/scry-watch` under a host supervisor. Set SCRY_WATCH_HEALTH_URL,
+SCRY_WATCH_STATE, SCRY_WATCH_LISTEN, SCRY_WATCH_INTERVAL, SCRY_WATCH_QUIET,
+SCRY_WATCH_RETRY, SCRY_WATCH_RESTART_CMD, SCRY_WATCH_AGENT_CMD,
+SCRY_DEPLOY_COMMIT and SCRY_WATCH_LOG_FILE as appropriate. Defaults probe
+loopback every ten seconds, detect three failures, retry restart every minute,
+and close after two minutes without signals. State is a private, atomic,
+fsynced JSON file separate from SQLite; one process holds its lock.
+`/tmp/scry-watch incidents` lists evidence and lifecycle timestamps.
 
-For an operator-controlled drill, temporarily set SCRY_FAULT_DRILL=1 and a
-random SCRY_FAULT_DRILL_TOKEN in the environment, restart, then POST
-/ops/fault-drill with Authorization: Bearer <that token>. It returns 500 and
-reports an error event. Verify Sentry receipt, agent alert, triage and proposed
-or shipped fix. Record incident link and timestamps. Remove both drill
-variables, restart and verify the endpoint is 404 and /healthz is healthy.
-Never put the token in a URL or commit it. No drill was run on production.
+Error source: signed Sentry-style alert webhook (HMAC-SHA256 raw body in
+Sentry-Hook-Signature; action=triggered). Set SCRY_WATCH_WEBHOOK_SECRET on
+the watcher and configure Sentry alert delivery to its listener through TLS.
+Unset secret disables intake. For dependable local drill delivery without a
+Sentry account, set SCRY_WATCH_WEBHOOK_URL and SCRY_WATCH_WEBHOOK_SECRET on
+the app too: every error mirrors a content-free signed signal, with three
+bounded delivery attempts. Keep the listener private; no payload/user text is
+stored. SCRY_MODE=test disables outside notifications and restricts app mirror
+and health requests to loopback. Use local stand-ins for restart/fixer commands.
+
+ALERT_WEBHOOK_URL configures operator notification; unset uses local records.
+The fixer receives the brief on stdin and SCRY_INCIDENT_ID in its environment.
+Its contract is to open a PR, deduplicating by that ID, and exit zero only after
+accepting that responsibility. It must be trusted, sandboxed by the operator,
+and must not deploy. A successful handoff is timestamped, not a claim of PR
+merge. Without it the record/notification says "fix proposal not configured".
+Commands time out after thirty seconds; outputs are never persisted.
+Disable watchdog cron/competing liveness restart owners when using the watcher.
+Use a restart command that starts stopped services as well as replacing hung ones.
+
+Against a disposable running test-mode preview (NOT port 18080), enable
+SCRY_FAULT_DRILL and SCRY_FAULT_DRILL_TOKEN on the app; configure the local
+signed mirror, watcher, and a fixer stand-in that writes stdin to a file.
+Export SCRY_DRILL_URL, SCRY_FAULT_DRILL_TOKEN, SCRY_WATCH_STATE and
+SCRY_DRILL_KILL_CMD (a command killing only that preview process). Run exactly:
+
+    python3 deploy/fault-drill.py
+
+The script requires no preexisting open incident, posts the real drill, checks
+one incident and fix handoff, kills the process, and verifies watcher-driven
+recovery and quiet-window resolution. Afterwards disable the drill settings.
+Automated isolated equivalent:
+
+    go test -race -count=1 ./internal/watch -run TestStory_ContinuousMonitoringFaultDrillRestartRecovery -v
 
 Accepted-rulings verification supplement: Clerk identity tests reject unverified
 and banned users and exercise verified/unverified browser stand-ins without
@@ -726,3 +760,21 @@ or email delivery was tested; real Clerk and Stripe flows remain unverified.
 Selection tables, missing-live-key checks and non-test Stripe rejection tests
 were added. go build ./..., go vet ./... and go test -race -count=1 ./... pass.
 The preview and port 18080 were not touched.
+
+
+## 2026-11-19 — MIS-1210 monitoring incident owner
+- Added cmd/scry-watch and internal/watch. One open incident groups concurrent
+  symptoms until quiet; repeat signals update bounded evidence, not new pages.
+- Chose signed webhook intake, plus content-free local mirror for credential-free
+  drills; Sentry reporting remains optional and independent.
+- Strict structural log allowlist discards messages/attributes rather than
+  attempting unreliable secret redaction. Commit accepts hexadecimal only.
+- Durable records precede side effects; command delivery is at-least-once after
+  crashes, so fix commands must deduplicate by incident ID. No PR provider or
+  production credentials were used; local stand-ins prove the handoff.
+- Host supervision, external-host outage monitoring, TLS ingress and real
+  coding-agent PR permissions remain deployment responsibilities.
+- Verification: go build ./..., go vet ./..., and go test -race -count=1 ./...
+  passed, including the real isolated app/drill/kill/restart test and failed
+  fixer retry. No existing preview, production service, Sentry account, or
+  external coding agent was contacted.

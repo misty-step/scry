@@ -51,7 +51,7 @@ func main() {
 		}
 		defer sentry.Flush(2 * time.Second)
 	}
-	log := slog.New(operatorHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}), test))
+	log := slog.New(alert.Watch(operatorHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}), test), env("SCRY_WATCH_WEBHOOK_URL", ""), env("SCRY_WATCH_WEBHOOK_SECRET", ""), test))
 	slog.SetDefault(log)
 	cmd := "serve"
 	if len(os.Args) > 1 {
