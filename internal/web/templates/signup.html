@@ -1,7 +1,8 @@
 {{define "main"}}
 <section class="column">
   <p class="meta">Step 1 of 2 · account</p>
-  <h1 class="display">Start your trial</h1>
+  <h1 class="display">Sign up</h1>
+  <p class="lede">Create your account with email and password.</p>
   <form method="post" action="/signup" class="form" novalidate data-tz-form>
     <input type="hidden" name="tz" value="">
     <div class="field{{if eq .Field "email"}} has-error{{end}}">

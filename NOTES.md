@@ -778,3 +778,19 @@ The preview and port 18080 were not touched.
   passed, including the real isolated app/drill/kill/restart test and failed
   fixer retry. No existing preview, production service, Sentry account, or
   external coding agent was contacted.
+
+## 2026-11-19 — MIS-1210 auth page copy
+- DESIGN specifies the sign-up layout and trial terms, but no account heading.
+  Chose “Sign up” with “Create your account with email and password.” for
+  account creation; Clerk also explains verification before study or billing.
+- Sign-in retains its own heading and password-reset guidance. Clerk hash
+  verification/reset steps update Scry's heading, title and lede without
+  remounting the component. Unconfigured sign-up now names sign-up, not sign-in.
+  The card step already had the correct “Add a card” title and trial terms.
+- Pending sign-up persistence and the brief verification URL before the card
+  redirect remain Clerk-owned; no navigation or session behavior was changed.
+  HTTP behavior tests cover local/Clerk/unconfigured pages and error renders;
+  offline JavaScript stand-ins cover verification/reset and hash transitions.
+  No credentials or live Clerk flows were accessed.
+- Verification: go build ./..., go vet ./..., and go test -race -count=1 ./...
+  passed. The existing preview and port 18080 were not touched.
