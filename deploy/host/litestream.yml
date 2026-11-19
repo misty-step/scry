@@ -1,0 +1,10 @@
+# Continuous SQLite replication to the scoped R2 bucket. Credentials come from
+# LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY in /etc/scry/scry.env.
+dbs:
+  - path: /srv/scry/data/scry.db
+    replica:
+      type: s3
+      bucket: ${LITESTREAM_BUCKET}
+      path: scry
+      endpoint: ${LITESTREAM_ENDPOINT}
+      region: auto
