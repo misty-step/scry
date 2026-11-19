@@ -700,3 +700,29 @@ checks passed on Billing and Settings. The preview and port 18080 were not used.
 - Standardized ambiguous prompts by naming the relevant measurement convention,
   theorem assumptions, historical period or usage sense rather than demanding
   that the semantic grader infer unstated conditions.
+
+## 2026-11-18 — MIS-1210 per-adapter preview selection
+
+Test mode now selects Clerk only with both Clerk keys and Stripe only with all
+four Stripe settings; incomplete sets fall back independently to local auth
+or fake billing. Model and speech remain fake even when keys are present.
+Stripe still rejects non-test keys. Startup logs still name every adapter.
+Live mode requires every adapter credential, including both Clerk keys (this
+supersedes the earlier no-Clerk-keys/configuration-page startup exception).
+Failed builds close the database.
+
+With Clerk, SCRY_SEED_DEMO skips the entire demo fixture, not just the account;
+the demo login hint stays hidden. Local auth retains the existing seed behavior.
+Test mode suppresses Sentry initialization/reporting as well as webhook alerts.
+
+Clerk's existing SignUp/SignIn components own signup, required verification and
+Forgot password; its script loads from the publishable key's domain. Local HTTP
+and JavaScript stand-ins cover rendering, component mounting, verification and
+pending-session gates, verified redirects and Clerk sign-out. Dashboard email/
+password, required verification, reset and allowed-origin configuration are
+still operator responsibilities. No credentials were read and no live provider
+or email delivery was tested; real Clerk and Stripe flows remain unverified.
+
+Selection tables, missing-live-key checks and non-test Stripe rejection tests
+were added. go build ./..., go vet ./... and go test -race -count=1 ./... pass.
+The preview and port 18080 were not touched.
