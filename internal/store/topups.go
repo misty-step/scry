@@ -225,8 +225,11 @@ func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, descript
 
 // FailTopup releases a pending attempt the processor did not charge, so
 // its slot under the monthly cap is free again. A decline reason is kept
-// on the card and in the history.
-func (u *UserStore) FailTopup(ctx context.Context, token, reason string, now time.Time) error {
+// on the card and in the history. chargeRef is the processor's id for the
+// refused charge, when known: it is recorded unless the attempt already
+// has one (an empty chargeRef never clears it), so a later webhook for
+// that charge still finds the attempt by id.
+func (u *UserStore) FailTopup(ctx context.Context, token, chargeRef, reason string, now time.Time) error {
 	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
 		a, err := u.Topup(ctx, token)
 		if err != nil {
@@ -236,8 +239,10 @@ func (u *UserStore) FailTopup(ctx context.Context, token, reason string, now tim
 			return nil
 		}
 		db := u.s.billingDB(ctx)
-		if _, err := db.ExecContext(ctx, `UPDATE topups SET status='failed', reason=?, settled_at=? WHERE user_id=? AND token=? AND status='pending'`,
-			reason, ts(now), u.uid, token); err != nil {
+		if _, err := db.ExecContext(ctx, `UPDATE topups SET status='failed', reason=?, settled_at=?,
+			charge_ref=CASE WHEN charge_ref='' THEN ? ELSE charge_ref END
+			WHERE user_id=? AND token=? AND status='pending'`,
+			reason, ts(now), chargeRef, u.uid, token); err != nil {
 			return err
 		}
 		if reason == "" {

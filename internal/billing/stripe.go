@@ -59,6 +59,11 @@ type stripeError struct {
 		Type    string `json:"type"`
 		Code    string `json:"code"`
 		Message string `json:"message"`
+		// The PaymentIntent the error is about, when there is one (a
+		// declined off-session confirm names the intent it failed).
+		PaymentIntent struct {
+			ID string `json:"id"`
+		} `json:"payment_intent"`
 	} `json:"error"`
 }
 
@@ -101,9 +106,9 @@ func (s *Stripe) do(ctx context.Context, method, path string, form url.Values, k
 		var se stripeError
 		_ = json.Unmarshal(raw, &se)
 		if se.Error.Type == "card_error" && se.Error.Message != "" {
-			return &DeclineError{Reason: se.Error.Message}
+			return &DeclineError{Reason: se.Error.Message, Ref: se.Error.PaymentIntent.ID}
 		}
-		return fmt.Errorf("card processor: status %d %s %s", resp.StatusCode, se.Error.Code, se.Error.Message)
+		return &ProcessorError{Status: resp.StatusCode, Code: se.Error.Code, Message: se.Error.Message, Ref: se.Error.PaymentIntent.ID}
 	}
 	if out == nil {
 		return nil
@@ -216,24 +221,31 @@ type stripeIntent struct {
 	} `json:"last_payment_error"`
 }
 
-// confirmSentence is said when an off-session payment needs the learner.
-const confirmSentence = "Your bank needs you to confirm this payment. Update your card and try again."
+// declinedSentence is said for a refused charge the processor gave no
+// sentence for.
+const declinedSentence = "Your card was declined."
 
 // result maps a PaymentIntent's status to what became of the charge.
+// Only succeeded is paid, and only canceled and requires_payment_method
+// are final refusals. Every other status (processing, requires_capture,
+// requires_action, requires_confirmation, or one this adapter does not
+// know) is not final: the charge is pending, keeps its intent id, and is
+// settled later by lookup or webhook, never declined early.
 func (pi stripeIntent) result() ChargeResult {
 	switch pi.Status {
 	case "succeeded":
 		return ChargeResult{Status: ChargeSucceeded, Ref: pi.ID}
-	case "processing", "requires_capture":
-		return ChargeResult{Status: ChargePending, Ref: pi.ID}
+	case "requires_payment_method":
+		reason := pi.LastPaymentError.Message
+		if reason == "" {
+			reason = declinedSentence
+		}
+		return ChargeResult{Status: ChargeFailed, Ref: pi.ID, Reason: reason}
+	case "canceled":
+		// Nothing was taken; there is a card fault to show only if Stripe named one.
+		return ChargeResult{Status: ChargeFailed, Ref: pi.ID, Reason: pi.LastPaymentError.Message}
 	}
-	// canceled, requires_payment_method, requires_action, requires_confirmation:
-	// an off-session charge in any of these will not be taken.
-	reason := pi.LastPaymentError.Message
-	if reason == "" {
-		reason = confirmSentence
-	}
-	return ChargeResult{Status: ChargeFailed, Ref: pi.ID, Reason: reason}
+	return ChargeResult{Status: ChargePending, Ref: pi.ID}
 }
 
 func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amountCents int64, description, key string) (string, error) {
@@ -258,11 +270,16 @@ func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amo
 	case ChargeSucceeded:
 		return pi.ID, nil
 	case ChargePending:
-		// Accepted but not finished: neither paid nor declined yet. The id
-		// is returned so the attempt can be settled later.
+		// Accepted but not finished (processing, requires_capture,
+		// requires_action, requires_confirmation): neither paid nor declined
+		// yet. The id is returned so the attempt can be settled later.
 		return pi.ID, &PendingError{Ref: pi.ID}
 	default:
-		return "", &DeclineError{Reason: res.Reason}
+		reason := res.Reason
+		if reason == "" {
+			reason = declinedSentence
+		}
+		return pi.ID, &DeclineError{Reason: reason, Ref: pi.ID}
 	}
 }
 

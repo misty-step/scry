@@ -163,10 +163,11 @@ var (
 	// and is never charged twice.
 	ErrTopupPending = errors.New("top-up is still being confirmed")
 	// ErrTopupUnconfirmed is a pending top-up the processor still shows no
-	// charge for, well after it was sent. Nothing has been taken so far, but
-	// that is not proof nothing will be: it stays pending (and keeps its
-	// place under the monthly cap) so a late charge is still credited.
-	ErrTopupUnconfirmed = errors.New("top-up has not been confirmed by the card processor; nothing has been charged so far")
+	// charge for, well after it was sent. That is not proof that nothing was
+	// or will be taken (the processor may not show it yet): it stays pending
+	// (and keeps its place under the monthly cap) so a late charge is still
+	// credited.
+	ErrTopupUnconfirmed = errors.New("top-up could not be confirmed with the card processor yet; whether it was charged is not known")
 	// ErrTopupReleased is a top-up the processor reports it did not take
 	// (canceled); nothing was charged and its place under the monthly cap
 	// is free again.
@@ -294,7 +295,13 @@ func (a *App) finishCharge(ctx context.Context, us *store.UserStore, att store.T
 	var p *billing.PendingError
 	switch {
 	case errors.As(err, &d):
-		if ferr := us.FailTopup(ctx, att.Token, d.Reason, a.now()); ferr != nil {
+		// A final refusal. The refused PaymentIntent's id, when the
+		// processor named it, is kept on the failed attempt.
+		charge := d.Ref
+		if charge == "" {
+			charge = ref
+		}
+		if ferr := us.FailTopup(ctx, att.Token, charge, d.Reason, a.now()); ferr != nil {
 			return false, ferr
 		}
 		return false, err
@@ -308,7 +315,14 @@ func (a *App) finishCharge(ctx context.Context, us *store.UserStore, att store.T
 		return false, ErrTopupPending
 	case err != nil:
 		// Indeterminate: the charge may or may not have happened. Keep the
-		// attempt pending (it still holds its cap slot) and reconcile later.
+		// attempt pending (it still holds its cap slot) and reconcile later,
+		// by the intent's id if the processor's answer named one.
+		var pe *billing.ProcessorError
+		if errors.As(err, &pe) && pe.Ref != "" {
+			if nerr := us.NoteTopupCharge(ctx, att.Token, pe.Ref); nerr != nil {
+				return false, nerr
+			}
+		}
 		a.Log.WarnContext(ctx, "top-up outcome unknown; kept pending for reconciliation", "err", err, "key", att.Key)
 		a.Alert.Notify(ctx, "Card processor is failing", err.Error())
 		return false, ErrTopupPending
@@ -379,7 +393,9 @@ func (a *App) reconcile(ctx context.Context, us *store.UserStore, att store.Topu
 	case billing.ChargeSucceeded:
 		return us.SucceedTopup(ctx, att.Token, res.Ref, "Top-up", a.now())
 	case billing.ChargeFailed:
-		if err := us.FailTopup(ctx, att.Token, res.Reason, a.now()); err != nil {
+		// res.Ref is the intent the lookup found (by id or in the list); it
+		// is kept on the failed attempt.
+		if err := us.FailTopup(ctx, att.Token, res.Ref, res.Reason, a.now()); err != nil {
 			return false, err
 		}
 		if res.Reason == "" {
@@ -482,10 +498,7 @@ func (a *App) applyTopupEvent(ctx context.Context, ev billing.Event) error {
 		}
 		return err
 	case billing.TopupFailed:
-		if err := us.NoteTopupCharge(ctx, att.Token, ev.ChargeRef); err != nil {
-			return err
-		}
-		return us.FailTopup(ctx, att.Token, ev.Reason, a.now())
+		return us.FailTopup(ctx, att.Token, ev.ChargeRef, ev.Reason, a.now())
 	}
 	return nil
 }

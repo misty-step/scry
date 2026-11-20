@@ -346,7 +346,7 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 		"duplicate":   "This top-up was already processed. No additional credit was added.",
 		"pending":     "Your top-up is being confirmed with the card processor. It will be charged at most once; reload Billing in a moment to see it.",
 		"released":    "The card processor did not take that top-up, so nothing was charged. Try again.",
-		"unconfirmed": "The card processor has no record of that top-up yet, so nothing has been charged. If it appears later, its credit is added automatically and it is never charged twice. Until then it counts toward this month's top-up limit.",
+		"unconfirmed": "We could not confirm that top-up with the card processor yet, so we can't say whether your card was charged. If the charge went through, its credit is added automatically and it is never charged twice. Until it is confirmed, it counts toward this month's top-up limit.",
 		"expired":     "That top-up form had expired, so nothing was charged. Try again.",
 		"topup":       "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added.",
 		"card":        "Your card was updated.",

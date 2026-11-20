@@ -6,12 +6,15 @@ package billing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
 // DeclineError is the processor refusing a card. Reason is the
-// processor's own sentence and is shown to the learner as it is.
-type DeclineError struct{ Reason string }
+// processor's own sentence and is shown to the learner as it is. Ref is
+// the processor's id for the refused charge (a PaymentIntent), when it
+// named one, so the failed attempt still records it.
+type DeclineError struct{ Reason, Ref string }
 
 func (e *DeclineError) Error() string { return e.Reason }
 
@@ -22,6 +25,19 @@ func (e *DeclineError) Error() string { return e.Reason }
 type PendingError struct{ Ref string }
 
 func (e *PendingError) Error() string { return "the card processor is still processing this charge" }
+
+// ProcessorError is any other error answer from the processor. Its outcome
+// is unknown. Ref is the charge (PaymentIntent) it named, when it named
+// one, so the attempt can be looked up by id later.
+type ProcessorError struct {
+	Status        int
+	Code, Message string
+	Ref           string
+}
+
+func (e *ProcessorError) Error() string {
+	return fmt.Sprintf("card processor: status %d %s %s", e.Status, e.Code, e.Message)
+}
 
 // ErrLookupIncomplete is a lookup that could not see everything it needed
 // to (a truncated list). It proves nothing either way; ask again later.

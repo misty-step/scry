@@ -43,6 +43,8 @@ type stripeStandIn struct {
 	lose    bool                      // create the intent, then drop the connection
 	hidden  bool                      // lookups do not show any intent yet
 	endless bool                      // every list page says has_more
+	decline string                    // refuse new intents: 402 card_error naming the intent
+	apiErr  bool                      // create the intent, then answer 500 naming it
 }
 
 type standInIntent struct {
@@ -78,12 +80,27 @@ func (s *stripeStandIn) serve(rw http.ResponseWriter, r *http.Request) {
 			id = "pi_standin_" + strconv.Itoa(len(s.intents)+1)
 			s.byKey[key] = id
 			s.intents[id] = &standInIntent{ID: id, Status: s.answer, Customer: r.FormValue("customer"), Key: key}
+			if s.decline != "" {
+				s.intents[id].Status, s.intents[id].Reason = "requires_payment_method", s.decline
+			}
 		}
 		if s.lose {
 			conn, _, err := rw.(http.Hijacker).Hijack()
 			if err == nil {
 				conn.Close()
 			}
+			return
+		}
+		if s.apiErr {
+			rw.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(rw, `{"error":{"type":"api_error","message":"An unknown error occurred","payment_intent":{"id":%q}}}`, id)
+			return
+		}
+		if pi := s.intents[id]; s.decline != "" {
+			// Stripe's answer to a declined off-session confirm: 402, with
+			// the intent it refused nested in the error.
+			rw.WriteHeader(http.StatusPaymentRequired)
+			fmt.Fprintf(rw, `{"error":{"type":"card_error","code":"card_declined","message":%q,"payment_intent":%s}}`, pi.Reason, s.json(pi))
 			return
 		}
 		fmt.Fprint(rw, s.json(s.intents[id]))
@@ -267,7 +284,7 @@ func TestF2_LateSuccessAfterLostReplyIsNeverDropped(t *testing.T) {
 			if n, _ := w.store.For(uid).MonthTopups(ctx, w.now()); n != 1 {
 				t.Fatalf("an unconfirmed attempt holds %d cap slots, want 1", n)
 			}
-			// Resubmitting the form is told nothing has been charged so far,
+			// Resubmitting the form is told the charge is not confirmed yet,
 			// and is never charged again.
 			if added, err := w.app.TopUpResult(ctx, uid, att.Token); added || !errors.Is(err, app.ErrTopupUnconfirmed) {
 				t.Fatalf("resubmitted: %v %v", added, err)

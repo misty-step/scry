@@ -79,14 +79,14 @@ func luhn(n string) bool {
 func (Fake) Tokenize(number, expiry, cvc string, now time.Time) (string, error) {
 	n := digits(number)
 	if n == "" {
-		return "", &DeclineError{"Enter your card number."}
+		return "", &DeclineError{Reason: "Enter your card number."}
 	}
 	if !luhn(n) {
-		return "", &DeclineError{"Your card number is invalid."}
+		return "", &DeclineError{Reason: "Your card number is invalid."}
 	}
 	exp := digits(expiry)
 	if len(exp) != 4 && len(exp) != 6 {
-		return "", &DeclineError{"Your card's expiration date is incomplete."}
+		return "", &DeclineError{Reason: "Your card's expiration date is incomplete."}
 	}
 	month, _ := strconv.Atoi(exp[:2])
 	year, _ := strconv.Atoi(exp[2:])
@@ -94,20 +94,20 @@ func (Fake) Tokenize(number, expiry, cvc string, now time.Time) (string, error) 
 		year += 2000
 	}
 	if month < 1 || month > 12 {
-		return "", &DeclineError{"Your card's expiration month is invalid."}
+		return "", &DeclineError{Reason: "Your card's expiration month is invalid."}
 	}
 	if year < now.Year() || (year == now.Year() && month < int(now.Month())) {
-		return "", &DeclineError{"Your card's expiration date is in the past."}
+		return "", &DeclineError{Reason: "Your card's expiration date is in the past."}
 	}
 	if c := digits(cvc); len(c) < 3 || len(c) > 4 {
-		return "", &DeclineError{"Your card's security code is incomplete."}
+		return "", &DeclineError{Reason: "Your card's security code is incomplete."}
 	}
 	card, ok := testCards[n]
 	if !ok {
-		return "", &DeclineError{"Scry is in test mode. Use a test card such as 4242 4242 4242 4242."}
+		return "", &DeclineError{Reason: "Scry is in test mode. Use a test card such as 4242 4242 4242 4242."}
 	}
 	if card.behavior == "decline" {
-		return "", &DeclineError{card.reason}
+		return "", &DeclineError{Reason: card.reason}
 	}
 	return fmt.Sprintf("tok_test_%s_%s_%s", card.behavior, card.brand, n[len(n)-4:]), nil
 }
@@ -138,7 +138,7 @@ func (Fake) Subscribe(_ context.Context, p SubscribeParams) (Subscribed, error) 
 	out := Subscribed{CustomerRef: ref("cus_test_"), SubscriptionRef: ref("sub_test_"), PaymentRef: p.CardToken, Card: card, PeriodStart: now}
 	if p.TrialEnd.IsZero() {
 		if behavior == "chargefail" {
-			return Subscribed{}, &DeclineError{"Your card was declined."}
+			return Subscribed{}, &DeclineError{Reason: "Your card was declined."}
 		}
 		out.PeriodEnd = now.AddDate(0, 1, 0)
 		out.ChargeRef = ref("ch_test_")
@@ -166,7 +166,7 @@ func (f Fake) Charge(ctx context.Context, _, paymentRef string, _ int64, _, key 
 		}
 	}
 	if behavior == "chargefail" {
-		return "", &DeclineError{"Your card was declined."}
+		return "", &DeclineError{Reason: "Your card was declined."}
 	}
 	return chargeRef(key), nil
 }

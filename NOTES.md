@@ -840,8 +840,10 @@ Starting point 3108995 (PR #493). Every item has a named regression test (README
 - F2, absence is never proof: a PaymentIntent lookup that finds nothing,
   however long after the attempt, leaves the attempt pending (it keeps its
   slot under that UTC month's cap). Past TopupSettleWindow the learner is
-  told "no record yet, nothing charged so far; credited automatically if it
-  appears" (ok=unconfirmed). Only a definitive processor answer settles it:
+  told the top-up could not be confirmed yet, that its credit is added
+  automatically if the charge went through, and that it holds a monthly
+  slot until confirmed (ok=unconfirmed; Pass 3 removed the old "nothing has
+  been charged" claim, which an unseen success could make false). Only a definitive processor answer settles it:
   succeeded -> credit once; canceled / requires_payment_method / a decline ->
   failed. Billing and the minute sweep keep asking for TopupWatchWindow
   (35 days); after that the attempt still stays pending and its webhook
@@ -880,3 +882,27 @@ Starting point 3108995 (PR #493). Every item has a named regression test (README
 - Migration: added columns are applied with ALTER TABLE on open, and
   RestoreUser copies by shared column names, so a snapshot taken before the
   columns existed still restores.
+
+## Slice #3, Pass 3 (Cold Critic remediation)
+
+- F2, non-final PaymentIntents: only succeeded is paid, and only canceled
+  and requires_payment_method are final refusals. processing,
+  requires_capture, requires_action, requires_confirmation (and any status
+  this adapter does not know) are ChargePending in both Stripe.Charge
+  (id + billing.PendingError) and Stripe.FindCharge, so the attempt stays
+  pending with charge_ref set, holds its cap slot, redirects ok=pending,
+  and settles by GET /v1/payment_intents/:id or by webhook, once. Choice:
+  an off-session intent left in requires_action is never declined early;
+  it holds its slot until Stripe cancels it (canceled webhook or lookup) or
+  the month ends.
+- F2, a known intent id is never dropped: a 4xx/5xx error body's
+  error.payment_intent.id is surfaced on billing.DeclineError.Ref (card
+  errors) or billing.ProcessorError.Ref (anything else, indeterminate:
+  noted on the still-pending attempt). Store.FailTopup takes the charge id
+  and records it unless the attempt already has one (empty never clears
+  it); finishCharge, reconcile (list- or id-discovered failures) and the
+  failure/cancel webhook all pass it. A late success webhook still matches
+  by charge_ref or key and credits once.
+- A canceled intent with no last_payment_error releases the slot with no
+  card fault (ok=released); requires_payment_method without a sentence is
+  "Your card was declined.", matching the payment_failed webhook.
