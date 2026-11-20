@@ -154,8 +154,10 @@ var sessionTransitions = map[sessionStep]SessionPhase{
 // ErrIllegalTransition is an event the study session cannot take in its
 // current phase, or whose guard fails: answering an ended session or an
 // item already answered, moving on from the wrong phase, retrying an item
-// that is not an exact text. Every *TransitionError matches it.
-var ErrIllegalTransition = errors.New("illegal study session transition")
+// that is not an exact text. Every *TransitionError matches it, and so do
+// the refused top-up and subscription transitions (*TopupTransitionError,
+// *SubscriptionTransitionError).
+var ErrIllegalTransition = errors.New("illegal state transition")
 
 // TransitionError is a refused session transition.
 type TransitionError struct {

@@ -61,9 +61,9 @@ func (c Config) DraftsPerAllowance() int {
 // is no free tier: no plan, no access.
 func (a *App) HasAccess(s store.Subscription) bool {
 	switch s.Status {
-	case "trialing", "active":
+	case store.SubTrialing, store.SubActive:
 		return true
-	case "past_due":
+	case store.SubPastDue:
 		return a.now().Sub(s.PastDueSince) <= time.Duration(a.Cfg.GraceDays)*24*time.Hour
 	}
 	return false
@@ -348,6 +348,10 @@ func (a *App) finishCharge(ctx context.Context, us *store.UserStore, att store.T
 // credited this very charge, the learner's request still succeeded.
 func (a *App) succeed(ctx context.Context, us *store.UserStore, att store.TopupAttempt, ref string) (bool, error) {
 	granted, err := us.SucceedTopup(ctx, att.Token, ref, "Top-up", a.now())
+	if errors.Is(err, store.ErrTopupCapExceededLate) {
+		a.refundDue(ctx, att, ref)
+		return false, err
+	}
 	if err != nil || granted || att.Status != store.TopupPending {
 		return granted, err
 	}
@@ -367,6 +371,8 @@ func (a *App) settleExisting(ctx context.Context, us *store.UserStore, att store
 			return false, &billing.DeclineError{Reason: att.Reason}
 		}
 		return false, ErrTopupReleased
+	case store.TopupRefundDue:
+		return false, store.ErrTopupCapExceededLate // charged once, not credited, owed back
 	}
 	return a.reconcile(ctx, us, att)
 }
@@ -405,7 +411,11 @@ func (a *App) reconcile(ctx context.Context, us *store.UserStore, att store.Topu
 	a.Log.InfoContext(ctx, "top-up reconciled", "key", att.Key, "status", string(res.Status))
 	switch res.Status {
 	case billing.ChargeSucceeded:
-		return us.SucceedTopup(ctx, att.Token, res.Ref, "Top-up", a.now())
+		granted, err := us.SucceedTopup(ctx, att.Token, res.Ref, "Top-up", a.now())
+		if errors.Is(err, store.ErrTopupCapExceededLate) {
+			a.refundDue(ctx, att, res.Ref)
+		}
+		return granted, err
 	case billing.ChargeFailed:
 		// res.Ref is the intent the lookup found (by id or in the list); it
 		// is kept on the failed attempt.
@@ -512,6 +522,11 @@ func (a *App) applyTopupEvent(ctx context.Context, ev billing.Event) error {
 	switch ev.Kind {
 	case billing.TopupPaid:
 		granted, err := us.SucceedTopup(ctx, att.Token, ev.ChargeRef, "Top-up", a.now())
+		if errors.Is(err, store.ErrTopupCapExceededLate) {
+			// Recorded as refund_due inside this transaction: commit it.
+			a.refundDue(ctx, att, ev.ChargeRef)
+			return nil
+		}
 		if err == nil {
 			a.Log.InfoContext(ctx, "top-up settled by webhook", "key", att.Key, "charge", ev.ChargeRef, "granted", granted)
 		}
@@ -520,6 +535,18 @@ func (a *App) applyTopupEvent(ctx context.Context, ev billing.Event) error {
 		return us.FailTopup(ctx, att.Token, ev.ChargeRef, ev.Reason, a.now())
 	}
 	return nil
+}
+
+// refundDue reports a charge the processor took after its attempt had
+// failed and the month's $20 cap was used up since: it was not credited
+// and is recorded as refund_due, and ops must refund it.
+func (a *App) refundDue(ctx context.Context, att store.TopupAttempt, chargeRef string) {
+	if chargeRef == "" {
+		chargeRef = att.ChargeRef
+	}
+	a.Log.ErrorContext(ctx, "late top-up success over the monthly cap; refund due", "key", att.Key, "charge", chargeRef, "user", att.UserID)
+	a.Alert.Notify(ctx, "Top-up refund due",
+		fmt.Sprintf("Charge %s (%s) succeeded after its attempt failed and the month's top-up limit was reached. It was not credited: refund it.", chargeRef, att.Key))
 }
 
 // SetCancel schedules the plan to end when the paid period (or the
@@ -597,6 +624,11 @@ func (a *App) applyEvent(ctx context.Context, ev billing.Event) error {
 	if ev.Kind == billing.TopupPaid || ev.Kind == billing.TopupFailed {
 		return a.applyTopupEvent(ctx, ev)
 	}
+	se, ok := subscriptionEvent(ev.Kind)
+	if !ok {
+		a.Log.WarnContext(ctx, "billing event of unknown kind ignored", "event", ev.ID, "kind", ev.Kind)
+		return nil
+	}
 	sub, err := a.Store.SubscriptionByRef(ctx, ev.SubscriptionRef)
 	if errors.Is(err, store.ErrNotFound) {
 		a.Log.WarnContext(ctx, "billing event for unknown subscription", "event", ev.ID, "kind", ev.Kind)
@@ -614,20 +646,57 @@ func (a *App) applyEvent(ctx context.Context, ev billing.Event) error {
 	if at.IsZero() {
 		at = a.now()
 	}
-	switch ev.Kind {
-	case billing.InvoicePaid:
-		sub.Status, sub.CardError, sub.PastDueSince = "active", "", time.Time{}
-		if !ev.PeriodEnd.IsZero() {
-			sub.PeriodStart, sub.PeriodEnd = ev.PeriodStart, ev.PeriodEnd
+	paidLine := func(start, end time.Time) error {
+		desc := "Scry, one month"
+		if !end.IsZero() {
+			desc = "Scry, " + period(start, end)
 		}
-		sub.AllowanceMicros, sub.UsedMicros = a.Cfg.AllowanceMicros, 0
+		return us.AddLedger(ctx, store.LedgerEntry{At: at, Kind: "charge", Description: desc,
+			AmountCents: ev.AmountCents, Status: "paid", Ref: ev.ID})
+	}
+	to, terr := store.TransitionSubscription(sub.Status, se)
+	if terr != nil {
+		// An invoice for a plan that has ended (a late or reordered
+		// webhook) never brings it back: only an explicit new plan does.
+		// Money the processor says it took is still kept in the history.
+		a.Log.WarnContext(ctx, "billing event for an ended plan ignored", "event", ev.ID, "kind", ev.Kind, "err", terr)
+		if se == store.SubEventInvoicePaid {
+			a.Alert.Notify(ctx, "Payment on an ended plan", "Invoice "+ev.ID+" was paid after the plan ended; it may need a refund.")
+			return paidLine(ev.PeriodStart, ev.PeriodEnd)
+		}
+		return nil
+	}
+	switch se {
+	case store.SubEventInvoicePaid:
+		advances := ev.PeriodEnd.IsZero() || ev.PeriodEnd.After(sub.PeriodEnd)
+		if !advances && (sub.Status == store.SubActive || ev.PeriodEnd.Before(sub.PeriodEnd)) {
+			// A stale invoice, for a period older than (or, on a plan already
+			// active, the same as) the current one, arriving out of order. It
+			// never moves the period back or hands out a fresh allowance.
+			a.Log.WarnContext(ctx, "stale invoice ignored", "event", ev.ID, "period_end", ev.PeriodEnd, "current", sub.PeriodEnd)
+			return paidLine(ev.PeriodStart, ev.PeriodEnd)
+		}
+		sub.Status, sub.CardError, sub.PastDueSince = to, "", time.Time{}
+		if advances {
+			// A new period: its allowance starts afresh.
+			if !ev.PeriodEnd.IsZero() {
+				sub.PeriodStart, sub.PeriodEnd = ev.PeriodStart, ev.PeriodEnd
+			}
+			sub.AllowanceMicros, sub.UsedMicros = a.Cfg.AllowanceMicros, 0
+		}
+		// Otherwise the current period's unpaid invoice was paid late: the
+		// plan recovers, and what was already spent of it stays spent.
 		if err := us.SaveSubscription(ctx, sub); err != nil {
 			return err
 		}
-		return us.AddLedger(ctx, store.LedgerEntry{At: at, Kind: "charge", Description: "Scry, " + period(sub.PeriodStart, sub.PeriodEnd),
-			AmountCents: ev.AmountCents, Status: "paid", Ref: ev.ID})
-	case billing.InvoiceFailed:
-		sub.Status, sub.CardError = "past_due", strings.TrimSpace(ev.Reason)
+		return paidLine(sub.PeriodStart, sub.PeriodEnd)
+	case store.SubEventInvoiceFailed:
+		if !ev.PeriodEnd.IsZero() && !ev.PeriodEnd.After(sub.PeriodEnd) {
+			// A failure for a period already settled is not the open invoice.
+			a.Log.WarnContext(ctx, "stale invoice failure ignored", "event", ev.ID, "period_end", ev.PeriodEnd, "current", sub.PeriodEnd)
+			return nil
+		}
+		sub.Status, sub.CardError = to, strings.TrimSpace(ev.Reason)
 		if sub.PastDueSince.IsZero() {
 			sub.PastDueSince = at
 		}
@@ -636,11 +705,28 @@ func (a *App) applyEvent(ctx context.Context, ev billing.Event) error {
 		}
 		return us.AddLedger(ctx, store.LedgerEntry{At: at, Kind: "charge", Description: "Scry, one month (card failed)",
 			AmountCents: ev.AmountCents, Status: "failed", Ref: ev.ID})
-	case billing.SubscriptionEnded:
-		sub.Status = "ended"
+	case store.SubEventEnded:
+		if sub.Status == to {
+			return nil
+		}
+		sub.Status = to
 		return us.SaveSubscription(ctx, sub)
 	}
 	return nil
+}
+
+// subscriptionEvent maps a processor event about a plan onto the plan's
+// state machine.
+func subscriptionEvent(k billing.EventKind) (store.SubscriptionEvent, bool) {
+	switch k {
+	case billing.InvoicePaid:
+		return store.SubEventInvoicePaid, true
+	case billing.InvoiceFailed:
+		return store.SubEventInvoiceFailed, true
+	case billing.SubscriptionEnded:
+		return store.SubEventEnded, true
+	}
+	return 0, false
 }
 
 // RunRenewals brings every plan whose period has run out up to date. It

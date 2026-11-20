@@ -346,6 +346,7 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 		"duplicate":   "This top-up was already processed. No additional credit was added.",
 		"pending":     "Your top-up is being confirmed with the card processor. It will be charged at most once; reload Billing in a moment to see it.",
 		"released":    "The card processor did not take that top-up, so nothing was charged. Try again.",
+		"refund_due":  "That top-up went through after this month's $20 top-up limit was reached, so it was not added as credit. It will be refunded to your card.",
 		"unconfirmed": "We could not confirm that top-up with the card processor yet, so we can't say whether your card was charged. If the charge went through, its credit is added automatically and it is never charged twice. Until it is confirmed, it counts toward this month's top-up limit.",
 		"expired":     "That top-up form had expired, so nothing was charged. Try again.",
 		"topup":       "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added.",
@@ -402,6 +403,8 @@ func (s *Server) billingTopup(w http.ResponseWriter, r *http.Request, c *rc) err
 		return back(w, r, "/billing?ok=unconfirmed")
 	case errors.Is(err, app.ErrTopupReleased):
 		return back(w, r, "/billing?ok=released")
+	case errors.Is(err, store.ErrTopupCapExceededLate):
+		return back(w, r, "/billing?ok=refund_due")
 	case errors.Is(err, app.ErrTopupToken):
 		return back(w, r, "/billing?ok=expired")
 	}
