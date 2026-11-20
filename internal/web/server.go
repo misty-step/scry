@@ -290,6 +290,9 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request) (*rc, bool) {
 					c.signedIn = true
 					c.us = s.App.Store.For(u.ID)
 					c.sess.CSRF = provider.CSRF(subject)
+					if info, ok := r.Context().Value(logKey{}).(*logInfo); ok {
+						info.user = u.ID
+					}
 				}
 			}
 		}
@@ -440,18 +443,27 @@ func (s *Server) errorPage(w http.ResponseWriter, r *http.Request, status int) {
 	_, _ = w.Write([]byte(buf.String()))
 }
 
+// healthz is the readiness report scry-lib.sh and scry-watch poll. It keeps
+// "status" and "database" ("ok"/"ok" on 200, "unhealthy"/"failing" on 503)
+// and adds what is wired: build, mode and each adapter's label. It never
+// includes a key, secret, DSN or token.
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
+	rd := s.App.Readiness()
+	body := map[string]any{
+		"status": "ok", "database": "ok", "db": true,
+		"build_sha": rd.BuildSHA, "mode": rd.Mode,
+		"grading": rd.Grading, "drafting": rd.Drafting, "explainer": rd.Explainer, "speech": rd.Speech,
+		"billing_mode": rd.BillingMode, "auth_mode": rd.AuthMode,
+		"providers": rd.Providers, "warnings": rd.Warnings,
+	}
 	if err := s.App.Health(r.Context()); err != nil {
 		s.Log.ErrorContext(r.Context(), "health check failed", "err", err)
 		s.App.Alert.Notify(r.Context(), "Scry is unhealthy", "The database cannot be written: "+err.Error())
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "unhealthy", "database": "failing"})
+		body["status"], body["database"], body["db"] = "unhealthy", "failing", false
+		writeJSON(w, http.StatusServiceUnavailable, body)
 		return
 	}
-	mode := "live"
-	if s.App.Cfg.TestMode {
-		mode = "test"
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "database": "ok", "mode": mode})
+	writeJSON(w, http.StatusOK, body)
 }
 
 func pathID(r *http.Request) (int64, error) {

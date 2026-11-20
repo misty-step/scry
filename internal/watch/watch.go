@@ -40,7 +40,15 @@ type Watch struct {
 	State       State
 	HTTP        *http.Client
 	streak      int
+	healthy     bool
 	lastRestart time.Time
+}
+
+// Status is the last probe's result and the current failure streak.
+func (w *Watch) Status() (healthy bool, streak int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.healthy, w.streak
 }
 
 func Open(c Config) (*Watch, error) {
@@ -215,6 +223,12 @@ func (w *Watch) Tick(ctx context.Context, now time.Time) error {
 			r.Body.Close()
 		}
 	}
+	// A probe cut short because the watcher itself is stopping says
+	// nothing about Scry: never count it toward an incident.
+	if !healthy && ctx.Err() != nil {
+		return nil
+	}
+	w.healthy = healthy
 	if !healthy {
 		w.streak++
 		if w.streak >= w.Threshold {

@@ -937,3 +937,46 @@ Starting point 3108995 (PR #493). Every item has a named regression test (README
   at all, returns store.ErrNoChargeRef without changing the attempt or the
   ledger; applyTopupEvent ignores such a paid event before marking it. So a
   paid ledger line never has a blank ref.
+
+## Slice #12 — prod go-live hardening
+
+Choices where the brief was silent:
+
+- Reservation sweep: `Store.FailStaleReservations` deletes every row at boot
+  (before serving; Scry is one process and `scry-deploy` restarts rather than
+  overlaps). An orphan never charges usage: the sweep only releases the hold.
+- Clerk: the SDK's `jwks.Client` does not cache (each `Get` is an HTTPS call),
+  so Scry caches the fetched `JSONWebKeySet` (10 min) and passes the matching
+  key to `jwt.Verify` as `JWK`, which still checks signature, expiry, issuer
+  and azp; sts is checked after. A kid missing from a fresh set refetches at
+  most once per 30 s so made-up kids cannot turn each request into a Clerk
+  call. A key-set fetch failure is not cached and stale keys are not served.
+  Identities are cached 60 s, max 1024, oldest-expiring evicted; only
+  verified active identities whose id equals the token subject are cached. A
+  ban therefore takes effect within 60 s even if the session token is still
+  valid (Clerk also revokes the user's sessions on ban).
+- Stripe: `NewStripe` stays as the test-mode constructor (tests and test-mode
+  wiring); `NewStripeWithMode(live, …)` is the explicit one. A webhook with no
+  `livemode` field decodes as false, so a live adapter refuses it.
+  `SCRY_STRIPE_MODE=test` in test mode without all four Stripe settings stops
+  the boot (an explicit request for Stripe is never silently the fake).
+- `SCRY_JUDGE_MODE=live` in test mode wraps the fake model as the drafter
+  (`ai.Split`), so drafts, explanations, speech and billing stay fake; the
+  scripted `SCRY_TEST_JUDGMENTS` no longer apply because Jev grades.
+  `ai.Split.Name()` now names both halves (`jev+anthropic-drafts` in live,
+  `jev+test-drafts` here).
+- /healthz: `providers.grading` names the Jev route (`jev-openrouter` or
+  `jev-typesafe`). A `warnings` array (always present) carries the staged
+  Stripe cutover in live mode and the real grader in test mode; status stays
+  "ok" because both are deliberate. The 503 body carries the same readiness
+  fields with `db:false`.
+- Build SHA: `-X main.buildSHA` wins; otherwise the 7-char `vcs.revision`
+  from `debug.ReadBuildInfo()`; otherwise `dev` (Docker builds have no .git, so
+  the Dockerfile takes `--build-arg BUILD_SHA`).
+- scry-watch: JSON logs to stdout; invalid durations now exit with an error
+  instead of a panic; a probe cut short by the watcher's own SIGTERM is not
+  counted; SIGTERM shuts the webhook listener down gracefully and exits 0.
+- install.sh now installs (does not enable) `scry-watch.service` and also
+  copies OPENROUTER_/TYPESAFE_ keys and the SCRY_*_MODE/model/watch settings
+  into scry.env; live mode already needed a Jev key that the old filter
+  dropped.

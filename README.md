@@ -55,6 +55,8 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 | BACKUP_INTERVAL | 6h when backups enabled |
 | BACKUP_KEEP | 14 snapshots (minimum effective retention 1) |
 | ALERT_WEBHOOK_URL | Ignored in test mode; alerts go to JSON logs |
+| SCRY_STRIPE_MODE | Optional: unset, live or test (anything else stops the boot). Unset follows SCRY_MODE. In live mode, test is the explicit staged-cutover switch to Stripe test keys (/healthz says billing_mode stripe-test and warns). In test mode, live is refused. |
+| SCRY_JUDGE_MODE | Optional: unset, live or test (anything else stops the boot). In test mode, live grades with real Jev (OPENROUTER_API_KEY or TYPESAFE_API_KEY required, SCRY_JUDGE_MODEL honoured) while drafting, explanations, speech and billing stay fake. In live mode, test is refused. |
 
 Interfaces isolate auth, billing, model, speech, and alerts. Test adapters use
 local bcrypt auth, fake cards, scripted judgments, simulated speech, and log-only
@@ -63,7 +65,10 @@ Clerk (CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY), Jev (OPENROUTER_API_KEY or T
 Anthropic drafting only (ANTHROPIC_API_KEY; optional SCRY_DRAFT_MODEL), speech (OPENAI_API_KEY; optional
 SCRY_SPEECH_MODEL), Stripe (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY,
 STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET). Do not enable them for this delivery.
-Stripe rejects non-test secret/publishable keys. Never commit credentials.
+Stripe is mode-matched: a live adapter (stripe-live) accepts only sk_live_/rk_live_ and pk_live_ keys
+and livemode:true webhooks; a test adapter (stripe-test) only sk_test_/rk_test_ and pk_test_ keys and
+livemode:false webhooks. A key or webhook from the other mode stops the boot or is refused, loudly.
+Live mode uses stripe-live unless SCRY_STRIPE_MODE=test. Never commit credentials.
 Provider quality and actual integrations are not proved by test fixtures.
 
 ## Deploy
@@ -85,9 +90,26 @@ persistent storage, not an unsuitable network filesystem. Terminate TLS at a
 trusted reverse proxy, set SCRY_BASE_URL, restrict backend access, and never
 expose database files, snapshots or tokens.
 
-GET /healthz verifies database writes and returns 200 or 503. Structured logs
-include request IDs, latency, status and user IDs, not submitted answers.
-Startup checks integrity. Background health checks run every 30 seconds and
+GET /healthz verifies database writes and returns 200 or 503. It keeps
+`"status":"ok"`/`"database":"ok"` (200) and `"status":"unhealthy"`/`"database":"failing"`
+(503) for scry-lib.sh and scry-watch, and adds readiness: `build_sha` (set with
+`-ldflags "-X main.buildSHA=<sha>"`, else the Go VCS stamp, else `dev`; `make build`
+and `make docker` set it), `mode`, `db`, `grading`/`drafting`/`explainer`/`speech`
+(true only when the real Jev, Claude and OpenAI adapters are wired), `billing_mode`
+(stripe-live, stripe-test, test), `auth_mode` (clerk-live, clerk-test, local),
+`providers` (the exact adapter label for each) and `warnings` (deliberate unusual
+wirings such as the Stripe staged cutover). It never contains a key, secret, DSN
+or token. Structured logs include request IDs, latency, status and user IDs
+(local and Clerk auth alike), not submitted answers.
+Startup checks integrity, marks interrupted drafts failed and releases allowance
+reservations orphaned by an unclean stop (logged with their count).
+
+Clerk session tokens are verified on every request (signature, expiry, issuer,
+azp, sts). The signing key set is cached for 10 minutes and re-fetched early
+when a token names an unknown kid (key rotation, at most once per 30 s); a
+verified, active identity is cached for 60 s (at most 1024). Errors, banned or
+locked accounts and unverified emails are never cached, so a ban is noticed
+within 60 s. Background health checks run every 30 seconds and
 renewals every minute; panics and provider/backup failures produce alerts.
 
 **Docker health status alone does not restart unhealthy containers.** The
@@ -99,6 +121,15 @@ not corrupt disks or arbitrary bugs; use recovery procedures as needed.
 No real monitoring service was contacted in this build.
 
 Run `cmd/scry-watch` beside the service as the single health/restart owner.
+On a host, `deploy/host/scry-watch.service` runs `/usr/local/bin/scry-watch` as
+`scry` with the defaults SCRY_WATCH_STATE=/srv/scry/data/watch/incidents.json,
+SCRY_WATCH_LISTEN=127.0.0.1:8091 and SCRY_WATCH_INTERVAL=10s (scry.env
+overrides them). With no SCRY_WATCH_HEALTH_URL it probes
+http://127.0.0.1:$PORT/healthz using scry.env's PORT (default 8080).
+install.sh installs the unit and copies ALERT_WEBHOOK_URL into scry.env for
+operator notifications; install the binary (`make build` writes bin/scry-watch) and `systemctl enable --now scry-watch`.
+It logs JSON lines: one at start, one per change of health, one on a clean
+SIGTERM stop; a probe cut short by its own shutdown never counts as an outage.
 Disable the old watchdog cron and competing platform health restarters when
 using `SCRY_WATCH_RESTART_CMD`. The legacy watchdog script remains tested for
 deployments not using the incident watcher. See NOTES.md's MIS-1210 monitoring
@@ -316,3 +347,9 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | D9 newest-right why lifetime | TestReviewBrowserSmoke (newest-right, next answer, Next, screenshots) |
 | D11 navigation/study keys and Tab/Enter elsewhere | TestReviewBrowserSmoke; TestD11_KeyHints |
 | D9 right-to-right and right-to-missed lifetime | TestD9_NewestRightReasonLifetime |
+| Slice 12: orphaned allowance reservations released at boot (all users; empty table; Reserve/Settle unchanged) | internal/store.TestFailStaleReservationsReleasesOrphansAcrossUsers; internal/store.TestFailStaleReservationsEmptyTable; internal/store.TestReserveSettleUnchangedBySweep |
+| Slice 12: Clerk key set and identity cached within TTL, key rotation refresh, failures never cached, token always verified, bounded, race-safe | internal/auth.TestClerkCachesKeySetAndIdentityWithinTTL; internal/auth.TestClerkKeyRotationRefreshesKeySet; internal/auth.TestClerkNeverCachesFailures; internal/auth.TestClerkAlwaysVerifiesTokenEvenWhenCached; internal/auth.TestClerkIdentityCacheIsBounded; internal/auth.TestClerkCacheConcurrent; internal/auth.TestClerkStructLiteralUsesCachedSDKClients |
+| Slice 12: Clerk request logs carry the user id | TestClerkRequestLogsCarryUserID |
+| Slice 12: mode-matched Stripe keys and webhooks; SCRY_STRIPE_MODE / SCRY_JUDGE_MODE fail loud | internal/billing.TestStripeModeMatchedKeys; internal/billing.TestStripeWebhookLivemodeMatchesAdapter; cmd/scry.TestStripeModeSelection; cmd/scry.TestJudgeModeSelection |
+| Slice 12: /healthz build SHA, mode and provider readiness, no secrets; 503 on database failure | cmd/scry.TestHealthzAcrossModes; cmd/scry.TestHealthzDatabaseFailure; cmd/scry.TestBuildSHA; TestHealthzReadinessFields |
+| Slice 12: scry-watch never counts its own shutdown as an outage | internal/watch.TestCanceledProbeIsNotAnOutage |

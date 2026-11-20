@@ -202,7 +202,18 @@ type Split struct {
 	DraftProvider
 }
 
-func (Split) Name() string { return "jev+anthropic-drafts" }
+// Name says which provider does each half, e.g. "jev+anthropic-drafts" in
+// live mode or "jev+test-drafts" when test mode grades with real Jev.
+func (s Split) Name() string {
+	return providerName(s.JudgeProvider) + "+" + providerName(s.DraftProvider) + "-drafts"
+}
+
+func providerName(p any) string {
+	if n, ok := p.(interface{ Name() string }); ok && p != nil {
+		return n.Name()
+	}
+	return "none"
+}
 
 // NewJev chooses OpenRouter when both keys exist; no key is ever logged.
 func NewJev(directKey, routerKey string, log *slog.Logger) (*Jev, error) {

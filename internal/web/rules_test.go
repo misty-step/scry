@@ -306,7 +306,7 @@ func TestRule_Reliability_HealthzStructuredLogsAndAlertsWithoutBeingAsked(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	var health map[string]string
+	var health map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&health)
 	resp.Body.Close()
 	if resp.StatusCode != 200 || health["status"] != "ok" || health["database"] != "ok" {

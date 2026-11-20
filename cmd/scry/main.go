@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,6 +32,38 @@ import (
 	"scry/internal/store"
 	"scry/internal/web"
 )
+
+// buildSHA is set at link time: -ldflags "-X main.buildSHA=<sha>". When it
+// is not, the Go toolchain's VCS stamp is used, else "dev".
+var buildSHA = ""
+
+func resolveBuildSHA() string {
+	if buildSHA != "" {
+		return buildSHA
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, kv := range info.Settings {
+			if kv.Key == "vcs.revision" && kv.Value != "" {
+				if len(kv.Value) > 7 {
+					return kv.Value[:7]
+				}
+				return kv.Value
+			}
+		}
+	}
+	return "dev"
+}
+
+// modeChoice reads an optional explicit adapter mode: "", "live" or "test".
+// Anything else stops the process.
+func modeChoice(key string) (string, error) {
+	switch v := env(key, ""); v {
+	case "", "live", "test":
+		return v, nil
+	default:
+		return "", fmt.Errorf("%s must be live, test or unset, not %q", key, v)
+	}
+}
 
 func env(key, fallback string) string {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
@@ -88,12 +121,34 @@ func operatorHandler(base slog.Handler, test bool) slog.Handler {
 // stay fake. Live mode uses only real adapters
 // with credentials from the environment. Outside test mode a missing
 // credential stops the process; nothing falls back to a test adapter.
+//
+// Two explicit, optional overrides exist for a staged cutover, and every
+// combination that could silently stub or silently charge is refused:
+//
+//	SCRY_STRIPE_MODE=test  in live mode: Stripe test keys (stripe-test), surfaced in /healthz
+//	SCRY_STRIPE_MODE=live  in test mode: refused (a test build never charges real cards)
+//	SCRY_JUDGE_MODE=live   in test mode: real Jev grades, drafts stay fake; needs a Jev key
+//	SCRY_JUDGE_MODE=test   in live mode: refused (live grading is never stubbed)
 func build(log *slog.Logger) (*app.App, error) {
 	mode := env("SCRY_MODE", "live")
 	if mode != "test" && mode != "live" {
 		return nil, fmt.Errorf("SCRY_MODE must be test or live, not %q", mode)
 	}
 	test := mode == "test"
+	stripeMode, err := modeChoice("SCRY_STRIPE_MODE")
+	if err != nil {
+		return nil, err
+	}
+	judgeMode, err := modeChoice("SCRY_JUDGE_MODE")
+	if err != nil {
+		return nil, err
+	}
+	if test && stripeMode == "live" {
+		return nil, errors.New("SCRY_STRIPE_MODE=live is refused with SCRY_MODE=test: a test build never charges real cards")
+	}
+	if !test && judgeMode == "test" {
+		return nil, errors.New("SCRY_JUDGE_MODE=test is refused with SCRY_MODE=live: live grading is never stubbed")
+	}
 	st, err := store.Open(env("SCRY_DB", "data/scry.db"))
 	if err != nil {
 		return nil, err
@@ -106,6 +161,7 @@ func build(log *slog.Logger) (*app.App, error) {
 	}()
 	cfg := app.DefaultConfig()
 	cfg.TestMode = test
+	cfg.BuildSHA = resolveBuildSHA()
 	cfg.BackupDir = env("BACKUP_DIR", "")
 	if cfg.BackupDir != "" {
 		cfg.BackupInterval = 6 * time.Hour
@@ -167,9 +223,11 @@ func build(log *slog.Logger) (*app.App, error) {
 		}
 		a.Pay = fake
 		if stripeSK != "" && stripePK != "" && price != "" && wh != "" {
-			if a.Pay, err = billing.NewStripe(stripeSK, stripePK, price, wh); err != nil {
+			if a.Pay, err = billing.NewStripeWithMode(false, stripeSK, stripePK, price, wh); err != nil {
 				return nil, err
 			}
+		} else if stripeMode == "test" {
+			return nil, errors.New("SCRY_STRIPE_MODE=test needs STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET")
 		}
 		model := &ai.Fake{Delay: 350 * time.Millisecond}
 		// Test mode only: a scripted verdict sequence, handed out in turn
@@ -184,6 +242,17 @@ func build(log *slog.Logger) (*app.App, error) {
 			model.Verdicts = append(model.Verdicts, srs.Verdict(v))
 		}
 		a.Model = model
+		if judgeMode == "live" {
+			// Explicitly asked for: grade with real Jev, keep drafting fake.
+			// Without a key this stops; it never falls back to the fake.
+			judge, jerr := ai.NewJev(env("TYPESAFE_API_KEY", ""), env("OPENROUTER_API_KEY", ""), log)
+			if jerr != nil {
+				return nil, errors.New("SCRY_JUDGE_MODE=live needs OPENROUTER_API_KEY or TYPESAFE_API_KEY")
+			}
+			judge.Model = env("SCRY_JUDGE_MODEL", "")
+			a.Model = ai.Split{JudgeProvider: judge, DraftProvider: model}
+			log.Warn("test mode is grading with the real Jev grader (SCRY_JUDGE_MODE=live)", "grader", a.Model.Name())
+		}
 		// SCRY_TEST_EXPLAIN=fail or slow exercises the explanation fallback.
 		a.Explainer = &ai.FakeExplainer{Mode: env("SCRY_TEST_EXPLAIN", "")}
 		a.Speech = speech.Fake{Phrase: env("SCRY_TEST_SPEECH", "")}
@@ -205,11 +274,17 @@ func build(log *slog.Logger) (*app.App, error) {
 		if len(missing) > 0 {
 			return nil, fmt.Errorf("live mode needs these environment variables: %s (or set SCRY_MODE=test)", strings.Join(missing, ", "))
 		}
-		if a.Pay, err = billing.NewStripe(sk, pk, price, wh); err != nil {
+		liveStripe := stripeMode != "test"
+		if a.Pay, err = billing.NewStripeWithMode(liveStripe, sk, pk, price, wh); err != nil {
 			return nil, err
 		}
+		if !liveStripe {
+			log.Warn("live mode is billing with Stripe test-mode keys (SCRY_STRIPE_MODE=test): no real card is charged", "billing", a.Pay.Name())
+		}
 	}
-	log.Info("adapters", "mode", mode, "auth", a.Auth.Name(), "billing", a.Pay.Name(), "model", a.Model.Name(), "explainer", a.Explainer.Name(), "speech", a.Speech.Name())
+	rd := a.Readiness()
+	log.Info("adapters", "mode", mode, "build_sha", rd.BuildSHA, "auth", rd.AuthMode, "billing", rd.BillingMode, "model", a.Model.Name(),
+		"grading", rd.Providers["grading"], "drafting", rd.Providers["drafting"], "explainer", a.Explainer.Name(), "speech", a.Speech.Name())
 	ok = true
 	return a, nil
 }
@@ -235,6 +310,15 @@ func serve(log *slog.Logger) error {
 	}
 	if err := a.Store.FailStaleDrafts(ctx); err != nil {
 		return err
+	}
+	// Nothing is in flight before serving starts, so every reservation left
+	// is an orphan from an unclean stop and would hold allowance forever.
+	released, err := a.Store.FailStaleReservations(ctx)
+	if err != nil {
+		return err
+	}
+	if released > 0 {
+		log.Warn("released stale allowance reservations left by an unclean stop", "count", released)
 	}
 	seeded := false
 	if shouldSeedDemo(a) {

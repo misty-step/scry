@@ -17,12 +17,16 @@ import (
 	"time"
 )
 
-// Stripe is the real processor, and it stays in test mode: NewStripe
-// refuses any key that is not a test key, and live-mode webhooks are
-// rejected. Cards are collected in the browser by Stripe.js; Scry only
-// ever sees a payment method id.
+// Stripe is the real processor. Each adapter is pinned to one Stripe mode,
+// chosen explicitly at boot: a test-mode adapter accepts only test keys and
+// test-mode webhooks, a live-mode adapter only live keys and live-mode
+// webhooks. A key or event from the other mode is refused loudly, so a
+// misconfigured deploy cannot charge real cards from a test build or record
+// test events as real money. Cards are collected in the browser by
+// Stripe.js; Scry only ever sees a payment method id.
 type Stripe struct {
 	secret, publishable, priceID, webhookSecret string
+	live                                        bool
 	BaseURL                                     string
 	HTTP                                        *http.Client
 }
@@ -30,13 +34,34 @@ type Stripe struct {
 // stripeVersion pins the API shape this adapter was written against.
 const stripeVersion = "2024-06-20"
 
-// NewStripe builds the adapter from credentials read from the environment.
+// NewStripe builds a test-mode adapter. It is NewStripeWithMode(false, ...).
 func NewStripe(secret, publishable, priceID, webhookSecret string) (*Stripe, error) {
-	if !strings.HasPrefix(secret, "sk_test_") && !strings.HasPrefix(secret, "rk_test_") {
-		return nil, errors.New("STRIPE_SECRET_KEY must be a test-mode key (sk_test_…): Scry's Stripe stays in test mode")
+	return NewStripeWithMode(false, secret, publishable, priceID, webhookSecret)
+}
+
+func stripeModeName(live bool) string {
+	if live {
+		return "live"
 	}
-	if !strings.HasPrefix(publishable, "pk_test_") {
-		return nil, errors.New("STRIPE_PUBLISHABLE_KEY must be a test-mode key (pk_test_…)")
+	return "test"
+}
+
+// NewStripeWithMode builds the adapter from credentials read from the
+// environment, for live mode (live=true) or test mode. Keys must belong to
+// the chosen mode.
+func NewStripeWithMode(live bool, secret, publishable, priceID, webhookSecret string) (*Stripe, error) {
+	want, other := stripeModeName(live), stripeModeName(!live)
+	if strings.HasPrefix(secret, "sk_"+other+"_") || strings.HasPrefix(secret, "rk_"+other+"_") {
+		return nil, fmt.Errorf("STRIPE_SECRET_KEY is a %s-mode key but Stripe is configured for %s mode: refusing to start", other, want)
+	}
+	if !strings.HasPrefix(secret, "sk_"+want+"_") && !strings.HasPrefix(secret, "rk_"+want+"_") {
+		return nil, fmt.Errorf("STRIPE_SECRET_KEY must be a %s-mode key (sk_%s_… or rk_%s_…)", want, want, want)
+	}
+	if strings.HasPrefix(publishable, "pk_"+other+"_") {
+		return nil, fmt.Errorf("STRIPE_PUBLISHABLE_KEY is a %s-mode key but Stripe is configured for %s mode: refusing to start", other, want)
+	}
+	if !strings.HasPrefix(publishable, "pk_"+want+"_") {
+		return nil, fmt.Errorf("STRIPE_PUBLISHABLE_KEY must be a %s-mode key (pk_%s_…)", want, want)
 	}
 	if priceID == "" {
 		return nil, errors.New("STRIPE_PRICE_ID is required: the monthly price of the plan")
@@ -44,10 +69,14 @@ func NewStripe(secret, publishable, priceID, webhookSecret string) (*Stripe, err
 	if webhookSecret == "" {
 		return nil, errors.New("STRIPE_WEBHOOK_SECRET is required: renewals arrive by webhook")
 	}
-	return &Stripe{secret: secret, publishable: publishable, priceID: priceID, webhookSecret: webhookSecret}, nil
+	return &Stripe{secret: secret, publishable: publishable, priceID: priceID, webhookSecret: webhookSecret, live: live}, nil
 }
 
-func (s *Stripe) Name() string           { return "stripe-test" }
+// Name is "stripe-live" or "stripe-test", the mode the adapter is pinned to.
+func (s *Stripe) Name() string { return "stripe-" + stripeModeName(s.live) }
+
+// Live reports whether the adapter moves real money.
+func (s *Stripe) Live() bool             { return s.live }
 func (s *Stripe) PublishableKey() string { return s.publishable }
 
 func (s *Stripe) Tokenize(string, string, string, time.Time) (string, error) {
@@ -415,8 +444,8 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 	if err := json.Unmarshal(payload, &ev); err != nil {
 		return nil, err
 	}
-	if ev.Livemode {
-		return nil, errors.New("live-mode webhook refused: Scry's Stripe stays in test mode")
+	if ev.Livemode != s.live {
+		return nil, fmt.Errorf("%s-mode webhook refused: this Scry's Stripe is in %s mode", stripeModeName(ev.Livemode), stripeModeName(s.live))
 	}
 	o := ev.Data.Object
 	out := Event{ID: ev.ID, At: time.Unix(ev.Created, 0).UTC()}
