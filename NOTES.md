@@ -906,3 +906,22 @@ Starting point 3108995 (PR #493). Every item has a named regression test (README
 - A canceled intent with no last_payment_error releases the slot with no
   card fault (ok=released); requires_payment_method without a sentence is
   "Your card was declined.", matching the payment_failed webhook.
+
+## Slice #3, Pass 4 (Cold Critic remediation)
+
+- F2, ID-only webhooks: a signed payment_intent.succeeded, payment_failed
+  or canceled whose metadata has no scry_key is no longer dropped by
+  Stripe.ParseWebhook. It becomes a top-up event with the intent's id as
+  ChargeRef, an empty key, the customer and any reason; applyTopupEvent
+  finds the attempt by saved charge_ref (Store.TopupByCharge never matches
+  an empty key), applies the customer guard, and settles it on delivery: a
+  pending or failed attempt is credited once on succeeded, a pending one is
+  released on payment_failed/canceled. Choice: an intent no attempt
+  recorded (a plan's invoice PaymentIntent) is acknowledged with 204 and
+  changes nothing, not even the processed-event marker.
+- Direct HTTP 200 canceled with no last_payment_error is a
+  billing.CanceledError, not a decline: finishCharge fails the attempt with
+  an empty reason (charge_ref kept, slot released, no card fault, no failed
+  history line) and redirects ok=released, exactly like a lookup that finds
+  the intent canceled. canceled with a processor reason, and
+  requires_payment_method, are still declines.

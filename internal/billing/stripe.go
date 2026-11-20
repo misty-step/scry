@@ -275,11 +275,13 @@ func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amo
 		// yet. The id is returned so the attempt can be settled later.
 		return pi.ID, &PendingError{Ref: pi.ID}
 	default:
-		reason := res.Reason
-		if reason == "" {
-			reason = declinedSentence
+		if res.Reason == "" {
+			// canceled with no processor reason: nothing was taken and the
+			// card is not at fault. Released like a lookup that finds it
+			// canceled, never reported as a decline.
+			return pi.ID, &CanceledError{Ref: pi.ID}
 		}
-		return pi.ID, &DeclineError{Reason: reason, Ref: pi.ID}
+		return pi.ID, &DeclineError{Reason: res.Reason, Ref: pi.ID}
 	}
 }
 
@@ -447,10 +449,13 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 	case "customer.subscription.deleted":
 		out.Kind, out.SubscriptionRef = SubscriptionEnded, o.ID
 	case "payment_intent.succeeded", "payment_intent.payment_failed", "payment_intent.canceled":
-		// Only Scry's own top-ups carry its key; a plan's invoice payments
-		// are reported by the invoice events above.
+		// Scry's top-ups carry its key, but an intent without it is still
+		// passed on by id: the attempt it belongs to may have recorded that
+		// id (charge_ref) already, and is then settled by it. An intent no
+		// attempt knows (a plan's invoice payment, reported by the invoice
+		// events above) matches nothing and is ignored by the app.
 		key := o.Metadata["scry_key"]
-		if key == "" || o.ID == "" {
+		if key == "" && o.ID == "" {
 			return nil, nil
 		}
 		out.ChargeRef, out.ChargeKey, out.CustomerRef = o.ID, key, o.Customer

@@ -45,6 +45,7 @@ type stripeStandIn struct {
 	endless bool                      // every list page says has_more
 	decline string                    // refuse new intents: 402 card_error naming the intent
 	apiErr  bool                      // create the intent, then answer 500 naming it
+	reason  string                    // last_payment_error a new intent is created with
 }
 
 type standInIntent struct {
@@ -79,7 +80,7 @@ func (s *stripeStandIn) serve(rw http.ResponseWriter, r *http.Request) {
 		if !ok {
 			id = "pi_standin_" + strconv.Itoa(len(s.intents)+1)
 			s.byKey[key] = id
-			s.intents[id] = &standInIntent{ID: id, Status: s.answer, Customer: r.FormValue("customer"), Key: key}
+			s.intents[id] = &standInIntent{ID: id, Status: s.answer, Customer: r.FormValue("customer"), Key: key, Reason: s.reason}
 			if s.decline != "" {
 				s.intents[id].Status, s.intents[id].Reason = "requires_payment_method", s.decline
 			}

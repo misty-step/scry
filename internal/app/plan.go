@@ -293,6 +293,7 @@ func (a *App) topUpClaimed(ctx context.Context, userID int64, token, key string)
 func (a *App) finishCharge(ctx context.Context, us *store.UserStore, att store.TopupAttempt, ref string, err error) (bool, error) {
 	var d *billing.DeclineError
 	var p *billing.PendingError
+	var c *billing.CanceledError
 	switch {
 	case errors.As(err, &d):
 		// A final refusal. The refused PaymentIntent's id, when the
@@ -305,6 +306,19 @@ func (a *App) finishCharge(ctx context.Context, us *store.UserStore, att store.T
 			return false, ferr
 		}
 		return false, err
+	case errors.As(err, &c):
+		// Canceled with no card fault: nothing was taken. The attempt is
+		// released (keeping the intent's id) with no decline sentence, so no
+		// card fault or failed history line is recorded, exactly as when a
+		// lookup finds the intent canceled.
+		charge := c.Ref
+		if charge == "" {
+			charge = ref
+		}
+		if ferr := us.FailTopup(ctx, att.Token, charge, "", a.now()); ferr != nil {
+			return false, ferr
+		}
+		return false, ErrTopupReleased
 	case errors.As(err, &p):
 		// Accepted, not finished: neither paid nor declined. Keep the
 		// charge's id so the lookup (or its webhook) settles it.

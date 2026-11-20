@@ -26,6 +26,17 @@ type PendingError struct{ Ref string }
 
 func (e *PendingError) Error() string { return "the card processor is still processing this charge" }
 
+// CanceledError is a one-off charge the processor canceled without naming
+// a card fault (a PaymentIntent canceled with no last_payment_error).
+// Nothing was taken and the card is not at fault: the attempt is released
+// with no decline sentence, as a lookup that finds it canceled does. Ref is
+// the processor's id for the canceled charge, kept on the attempt.
+type CanceledError struct{ Ref string }
+
+func (e *CanceledError) Error() string {
+	return "the card processor canceled this charge; nothing was taken"
+}
+
 // ProcessorError is any other error answer from the processor. Its outcome
 // is unknown. Ref is the charge (PaymentIntent) it named, when it named
 // one, so the attempt can be looked up by id later.
@@ -136,8 +147,10 @@ type Processor interface {
 	UpdateCard(ctx context.Context, customerRef, subscriptionRef, cardToken string) (paymentRef string, card Card, err error)
 	// Charge takes a one-off payment (a top-up) from the card on file.
 	// key is the processor idempotency key: the same key never charges twice.
-	// A *DeclineError is a final refusal; a *PendingError is a charge the
-	// processor accepted but has not finished; any other error is unknown.
+	// A *DeclineError is a final refusal; a *CanceledError is a charge the
+	// processor canceled with no card fault (nothing taken); a *PendingError
+	// is a charge the processor accepted but has not finished; any other
+	// error is unknown.
 	Charge(ctx context.Context, customerRef, paymentRef string, amountCents int64, description, key string) (chargeRef string, err error)
 	// FindCharge looks up what became of a one-off charge, for when the
 	// reply to Charge was lost, the charge was still processing, or the app

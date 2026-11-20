@@ -148,8 +148,12 @@ func TestF2_StripeTopupWebhooks(t *testing.T) {
 			t.Fatalf("%s: %+v", tc.typ, ev)
 		}
 	}
+	// An intent without Scry's key is still passed on by id (Pass 4): the
+	// app settles the attempt that recorded that id, and ignores it when no
+	// attempt did (a plan's invoice payment).
 	body := event("payment_intent.succeeded", `{}`, "")
-	if evs, err := s.ParseWebhook(context.Background(), body, sign(body), now); err != nil || len(evs) != 0 {
-		t.Fatalf("an intent without Scry's key: %v %v", evs, err)
+	if evs, err := s.ParseWebhook(context.Background(), body, sign(body), now); err != nil || len(evs) != 1 ||
+		evs[0].Kind != TopupPaid || evs[0].ChargeRef != "pi_1" || evs[0].ChargeKey != "" || evs[0].CustomerRef != "cus_1" {
+		t.Fatalf("an intent without Scry's key: %+v %v", evs, err)
 	}
 }
