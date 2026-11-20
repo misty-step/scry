@@ -1,0 +1,98 @@
+{{define "main"}}
+<section class="reading settings">
+  <h1 class="display">Settings</h1>
+  {{template "flash" .}}
+
+  <section class="setting">
+    <h2 class="title">Appearance</h2>
+    <form method="post" action="/settings/theme" class="form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <fieldset class="choices">
+        <legend class="label">Mode</legend>
+        <label class="check"><input type="radio" name="theme" value="system"{{if eq .User.Theme "system"}} checked{{end}}> Follow my system</label>
+        <label class="check"><input type="radio" name="theme" value="light"{{if eq .User.Theme "light"}} checked{{end}}> Light</label>
+        <label class="check"><input type="radio" name="theme" value="dark"{{if eq .User.Theme "dark"}} checked{{end}}> Dark</label>
+      </fieldset>
+      <button class="btn">Save appearance</button>
+    </form>
+  </section>
+
+  <section class="setting">
+    <h2 class="title">About you</h2>
+    <p>Scry shapes new material to this: what you do, what you already know, what you want it for.</p>
+    <form method="post" action="/settings/about" class="form" data-tz-form>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="tz" value="">
+      <div class="field">
+        <label class="label" for="about">In your own words</label>
+        <textarea class="input" id="about" name="about" rows="4" maxlength="1000">{{.User.About}}</textarea>
+      </div>
+      <button class="btn">Save</button>
+    </form>
+  </section>
+
+  <section class="setting" id="agents">
+    <h2 class="title">Agents</h2>
+    <p>Your own agents can suggest items from what you read and discuss. Suggestions wait in your inbox until you approve them. A token marked “may add” skips the inbox.</p>
+    {{if .NewToken}}
+    <div class="token-new" role="status">
+      <p><strong>Token for {{.NewTokenName}}.</strong> Copy it now; Scry keeps only a fingerprint and can't show it again.</p>
+      <p class="mono token-value">{{.NewToken}}</p>
+      <pre class="mono code">curl -X POST {{.Origin}}/api/v1/suggestions \
+  -H "Authorization: Bearer {{.NewToken}}" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "The Federalist Papers", "items": [{"question": "…", "answer": "…", "idea": "Faction"}]}'</pre>
+    </div>
+    {{end}}
+    {{if .Tokens}}
+    <ul class="rows">
+      {{range .Tokens}}
+      <li class="row token-row">
+        <span>{{.Name}}</span>
+        <span class="meta">{{if .CanAdd}}may add{{else}}suggests only{{end}} · {{if .LastUsed.IsZero}}never used{{else}}last used {{short .LastUsed}}{{end}}</span>
+        <form method="post" action="/settings/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link quiet" aria-label="Revoke the token for {{.Name}}">Revoke</button></form>
+      </li>
+      {{end}}
+    </ul>
+    {{end}}
+    <form method="post" action="/settings/tokens" class="form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="field{{if .TokenError}} has-error{{end}}">
+        <label class="label" for="name">New agent's name</label>
+        <input class="input" id="name" name="name" placeholder="reading agent" maxlength="40" required>
+        {{if .TokenError}}<p class="field-error" role="alert">{{.TokenError}}</p>{{end}}
+      </div>
+      <label class="check"><input type="checkbox" name="can_add" value="1"> May add straight to my library, without the inbox</label>
+      <button class="btn">Create token</button>
+    </form>
+  </section>
+
+  {{if .Removed}}
+  <section class="setting">
+    <h2 class="title">Recently removed</h2>
+    <p>Removed ideas are kept for 30 days.</p>
+    <ul class="rows">
+      {{range .Removed}}
+      <li class="row token-row"><span>{{.Title}}</span><span class="meta">{{plural .Items "item" "items"}} · removed {{short .Removed}}</span>
+        <form method="post" action="/settings/restore/{{.ID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link" aria-label="Restore {{.Title}}">Restore</button></form></li>
+      {{end}}
+    </ul>
+  </section>
+  {{end}}
+
+  <section class="setting">
+    <h2 class="title">Your data</h2>
+    <p>Your library and history are yours alone. Nobody else can see them, and you can take a full copy whenever you like.</p>
+    <p><a class="link" href="/settings/export">Download everything as JSON</a></p>
+  </section>
+
+  <section class="setting">
+    <h2 class="title">Account</h2>
+    <p class="meta">Signed in as {{.User.Email}}</p>
+    <form method="post" action="/signout" class="inline-form">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="btn">Sign out</button>
+    </form>
+  </section>
+</section>
+{{end}}

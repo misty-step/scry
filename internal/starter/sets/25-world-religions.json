@@ -1,0 +1,73 @@
+{
+  "slug": "world-religions",
+  "title": "World religions",
+  "description": "The core beliefs, texts and practices of five major religions, described plainly.",
+  "ideas": [
+    {
+      "title": "Judaism",
+      "summary": "Judaism centers on one God, the covenant with the people of Israel, and a life shaped by the Torah.",
+      "links": ["Christianity", "Families of faith", "passages-worth-keeping:Psalm 23"],
+      "items": [
+        {"q": "What is the Torah, in Judaism?", "a": "The first five books of the Hebrew Bible, the foundation of Jewish law and teaching"},
+        {"q": "What is the Jewish day of rest, kept from Friday evening to Saturday evening?", "a": "Shabbat (the Sabbath)"},
+        {"q": "Which Jewish festival recalls the Exodus, the deliverance of the Israelites from slavery in Egypt?", "a": "Passover (Pesach)"},
+        {"q": "Which day is the holiest of the Jewish year, a day of fasting and atonement?", "a": "Yom Kippur, the Day of Atonement"}
+      ]
+    },
+    {
+      "title": "Christianity",
+      "summary": "Christians hold that Jesus of Nazareth is the Christ, the Son of God, whose death and resurrection bring salvation.",
+      "links": ["Judaism", "Families of faith", "world-history:The printing press"],
+      "items": [
+        {"q": "What name is given to the four accounts of the life of Jesus that open the New Testament?", "a": "The Gospels (Matthew, Mark, Luke and John)"},
+        {"q": "Which Christian feast celebrates the resurrection of Jesus?", "a": "Easter"},
+        {"q": "What is the Christian doctrine that one God exists as Father, Son and Holy Spirit called?", "a": "The Trinity"},
+        {"q": "What are the three main branches of Christianity?", "a": "Catholic, Orthodox and Protestant"}
+      ]
+    },
+    {
+      "title": "Islam",
+      "summary": "Muslims worship one God and follow the Qur'an, which they hold was revealed to the prophet Muhammad.",
+      "links": ["Judaism", "Christianity", "Families of faith"],
+      "items": [
+        {"q": "What is the holy book of Islam, and to whom do Muslims believe it was revealed?", "a": "The Qur'an, revealed to the prophet Muhammad"},
+        {"q": "What is the shahada, the first of the Five Pillars of Islam?", "a": "The profession of faith: there is no god but God, and Muhammad is his messenger"},
+        {"q": "During which month of the Islamic calendar do Muslims fast from dawn to sunset?", "a": "Ramadan"},
+        {"q": "To which city do Muslims make the pilgrimage called the hajj?", "a": "Mecca"},
+        {"q": "What are the two largest branches of Islam?", "a": "Sunni and Shia"}
+      ]
+    },
+    {
+      "title": "Hinduism",
+      "summary": "Hinduism is a family of traditions sharing ideas of dharma, karma and rebirth, with the Vedas as its oldest scriptures.",
+      "links": ["Buddhism", "Families of faith"],
+      "items": [
+        {"q": "In Hindu thought, what is karma?", "a": "The principle that a person's actions bring fitting consequences, in this life or a later one"},
+        {"q": "What do Hindus and Buddhists call the cycle of birth, death and rebirth?", "a": "Samsara"},
+        {"q": "In Hinduism, what is moksha?", "a": "Release from the cycle of rebirth"},
+        {"q": "What are the oldest scriptures of Hinduism called?", "a": "The Vedas"}
+      ]
+    },
+    {
+      "title": "Buddhism",
+      "summary": "The Buddha taught that suffering arises from craving and can be ended by following the Eightfold Path.",
+      "links": ["Hinduism", "Families of faith"],
+      "items": [
+        {"q": "Who was the founder of Buddhism, known as the Buddha?", "a": "Siddhartha Gautama"},
+        {"q": "What is the first of the Four Noble Truths of Buddhism?", "a": "That life involves suffering (dukkha)"},
+        {"q": "What is the Buddhist path to the end of suffering called?", "a": "The Noble Eightfold Path"},
+        {"q": "In Buddhism, what is nirvana?", "a": "The end of craving and suffering, and release from the cycle of rebirth"}
+      ]
+    },
+    {
+      "title": "Families of faith",
+      "summary": "Judaism, Christianity and Islam trace themselves to Abraham; Hinduism, Buddhism and Sikhism arose in India.",
+      "links": ["Judaism", "Islam", "Hinduism"],
+      "items": [
+        {"q": "Which three major religions are commonly grouped as Abrahamic because they trace their origins to Abraham?", "a": "Judaism, Christianity and Islam"},
+        {"q": "What is the term for belief in one God?", "a": "Monotheism"},
+        {"q": "Which religion was founded by Guru Nanak in the Punjab around 1500?", "a": "Sikhism"}
+      ]
+    }
+  ]
+}

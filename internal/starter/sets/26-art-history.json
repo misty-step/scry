@@ -1,0 +1,64 @@
+{
+  "slug": "art-history",
+  "title": "Core ideas in art history",
+  "description": "The movements, techniques and terms that help you see what a painting is doing.",
+  "ideas": [
+    {
+      "title": "Perspective and the Renaissance",
+      "summary": "Renaissance artists used linear perspective and close study of nature to make a flat surface look deep and real.",
+      "links": ["Light and shadow", "Reading a picture", "world-history:The printing press"],
+      "items": [
+        {"q": "In linear perspective, what is the vanishing point?", "a": "The point where the projections of a set of parallel lines receding into depth appear to meet"},
+        {"q": "Which Florentine architect is credited with working out linear perspective in the early 1400s?", "a": "Filippo Brunelleschi"},
+        {"q": "Who painted the ceiling of the Sistine Chapel between 1508 and 1512?", "a": "Michelangelo"},
+        {"q": "What is sfumato, the technique Leonardo da Vinci used in the Mona Lisa?", "a": "Soft, smoky blending of tones, with no hard outlines"}
+      ]
+    },
+    {
+      "title": "Light and shadow",
+      "summary": "Baroque painters used strong contrasts of light and dark to model form and heighten drama.",
+      "links": ["Perspective and the Renaissance", "Impressionism"],
+      "items": [
+        {"q": "What is chiaroscuro in painting?", "a": "The use of strong contrast between light and dark to give figures a sense of volume"},
+        {"q": "Which Italian painter, working around 1600, is known for figures lit dramatically against deep darkness?", "a": "Caravaggio"},
+        {"q": "Which Dutch master painted The Night Watch in 1642?", "a": "Rembrandt"},
+        {"q": "Which seventeenth-century style in European art is marked by drama, movement and strong emotion?", "a": "Baroque"}
+      ]
+    },
+    {
+      "title": "Impressionism",
+      "summary": "The Impressionists painted the passing effects of light and weather with quick, visible brushstrokes.",
+      "links": ["Light and shadow", "Modern art and abstraction"],
+      "items": [
+        {"q": "Which painting by Claude Monet gave Impressionism its name?", "a": "Impression, Sunrise"},
+        {"q": "In which city and year was the first Impressionist exhibition held?", "a": "Paris, in 1874"},
+        {"q": "What were the Impressionist painters chiefly trying to capture?", "a": "The momentary effect of light and atmosphere on a scene"},
+        {"q": "What does it mean to paint en plein air, as the Impressionists often did?", "a": "To paint outdoors, directly from the scene"},
+        {"q": "Which Dutch Post-Impressionist painted The Starry Night in 1889?", "a": "Vincent van Gogh"}
+      ]
+    },
+    {
+      "title": "Modern art and abstraction",
+      "summary": "In the twentieth century artists stopped copying appearances and asked what a picture, or art itself, could be.",
+      "links": ["Impressionism", "Reading a picture"],
+      "items": [
+        {"q": "Which movement, begun by Picasso and Braque around 1907, shows a subject from several viewpoints at once?", "a": "Cubism"},
+        {"q": "Who painted Guernica in 1937, in response to the bombing of a Spanish town?", "a": "Pablo Picasso"},
+        {"q": "What is abstract art?", "a": "Art that departs from literal representation through shape, color and form; it may retain recognizable subjects"},
+        {"q": "Which movement of the 1920s, including Dalí and Magritte, drew on dreams and the unconscious?", "a": "Surrealism"},
+        {"q": "What did Marcel Duchamp call an ordinary manufactured object presented as art, like his 1917 Fountain?", "a": "A readymade"}
+      ]
+    },
+    {
+      "title": "Reading a picture",
+      "summary": "Asking about medium, composition and symbols turns looking at a work of art into understanding it.",
+      "links": ["Perspective and the Renaissance", "Modern art and abstraction"],
+      "items": [
+        {"q": "In art, what is composition?", "a": "The arrangement of the elements within a work"},
+        {"q": "What is iconography in art history?", "a": "The study of the symbols and subjects in images and what they mean"},
+        {"q": "What is a fresco?", "a": "A painting made on wet plaster, so that the color becomes part of the wall"},
+        {"q": "On the traditional painter's color wheel, which color is the complement of red?", "a": "Green"}
+      ]
+    }
+  ]
+}

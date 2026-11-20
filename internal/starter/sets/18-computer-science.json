@@ -1,0 +1,73 @@
+{
+  "slug": "computer-science",
+  "title": "Core ideas in computer science",
+  "description": "How computers store information, run algorithms, and where their limits lie.",
+  "ideas": [
+    {
+      "title": "Bits and binary",
+      "summary": "Everything a computer stores, from numbers to text to pictures, is a pattern of bits, each a 0 or a 1.",
+      "links": ["How a computer runs a program", "mathematics:Exponentials and logarithms"],
+      "items": [
+        {"q": "How many bits are in a byte?", "a": "8"},
+        {"q": "How many different values can n bits represent?", "a": "2^n"},
+        {"q": "How is the decimal number 10 written in binary?", "a": "1010"},
+        {"q": "What is the largest value an unsigned 8-bit number can hold?", "a": "255"},
+        {"q": "Who founded information theory with the 1948 paper \"A Mathematical Theory of Communication\"?", "a": "Claude Shannon"}
+      ]
+    },
+    {
+      "title": "Algorithms and their cost",
+      "summary": "An algorithm is a precise step-by-step procedure, and big O notation says how its cost grows with its input.",
+      "links": ["Data structures", "Computation and its limits", "mathematics:Exponentials and logarithms"],
+      "items": [
+        {"q": "In computer science, what does big O notation describe?", "a": "An asymptotic upper bound on how a cost, such as running time or memory use, grows with input size"},
+        {"q": "What is the worst-case time complexity of binary search on a sorted array of n items?", "a": "O(log n)"},
+        {"q": "What is the worst-case time complexity of merge sort on n items?", "a": "O(n log n)"},
+        {"q": "In programming, what is recursion?", "a": "A function solving a problem by calling itself on smaller versions of it"}
+      ]
+    },
+    {
+      "title": "Data structures",
+      "summary": "The way data is arranged in memory decides which operations on it are fast and which are slow.",
+      "links": ["Algorithms and their cost"],
+      "items": [
+        {"q": "Which data structure removes items in last-in, first-out order?", "a": "A stack"},
+        {"q": "Which data structure removes items in first-in, first-out order?", "a": "A queue"},
+        {"q": "What is the average time complexity of looking up a key in a hash table?", "a": "O(1): constant time on average"},
+        {"q": "What is the main advantage of an array over a linked list?", "a": "Constant-time access to any element by its index"}
+      ]
+    },
+    {
+      "title": "Computation and its limits",
+      "summary": "One simple abstract machine can compute anything computable, yet some problems no program can ever solve.",
+      "links": ["Algorithms and their cost", "mathematics:Proof"],
+      "items": [
+        {"q": "Which mathematician described, in 1936, the abstract machine that defines what can be computed?", "a": "Alan Turing"},
+        {"q": "In computer science, what is the halting problem?", "a": "Deciding whether any given program will eventually stop; Turing proved no algorithm can always do it"},
+        {"q": "What does it mean to call a programming language Turing complete?", "a": "It can compute anything that a Turing machine can compute"},
+        {"q": "What does the unsolved P versus NP question ask?", "a": "Whether every problem whose solution can be checked quickly can also be solved quickly"}
+      ]
+    },
+    {
+      "title": "How a computer runs a program",
+      "summary": "A processor fetches instructions from memory and carries them out one at a time, with software built in layers.",
+      "links": ["Bits and binary", "Computation and its limits"],
+      "items": [
+        {"q": "What is the central idea of the stored-program, or von Neumann, design of a computer?", "a": "Program instructions and data are held in the same memory"},
+        {"q": "In programming, what does a compiler do?", "a": "It translates source code into another language or representation, often machine code or bytecode"},
+        {"q": "What is the job of a computer's operating system?", "a": "It manages the hardware and shares it among the running programs"},
+        {"q": "Which logic gate outputs 1 only when both of its inputs are 1?", "a": "The AND gate"}
+      ]
+    },
+    {
+      "title": "The internet and encryption",
+      "summary": "The internet moves data as small addressed packets, and mathematics keeps that data private on the way.",
+      "links": ["Bits and binary", "mathematics:Prime numbers"],
+      "items": [
+        {"q": "What are the small addressed units called into which data is split to travel across the internet?", "a": "Packets"},
+        {"q": "What does the Domain Name System (DNS) do?", "a": "It translates domain names into IP addresses"},
+        {"q": "In public-key cryptography, which key encrypts a message to a person and which key decrypts it?", "a": "Their public key encrypts it; only their private key decrypts it"}
+      ]
+    }
+  ]
+}

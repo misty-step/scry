@@ -1,0 +1,66 @@
+{
+  "slug": "logic-and-fallacies",
+  "title": "Logic and fallacies",
+  "description": "Tell a valid argument from a bad one, and name the usual ways reasoning goes wrong.",
+  "ideas": [
+    {
+      "title": "Arguments and their parts",
+      "summary": "An argument offers premises as reasons for a conclusion; it is sound when it is valid and its premises are true.",
+      "links": ["Valid forms", "philosophy:Knowledge and doubt"],
+      "items": [
+        {"q": "In logic, what makes an argument valid?", "a": "If its premises are true, its conclusion must be true"},
+        {"q": "In logic, what makes an argument sound?", "a": "It is valid and all its premises are true"},
+        {"q": "What is the difference between deductive and inductive reasoning?", "a": "Valid deduction guarantees a true conclusion from true premises; induction supports a conclusion without guaranteeing it"},
+        {"q": "\"All fish can fly; a trout is a fish; so a trout can fly.\" This argument is valid. Why is it not sound?", "a": "Its first premise is false"}
+      ]
+    },
+    {
+      "title": "Valid forms",
+      "summary": "A few simple patterns, such as modus ponens and modus tollens, guarantee their conclusions whatever the subject.",
+      "links": ["Arguments and their parts", "Formal fallacies"],
+      "items": [
+        {"q": "What is the form of the argument called modus ponens?", "a": "If P then Q; P; therefore Q"},
+        {"q": "What is the form of the argument called modus tollens?", "a": "If P then Q; not Q; therefore not P"},
+        {"q": "What is the contrapositive of \"if P then Q\", the statement logically equivalent to it?", "a": "If not Q then not P"},
+        {"q": "\"If it rained, the street is wet. The street is dry. So it did not rain.\" Which valid form of argument is this?", "a": "Modus tollens"},
+        {"q": "In the statement \"if P then Q\", which is the sufficient condition and which the necessary one?", "a": "P is sufficient for Q; Q is necessary for P"}
+      ]
+    },
+    {
+      "title": "Formal fallacies",
+      "summary": "Some arguments resemble valid forms but are not: the conclusion does not follow even if every premise is true.",
+      "links": ["Valid forms", "Fallacies of assumption and evidence"],
+      "items": [
+        {"q": "\"If it rained, the street is wet. The street is wet. So it rained.\" Which formal fallacy is this?", "a": "Affirming the consequent"},
+        {"q": "\"If it rained, the street is wet. It did not rain. So the street is not wet.\" Which formal fallacy is this?", "a": "Denying the antecedent"},
+        {"q": "What is the converse of \"if P then Q\", a statement that does not follow from it?", "a": "If Q then P"},
+        {"q": "What does the Latin term \"non sequitur\" mean in logic?", "a": "\"It does not follow\": a conclusion that does not follow from the premises"}
+      ]
+    },
+    {
+      "title": "Fallacies of relevance",
+      "summary": "Many bad arguments attack, flatter or distract instead of addressing the claim itself.",
+      "links": ["Fallacies of assumption and evidence", "rhetoric-and-writing:The three appeals"],
+      "items": [
+        {"q": "What is an ad hominem fallacy?", "a": "Attacking the person who makes an argument instead of the argument"},
+        {"q": "What is a straw man argument?", "a": "Misrepresenting an opponent's position as a weaker one, then attacking that"},
+        {"q": "Which fallacy argues that a claim is true because many people believe it?", "a": "Appeal to popularity (ad populum, the bandwagon fallacy)"},
+        {"q": "In an argument, what is a red herring?", "a": "An irrelevant point brought in to distract from the issue"},
+        {"q": "What is the opposite of a straw man: answering the strongest version of an opponent's view?", "a": "Steelmanning"}
+      ]
+    },
+    {
+      "title": "Fallacies of assumption and evidence",
+      "summary": "Other fallacies smuggle in the conclusion, offer too few options, shift a word's meaning, or infer causes too quickly.",
+      "links": ["Fallacies of relevance", "words-worth-owning:Words for how people speak"],
+      "items": [
+        {"q": "In its strict logical sense, what is begging the question?", "a": "Assuming the conclusion in the premises; circular reasoning"},
+        {"q": "What is a false dilemma?", "a": "Presenting only two options when more exist"},
+        {"q": "What does \"post hoc ergo propter hoc\" mean, and what is the error?", "a": "\"After this, therefore because of this\": assuming that what came first caused what followed"},
+        {"q": "What is the slippery slope fallacy?", "a": "Claiming without support that one step will inevitably lead to a chain of extreme results"},
+        {"q": "Ice cream sales and drownings rise together in summer. What error is it to conclude that ice cream causes drowning?", "a": "Confusing correlation with causation (hot weather causes both)"},
+        {"q": "What is the fallacy of equivocation?", "a": "Using a word in two different senses within one argument"}
+      ]
+    }
+  ]
+}

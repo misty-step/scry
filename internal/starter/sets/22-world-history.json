@@ -1,0 +1,73 @@
+{
+  "slug": "world-history",
+  "title": "Turning points in world history",
+  "description": "The handful of changes that shaped the world, with the dates to hang them on.",
+  "ideas": [
+    {
+      "title": "Farming and the first cities",
+      "summary": "Farming let people settle, store a surplus, and build the first cities and writing systems along great rivers.",
+      "links": ["Rome and its successors", "world-geography:Mountains, rivers and deserts"],
+      "items": [
+        {"q": "What name do historians give to the shift from hunting and gathering to farming, which began roughly 12,000 years ago?", "a": "The Neolithic Revolution (the agricultural revolution)"},
+        {"q": "Between which two rivers did the cities of ancient Mesopotamia arise?", "a": "The Tigris and the Euphrates"},
+        {"q": "Which wedge-shaped writing system was pressed into clay tablets in ancient Sumer more than 5,000 years ago?", "a": "Cuneiform"},
+        {"q": "Why did the coming of farming make cities possible?", "a": "It produced a food surplus, so people could settle in one place and some could do work other than growing food"}
+      ]
+    },
+    {
+      "title": "Rome and its successors",
+      "summary": "Rome's western half fell in 476; its eastern half lasted as the Byzantine Empire until 1453.",
+      "links": ["Farming and the first cities", "world-religions:Christianity"],
+      "items": [
+        {"q": "In what year does the Western Roman Empire traditionally end, when its last emperor was deposed?", "a": "476 CE"},
+        {"q": "Which city did the emperor Constantine make the new capital of the Roman Empire in 330?", "a": "Constantinople (formerly Byzantium, now Istanbul)"},
+        {"q": "What name is given to the Eastern Roman Empire, which outlived the fall of Rome by nearly a thousand years?", "a": "The Byzantine Empire"},
+        {"q": "In what year did Constantinople fall to the Ottoman Turks?", "a": "1453"}
+      ]
+    },
+    {
+      "title": "The printing press",
+      "summary": "Movable type made books cheap and ideas fast, feeding the Renaissance, the Reformation and modern science.",
+      "links": ["Revolution and industry", "world-religions:Christianity", "art-history:Perspective and the Renaissance"],
+      "items": [
+        {"q": "Who introduced printing with movable metal type to Europe around 1450?", "a": "Johannes Gutenberg, in Mainz, Germany"},
+        {"q": "What was the first major book printed with movable type in Europe, completed in the 1450s?", "a": "The Gutenberg Bible"},
+        {"q": "In what year did Martin Luther publish his Ninety-five Theses, the event that began the Protestant Reformation?", "a": "1517"},
+        {"q": "How did the printing press change the spread of ideas in Europe?", "a": "Books and pamphlets became cheap and quick to copy, so ideas spread widely and were hard to suppress"}
+      ]
+    },
+    {
+      "title": "The Columbian exchange",
+      "summary": "After 1492, crops, animals, people and diseases crossed the Atlantic and remade both hemispheres.",
+      "links": ["The printing press", "Revolution and industry"],
+      "items": [
+        {"q": "In what year did Christopher Columbus first reach the Americas?", "a": "1492"},
+        {"q": "What is the Columbian exchange?", "a": "The transfer of plants, animals, people and diseases between the Americas and the Old World after 1492"},
+        {"q": "Which Old World disease is most associated with the collapse of Native American populations after 1492?", "a": "Smallpox"},
+        {"q": "Which staple crop from the Andes became a mainstay of the northern European diet after the Columbian exchange?", "a": "The potato"}
+      ]
+    },
+    {
+      "title": "Revolution and industry",
+      "summary": "From the 1770s, political revolutions turned subjects into citizens while steam and factories remade work.",
+      "links": ["The printing press", "The world wars", "american-civics:The Constitution"],
+      "items": [
+        {"q": "In what year did the French Revolution begin with the storming of the Bastille?", "a": "1789"},
+        {"q": "Which revolution, won in 1804, founded the first nation created by formerly enslaved people?", "a": "The Haitian Revolution"},
+        {"q": "In which country did the Industrial Revolution begin, in the second half of the 1700s?", "a": "Great Britain"},
+        {"q": "Which Scottish engineer's improved steam engine, patented in 1769, became the workhorse of the Industrial Revolution?", "a": "James Watt"}
+      ]
+    },
+    {
+      "title": "The world wars",
+      "summary": "Two wars between 1914 and 1945 broke the old European empires and led to the founding of the United Nations.",
+      "links": ["Revolution and industry"],
+      "items": [
+        {"q": "In what years did the First World War begin and end?", "a": "1914 to 1918"},
+        {"q": "What event in Sarajevo in June 1914 set off the First World War?", "a": "The assassination of Archduke Franz Ferdinand of Austria"},
+        {"q": "What event on 1 September 1939 began the Second World War in Europe?", "a": "Germany's invasion of Poland"},
+        {"q": "Which international organization was founded in 1945, at the end of the Second World War, to keep the peace?", "a": "The United Nations"}
+      ]
+    }
+  ]
+}

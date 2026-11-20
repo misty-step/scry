@@ -1,0 +1,27 @@
+{{define "main"}}
+<section class="shelf-head">
+  <div>
+    <h1 class="display">Start with something worth knowing.</h1>
+    <p class="meta">{{len .Tiles}} starter sets{{if not .HasItems}} · add one or more to begin{{end}}</p>
+  </div>
+  {{if .HasItems}}<a class="btn btn-accent" href="/study">Start studying</a>{{end}}
+</section>
+<ul class="shelf" aria-label="Starter sets">
+  {{range .Tiles}}
+  <li class="tile{{if .Added}} is-added{{end}}" id="{{.Set.Slug}}">
+    <h2 class="title">{{.Set.Title}}</h2>
+    <p class="meta">{{plural .Count "item" "items"}}</p>
+    <p class="tile-desc">{{.Set.Description}}</p>
+    {{if .Added}}
+      <p class="tile-tag meta">Added</p>
+    {{else}}
+      <form method="post" action="/shelf/add" data-add>
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="slug" value="{{.Set.Slug}}">
+        <button class="tile-add meta" aria-label="Add {{.Set.Title}}">+ Add</button>
+      </form>
+    {{end}}
+  </li>
+  {{end}}
+</ul>
+{{end}}

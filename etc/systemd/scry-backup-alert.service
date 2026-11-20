@@ -1,6 +1,0 @@
-[Unit]
-Description=Flag and log a failed Scry off-host backup
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/scry-backup-alert

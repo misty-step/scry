@@ -1,0 +1,73 @@
+{
+  "slug": "statistics",
+  "title": "Core ideas in statistics",
+  "description": "Read data honestly: averages, spread, chance, sampling and what evidence can show.",
+  "ideas": [
+    {
+      "title": "Center and spread",
+      "summary": "A set of data is summed up by where its middle lies and by how far its values scatter around it.",
+      "links": ["The normal distribution"],
+      "items": [
+        {"q": "For an odd number of observations, which measure of center is the middle value once the data are sorted?", "a": "The median"},
+        {"q": "Why is the median often reported instead of the mean for incomes or house prices?", "a": "A few very large values pull the mean up but barely move the median"},
+        {"q": "What does the standard deviation of a set of data measure?", "a": "How spread out the values are around the mean"},
+        {"q": "In statistics, how is the variance related to the standard deviation?", "a": "The variance is the standard deviation squared"}
+      ]
+    },
+    {
+      "title": "Probability",
+      "summary": "Probability gives each possible outcome a number from 0 to 1, and those numbers obey a few simple rules.",
+      "links": ["Bayes' theorem", "The normal distribution", "biology:Inheritance"],
+      "items": [
+        {"q": "In probability, what does it mean for two events to be independent?", "a": "Knowing that one happened does not change the probability of the other"},
+        {"q": "What is the probability of rolling a six twice in a row with a fair six-sided die?", "a": "1/36"},
+        {"q": "In probability, what is the expected value of a random quantity?", "a": "Its long-run average: each possible value weighted by its probability"},
+        {"q": "For independent, identically distributed trials with finite mean, what does the law of large numbers say?", "a": "As the number of trials grows, the average result approaches the expected value"}
+      ]
+    },
+    {
+      "title": "Bayes' theorem",
+      "summary": "Bayes' theorem says how much a piece of evidence should change the probability you give to a claim.",
+      "links": ["Probability", "Significance and causation"],
+      "items": [
+        {"q": "What does the conditional probability P(A|B) mean?", "a": "The probability of A given that B has happened"},
+        {"q": "What is the formula of Bayes' theorem for P(A|B)?", "a": "P(A|B) = P(B|A) x P(A) / P(B)"},
+        {"q": "In Bayesian reasoning, what is the probability you give a claim before seeing the evidence called?", "a": "The prior"},
+        {"q": "What is the error called of ignoring how rare a condition is when judging what a positive test result means?", "a": "Base rate neglect, also called the base rate fallacy"}
+      ]
+    },
+    {
+      "title": "The normal distribution",
+      "summary": "Many measurements pile up in a symmetric bell curve fixed by just its mean and standard deviation.",
+      "links": ["Center and spread", "Sampling and confidence"],
+      "items": [
+        {"q": "In a normal distribution, about what share of values lie within one standard deviation of the mean?", "a": "About 68%"},
+        {"q": "In a normal distribution, about what share of values lie within two standard deviations of the mean?", "a": "About 95%"},
+        {"q": "For independent samples from one population with finite, nonzero variance, which theorem makes large-sample means approximately normal?", "a": "The central limit theorem"}
+      ]
+    },
+    {
+      "title": "Sampling and confidence",
+      "summary": "A random sample can stand in for a whole population, with an uncertainty that shrinks as the sample grows.",
+      "links": ["The normal distribution", "Significance and causation"],
+      "items": [
+        {"q": "For independent observations, how do you estimate the standard error of the mean from sample standard deviation s and sample size n?", "a": "s divided by the square root of n"},
+        {"q": "To halve the standard error of a sample mean, by what factor must the sample size grow?", "a": "Four times"},
+        {"q": "In statistics, what is the systematic error called that comes from a sample which does not represent the population?", "a": "Sampling bias"},
+        {"q": "What does the 95% in a 95% confidence interval refer to?", "a": "If the study were repeated many times, about 95% of such intervals would contain the true value"}
+      ]
+    },
+    {
+      "title": "Significance and causation",
+      "summary": "A p-value measures surprise if nothing were going on, and an association alone does not show a cause.",
+      "links": ["Sampling and confidence", "Bayes' theorem"],
+      "items": [
+        {"q": "In a statistical test, what is the null hypothesis?", "a": "The specific claim tested, often that there is no effect or no difference"},
+        {"q": "What does a p-value measure?", "a": "The probability of data at least this extreme if the null hypothesis were true"},
+        {"q": "In hypothesis testing, what is a Type I error?", "a": "A false positive: rejecting a null hypothesis that is actually true"},
+        {"q": "In statistics, what is a confounding variable?", "a": "A third factor that affects both variables and makes them look causally linked"},
+        {"q": "Which study design gives the strongest evidence of cause, because chance alone decides who gets the treatment?", "a": "A randomized controlled trial"}
+      ]
+    }
+  ]
+}

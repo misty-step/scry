@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# scry-status: print current, last-good and rollback-target shas, plus health.
+. /usr/local/lib/scry/scry-lib.sh
+cur=$(current_sha)
+h=$(curl -fsS -m 2 "http://127.0.0.1:$PORT/healthz" 2>/dev/null | grep -q '"status":"ok"' && echo ok || echo down)
+printf 'current=%s\nlast_good=%s\nrollback_target=%s\nhealth=%s\n' "$cur" "$(last_good)" "$(rollback_target "$cur")" "$h"

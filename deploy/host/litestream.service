@@ -1,0 +1,13 @@
+[Unit]
+Description=Litestream replication for Scry
+After=scry.service
+
+[Service]
+User=scry
+EnvironmentFile=/etc/scry/scry.env
+ExecStart=/usr/local/bin/litestream replicate -config /etc/scry/litestream.yml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

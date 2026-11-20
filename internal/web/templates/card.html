@@ -1,0 +1,26 @@
+{{define "head"}}{{if .PublishableKey}}<script src="https://js.stripe.com/v3/" defer></script><script src="/static/stripe.js" defer></script>{{end}}{{end}}
+{{define "main"}}
+<section class="column">
+  {{if .Update}}
+    <h1 class="display">{{if .Restart}}Start again{{else}}Update card{{end}}</h1>
+    {{if .Restart}}<p class="lede">Your card is charged {{money .Price}} today, and then monthly. Cancel any time in Billing.</p>
+    {{else}}<p class="lede">The new card replaces the one on file. If a charge was waiting, it is tried again now.</p>{{end}}
+    <form method="post" action="/billing/card" class="form" novalidate data-card-form>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      {{template "cardfields" .}}
+      <button class="btn btn-accent wide">{{if .Restart}}Start again · {{money .Price}} a month{{else}}Save card{{end}}</button>
+    </form>
+    <p class="meta"><a class="link" href="/billing">Back to Billing</a></p>
+  {{else}}
+    <p class="meta">Step 2 of 2 · card</p>
+    <h1 class="display">Add a card</h1>
+    <p class="lede trial-terms">{{.TrialDays}}-day trial. You won't be charged until {{date .TrialEnd}}. Cancel any time before then in Billing.</p>
+    <p class="meta">After the trial, Scry is {{money .Price}} a month.</p>
+    <form method="post" action="/signup/card" class="form" novalidate data-card-form>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      {{template "cardfields" .}}
+      <button class="btn btn-accent wide">Start trial</button>
+    </form>
+  {{end}}
+</section>
+{{end}}

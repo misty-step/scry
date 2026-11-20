@@ -1,0 +1,73 @@
+{
+  "slug": "physics",
+  "title": "Core ideas in physics",
+  "description": "The laws behind motion, energy, light and matter, with the numbers worth knowing.",
+  "ideas": [
+    {
+      "title": "Newton's laws of motion",
+      "summary": "An object keeps its velocity unless a net force acts on it, and the force needed is mass times acceleration.",
+      "links": ["Gravity", "Conservation of energy", "mathematics:The derivative and the integral"],
+      "items": [
+        {"q": "What does Newton's first law of motion say?", "a": "An object stays at rest or moves at constant velocity unless a net force acts on it"},
+        {"q": "What equation states Newton's second law of motion?", "a": "F = ma: net force equals mass times acceleration"},
+        {"q": "What does Newton's third law of motion say?", "a": "Every force has an equal and opposite partner: if A pushes on B, B pushes back on A just as hard"},
+        {"q": "In physics, what is the product of an object's mass and its velocity called?", "a": "Momentum"}
+      ]
+    },
+    {
+      "title": "Gravity",
+      "summary": "Every mass attracts every other mass, with a force that weakens as the square of the distance between them.",
+      "links": ["Newton's laws of motion", "Relativity and the quantum", "astronomy:The solar system"],
+      "items": [
+        {"q": "How does Newtonian gravitational force between two point masses change if their separation doubles?", "a": "It falls to one quarter, because gravity follows an inverse square law"},
+        {"q": "What is the acceleration of a freely falling object near Earth's surface?", "a": "About 9.8 m/s^2"},
+        {"q": "In physics, what is the difference between mass and weight?", "a": "Mass is the amount of matter in an object; weight is the force of gravity on it"},
+        {"q": "In which book, published in 1687, did Isaac Newton set out his laws of motion and of universal gravitation?", "a": "The Principia (Philosophiae Naturalis Principia Mathematica)"}
+      ]
+    },
+    {
+      "title": "Conservation of energy",
+      "summary": "Energy is never created or destroyed, only moved from place to place or changed from one form to another.",
+      "links": ["Heat and entropy", "Newton's laws of motion"],
+      "items": [
+        {"q": "What does the law of conservation of energy say?", "a": "Energy cannot be created or destroyed, only transferred or changed from one form to another"},
+        {"q": "What is the formula for the kinetic energy of a mass m moving at speed v?", "a": "KE = 1/2 m v^2"},
+        {"q": "What is the SI unit of energy?", "a": "The joule (J)"},
+        {"q": "What is the SI unit of power, equal to one joule per second?", "a": "The watt (W)"}
+      ]
+    },
+    {
+      "title": "Heat and entropy",
+      "summary": "Heat flows by itself from hot to cold, and the entropy of an isolated system never decreases.",
+      "links": ["Conservation of energy", "chemistry:Energy, rate and equilibrium"],
+      "items": [
+        {"q": "What does the second law of thermodynamics say about the entropy of an isolated system?", "a": "It never decreases: it rises or, at best, stays the same"},
+        {"q": "What is absolute zero in degrees Celsius?", "a": "-273.15 °C, which is 0 kelvin"},
+        {"q": "For a classical ideal gas, what particle-motion quantity is proportional to its absolute temperature?", "a": "The average translational kinetic energy per particle"},
+        {"q": "Left to itself, in which direction does heat flow between two bodies in contact?", "a": "From the hotter body to the colder one"}
+      ]
+    },
+    {
+      "title": "Electromagnetism and light",
+      "summary": "Electricity and magnetism are two sides of one force, and light is a wave in the electromagnetic field.",
+      "links": ["Relativity and the quantum", "astronomy:Light and distance"],
+      "items": [
+        {"q": "What is the speed of light in a vacuum?", "a": "About 3 x 10^8 m/s (exactly 299,792,458 m/s)"},
+        {"q": "Which physicist united electricity, magnetism and light in one set of equations in the 1860s?", "a": "James Clerk Maxwell"},
+        {"q": "For any wave, how are speed, frequency and wavelength related?", "a": "Speed = frequency x wavelength"},
+        {"q": "What is the rule for the force between electric charges of the same sign and of opposite sign?", "a": "Like charges repel; opposite charges attract"}
+      ]
+    },
+    {
+      "title": "Relativity and the quantum",
+      "summary": "At very high speeds and very small scales, Newton's picture gives way to relativity and quantum mechanics.",
+      "links": ["Electromagnetism and light", "Gravity", "chemistry:Atoms and elements"],
+      "items": [
+        {"q": "What does Einstein's equation E = mc^2 say?", "a": "Mass and energy are equivalent: energy equals mass times the speed of light squared"},
+        {"q": "How does Einstein's general theory of relativity, published in 1915, describe gravity?", "a": "As the curving of spacetime by mass and energy"},
+        {"q": "In physics, what is a photon?", "a": "A quantum of light: a single packet of electromagnetic energy"},
+        {"q": "What does Heisenberg's uncertainty principle say about a particle's position and momentum?", "a": "Both cannot be known precisely at the same time"}
+      ]
+    }
+  ]
+}

@@ -1,97 +1,23 @@
-# Scry
+# AGENTS.md
 
-> **Product contract (2026-11-17):** [PRODUCT.md](PRODUCT.md) is the product contract and [DESIGN.md](DESIGN.md) the visual one; the Go recompile reads only those two. `SPEC.md` and `VISION.md` are retired history under [docs/history/2026-11-17-retired](docs/history/2026-11-17-retired/README.md); they describe the current Rust code and matter only when maintaining it.
+You are building Scry from scratch. PRODUCT.md is what it does. DESIGN.md is how it looks and feels. Those two files are the whole contract. You have no other source: do not look for the old app, and do not fetch it from the network.
 
-For each change load [verify-scry](.agents/skills/verify-scry/SKILL.md), use the
-existing `features/` navigation map and retain actual journey proof in the card
-and PR. New Hermes profiles review the checkout, then use native
-`hermes skills trust` for project discovery.
+## Rules
+- Language: Go (current stable), one deployable service. Server-rendered HTML with light progressive enhancement; keyboard first. SQLite for data unless you have a stronger reason.
+- Every PRODUCT.md user story and business rule must be implemented and have an automated test that names it. Every DESIGN.md token, layout and state must be implemented.
+- External services (email/password auth provider, Stripe billing, the AI model provider, speech) sit behind small interfaces with a test-mode adapter that runs with no keys. In test mode, auth uses Clerk only with both Clerk keys and billing uses Stripe only with all four Stripe settings; otherwise each uses its fake. Model and speech stay fake, and no operator alerts are sent. Live mode requires all adapter credentials from environment variables; credentials are never committed. Stripe stays in test mode.
+- Judging an answer must use a model with a one-line reason. No keyword, fuzzy or heuristic matcher decides correctness, except texts marked exact, which are judged word for word.
+- Data durability: your design must make per-user data private and recoverable. Document backup in README.md.
+- Reliability: expose /healthz and structured logs so outages are noticed.
 
-Shared standard: [Constitution](https://foundations.mistystep.io/) and [Way of working](https://foundations.mistystep.io/way-of-working).
+## Run and test
+- `go build ./...`, `go test ./...`, `go vet ./...` must pass.
+- `make run` starts the app on PORT (default 8080) in test mode with seeded demo data. `make test` runs all tests.
+- Provide a Dockerfile that builds a small static image and runs the app.
+- Write README.md covering run, test, env vars, the adapters, and a story-by-story table mapping each PRODUCT.md story and rule to its test.
 
-Read [SPEC.md](docs/history/2026-11-17-retired/SPEC.md) before scoping or verifying behavior. It is the
-present-tense target state and the only behavior authority; its
-[Terms](docs/history/2026-11-17-retired/SPEC.md#terms) own the words. Change it and close drift through the
-[spec skill](https://github.com/misty-step/mistystack/blob/master/skills/spec/SKILL.md),
-never through a ticket backlog. [VISION](docs/history/2026-11-17-retired/VISION.md) explains
-intent; [DESIGN](DESIGN.md) owns visuals; [ADRs](docs/adr/README.md) own technical
-decisions. Do not restate their contracts here.
+## Deliver
+Work in this directory. Commit as you go with git. Finish with everything building and tests green, and write NOTES.md listing every place PRODUCT.md or DESIGN.md was ambiguous or silent and the choice you made.
 
-Design principles (UX/DX/AX; no layout captions) live in [mistystack design](https://github.com/misty-step/mistystack/blob/master/skills/design/SKILL.md#principles); point there, don't copy them.
-
-## Architecture and boundaries
-
-[ADR 004](docs/adr/004-rust-cloudflare-candidate.md) owns the current Rust
-candidate's architecture, module boundaries, ingress and persistence decisions.
-[The deployment procedure](docs/rust-cloudflare.md) owns the current build and
-direct-deployment instructions. Historical Go decisions are labeled in the ADR index;
-retired Rust architecture and receipts remain historical, not candidate proof.
-
-## Product, privacy, and historical stores
-
-[The runbook](docs/runbook.md) owns origins, recovery and operational evidence.
-Source changes and green gates do not settle serving provenance or authorize
-activation. Do not reactivate, import, rename or delete historical stores,
-copy live integrations, or overwrite acknowledged data without explicit scope.
-
-`.env`, `.dev.vars`, and retained `/etc/scry/scry.env` are private operator
-material: never source or copy them into builds, logs or evidence. Build and
-preview work uses isolated synthetic data without production capabilities.
-
-## Gates and proof
-
-Read [QA](docs/qa/system.md) and [.agents/skills/scry-qa/SKILL.md](.agents/skills/scry-qa/SKILL.md).
-QA runs against SPEC, never edits intent to fit implementation. Use the existing
-native, target, runtime and browser gates documented there; `qa/walk --all`
-runs every journey and refuses to start when a journey's SPEC capability
-heading is missing. Worktree receipts are development proof;
-release artifacts require committed source and the exact tested bytes.
-
-Phone experience, real-provider usefulness, deployed private ingress and
-independent recovery require their own observations. Historical receipts and
-synthetic success do not transfer acceptance. UNVERIFIED is not PASS.
-
-## Sources of truth and work
-
-[README § Start or resume work](README.md#start-or-resume-work) owns the work
-entrypoint. Preserve overlapping work; link story/criterion IDs, exact source,
-evidence and remaining limits in the owning task/PR. Dated research, migration,
-dogfood, beta and Go receipts retain their original meanings and bytes.
-
-## Shipping
-
-Use independent review and required source CI, then merge and deploy through the
-[release procedure](docs/rust-cloudflare.md#reviewable-release-procedure).
-Master CI builds/tests once and deploys those exact bytes with Wrangler, followed
-by module/source readback. The owner's October 29, 2026 simplification retires
-custom recovery drills, approval windows, cleanup locks and custody fingerprint
-gates as shipping prerequisites. Preserve actual stored content, authentication
-and secrets; do not provision replacement infrastructure or reset learner data.
-A source merge is not a deployment receipt or authenticated learner acceptance.
-Foundation bot approval and adoption checks are retired.
-
-## Agent skills
-
-### Issue tracker
-
-GitHub issues on `misty-step/scry`, initiative #273. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: [SPEC § Terms](docs/history/2026-11-17-retired/SPEC.md#terms) and `docs/adr/`. See `docs/agents/domain.md`.
-
-<!-- mistystack:core -->
-# Misty Step core
-
-- Before your first tool call, say in a line what the user wants and the change you expect to make. Then start; do not wait for confirmation.
-- Finish the work you were given. Diagnose and work through ordinary obstacles such as errors, timeouts and failing tools. Leave a deliberate blocker alone (withheld access, a file marked not to be touched, a safety guardrail), report it, and finish everything that does not depend on it.
-- Prove the change on the real running path before you call it done. Report what you ran and saw, what that check did not cover, and which claims are inferred or guessed.
-- Take the simplest design that solves the problem. Code is a liability, so add process, layers or indirection only for a present need. Before proving a working draft, cut its wrappers and dead paths, or rewrite a bloated one from first principles. Every fact has one home: product or UI changes reconcile `SPEC.md` (and `DESIGN.md` on UI surfaces) in the same slice so code, spec and design tokens stay at homeostasis.
-- Nontrivial work: load the `misty` skill for the work loop, autonomy, delegation and reporting; if `mistystack` skills are absent in this environment, bootstrap them once with `git clone --depth 1 https://github.com/misty-step/mistystack.git /tmp/mistystack` and read `/tmp/mistystack/skills/misty/SKILL.md`.
-- Builds, suites, browser QA, untrusted code and long jobs: follow `boat-workers` for one saved-toolchain-snapshot worker per slice, stopped while idle and deleted after evidence collection; fresh per command only for untrusted code.
-- Active agents have no wall-clock cap. Use `watchdog` for periodic supervision against their self-contained briefs, real completion probes and evidence-based recovery.
-<!-- /mistystack:core -->
+## Monitoring layout
+- cmd/scry-watch and internal/watch own durable incidents and service restarts separately from app SQLite. deploy/fault-drill.py exercises a disposable preview.

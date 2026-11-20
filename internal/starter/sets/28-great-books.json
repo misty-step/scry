@@ -1,0 +1,73 @@
+{
+  "slug": "great-books",
+  "title": "Great books and their ideas",
+  "description": "Who wrote the books people keep returning to, and the main idea of each.",
+  "ideas": [
+    {
+      "title": "Epics and journeys",
+      "summary": "The oldest great stories follow a hero through war, wandering or the afterlife toward home or understanding.",
+      "links": ["Philosophy and the good life", "world-history:Rome and its successors"],
+      "items": [
+        {"q": "To which poet are the Iliad and the Odyssey traditionally attributed?", "a": "Homer"},
+        {"q": "What is the story of Homer's Odyssey?", "a": "Odysseus's ten-year journey home to Ithaca after the Trojan War"},
+        {"q": "Which Roman poet wrote the Aeneid, the epic of a Trojan refugee whose descendants found Rome?", "a": "Virgil"},
+        {"q": "Who wrote the Divine Comedy, and what are its three parts?", "a": "Dante; Inferno, Purgatorio and Paradiso"}
+      ]
+    },
+    {
+      "title": "Philosophy and the good life",
+      "summary": "Ancient philosophers asked what justice and happiness are, and answered that the good life is a life of virtue.",
+      "links": ["Epics and journeys", "Power and the state"],
+      "items": [
+        {"q": "Which dialogue by Plato asks what justice is and imagines an ideal city ruled by philosophers?", "a": "The Republic"},
+        {"q": "In Plato's allegory of the cave, what do the shadows on the wall represent?", "a": "The appearances that people mistake for reality"},
+        {"q": "In the Nicomachean Ethics, how does Aristotle describe a virtue such as courage?", "a": "As a mean between two extremes, one of excess and one of deficiency"},
+        {"q": "Which Roman emperor wrote the Meditations, a private notebook of Stoic philosophy?", "a": "Marcus Aurelius"}
+      ]
+    },
+    {
+      "title": "Power and the state",
+      "summary": "Modern political thought asks how power is really won and kept, and what makes a government legitimate.",
+      "links": ["Philosophy and the good life", "american-civics:Three branches", "world-history:Revolution and industry"],
+      "items": [
+        {"q": "Who wrote The Prince, and what is its central lesson for rulers?", "a": "Machiavelli; a ruler must do what keeps the state secure, even when it is not conventionally moral"},
+        {"q": "Which 1651 book by Thomas Hobbes argues that people need a strong sovereign to escape a war of all against all?", "a": "Leviathan"},
+        {"q": "Which English philosopher's Second Treatise of Government argued that government rests on the consent of the governed?", "a": "John Locke"},
+        {"q": "Which 1748 work by Montesquieu argued for separating legislative, executive and judicial power?", "a": "The Spirit of the Laws"}
+      ]
+    },
+    {
+      "title": "Shakespeare's tragedies",
+      "summary": "Shakespeare's great tragedies follow powerful people undone by doubt, ambition, jealousy and pride.",
+      "links": ["Epics and journeys", "The novel"],
+      "items": [
+        {"q": "Which Shakespeare play contains the line \"To be, or not to be, that is the question\"?", "a": "Hamlet"},
+        {"q": "In Shakespeare's Macbeth, what drives Macbeth to murder King Duncan?", "a": "Ambition, stirred by the witches' prophecy and by Lady Macbeth"},
+        {"q": "Which Shakespeare tragedy turns on a general's jealousy, inflamed by the villain Iago?", "a": "Othello"},
+        {"q": "Which Shakespeare tragedy begins with an old king dividing his kingdom among his daughters?", "a": "King Lear"}
+      ]
+    },
+    {
+      "title": "The novel",
+      "summary": "The novel follows inner lives at length, testing a character's ideals and illusions against the world.",
+      "links": ["Shakespeare's tragedies"],
+      "items": [
+        {"q": "Who wrote Don Quixote, often called the first modern novel?", "a": "Miguel de Cervantes"},
+        {"q": "Who wrote Pride and Prejudice, published in 1813?", "a": "Jane Austen"},
+        {"q": "Which Dostoevsky novel follows Raskolnikov, a student who commits murder and is undone by his conscience?", "a": "Crime and Punishment"},
+        {"q": "Which novel by Herman Melville tells of Captain Ahab's obsessive hunt for a white whale?", "a": "Moby-Dick"}
+      ]
+    },
+    {
+      "title": "Science and the modern mind",
+      "summary": "A few books changed the picture of nature: the Earth moves, one set of laws governs motion, and species evolve.",
+      "links": ["Philosophy and the good life", "world-history:The printing press"],
+      "items": [
+        {"q": "Which astronomer's 1543 book On the Revolutions of the Heavenly Spheres argued that the Earth orbits the Sun?", "a": "Nicolaus Copernicus"},
+        {"q": "Which 1687 book by Isaac Newton set out the laws of motion and universal gravitation?", "a": "The Principia (Mathematical Principles of Natural Philosophy)"},
+        {"q": "Who wrote On the Origin of Species, and in what year was it published?", "a": "Charles Darwin, in 1859"},
+        {"q": "What is the central idea of Darwin's On the Origin of Species?", "a": "Species evolve by natural selection: traits that aid survival and reproduction spread"}
+      ]
+    }
+  ]
+}

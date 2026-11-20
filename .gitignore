@@ -1,56 +1,7 @@
-# Dependencies
-node_modules/
-
-# Build output
-dist/
-target/
-/scry
-*.tsbuildinfo
-.wrangler/
-__pycache__/
-*.pyc
-
-# Test coverage
-coverage/
-.tmp/
-
-# Default Go runtime state
 /data/
-
-# Environment
+/bin/
+/backups/
+*.db
+*.db-wal
+*.db-shm
 .env
-.env.*
-!.env.example
-.dev.vars
-.dev.vars.*
-!.dev.vars.example
-/build/
-
-# OS / editor
-.DS_Store
-.vscode/
-.idea/
-.pi/*
-!.pi/settings.json
-*.swp
-
-# Logs
-*.log
-npm-debug.log*
-bun-debug.log*
-
-# Dagger
-.dagger/sdk/
-
-# Local delivery state
-.spellbook/
-!.spellbook/
-!.spellbook/repo-brief.md
-
-# Local provider handoff state
-.pi/state/
-.harness-kit/traces/
-
-# Container image build context carries the release binary copied from the
-# operator release; it is never source (deploy/cloudflare-hosting/README.md).
-deploy/cloudflare-hosting/scry

@@ -1,0 +1,73 @@
+{
+  "slug": "mathematics",
+  "title": "Core ideas in mathematics",
+  "description": "The ideas the rest of mathematics rests on, from proof and primes to calculus.",
+  "ideas": [
+    {
+      "title": "Proof",
+      "summary": "A proof shows that a statement must be true, by steps of logic from things already accepted.",
+      "links": ["Prime numbers", "Circles and triangles", "computer-science:Computation and its limits"],
+      "items": [
+        {"q": "In mathematics, what is an axiom?", "a": "A statement accepted without proof and used as a starting point"},
+        {"q": "In mathematics, what is a conjecture?", "a": "A statement believed to be true but not yet proved"},
+        {"q": "Which method of proof assumes the opposite of a claim and shows that this leads to an impossibility?", "a": "Proof by contradiction"},
+        {"q": "Which method of proof shows a statement holds for 1, and then that if it holds for n it also holds for n + 1?", "a": "Mathematical induction"}
+      ]
+    },
+    {
+      "title": "Prime numbers",
+      "summary": "Every whole number above 1 is a product of primes in exactly one way, and the primes never run out.",
+      "links": ["Proof", "computer-science:The internet and encryption"],
+      "items": [
+        {"q": "What is a prime number?", "a": "A whole number greater than 1 whose only divisors are 1 and itself"},
+        {"q": "What does the fundamental theorem of arithmetic say?", "a": "Every whole number above 1 is a product of primes in exactly one way, apart from order"},
+        {"q": "Which ancient Greek mathematician gave the classic proof that there are infinitely many prime numbers?", "a": "Euclid"},
+        {"q": "What is the prime factorization of 60?", "a": "2 x 2 x 3 x 5"}
+      ]
+    },
+    {
+      "title": "Functions",
+      "summary": "A function is a rule that gives exactly one output for each input.",
+      "links": ["The derivative and the integral", "Exponentials and logarithms"],
+      "items": [
+        {"q": "In mathematics, what is a function?", "a": "A rule that assigns exactly one output to each input"},
+        {"q": "What is the set of all allowed inputs of a mathematical function called?", "a": "The domain"},
+        {"q": "What is the slope of the line y = 3x + 2?", "a": "3"}
+      ]
+    },
+    {
+      "title": "Exponentials and logarithms",
+      "summary": "Exponential growth multiplies by a fixed factor in each equal step, and the logarithm undoes it.",
+      "links": ["Functions", "chemistry:Acids and bases", "computer-science:Algorithms and their cost"],
+      "items": [
+        {"q": "What kind of growth multiplies a quantity by the same factor in each equal step of time?", "a": "Exponential growth"},
+        {"q": "What is the logarithm base 10 of 1000?", "a": "3, because 10^3 = 1000"},
+        {"q": "What is the approximate value of e, the base of the natural logarithm?", "a": "About 2.718"},
+        {"q": "Which rule rewrites the logarithm of a product, log(ab), as a sum?", "a": "log(ab) = log a + log b"}
+      ]
+    },
+    {
+      "title": "The derivative and the integral",
+      "summary": "The derivative measures a rate of change, the integral adds up a total, and each undoes the other.",
+      "links": ["Functions", "physics:Newton's laws of motion"],
+      "items": [
+        {"q": "In calculus, what does the derivative of a function measure?", "a": "Its instantaneous rate of change: the slope of its graph at a point"},
+        {"q": "What is the derivative of x^2 with respect to x?", "a": "2x"},
+        {"q": "In calculus, what does the definite integral of a positive function between two points give, as a picture?", "a": "The area under its graph between those two points"},
+        {"q": "What does the fundamental theorem of calculus say about differentiation and integration?", "a": "For continuous functions, differentiating an integral recovers the function; integrating a derivative gives the net change"},
+        {"q": "Which two people developed calculus independently in the late 1600s?", "a": "Isaac Newton and Gottfried Wilhelm Leibniz"}
+      ]
+    },
+    {
+      "title": "Circles and triangles",
+      "summary": "A few exact relations between lengths, angles and areas hold for every triangle and every circle.",
+      "links": ["Proof"],
+      "items": [
+        {"q": "What does the Pythagorean theorem say about a right triangle with legs a and b and hypotenuse c?", "a": "a^2 + b^2 = c^2"},
+        {"q": "What ratio defines the number pi?", "a": "A circle's circumference divided by its diameter, about 3.14159"},
+        {"q": "What is the formula for the area of a circle of radius r?", "a": "A = pi r^2"},
+        {"q": "What do the interior angles of a triangle on a flat plane add up to?", "a": "180 degrees"}
+      ]
+    }
+  ]
+}

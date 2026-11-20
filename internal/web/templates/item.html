@@ -1,0 +1,35 @@
+{{define "main"}}
+{{template "flash" .}}
+<section class="reading">
+  <p class="meta"><a class="link quiet" href="/library/ideas/{{.Item.IdeaID}}">{{.Item.IdeaTitle}}</a> · {{.Due}}</p>
+  <h1 class="title">{{.Item.Prompt}}</h1>
+  <form method="post" action="/library/items/{{.Item.ID}}" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="field{{if .Error}} has-error{{end}}">
+      <label class="label" for="prompt">Question</label>
+      <textarea class="input" id="prompt" name="prompt" rows="2" required>{{.Item.Prompt}}</textarea>
+    </div>
+    <div class="field{{if .Error}} has-error{{end}}">
+      <label class="label" for="answer">Answer</label>
+      <textarea class="input" id="answer" name="answer" rows="2" required>{{.Item.Answer}}</textarea>
+      {{if .Error}}<p class="field-error" role="alert">{{.Error}}</p>{{end}}
+    </div>
+    <label class="check"><input type="checkbox" name="exact" value="1"{{if .Item.Exact}} checked{{end}}> Exact: judge this answer word for word</label>
+    <p class="meta hint">Exact answers are compared word by word. Everything else is judged for meaning, with a one-line reason.</p>
+    <button class="btn btn-accent">Save</button>
+  </form>
+  <form method="post" action="/library/items/{{.Item.ID}}/remove" class="inline-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button class="link quiet">Remove this item</button>
+  </form>
+
+  <h2 class="section-label meta">History</h2>
+  {{if .History}}
+  <ul class="rows">
+    {{range .History}}
+    <li class="row history-row"><span class="meta">{{short .At}}</span><span class="history-why">{{.Reason}}</span><span class="tag tag-{{.Verdict}}">{{.Verdict.Label}}</span></li>
+    {{end}}
+  </ul>
+  {{else}}<p class="lede">Not reviewed yet.</p>{{end}}
+</section>
+{{end}}

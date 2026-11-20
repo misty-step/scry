@@ -1,0 +1,83 @@
+{
+  "slug": "passages-worth-keeping",
+  "title": "Passages worth keeping",
+  "description": "Four short texts to know by heart, learned line by line and word for word.",
+  "ideas": [
+    {
+      "title": "The Preamble",
+      "summary": "The single sentence that opens the United States Constitution and states its purposes.",
+      "links": ["Gettysburg Address, opening", "american-civics:The Constitution"],
+      "exact": {
+        "title": "Preamble to the United States Constitution",
+        "lines": [
+          "We the People of the United States, in Order to form a more perfect Union,",
+          "establish Justice, insure domestic Tranquility, provide for the common defence,",
+          "promote the general Welfare, and secure the Blessings of Liberty to ourselves and our Posterity,",
+          "do ordain and establish this Constitution for the United States of America."
+        ]
+      }
+    },
+    {
+      "title": "Psalm 23",
+      "summary": "The shepherd psalm in the standard modern-spelling King James Version (1769 tradition).",
+      "links": ["world-religions:Judaism", "world-religions:Christianity"],
+      "exact": {
+        "title": "Psalm 23 (King James Version)",
+        "lines": [
+          "The LORD is my shepherd; I shall not want.",
+          "He maketh me to lie down in green pastures:",
+          "he leadeth me beside the still waters.",
+          "He restoreth my soul: he leadeth me in the paths of righteousness for his name's sake.",
+          "Yea, though I walk through the valley of the shadow of death, I will fear no evil:",
+          "for thou art with me; thy rod and thy staff they comfort me.",
+          "Thou preparest a table before me in the presence of mine enemies:",
+          "thou anointest my head with oil; my cup runneth over.",
+          "Surely goodness and mercy shall follow me all the days of my life:",
+          "and I will dwell in the house of the LORD for ever."
+        ]
+      }
+    },
+    {
+      "title": "Gettysburg Address, opening",
+      "summary": "The first two paragraphs of Lincoln's address at Gettysburg on 19 November 1863, in the wording of the Bliss copy.",
+      "links": ["The Preamble", "american-civics:Later amendments"],
+      "exact": {
+        "title": "Gettysburg Address (opening)",
+        "lines": [
+          "Four score and seven years ago our fathers brought forth on this continent, a new nation,",
+          "conceived in Liberty, and dedicated to the proposition that all men are created equal.",
+          "Now we are engaged in a great civil war,",
+          "testing whether that nation, or any nation so conceived and so dedicated, can long endure.",
+          "We are met on a great battle-field of that war.",
+          "We have come to dedicate a portion of that field,",
+          "as a final resting place for those who here gave their lives that that nation might live.",
+          "It is altogether fitting and proper that we should do this."
+        ]
+      }
+    },
+    {
+      "title": "Ozymandias",
+      "summary": "Shelley's sonnet on passing power and pride, in Thomas Hutchinson's 1914 Complete Poetical Works.",
+      "links": ["world-history:Rome and its successors"],
+      "exact": {
+        "title": "Ozymandias, by Percy Bysshe Shelley",
+        "lines": [
+          "I met a traveller from an antique land",
+          "Who said: Two vast and trunkless legs of stone",
+          "Stand in the desert. Near them, on the sand,",
+          "Half sunk, a shattered visage lies, whose frown,",
+          "And wrinkled lip, and sneer of cold command,",
+          "Tell that its sculptor well those passions read",
+          "Which yet survive, stamped on these lifeless things,",
+          "The hand that mocked them and the heart that fed:",
+          "And on the pedestal these words appear:",
+          "\"My name is Ozymandias, king of kings:",
+          "Look on my works, ye Mighty, and despair!\"",
+          "Nothing beside remains. Round the decay",
+          "Of that colossal wreck, boundless and bare",
+          "The lone and level sands stretch far away."
+        ]
+      }
+    }
+  ]
+}

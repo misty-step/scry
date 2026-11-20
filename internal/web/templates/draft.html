@@ -1,0 +1,51 @@
+{{define "head"}}{{if eq .Draft.Status "drafting"}}<noscript><meta http-equiv="refresh" content="2"></noscript>{{end}}{{end}}
+{{define "main"}}
+<section class="inbox draft"{{if eq .Draft.Status "drafting"}} data-drafting{{end}} data-inbox>
+  <header class="list-head">
+    <div>
+      <p class="meta">{{.Kind}}</p>
+      <h1 class="display">{{if eq .Draft.Status "allowance"}}Not enough allowance{{else}}{{.Draft.Title}}{{end}}</h1>
+    </div>
+    {{if eq .Draft.Status "drafting"}}
+      <p class="meta list-count" role="status">drafting{{if .Pending}} · {{plural .Ideas "idea" "ideas"}} so far{{end}}</p>
+    {{else if and (eq .Draft.Status "ready") .Pending}}
+      <p class="meta list-count">{{plural .Pending "item" "items"}} in {{plural .Ideas "idea" "ideas"}}</p>
+      <form method="post" action="/learn/{{.Draft.ID}}/approve-all" class="list-action">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button class="btn btn-accent">Approve all</button>
+      </form>
+    {{end}}
+  </header>
+
+  {{if eq .Draft.Status "allowance"}}
+    <p class="empty">Not enough allowance left for a draft. Scry can't draft this yet.</p>
+    <p>It resets on {{date .Reset}}. <a class="link" href="/billing">Top up or check your allowance in Billing</a></p>
+  {{else if eq .Draft.Status "empty"}}
+    <p class="empty">Nothing useful found.</p>
+    <p>{{.Draft.Note}}</p>
+    <p><a class="link" href="/learn?q={{.Retry}}">Try a narrower topic</a></p>
+  {{else if eq .Draft.Status "failed"}}
+    <p class="empty">The draft didn't finish.</p>
+    <p>{{.Draft.Note}}</p>
+    <p><a class="link" href="/learn?q={{.Retry}}">Ask again</a></p>
+  {{else}}
+    {{if and .Draft.Note (ne .Draft.Status "drafting")}}<p class="meta draft-note">{{.Draft.Note}}</p>{{end}}
+    {{if and (eq .Draft.Status "ready") (not .Pending)}}
+      <p class="empty">{{if .Approved}}All approved. {{plural .Approved "item" "items"}} joined your library.{{else}}Nothing left in this draft.{{end}}</p>
+      <p><a class="link" href="/study">Start studying</a> · <a class="link quiet" href="/library">See it in the library</a> · <a class="link quiet" href="/learn">Learn something else</a></p>
+    {{else}}
+      <p class="meta">Nothing enters your library until you approve it.</p>
+    {{end}}
+    {{range .Groups}}
+    <section class="draft-idea">
+      <h2 class="title">{{.Title}}</h2>
+      {{if .Summary}}<p class="idea-summary">{{.Summary}}</p>{{end}}
+      <ul class="rows dense" data-rows>
+        {{range .Items}}{{template "suggestion" (dict "S" . "CSRF" $.CSRF)}}{{end}}
+      </ul>
+    </section>
+    {{end}}
+    {{if .Groups}}<p class="hints micro">j k move · a approve · d dismiss</p>{{end}}
+  {{end}}
+</section>
+{{end}}

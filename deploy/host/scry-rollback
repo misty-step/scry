@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# scry-rollback: switch to the newest good build other than the running one
+# and mark the running one bad. Safe to call repeatedly from an alert.
+set -euo pipefail
+# Run inside a transient systemd unit so the gate finishes even if the caller
+# (an SSH session, boat exec or an alert hook) is cut off, and hold a lock so
+# two deploys or rollbacks never interleave.
+if [ -z "${SCRY_DETACHED:-}" ]; then
+  exec systemd-run --quiet --wait --pipe --collect --setenv=SCRY_DETACHED=1 \
+    --unit="scry-$(basename "$0")-$(date +%s)-$$" "$(readlink -f "$0")" "$@"
+fi
+exec 9>"${SCRY_ROOT:-/srv/scry}/.lock"; flock 9
+. /usr/local/lib/scry/scry-lib.sh
+cur=$(current_sha)
+target=$(rollback_target "$cur")
+[ -n "$target" ] || { log "rollback: no good build other than $cur"; exit 2; }
+echo "$cur" >> "$ROOT/bad.log"
+log "rollback $cur -> $target"
+switch_to "$target"
+if healthy; then log "rollback to $target healthy"; else log "rollback to $target unhealthy"; exit 1; fi

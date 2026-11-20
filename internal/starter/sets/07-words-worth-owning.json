@@ -1,0 +1,73 @@
+{
+  "slug": "words-worth-owning",
+  "title": "Words worth owning",
+  "description": "Precise words you half-know, pinned down so you can use them with confidence.",
+  "ideas": [
+    {
+      "title": "Words for how people speak",
+      "summary": "English has exact words for speech that is brief, endless, evasive or too smooth to trust.",
+      "links": ["Pairs people confuse", "rhetoric-and-writing:Plain style", "logic-and-fallacies:Fallacies of assumption and evidence"],
+      "items": [
+        {"q": "Which word, taken from the Greek name for the region around Sparta, means using very few words?", "a": "Laconic"},
+        {"q": "What does \"garrulous\" mean?", "a": "Excessively talkative, especially about trivial things"},
+        {"q": "What does it mean to equivocate?", "a": "To use ambiguous language so as to avoid committing yourself or to hide the truth"},
+        {"q": "A spokesman meets a hard question with a smooth, easy reply that has no real thought behind it. Which four-letter word describes the reply?", "a": "Glib"}
+      ]
+    },
+    {
+      "title": "Words for temperament",
+      "summary": "Moods and dispositions have exact names, some of them inherited from the old theory of the four humors.",
+      "links": ["Words for character and conduct"],
+      "items": [
+        {"q": "What does \"sanguine\" mean?", "a": "Optimistic, especially in a difficult situation"},
+        {"q": "What does \"phlegmatic\" mean?", "a": "Calm and unemotional; not easily stirred"},
+        {"q": "Which word, from the name of a swift Roman god, describes a person whose moods change suddenly and unpredictably?", "a": "Mercurial"},
+        {"q": "What does \"diffident\" mean?", "a": "Shy and modest from a lack of self-confidence"},
+        {"q": "Which word, from the Latin for \"even mind\", means calmness and composure, especially under strain?", "a": "Equanimity"}
+      ]
+    },
+    {
+      "title": "Pairs people confuse",
+      "summary": "Some words are worth owning mainly because they are so often mistaken for a neighbor.",
+      "links": ["Words for thinking and judging", "Words for beginnings and endings"],
+      "items": [
+        {"q": "What does \"enervate\" mean, a word often mistaken for \"energize\"?", "a": "To drain of energy; to weaken"},
+        {"q": "In the traditional usage distinction, what is the difference between \"disinterested\" and \"uninterested\"?", "a": "Disinterested means impartial, having no stake; uninterested means not interested"},
+        {"q": "What is the difference between \"imply\" and \"infer\"?", "a": "A speaker implies (suggests without saying); a listener infers (draws a conclusion)"},
+        {"q": "What is the difference between \"flout\" and \"flaunt\"?", "a": "To flout is to openly disregard a rule; to flaunt is to show something off"},
+        {"q": "What does \"nonplussed\" mean in its standard sense?", "a": "So surprised or confused that you do not know how to react"}
+      ]
+    },
+    {
+      "title": "Words for thinking and judging",
+      "summary": "Careful thinkers need words for what is unspoken, merely apparent, falsely convincing or sharply seen.",
+      "links": ["Pairs people confuse", "latin-and-greek-roots:Latin roots for common actions"],
+      "items": [
+        {"q": "What does \"ostensible\" mean?", "a": "Stated or appearing to be so, but perhaps not really so"},
+        {"q": "What does \"tacit\" mean?", "a": "Understood or implied without being stated"},
+        {"q": "A reviewer calls a book's central argument \"specious\". What is she saying about it?", "a": "That it sounds convincing but is actually wrong"},
+        {"q": "What does \"perspicacious\" mean?", "a": "Having keen insight; quick to see and understand"}
+      ]
+    },
+    {
+      "title": "Words for character and conduct",
+      "summary": "There are precise words for generosity of spirit and for its opposites, fawning and corruption.",
+      "links": ["Words for temperament"],
+      "items": [
+        {"q": "Which word, built from the Latin for \"great\" and \"soul\", describes someone generous and forgiving toward a rival?", "a": "Magnanimous"},
+        {"q": "What does \"obsequious\" mean?", "a": "Excessively eager to please or obey; fawning"},
+        {"q": "What does \"venal\" mean?", "a": "Open to bribery; willing to act dishonestly for money"}
+      ]
+    },
+    {
+      "title": "Words for beginnings and endings",
+      "summary": "Some words fix where a thing stands in its life: just begun, briefly here, or nearly over.",
+      "links": ["Pairs people confuse"],
+      "items": [
+        {"q": "What does \"inchoate\" mean, a word sometimes mistaken for \"chaotic\"?", "a": "Just begun and not yet fully formed"},
+        {"q": "Which word, from the Greek for \"lasting only a day\", describes something very short-lived?", "a": "Ephemeral"},
+        {"q": "What does \"moribund\" mean?", "a": "At the point of death; in terminal decline"}
+      ]
+    }
+  ]
+}

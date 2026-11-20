@@ -1,0 +1,73 @@
+{
+  "slug": "human-body",
+  "title": "The human body",
+  "description": "How the body's main systems work, with the everyday numbers worth knowing.",
+  "ideas": [
+    {
+      "title": "Heart and blood",
+      "summary": "The heart pumps blood round two loops, first to the lungs for oxygen and then out to the rest of the body.",
+      "links": ["Breathing and gas exchange", "Food, fuel and waste"],
+      "items": [
+        {"q": "How many chambers does the human heart have, and what are they called?", "a": "Four: two atria and two ventricles"},
+        {"q": "Which chamber of the human heart pumps oxygen-rich blood out to the body?", "a": "The left ventricle"},
+        {"q": "Which kind of blood vessel carries blood away from the heart?", "a": "An artery"},
+        {"q": "Which protein in red blood cells carries oxygen?", "a": "Hemoglobin"},
+        {"q": "What is the normal range for an adult's resting heart rate?", "a": "60 to 100 beats per minute"}
+      ]
+    },
+    {
+      "title": "Breathing and gas exchange",
+      "summary": "The lungs take in oxygen and give up carbon dioxide across millions of tiny, thin-walled air sacs.",
+      "links": ["Heart and blood", "biology:Energy in living things"],
+      "items": [
+        {"q": "What are the tiny air sacs in the lungs called, where oxygen passes into the blood?", "a": "Alveoli"},
+        {"q": "Which dome-shaped muscle beneath the lungs does most of the work of breathing?", "a": "The diaphragm"},
+        {"q": "Which tube carries air from the throat down toward the lungs?", "a": "The trachea, or windpipe"}
+      ]
+    },
+    {
+      "title": "Food, fuel and waste",
+      "summary": "The gut absorbs nutrients, the liver and pancreas manage them, and the kidneys clear waste from the blood.",
+      "links": ["Heart and blood", "Defense and balance"],
+      "items": [
+        {"q": "In which part of the human digestive tract are most nutrients absorbed?", "a": "The small intestine"},
+        {"q": "Which hormone, made by the pancreas, lowers the level of sugar in the blood?", "a": "Insulin"},
+        {"q": "Which organ of the human body makes bile?", "a": "The liver"},
+        {"q": "What is the main job of the kidneys?", "a": "They filter the blood, removing waste and excess water as urine"}
+      ]
+    },
+    {
+      "title": "Nerves and the brain",
+      "summary": "Nerve cells carry fast electrical signals, and the brain and spinal cord turn them into sensing and action.",
+      "links": ["Bones and muscles", "Defense and balance"],
+      "items": [
+        {"q": "Which two structures make up the human central nervous system?", "a": "The brain and the spinal cord"},
+        {"q": "What is the junction called where one nerve cell passes a signal to the next?", "a": "A synapse"},
+        {"q": "Which part of the human brain coordinates balance and fine movement?", "a": "The cerebellum"},
+        {"q": "Roughly how many neurons does the human brain contain?", "a": "About 86 billion"}
+      ]
+    },
+    {
+      "title": "Bones and muscles",
+      "summary": "Bones give the body its frame, and muscles move it by pulling on them across joints.",
+      "links": ["Nerves and the brain"],
+      "items": [
+        {"q": "What is the conventional number of bones in a typical adult human skeleton?", "a": "206"},
+        {"q": "What is the longest bone in the human body?", "a": "The femur, or thigh bone"},
+        {"q": "In the human body, what kind of tissue connects a muscle to a bone?", "a": "A tendon"},
+        {"q": "In the human body, what kind of tissue connects one bone to another at a joint?", "a": "A ligament"}
+      ]
+    },
+    {
+      "title": "Defense and balance",
+      "summary": "The body holds its inner conditions steady, and its immune system learns to recognize what does not belong.",
+      "links": ["Heart and blood", "Food, fuel and waste", "biology:Cells"],
+      "items": [
+        {"q": "What is the traditional reference value for normal human body temperature, in Celsius and Fahrenheit?", "a": "About 37 °C (98.6 °F)"},
+        {"q": "In physiology, what is homeostasis?", "a": "Keeping the body's internal conditions stable as conditions outside change"},
+        {"q": "In the immune system, what do antibodies do?", "a": "They bind to specific foreign molecules, marking invaders for destruction"},
+        {"q": "How does a vaccine protect a person against a disease?", "a": "It trains the immune system to recognize the germ without causing the illness"}
+      ]
+    }
+  ]
+}

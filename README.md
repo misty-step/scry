@@ -1,140 +1,318 @@
 # Scry
 
-> **Product contract (2026-11-17):** [PRODUCT.md](PRODUCT.md) is the product contract and [DESIGN.md](DESIGN.md) the visual one; the Go recompile reads only those two. `SPEC.md` and `VISION.md` are retired history under [docs/history/2026-11-17-retired](docs/history/2026-11-17-retired/README.md); they describe the current Rust code and matter only when maintaining it.
+One Go service: private libraries, model-judged study, exact texts, and agent suggestions.
+Server-rendered HTML, self-hosted Geist fonts, SQLite, no frontend build step.
 
-Scry helps its owner memorize externally authored knowledge. Home leads to
-native review or the supplied NATO starter; Library is secondary. External
-agents supply content, while Scry grades answers and schedules recall. Native
-content generation is retired. Existing exact-text and concept-notebook
-material, interrupted practice and history remain preserved. [SPEC](docs/history/2026-11-17-retired/SPEC.md)
-is the present-tense target state.
+## Run and test
 
-The application in this checkout is a ground-up **Rust + Cloudflare Workers**
-rewrite, authorized on October 7, 2026. A plain WASM Worker validates private
-Access ingress and forwards to one SQLite-backed Durable Object. Rust owns
-learning, immutable history, native grading, and recovery; server-rendered HTML,
-self-hosted fonts, and a small vanilla controller deliver the notebook. There
-is no Container or frontend framework in the replacement architecture.
+Use Go 1.27.4 (go.mod supports automatic toolchain installation).
 
-Source changes alone do not establish production serving state. Consult
-[the runbook's dated serving observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20).
-[The operational runbook](docs/runbook.md) alone owns activation, origins,
-recovery, and retirement evidence. The old Go source is retained exactly in Git
-at `c6ba395`; historical Rust/Postgres/Worker stores and
-backups remain separate recovery material. This rewrite does not import,
-reactivate, rename, or erase those stores.
+    make run                  # test mode, seeded demo, default PORT=8080
+    make run PORT=18080        # choose a free port
+    make test                 # vet and tests
+    go build ./...
+    go vet ./...
+    go test -count=1 ./...     # uncached verification
+    make build                # static bin/scry
 
-For the current origin and remaining proof, read the runbook's
-[dated promotion observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
-and the [current deployment procedure](docs/rust-cloudflare.md#reviewable-release-procedure).
+Demo: **phaedrus@example.com / know-thyself**, an ordinary account, not an admin.
+Seeding is idempotent, not a reset; use a fresh SCRY_DB for a fresh demo.
+Never expose the known-password demo to untrusted users or enter real personal
+data. On a remote sandbox use its port-sharing facility to obtain a browser URL.
 
-[Product intent](docs/history/2026-11-17-retired/VISION.md) · [Specification](docs/history/2026-11-17-retired/SPEC.md) ·
-[Design](DESIGN.md) · [Features](features/README.md) ·
-[Verification](docs/qa/system.md) · [Current production operations](docs/runbook.md)
+Sign up with email and a password of at least eight characters. For the card step,
+use only test card 4242 4242 4242 4242, a future expiry, and CVC 123.
+4000 0000 0000 0002 demonstrates a decline. No payment occurs.
 
-## Start or resume work
+**Test-mode limitations:** non-exact answers receive a labelled scripted “right”
+fixture, not a correctness assessment. Tests inject close/missed results;
+SCRY_TEST_JUDGMENTS=close,missed,right hands out that verdict sequence in turn
+(answer-independent) so the running app can show close/missed and “Why?”.
+The test explainer sets the two answers side by side; it assesses nothing.
+Exact texts use the real word diff. Drafts use built-in examples or labelled
+placeholders, not general knowledge generation. Speech is simulated, though
+the browser can request microphone permission and send validated PCM WAV audio
+to this service once recording stops (no repeated live transcription).
+SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 
-Read SPEC before scoping work; its Terms own the words. VISION explains
-intent. Technical decisions live in ADRs.
-Use the current operator request as authority; preserve overlapping work and
-inspect `git status --short --branch` and `git rev-parse HEAD` in the selected
-checkout. [GitHub issues](https://github.com/misty-step/scry/issues) own work
-state: initiative [#273](https://github.com/misty-step/scry/issues/273) tracks its
-child issues. Legacy MIS, Linear, Powder and Glass identities are provenance. Link accepted
-scope, exact source, tests, and remaining evidence from the session/PR.
+## Environment and adapters
 
-[DESIGN](DESIGN.md) governs visual decisions; [SPEC](docs/history/2026-11-17-retired/SPEC.md) alone governs
-behavior. Do not synchronize requirements into work instructions or feature maps.
+| Variable | Default / purpose |
+| --- | --- |
+| PORT | 8080; binds all interfaces |
+| SCRY_MODE | Bare binary defaults to live and fails without credentials. **Use test for this delivery.** make run and image set test. |
+| SCRY_DB | data/scry.db; make run uses data/demo.db unless overridden |
+| SCRY_SEED_DEMO | 1 seeds demo, only in test mode |
+| SCRY_BASE_URL | External HTTPS origin; forces Secure cookies |
+| SCRY_TEST_SPEECH | Optional fixed test transcription |
+| SCRY_TEST_JUDGMENTS | Test mode only: comma-separated verdict script (right, close, missed) |
+| SCRY_TEST_EXPLAIN | Test mode only: fail or slow exercises the explanation fallback |
+| SCRY_TEST_CLOCK | Test mode only: start the app clock at an RFC 3339 instant (zone kept) |
+| SCRY_TEST_CHARGE_DELAY | Test mode only: hold each fake top-up charge (e.g. 4s) |
+| SCRY_EXPLAIN_MODEL | Live: model for on-demand “Why?” explanations (default claude-opus-5-5, low effort) |
+| LOG_LEVEL | debug enables successful health-check request logs |
+| BACKUP_DIR | Empty disables automatic snapshots; image uses /backups |
+| BACKUP_INTERVAL | 6h when backups enabled |
+| BACKUP_KEEP | 14 snapshots (minimum effective retention 1) |
+| ALERT_WEBHOOK_URL | Ignored in test mode; alerts go to JSON logs |
 
-## Develop
+Interfaces isolate auth, billing, model, speech, and alerts. Test adapters use
+local bcrypt auth, fake cards, scripted judgments, simulated speech, and log-only
+alerts. **No keys are needed or used.** Inactive provider adapters are included:
+Clerk (CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY), Jev (OPENROUTER_API_KEY or TYPESAFE_API_KEY),
+Anthropic drafting only (ANTHROPIC_API_KEY; optional SCRY_DRAFT_MODEL), speech (OPENAI_API_KEY; optional
+SCRY_SPEECH_MODEL), Stripe (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY,
+STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET). Do not enable them for this delivery.
+Stripe rejects non-test secret/publishable keys. Never commit credentials.
+Provider quality and actual integrations are not proved by test fixtures.
 
-Use the pinned Rust 1.98.1 toolchain and `wasm32-unknown-unknown` target,
-`worker-build` 0.8.7, Node 22.22.0, Bun, and lockfile-pinned dev dependencies.
+## Deploy
 
-```sh
-rustup target add wasm32-unknown-unknown
-cargo install worker-build --version 0.8.7 --locked
-npm ci --ignore-scripts --no-audit --no-fund
-cargo test --locked
-bun run dev
-```
+    make docker
+    docker volume create scry-data
+    docker volume create scry-backups
+    docker run -d --name scry --restart unless-stopped \
+      -p 8080:8080 -e PORT=8080 -e SCRY_MODE=test \
+      -v scry-data:/data -v scry-backups:/backups scry
+    docker exec scry /scry healthcheck
+    docker logs scry
 
-`bun run dev` / `bun run rust-dev` run [scripts/rust-dev](scripts/rust-dev),
-which builds WASM and launches real local workerd with fresh run-owned SQLite
-and R2 state. Its private temporary configuration and `env -i` keep inherited
-operator/model/deployment capabilities out. It listens only on loopback; set
-`SCRY_DEV_PORT` to an unused unprivileged port if necessary. It never loads
-repository `.env` or `.dev.vars` files. The printed directory owns that run's
-state; stop the process before removing only that directory.
+The multi-stage scratch image has a static binary, CA certificates, embedded
+assets and timezone data, no shell, and UID/GID 65532. /data and /backups are
+persistent volumes. Named volumes inherit image ownership. For bind mounts,
+pre-create directories owned by 65532 with mode 0700. Use one replica and local
+persistent storage, not an unsuitable network filesystem. Terminate TLS at a
+trusted reverse proxy, set SCRY_BASE_URL, restrict backend access, and never
+expose database files, snapshots or tokens.
 
-The authored demo is retired: no environment offers or accepts it. New native content-generation requests are refused before creating work, even
-when provider bindings exist. Local fixture mechanics do not prove live model usefulness,
-private HTTPS, remote R2 recovery, or phone acceptance.
+GET /healthz verifies database writes and returns 200 or 503. Structured logs
+include request IDs, latency, status and user IDs, not submitted answers.
+Startup checks integrity. Background health checks run every 30 seconds and
+renewals every minute; panics and provider/backup failures produce alerts.
 
-[.dev.vars.example](.dev.vars.example) documents synthetic local values only.
-Production secrets belong in Worker bindings: `OWNER_SUBJECT`, `INTERNAL_KEY`,
-`OPENROUTER_API_KEY`, `JEV_API_KEY`, and independently scoped `OPERATOR_KEY` /
-`RESTORE_TOKEN` where required. Public configuration includes the canonical
-origin, exact Access issuer/audience, singleton namespace, and explicit model
-choices. Never put secrets in source, flags, logs, screenshots, or artifacts.
+**Docker health status alone does not restart unhealthy containers.** The
+restart policy handles exits. Configure the deployment platform's liveness
+probe to GET /healthz every 30 seconds (5-second timeout, restart after three
+failures, 10-second startup allowance). Monitor the public endpoint outside the
+host and route log alerts to an operator. Restarting fixes transient failures,
+not corrupt disks or arbitrary bugs; use recovery procedures as needed.
+No real monitoring service was contacted in this build.
 
-## Check and build
+Run `cmd/scry-watch` beside the service as the single health/restart owner.
+Disable the old watchdog cron and competing platform health restarters when
+using `SCRY_WATCH_RESTART_CMD`. The legacy watchdog script remains tested for
+deployments not using the incident watcher. See NOTES.md's MIS-1210 monitoring
+runbook for configuration and the end-to-end drill.
 
-```sh
-cargo test --locked
-cargo clippy --all-targets -- -D warnings
-cargo check --locked --target wasm32-unknown-unknown
-worker-build --release --locked
-bun run ci
-```
+## Durability, privacy and backup
 
-The native suite covers application transitions, generation/critic policy,
-immutable content, response replay, recovery archives, web secrecy, and pure
-learning. The scheduler port compares 260 full-state trajectories against the
-exact pinned Go FSRS adapter. That is scheduler compatibility evidence, not
-proof of model calibration or learning efficacy.
+SQLite uses WAL, FULL synchronous writes, foreign keys, and transactions.
+Learner queries are scoped by user ID. Cookies are HttpOnly/SameSite; mutations
+require CSRF. Agent tokens are hashed and default to suggestions-only; direct
+addition is an explicit permission. Data is private between accounts, **not
+end-to-end encrypted**: host administrators and backup holders can read it.
+Encrypt volumes and off-host backups and restrict operator access.
 
-`bun run ci` / `bun run ci:local` use the source-snapshot gate in
-[scripts/scry-ci](scripts/scry-ci). Release evidence must bind committed source,
-the exact WASM Worker assets exercised, lockfiles, and smoke results. Use
-`--require-committed` when producing release artifacts; worktree-labeled output
-is development evidence. Never rebuild between proof and activation. Retained
-retired operational recovery tools remain available in Git history, not in the deployment path.
+Automatic VACUUM INTO snapshots run on startup and every BACKUP_INTERVAL,
+retaining BACKUP_KEEP copies. Manual backup:
 
-Browser QA runs from a shell first: verify-scry's Playwright helpers and the
-`qa/walk` story walks, which also produce release receipts. The T3
-collaborative preview is an alternative. Exercise real pointer and
-keyboard events, held results, no-JavaScript forms, both color schemes, narrow
-screens, offline drafts, access loss, and identical-operation reconciliation.
-Read [Scry QA](.agents/skills/scry-qa/SKILL.md) before verification. Unrun cases
-remain UNVERIFIED; old Go/Worker receipts do not transfer to this rewrite.
+    SCRY_DB=data/demo.db bin/scry backup backups
+    docker exec scry /scry backup /backups
 
-The replacement's [operator procedure](docs/rust-cloudflare.md#independent-fresh-space-restore)
-documents isolated restore and separately authorized future-work resumption.
-Use [the runbook](docs/runbook.md) to select compatible recovery procedures;
-source endpoints alone do not establish deployed recovery support.
+Copy completed snapshots to separate encrypted storage. A second directory on
+the same disk is not disaster recovery. Default recovery-point objective is up
+to six hours plus off-host-copy delay. Never copy just the live .db file while
+WAL writes are active.
 
-## Durable boundaries
+Whole recovery: stop the service, preserve the damaged database and its WAL/SHM
+siblings, install a verified snapshot at SCRY_DB with correct ownership and
+restrictive permissions, ensure no stale WAL/SHM remain at that path, then
+restart and verify health, login, library and history. Rehearse on disposable
+storage first. Whole snapshots include accounts, local password hashes and tokens.
 
-[ADR 004](docs/adr/004-rust-cloudflare-candidate.md) owns architecture and module
-boundaries. [SPEC](docs/history/2026-11-17-retired/SPEC.md#invariants) owns learning, privacy,
-spend and recovery policies; this entrypoint is not another copy.
+Selective recovery is for the **same database lineage**. First snapshot the
+destination and stop traffic/background work, then:
 
-## Deployment
+    SCRY_DB=data/demo.db bin/scry restore-user backups/scry-TIMESTAMP.db learner@example.com
 
-[The deployment procedure](docs/rust-cloudflare.md) is source PR → passing CI →
-merge → one master build/test → direct Wrangler deployment → code readback.
-The same tested Worker bytes are deployed to the existing Cloudflare target.
-No generated release PR, custom recovery drill, approval window or cleanup lock
-is a deployment prerequisite. Stored content and authentication are preserved.
+This replaces owned rows transactionally, leaves other users untouched, and
+rejects conflicting account identities. It does not restore account profile,
+local passwords, or browser sessions; use whole recovery for these. Billing and
+agent-token rows are restored: reconcile billing and revoke restored tokens
+before reopening access. It is not an import between unrelated databases.
+Settings also offers JSON export (without token hashes) and 30-day undo for
+removed ideas; export is not a whole-database backup.
 
-[CHANGELOG](CHANGELOG.md), [GitHub Releases](https://github.com/misty-step/scry/releases)
-and [ADR 007](docs/adr/007-generated-releases.md) retain release history.
-`/changelog` and health identity headers identify a serving build; neither a tag
-nor a source merge proves deployment or authenticated learner acceptance.
+## Agents and keyboard
 
-Changed private-data, credential, spend or irreversible-action scope still
-requires its own authorization. The [runbook's dated serving observation](docs/runbook.md#canonical-origin-serving-at-1635-utc-2026-10-20)
-owns production serving state. The retained
-[Container hosting notes](https://github.com/misty-step/scry/blob/74567a69911009ad3ad2bb324f6d7c7d026a6969/deploy/cloudflare-hosting/README.md) describe the
-retired Go configuration.
+Settings creates/revokes agent tokens. Send Authorization: Bearer TOKEN:
+GET /api/v1/ideas lists private ideas; POST /api/v1/suggestions queues approval;
+POST /api/v1/items requires “may add”. Body example:
+
+    {"source":"Reading notes","items":[{"question":"What is inversion?","answer":"Reason backward from failure","idea":"Mental models"}]}
+
+Tab/Enter operate controls. Outside fields: g s study, g l library, g i inbox,
+g n learn, g b billing; / focuses search. Inbox: A approve, D dismiss,
+J/K or arrows move. Study: Enter checks/continues, Space on an empty answer
+starts voice and another Space stops it, A repeats exact text. Settings has
+system/light/dark modes; reduced motion disables transitions.
+
+## Contract → automated proof
+
+Each row maps one PRODUCT.md story or rule to existing tests in internal/web.
+These are deterministic integration proofs, not external model quality or uptime
+guarantees. Unattended restart requires the deployment liveness policy above.
+
+| Contract | Test |
+| --- | --- |
+| Operator story: continuous monitoring, incident triage, fix proposal and fault drill | `TestStory_ContinuousMonitoringFaultDrillRestartRecovery`, `TestMonitoringDedupTriageFixQuietDurability` (internal/watch) |
+| Story: signup, trial and study within a minute | TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute |
+| Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
+| Story: any topic shaped to learner | TestStory_AskForAnyTopic_AndGetItShapedToMe |
+| Story: favorite book core ideas | TestStory_TurnAFavoriteBookIntoASetOfItsCoreIdeas |
+| Story: agents add/suggest; one-tap approval | TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
+| Story: due items, typing/speaking, five minutes | TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinutes |
+| Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |
+| Story: connected ideas; each item belongs to an idea | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea |
+| Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
+| Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
+| Rule: no free tier, 7-day trial, card up front | TestRule_NoFreeTier_SevenDayTrialWithACardUpFront |
+| Rule: small base, capped cost allowance, top-ups | TestRule_Prices_SmallBaseCappedAllowanceAndTopUpsBeyondIt |
+| Rule: Phaedrus first with no special powers | TestRule_PhaedrusIsTheFirstCustomerWithNoSpecialPowers |
+| Rule: outages noticed/fixed without prompting | TestRule_Reliability_HealthzStructuredLogsAndAlertsWithoutBeingAsked |
+
+Additional regression tests cover snapshot/per-user recovery, conflicting restore identities, test-mode alert isolation, scripted judgments, and design details.
+
+
+## Review-remediation verification and allowance safety
+
+Provider cost is now reserved atomically before calls; insufficient unreserved
+budget stops work even if a small positive balance remains. Requests are bounded
+(judge: 8,192 input bytes / 1,024 output tokens; draft: 32,000 / 16,000).
+Conservative reservations include framing margin and the highest configured
+rates; actual usage settlement refunds unused budget. Automatic model retries
+and fallback are disabled. Review the price table before changing model pricing.
+
+Unknown outcomes retain durable reservations. Reconcile them against provider
+usage before releasing holds; do not blindly delete reservations after a crash.
+The reservation table is part of private backups and selective recovery.
+Older snapshots need whole restore/migration before selective recovery.
+
+Optional local browser regression (requires Chromium and puppeteer-core):
+
+    SCRY_BROWSER_SMOKE=1 NODE_PATH=/path/to/tooling/node_modules       go test -race ./internal/web -run TestReviewBrowserSmoke -count=1 -v
+
+The smoke blocks external requests, uses synthetic microphone input and test
+adapters, measures Check contrast in both modes and at desktop/phone widths,
+and verifies one transcription upload at stop, visible reasons and wrapping
+strikes. All provider-contract tests use local stand-ins, never real keys.
+
+
+## Decisions judge — Phaedrus correction (MIS-1210)
+
+The default route is OpenRouter POST https://openrouter.ai/api/alpha/decisions
+when OPENROUTER_API_KEY is set. SCRY_JUDGE_MODEL defaults to
+openai/gpt-6-luna-decisions on this route. Selected from the supplied 60-sample
+evaluation by accuracy first, then cost (see NOTES.md). Set that one variable to any Decisions model
+slug; the adapter has no provider/model-specific parser. Examples include
+openai/gpt-6-luna-decisions, cloudflare/clef, cloudflare/clef-flash, liquid/d1.2,
+inception/mercury-decide, perplexity/pplx-decider-v1.2, upstage/solar-decide and
+microsoft/microsoft-decision-1.1. None was called live during development.
+
+TYPESAFE_API_KEY remains an optional second route to POST
+https://api.typesafe.ai/v1/systemone, default jev-latest; SCRY_JUDGE_MODEL overrides
+that model too. OpenRouter wins if both keys exist. Both routes send one choice
+question and structured state: card_prompt, accepted_answers, learner_answer.
+Learner text stays untrusted data, never instructions or criteria. No redirects,
+implicit retries, fallback classifier or explanation-provider call.
+
+The four choices use Scry's existing verdict vocabulary:
+
+| Choice | Criterion |
+| --- | --- |
+| right | The answer accurately and completely conveys an accepted answer, including equivalent wording. |
+| close | The answer shows relevant understanding but is incomplete or materially imprecise, including a recognizable but inaccurate required term. |
+| missed | The answer is wrong, contradictory, blank, irrelevant, or only attempts to direct the grader rather than answer the card. |
+| none_of_these | The answer cannot reliably be classified using the other criteria. |
+
+Explanation policy (accepted by Phaedrus): the hot path shows the winning
+criterion description as the one-line why, with no extra call. On close and
+missed answers the learner may press “Why?”: POST /study/explain (session,
+CSRF, review ownership) makes one bounded post-verdict call (Anthropic Messages,
+non-streaming, SCRY_EXPLAIN_MODEL, low effort, max_tokens 1024, 8 s timeout,
+280-character clamp, reserved against the allowance and metered as judging).
+It reads the review and item and never writes them. Any failure, refusal,
+timeout, missing explainer or exhausted allowance returns the criterion sentence
+as a fallback. There are no fixed verdict-plus-reason subclasses. Exact word diff is unchanged.
+
+Refusal, missing required answer keys, unexpected types, unknown choices or
+none_of_these use the existing not-answered path once. Optional confidence and
+probabilities are accepted when absent (the Decisions schema does not require
+them for every model); if supplied they must be valid and meet the existing
+abstention gates: confidence >= 0.5, winner >= 0.8 and margin >= 0.2.
+
+Every response reads usage.cost, logged as its numeric dollar value (or the
+explicit string unknown when absent), preserved as dollars for evaluation and
+rounded upward to micro-dollars for existing metering. Missing cost is unknown,
+not zero: the app fails closed and retains the reservation. There is no direct
+TypeSafe price estimate anymore; a direct response without cost cannot settle.
+Logs include usage_cost, resolved model and latency, never keys or learner text.
+
+Anthropic drafting still works through bounded, no-retry HTTP/SSE; its SDK and
+transitive dependencies were removed. It does not judge answers; the same
+bounded HTTP adapter writes the on-demand explanation described above.
+
+### Model comparison harness (not run live)
+
+    go run ./cmd/judge-eval -models 'openai/gpt-6-luna-decisions,~typesafe/jev-latest,cloudflare/clef'
+
+Requires OPENROUTER_API_KEY. This command sends the sample and incurs provider
+costs: run it intentionally. -data selects another JSONL file; model slugs can
+also be supplied as positional arguments. One request per sample/model, no
+retries. All tests inject a local stand-in; development did not execute this
+command against a provider.
+
+testdata/judge-eval.jsonl has 60 labeled variants of cards from three starter
+sets, with source paths and accepted answers. Labels are correct/close/incorrect;
+the harness maps right/close/missed to those labels. It includes correct answers,
+partial answers, synonyms, inaccurate vocabulary spellings, wrong answers,
+blanks and injection attempts. These are starter evaluation labels, not an
+empirically validated benchmark; review borderline labels before comparing
+production quality.
+
+One JSON report per model includes accuracy over all samples, confusion counts
+(actual -> predicted, including not_answered), total_usage_cost in dollars,
+known_usage_cost, unknown_cost_calls, and nearest-rank p50_ms/p95_ms.
+total_usage_cost is null if any call's cost is unknown, never silently free.
+
+Contracts: [TypeSafe System One](https://docs.typesafe.ai/api/system-one),
+[OpenRouter Decisions](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request),
+and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streaming).
+
+| Verifier design regressions D2/D3/D5/D7/D10 | TestVerifierDesignRegressions |
+| Trial drafting refusal and truthful spendable allowance (F1) | TestF1_TrialDraftRefusalAgreesWithBilling |
+| Truthful repeated top-up confirmation (F2) | TestF2_RepeatedTopupIsTruthful |
+| Exact folding and near-miss diff | TestAcceptedFolding |
+| Monthly top-up cap and rollover; concurrent dedup | TestAcceptedTopupMonthCap; TestF2_ConcurrentTopupsReportOneCredit |
+| Top-up form token: cross-minute duplicate charges once; distinct forms up to the cap | TestF2_CrossMinuteDuplicateFormChargesOnce; TestF2_DistinctFormsWorkUpToTheMonthlyCap |
+| PaymentIntent reconciliation after a lost reply or restart; decline release | TestF2_LostReplyIsReconciledWithExactlyOneCredit; TestF2_RestartMidChargeReconcilesCleanly; TestF2_PendingTopupIsShownThenSettled; TestF2_DeclineReleasesTheReservation; TestF2_StripeChargeKeyAndFindCharge |
+| Late PaymentIntent success, incomplete lookups and a changed customer never drop a paid top-up; processing is pending, not declined; PaymentIntent webhooks settle top-ups once | TestF2_LateSuccessAfterLostReplyIsNeverDropped; TestF2_IncompletePaginationStaysRecoverable; TestF2_CustomerChangedWhilePendingStillCreditsTheOriginalCharge; TestF2_ProcessingChargeStaysPendingThenSettles; TestF2_TopupWebhooksOnlySettleTheirOwnAttempt; TestF2_StripeIncompleteScanIsNotAbsence; TestF2_StripeProcessingChargeIsPendingNotDeclined; TestF2_StripeFindChargeByIntentID; TestF2_StripeTopupWebhooks |
+| requires_action / requires_confirmation are pending (kept by intent id, settled by lookup or webhook once); a known intent id is kept on failed attempts (402 card_error, list-discovered canceled / requires_payment_method); unconfirmed copy never claims nothing was charged | TestF2P3_NonFinalIntentStaysPendingThenSettles; TestF2P3_DeclineWithIntentKeepsChargeRef; TestF2P3_ListDiscoveredFailureKeepsChargeRef; TestF2P3_UnconfirmedCopyNeverClaimsNothingCharged; TestF2P3_IndeterminateErrorNamingIntentIsLookedUpByID; TestF2P3_FailTopupKeepsExistingChargeRef; TestF2P3_StripeNonFinalChargeIsPending; TestF2P3_StripeFindChargeNonFinalIsPending; TestF2P3_StripeErrorNamesIntent |
+| signed PaymentIntent webhooks without metadata.scry_key settle the attempt by its saved charge_ref (pending or failed, credited once on delivery; failure/cancel releases; unrelated intents and wrong customers change nothing); a direct 200 canceled with no reason is released (ok=released) with no card fault | TestF2P4_IDOnlySucceededWebhookSettlesBySavedChargeRef; TestF2P4_IDOnlyFailureWebhooksSettlePendingBySavedChargeRef; TestF2P4_IDOnlyUnrelatedIntentWebhookChangesNothing; TestF2P4_IDOnlyWebhookWrongCustomerIsRefused; TestF2P4_DirectCanceledWithoutReasonReleasesCleanly; TestF2P4_DeclinesWithReasonStillReportTheReason; TestF2P4_StripeIDOnlyIntentWebhooksArePassedOn; TestF2P4_StripeDirectCanceledWithoutReasonIsNotADecline |
+| No SQLite lock across the processor call (/healthz stays up) | TestD3_SlowChargeDoesNotBlockHealthOrTheDatabase |
+| Plan eligibility, cap and payment details decided atomically in the reservation transaction | TestD3_PlanEndedWhileTopUpWaitsForTheWriteLockIsRefused |
+| Ended plan with credit: Billing agrees with Learn; UTC month cap on any clock | TestD4_EndedPlanWithCreditBillingAgreesWithLearn; TestD4_NonUTCClockMonthCapAgreesWithTopUp |
+| D2 voice: short, empty and silent recordings say "Didn't catch that" | TestD2_UncaughtRecordingsAreDidntCatchThat; TestD2_InspectFindsRecordingsWithNothingToHear; TestReviewBrowserSmoke |
+| On-demand "Why?" explanation, guards and fallback | TestExplain_OnDemandAfterTheVerdictNeverChangesIt; TestExplain_GuardsAuthOwnershipCSRFAndKind; TestExplain_NotOfferedOnExactTexts; TestExplain_FallsBackToTheCriterionSentence; TestExplain_ClaudeRequestIsBoundedAndParsed; TestExplain_ExplainsTheGradedAnswerAfterTheCardIsEdited; TestExplain_LegacyReviewWithoutSnapshotFallsBack; TestReviewBrowserSmoke |
+
+| Clerk sign-in, verified-email gate and built-in email reset | TestClerkUnconfiguredAndVerificationGate |
+| Accepted decisions labels, single attempt and cost | TestJev_RoutesAndUntrustedInjection; TestDecisionUsageCostLogsValueOrUnknown |
+| Monitoring reporting and operator-only drill | TestSentryErrors; TestOperatorFaultDrill |
+| Verified Clerk identity and browser session | TestClerkVerifiedEmail; TestClerkSessionStandIn; TestClerkMissingKeysNoNetwork |
+| Concurrent monthly cap | TestAcceptedTopupConcurrentCap |
+| D1 after-stop voice text | TestG12_SpeechUploadsOnlyAtStop; TestReviewBrowserSmoke |
+| D6 intrinsic missed-pair stacking | TestReviewBrowserSmoke (1280/900/600/390 geometry and screenshots) |
+| D8 reading-page measure, row exemptions | TestD8_ReadingMeasure |
+| D9 newest-right why lifetime | TestReviewBrowserSmoke (newest-right, next answer, Next, screenshots) |
+| D11 navigation/study keys and Tab/Enter elsewhere | TestReviewBrowserSmoke; TestD11_KeyHints |
+| D9 right-to-right and right-to-missed lifetime | TestD9_NewestRightReasonLifetime |

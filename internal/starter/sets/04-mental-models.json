@@ -1,0 +1,66 @@
+{
+  "slug": "mental-models",
+  "title": "Mental models",
+  "description": "Thinking tools you can name, explain and reach for when a decision gets hard.",
+  "ideas": [
+    {
+      "title": "First principles and inversion",
+      "summary": "Break a problem down to what must be true, or turn it around and ask what would guarantee failure.",
+      "links": ["The razors", "Second-order thinking", "philosophy:Knowledge and doubt"],
+      "items": [
+        {"q": "What does it mean to reason from first principles?", "a": "To break a problem down to its most basic truths and build up from them, rather than copying what was done before"},
+        {"q": "Which mental model solves a problem backwards, by asking what would guarantee failure and then avoiding it?", "a": "Inversion"},
+        {"q": "Which 19th-century mathematician's maxim \"invert, always invert\" did Charlie Munger make famous as a thinking habit?", "a": "Carl Jacobi"},
+        {"q": "What is a premortem, the planning exercise devised by the psychologist Gary Klein?", "a": "Imagining that the project has already failed and working out why, before it starts"}
+      ]
+    },
+    {
+      "title": "The razors",
+      "summary": "Razors are rules of thumb that shave away unlikely explanations: prefer the simpler one, and the less sinister.",
+      "links": ["Map and territory", "First principles and inversion"],
+      "items": [
+        {"q": "Which razor says that, among explanations that fit the facts, you should prefer the one with the fewest assumptions?", "a": "Occam's razor"},
+        {"q": "Which razor says never to attribute to malice what is adequately explained by carelessness or stupidity?", "a": "Hanlon's razor"},
+        {"q": "What does Hitchens's razor say about a claim that is asserted without evidence?", "a": "It can be dismissed without evidence"},
+        {"q": "A colleague has not answered your email for three days. What does Hanlon's razor tell you to assume before assuming a snub?", "a": "That they are busy, forgot or missed it: carelessness, not malice"},
+        {"q": "Occam's razor is named for William of Ockham, an English friar of which century?", "a": "The 14th century"}
+      ]
+    },
+    {
+      "title": "Map and territory",
+      "summary": "Every model simplifies reality; it is useful only as far as it matches the ground, and no further.",
+      "links": ["The razors", "Odds, payoffs and base rates"],
+      "items": [
+        {"q": "Who coined the phrase \"the map is not the territory\"?", "a": "Alfred Korzybski"},
+        {"q": "What does the saying \"the map is not the territory\" warn against?", "a": "Confusing a model or description of reality with reality itself"},
+        {"q": "Which statistician wrote that \"all models are wrong, but some are useful\"?", "a": "George Box"},
+        {"q": "What is a circle of competence, the idea Warren Buffett applies to investing?", "a": "The area you truly understand; the skill is knowing where its edge is and staying inside it"}
+      ]
+    },
+    {
+      "title": "Second-order thinking",
+      "summary": "Ask \"and then what?\" because the consequences of consequences often matter more than the first effect.",
+      "links": ["First principles and inversion", "economics:When markets fail"],
+      "items": [
+        {"q": "What is second-order thinking?", "a": "Considering the consequences of the consequences, not just the immediate effect"},
+        {"q": "What does Chesterton's fence advise before you remove a rule or structure whose purpose you cannot see?", "a": "First find out why it was put there"},
+        {"q": "What is the cobra effect?", "a": "An incentive that makes the problem worse; named for a story of a cobra bounty that led people to breed cobras"},
+        {"q": "Which law says that \"when a measure becomes a target, it ceases to be a good measure\"?", "a": "Goodhart's law"},
+        {"q": "A city widens a road to ease traffic; the easier drive attracts more cars until it is jammed again. What is this second-order effect called?", "a": "Induced demand"}
+      ]
+    },
+    {
+      "title": "Odds, payoffs and base rates",
+      "summary": "Good decisions weigh how likely each outcome is and how much it matters, starting from how often such things happen.",
+      "links": ["Map and territory", "cognitive-biases:Availability and base rates"],
+      "items": [
+        {"q": "How do you work out the expected value of a bet?", "a": "Multiply each outcome's value by its probability, then add the results"},
+        {"q": "A bet pays $100 with a 10% chance and nothing otherwise. What is its expected value?", "a": "$10"},
+        {"q": "In reasoning about probability, what is a base rate?", "a": "How often something happens in general in the relevant group, before you look at the particular case"},
+        {"q": "What does the Pareto principle, or 80/20 rule, say?", "a": "Roughly 80% of effects come from 20% of causes"},
+        {"q": "What is a margin of safety, in engineering and in investing?", "a": "A buffer between what you expect and what you can survive, so that errors do not ruin you"},
+        {"q": "What does regression to the mean predict after an unusually extreme result?", "a": "With imperfectly correlated repeated measurements, an extreme result tends to be followed by one closer to the mean"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# scry-deploy <binary> <sha>: install the build, switch to it, and keep it only
+# if /healthz is ok within 30s; otherwise switch back to the previous good build.
+set -euo pipefail
+# Run inside a transient systemd unit so the gate finishes even if the caller
+# (an SSH session, boat exec or an alert hook) is cut off, and hold a lock so
+# two deploys or rollbacks never interleave.
+if [ -z "${SCRY_DETACHED:-}" ]; then
+  exec systemd-run --quiet --wait --pipe --collect --setenv=SCRY_DETACHED=1 \
+    --unit="scry-$(basename "$0")-$(date +%s)-$$" "$(readlink -f "$0")" "$@"
+fi
+exec 9>"${SCRY_ROOT:-/srv/scry}/.lock"; flock 9
+. /usr/local/lib/scry/scry-lib.sh
+bin=$1; sha=$2
+install -o root -m 0755 "$bin" "$ROOT/builds/scry.$sha"
+prev=$(current_sha)
+log "deploy $sha (was ${prev:-none})"
+switch_to "$sha"
+if healthy; then
+  echo "$sha" >> "$ROOT/good.log"; log "deploy $sha healthy"; exit 0
+fi
+log "deploy $sha failed health gate"
+echo "$sha" >> "$ROOT/bad.log"
+target=$(rollback_target "$sha")
+[ -n "$target" ] || { log "no good build to return to"; exit 2; }
+switch_to "$target"
+healthy && log "returned to $target" || log "returned to $target but it is unhealthy"
+exit 1

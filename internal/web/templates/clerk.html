@@ -1,0 +1,9 @@
+{{define "main"}}
+<section class="column">
+<h1 class="display" id="auth-heading">{{.Title}}</h1>
+<p class="lede" id="auth-lede"{{if not .Configured}} role="status"{{end}}>{{.Lede}}</p>
+{{if .Configured}}
+<div id="clerk-auth" data-signup="{{.SignUp}}"></div>
+{{end}}
+</section>
+{{end}}

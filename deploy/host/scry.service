@@ -1,0 +1,16 @@
+[Unit]
+Description=Scry (Go)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=scry
+WorkingDirectory=/srv/scry
+EnvironmentFile=/etc/scry/scry.env
+ExecStart=/srv/scry/current
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
