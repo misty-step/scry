@@ -58,6 +58,23 @@ type Event struct {
 	At              time.Time
 }
 
+// ChargeStatus is what the processor says became of a one-off charge.
+type ChargeStatus string
+
+const (
+	ChargeSucceeded ChargeStatus = "succeeded" // the money was taken
+	ChargeFailed    ChargeStatus = "failed"    // it was not, and will not be
+	ChargePending   ChargeStatus = "pending"   // the processor is still working on it
+	ChargeNotFound  ChargeStatus = "not_found" // the processor has no charge with that key
+)
+
+// ChargeResult is the processor's account of one charge.
+type ChargeResult struct {
+	Status ChargeStatus
+	Ref    string // the processor's id, when there is a charge
+	Reason string // for ChargeFailed, the processor's sentence
+}
+
 // Processor is the card processor.
 type Processor interface {
 	Name() string
@@ -71,7 +88,12 @@ type Processor interface {
 	// UpdateCard replaces the card on file and retries an unpaid period.
 	UpdateCard(ctx context.Context, customerRef, subscriptionRef, cardToken string) (paymentRef string, card Card, err error)
 	// Charge takes a one-off payment (a top-up) from the card on file.
+	// key is the processor idempotency key: the same key never charges twice.
 	Charge(ctx context.Context, customerRef, paymentRef string, amountCents int64, description, key string) (chargeRef string, err error)
+	// FindCharge looks up what became of a one-off charge made with key,
+	// for when the reply to Charge was lost or the app restarted before it
+	// recorded the result. since is when the attempt began.
+	FindCharge(ctx context.Context, customerRef, paymentRef, key string, since time.Time) (ChargeResult, error)
 	// SetCancelAtPeriodEnd schedules or unschedules the plan's end.
 	SetCancelAtPeriodEnd(ctx context.Context, subscriptionRef string, cancel bool) error
 	// ParseWebhook verifies and decodes the processor's notifications.

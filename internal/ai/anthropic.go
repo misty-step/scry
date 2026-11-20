@@ -23,6 +23,8 @@ type Claude struct {
 	BaseURL    string
 	HTTP       *http.Client
 	DraftModel string
+	// ExplainModel writes on-demand explanations; empty means DefaultExplainModel.
+	ExplainModel string
 }
 
 // The drafting model can be changed from the environment.

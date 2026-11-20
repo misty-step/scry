@@ -1,12 +1,14 @@
 package web
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"scry/internal/ai"
 	"scry/internal/app"
@@ -283,6 +285,17 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 		}
 	}
 
+	if !s.App.HasAccess(sub) {
+		// Study, judging, speech and drafting all need a live plan (the
+		// same gate /learn and /study use), so nothing here may claim the
+		// leftover credit is spendable now.
+		v.Covers = "Studying, judging, speaking and drafting need an active plan, so nothing can be reserved until you start again."
+		if sub.TopupMicros > 0 {
+			v.Covers += " Your " + money((sub.TopupMicros+5000)/10000) + " of top-up credit is kept and becomes usable again when you restart your plan."
+		}
+		v.Covers += " The " + price + " covers running Scry and a monthly allowance of " + money(cfg.AllowanceMicros/10000) + " of model time. Prices cover costs plus a small margin."
+		return v
+	}
 	remaining := max(int64(0), sub.AllowanceMicros-sub.UsedMicros+sub.TopupMicros)
 	for _, amount := range reserved {
 		remaining = max(int64(0), remaining-amount)
@@ -298,6 +311,12 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 }
 
 func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
+	// Settle any top-up whose processor reply was lost before the page
+	// says what was paid; a failure here only leaves it pending.
+	settled, err := s.App.ReconcileTopUps(r.Context(), c.user.ID)
+	if err != nil {
+		s.Log.WarnContext(r.Context(), "top-up reconciliation failed", "err", err, "user", c.user.ID)
+	}
 	sub, err := s.App.Plan(r.Context(), c.user.ID)
 	if errors.Is(err, app.ErrNoPlan) {
 		return back(w, r, "/signup/card")
@@ -316,30 +335,72 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if err != nil {
 		return err
 	}
+	// The monthly cap is counted in UTC calendar months, with the same
+	// helper App.TopUp uses, whatever zone the clock is in.
 	count, err := c.us.MonthTopups(r.Context(), s.App.Now())
 	if err != nil {
 		return err
 	}
-	now := s.App.Now().UTC()
-	reset := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+	_, reset := store.MonthBounds(s.App.Now())
 	flash := map[string]string{
 		"duplicate": "This top-up was already processed. No additional credit was added.",
+		"pending":   "Your top-up is being confirmed with the card processor. It will be charged at most once; reload Billing in a moment to see it.",
+		"released":  "That top-up never reached the card processor, so nothing was charged. Try again.",
+		"expired":   "That top-up form had expired, so nothing was charged. Try again.",
 		"topup":     "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added.",
 		"card":      "Your card was updated.",
 		"resumed":   "Your plan continues.",
 		"started":   "Welcome back. Your plan is active again.",
 	}[r.URL.Query().Get("ok")]
+	if settled > 0 {
+		flash = "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added."
+	}
 	return s.render(w, r, c, http.StatusOK, "billing.html", map[string]any{
 		"Title": "Billing", "Nav": "billing", "B": s.billingView(c, sub, ledger, reserved), "Flash": flash,
-		"TopupCapped": count >= 4, "TopupReset": reset.Format("January 2, 2006") + " UTC",
+		"TopupCapped": count >= store.TopupCap, "TopupReset": reset.Format("January 2, 2006") + " UTC",
+		"TopupToken": s.topupFormToken(c),
 		"TopupPrice": s.App.Cfg.TopupCents, "Price": s.App.Cfg.PriceCents, "TopupError": r.URL.Query().Get("declined"),
 	})
 }
 
+// topupFormToken is a fresh operation token for one rendered top-up
+// form: a random nonce bound to this learner and session by an HMAC, so
+// the server can tell its own forms from made-up tokens.
+func (s *Server) topupFormToken(c *rc) string {
+	nonce := app.NewTopupToken()
+	return nonce + "." + topupMAC(c, nonce)
+}
+
+func topupMAC(c *rc, nonce string) string {
+	m := hmac.New(sha256.New, []byte(c.sess.CSRF))
+	fmt.Fprintf(m, "scry-topup|%d|%s", c.user.ID, nonce)
+	return hex.EncodeToString(m.Sum(nil))[:32]
+}
+
+// topupNonce checks a submitted form token and returns its nonce.
+func topupNonce(c *rc, token string) (string, bool) {
+	nonce, mac, ok := strings.Cut(token, ".")
+	if !ok || nonce == "" || c.sess.CSRF == "" {
+		return "", false
+	}
+	return nonce, hmac.Equal([]byte(mac), []byte(topupMAC(c, nonce)))
+}
+
 func (s *Server) billingTopup(w http.ResponseWriter, r *http.Request, c *rc) error {
-	added, err := s.App.TopUpResult(r.Context(), c.user.ID)
-	if errors.Is(err, store.ErrTopupCap) {
+	nonce, ok := topupNonce(c, r.FormValue("topup_token"))
+	if !ok {
+		return back(w, r, "/billing?ok=expired")
+	}
+	added, err := s.App.TopUpResult(r.Context(), c.user.ID, nonce)
+	switch {
+	case errors.Is(err, store.ErrTopupCap):
 		return back(w, r, "/billing")
+	case errors.Is(err, app.ErrTopupPending):
+		return back(w, r, "/billing?ok=pending")
+	case errors.Is(err, app.ErrTopupReleased):
+		return back(w, r, "/billing?ok=released")
+	case errors.Is(err, app.ErrTopupToken):
+		return back(w, r, "/billing?ok=expired")
 	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {

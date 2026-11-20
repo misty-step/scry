@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -24,7 +25,14 @@ import (
 //
 // Any other number is refused, so a real card can never be used in test
 // mode. How a card behaves is carried in its token.
-type Fake struct{}
+//
+// ChargeDelay holds every top-up charge for that long before it answers,
+// so a slow processor can be exercised in test mode (SCRY_TEST_CHARGE_DELAY).
+// Charges are deterministic in their idempotency key, like Stripe's: the
+// same key always names the same charge.
+type Fake struct {
+	ChargeDelay time.Duration
+}
 
 func (Fake) Name() string           { return "test" }
 func (Fake) PublishableKey() string { return "" }
@@ -145,15 +153,41 @@ func (Fake) UpdateCard(_ context.Context, _, _, cardToken string) (string, Card,
 	return cardToken, card, err
 }
 
-func (Fake) Charge(_ context.Context, _, paymentRef string, _ int64, _, _ string) (string, error) {
+func (f Fake) Charge(ctx context.Context, _, paymentRef string, _ int64, _, key string) (string, error) {
 	behavior, _, err := parseToken(paymentRef)
 	if err != nil {
 		return "", err
 	}
+	if f.ChargeDelay > 0 {
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("card processor unreachable: %w", ctx.Err())
+		case <-time.After(f.ChargeDelay):
+		}
+	}
 	if behavior == "chargefail" {
 		return "", &DeclineError{"Your card was declined."}
 	}
-	return ref("ch_test_"), nil
+	return chargeRef(key), nil
+}
+
+// FindCharge answers as a processor that finished every charge it was
+// sent: the card's behaviour decides the outcome, and the reference is the
+// one Charge gives for the same key.
+func (Fake) FindCharge(_ context.Context, _, paymentRef, key string, _ time.Time) (ChargeResult, error) {
+	behavior, _, err := parseToken(paymentRef)
+	if err != nil {
+		return ChargeResult{}, err
+	}
+	if behavior == "chargefail" {
+		return ChargeResult{Status: ChargeFailed, Reason: "Your card was declined."}, nil
+	}
+	return ChargeResult{Status: ChargeSucceeded, Ref: chargeRef(key)}, nil
+}
+
+func chargeRef(key string) string {
+	sum := sha256.Sum256([]byte("scry-test-charge:" + key))
+	return "ch_test_" + hex.EncodeToString(sum[:10])
 }
 
 func (Fake) SetCancelAtPeriodEnd(context.Context, string, bool) error { return nil }

@@ -105,6 +105,7 @@
     var form = $("[data-answer-form]");
     var nextForm = $("[data-next-form]");
     if (nextForm) initNext(nextForm);
+    initExplain();
     if (!form) return;
 
     var input = $("#answer", form);
@@ -226,7 +227,8 @@
         method: "POST", body: new Blob([buffer], { type: "audio/wav" }), credentials: "same-origin",
         headers: { "Content-Type": "audio/wav", "X-CSRF-Token": form.elements.csrf.value }
       }).then(function (res) { return res.json().then(function (j) {
-        if (!res.ok) { say(res.status === 400 ? "Didn't catch that. Try again or type it." : j.error || "Scry can't listen just now. Type your answer instead."); return; }
+        // Short, empty and silent recordings come back 200 with no text.
+        if (!res.ok) { say(j.error || "Scry can't listen just now. Type your answer instead."); return; }
         if (j.text) { input.value = j.text; via.value = "spoken"; placeCaret(); say("heard · enter to check"); }
         else say("Didn't catch that. Try again or type it.");
       }); }).catch(function () { say("Couldn't reach Scry. Type your answer instead."); })
@@ -235,6 +237,40 @@
         });
       return v.done;
     }
+  }
+
+  // The on-demand "Why?": one bounded request after the verdict, shown in
+  // place. It never changes the verdict, and any failure shows the fixed
+  // criterion sentence instead of a dead end.
+  function initExplain() {
+    var form = $("[data-explain-form]");
+    if (!form) return;
+    var button = $("[data-explain]", form), out = $("[data-explanation]", form), note = $("[data-explain-note]", form);
+    if (!button) return;
+    var busy = false;
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (busy) return;
+      busy = true;
+      button.setAttribute("aria-busy", "true");
+      button.textContent = "explaining";
+      var show = function (text, fallback) {
+        out.textContent = text;
+        out.hidden = false;
+        if (note) note.hidden = !fallback;
+        button.remove();
+        var next = $("[data-next]");
+        if (next) next.focus();
+      };
+      var why = $(".why");
+      fetch(form.action, {
+        method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
+        headers: { "X-Requested-With": "fetch", "Accept": "application/json" }
+      }).then(function (res) { return res.json().then(function (j) {
+        if (res.ok && j.text) show(j.text, !!j.fallback);
+        else show(why ? why.textContent : (j.error || ""), true);
+      }); }).catch(function () { show(why ? why.textContent : "", true); });
+    });
   }
 
   function initNext(form) {

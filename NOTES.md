@@ -223,21 +223,19 @@ must not be treated as accepted until the remaining requested gaps are fixed.
 
 ## Open spec questions
 
-Reserved for Phaedrus via Kaylee; no implementation choice made in this pass:
-- RESOLVED by Kaylee on MIS-1210: Jev is TypeSafe System One; implemented below.
-- Which authentication provider should be used?
-- What top-up limits should apply?
-- What password reset and verification flows are required?
-- Which production monitoring agent owns incident detection and repair?
-- What exact-text folding rules should apply? OPEN; existing folding is unchanged.
-- One-line explanation remains OPEN for Phaedrus:
-  (a) Show the winning correctness criterion description: no extra provider
-  call, but generic rather than tailored to the particular answer.
-  (b) Make one small LLM call only after the verdict, solely to explain it:
-  tailored feedback, but adds cost, latency and a failure mode and must not
-  change the verdict. Neither option is approved. Only (a) is temporarily wired
-  at explainDecision, explicitly marked pending. The old verdict/reason-label
-  design is withdrawn, not pending approval.
+All questions reserved for Phaedrus are answered; none is open. (Updated
+2026-11-20; the earlier list here was stale.)
+- Judge: RESOLVED by Kaylee on MIS-1210: Jev / Decisions API (below).
+- Authentication: RESOLVED in PRODUCT.md: Clerk, email and password, verified email.
+- Top-up limits: RESOLVED in PRODUCT.md: $5 each, up to $20 per person per UTC month.
+- Password reset and verification: RESOLVED in PRODUCT.md (Clerk email flows).
+- Monitoring owner: RESOLVED; see "2026-11-19 — MIS-1210 monitoring incident owner".
+- Exact-text folding: RESOLVED in PRODUCT.md: ignore case, punctuation and
+  apostrophes, then word for word.
+- One-line explanation: RESOLVED by Phaedrus (2026-11-20 ruling): (a) on the hot
+  path, the winning criterion sentence, no extra call; plus (b) only on demand,
+  a "Why?" button on close/missed answers making one bounded post-verdict LLM
+  call that never changes the grade. Implemented in Slice #3 below.
 
 ## Completed review remediation (2026-11-18)
 
@@ -253,7 +251,7 @@ were corrected. Subsequent commits retain the required model trailer.
 
 | Gap | Fix and regression proof |
 | --- | --- |
-| G1 | Both operation keys and confirmed payment references are deduplicated. Ledger insertion, operation marker and credit increment commit together; retry after a local failure remains safe. TestG1_TopUpCreditsOncePerPayment first reproduced 12,000,000 credit from one 4,000,000-credit payment; TestG1_OnePaymentReferenceCannotCreditTwice also rejects a replay under a different operation key. The existing per-minute idempotency window is unchanged; this is not a new top-up limit. |
+| G1 | Both operation keys and confirmed payment references are deduplicated. Ledger insertion, operation marker and credit increment commit together; retry after a local failure remains safe. TestG1_TopUpCreditsOncePerPayment first reproduced 12,000,000 credit from one 4,000,000-credit payment; TestG1_OnePaymentReferenceCannotCreditTwice also rejects a replay under a different operation key. The existing per-minute idempotency window is unchanged; this is not a new top-up limit. (Superseded 2026-11-20: the per-minute key is replaced by a per-form operation token; see Slice #3.) |
 | G2 | SQLite reservations atomically require enough unreserved allowance BEFORE judge, draft or speech calls. Actual usage and reservation removal settle in one transaction. TestG2_ConcurrentDraftsCannotSpendLastMicro first admitted 25 calls, now none. TestG2_ReservationHeldUntilProviderCompletes covers overlapping requests and refund to actual cost. TestG2_UnknownProviderOutcomeKeepsReservation covers ambiguous errors. |
 | G3 | Previously fixed: right reasons visible in body text. Browser smoke now verifies actual dimensions, not merely template presence. |
 | G4/D2 | Previously fixed: exact is right only for zero differences, missed otherwise; no tuned close threshold. Diff and difference counts remain visible. |
@@ -467,9 +465,9 @@ direct TypeSafe schema does not guarantee cost: deployments whose direct
 responses omit it must use OpenRouter for metered judging. No key or raw
 provider body reaches logs. No live calls were made to test this.
 
-Explanation alternatives are recorded neutrally in Open spec questions.
-explainDecision is the single pending seam, temporarily returning the criterion
-description. See README for the exact four criteria. No extra LLM is wired.
+Explanation alternatives were recorded neutrally in Open spec questions and are
+now resolved (Slice #3): the criterion description is the hot-path why, and an
+on-demand "Why?" makes the only explanation call. See README for the four criteria.
 Auth, top-up limits, reset/verification, monitoring and exact folding remain OPEN
 and unchanged.
 
@@ -794,3 +792,46 @@ The preview and port 18080 were not touched.
   No credentials or live Clerk flows were accessed.
 - Verification: go build ./..., go vet ./..., and go test -race -count=1 ./...
   passed. The existing preview and port 18080 were not touched.
+
+## 2026-11-20 — MIS-1210 Slice #3: Cold Critic defects and on-demand "Why?"
+
+Starting point 3108995 (PR #493). Every item has a named regression test (README table).
+- D2 voice: speech.Inspect classifies a valid WAV with no samples, under
+  0.25 s, or digitally silent (peak <= 16) as ErrNoSpeech; POST /study/speech
+  answers 200 {"text":"","caught":false} without a provider call or metering.
+  Malformed uploads are 415 and >120 s are 413, each with its own sentence.
+  app.js shows DESIGN's "Didn't catch that. Try again or type it." for any empty
+  result and no longer keys it to HTTP 400.
+- F2 top-ups: the per-minute idempotency key is gone. Each rendered Billing
+  form carries a nonce bound to learner and session by HMAC (topup_token); the
+  processor key is topup-<user>-<nonce>. A topups table (user_id, token) holds
+  pending/succeeded/failed attempts. Duplicate submissions of one form, at any
+  distance in time, are one charge and one credit; separate forms are separate
+  top-ups up to the cap.
+- PaymentIntent reconciliation: Stripe charges carry metadata[scry_key];
+  Processor.FindCharge lists the customer's PaymentIntents since the attempt
+  (strongly consistent list, not search) and matches the key. Pending attempts
+  are reconciled on resubmission, on every Billing view and each minute in
+  App.Run: succeeded -> credit once; failed/cancelled -> release with reason;
+  not found -> keep pending for 2 minutes (TopupSettleWindow), then release.
+  Reconciliation never creates or confirms a charge.
+- D3 lock: App.TopUp is three steps: short TX (token, UTC cap counting paid +
+  pending, reserve pending row), the processor call outside any transaction
+  (detached from client cancellation, 30 s bound), short TX to finalize. An
+  in-process claim per key makes a double click wait for the first request.
+- D4: an ended plan (or past grace) never claims spendable drafts on Billing;
+  it says study/judging/drafting need an active plan and leftover credit is kept
+  for a restart, matching /learn's redirect. The cap month comes from one helper,
+  store.MonthBounds (UTC), used by App.TopUp and Billing.
+- Explanation ruling: Judgment.Close and automatic close highlights removed.
+  ai.Explainer (Claude adapter, raw HTTP like drafting; the SDK stays removed),
+  App.Explain and POST /study/explain. Test mode: ai.FakeExplainer
+  (SCRY_TEST_EXPLAIN=fail|slow for the fallback) and SCRY_TEST_JUDGMENTS for an
+  answer-independent verdict script on the running binary.
+- Decisions taken here: explanation usage is metered as kind "judge" (the usage
+  table CHECK predates it); an errored explanation releases its reservation
+  rather than holding it, since the call is optional and bounded (~$0.06 worst
+  case); default explanation model is claude-opus-5-5 at low effort with no
+  server-side fallbacks (a refusal falls back to the criterion sentence, in line
+  with the existing no-fallback cost policy). No live provider was called.
+

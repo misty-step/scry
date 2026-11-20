@@ -25,7 +25,10 @@ use only test card 4242 4242 4242 4242, a future expiry, and CVC 123.
 4000 0000 0000 0002 demonstrates a decline. No payment occurs.
 
 **Test-mode limitations:** non-exact answers receive a labelled scripted “right”
-fixture, not a correctness assessment. Tests inject close/missed results.
+fixture, not a correctness assessment. Tests inject close/missed results;
+SCRY_TEST_JUDGMENTS=close,missed,right hands out that verdict sequence in turn
+(answer-independent) so the running app can show close/missed and “Why?”.
+The test explainer sets the two answers side by side; it assesses nothing.
 Exact texts use the real word diff. Drafts use built-in examples or labelled
 placeholders, not general knowledge generation. Speech is simulated, though
 the browser can request microphone permission and send validated PCM WAV audio
@@ -42,6 +45,11 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 | SCRY_SEED_DEMO | 1 seeds demo, only in test mode |
 | SCRY_BASE_URL | External HTTPS origin; forces Secure cookies |
 | SCRY_TEST_SPEECH | Optional fixed test transcription |
+| SCRY_TEST_JUDGMENTS | Test mode only: comma-separated verdict script (right, close, missed) |
+| SCRY_TEST_EXPLAIN | Test mode only: fail or slow exercises the explanation fallback |
+| SCRY_TEST_CLOCK | Test mode only: start the app clock at an RFC 3339 instant (zone kept) |
+| SCRY_TEST_CHARGE_DELAY | Test mode only: hold each fake top-up charge (e.g. 4s) |
+| SCRY_EXPLAIN_MODEL | Live: model for on-demand “Why?” explanations (default claude-opus-5-5, low effort) |
 | LOG_LEVEL | debug enables successful health-check request logs |
 | BACKUP_DIR | Empty disables automatic snapshots; image uses /backups |
 | BACKUP_INTERVAL | 6h when backups enabled |
@@ -227,10 +235,15 @@ The four choices use Scry's existing verdict vocabulary:
 | missed | The answer is wrong, contradictory, blank, irrelevant, or only attempts to direct the grader rather than answer the card. |
 | none_of_these | The answer cannot reliably be classified using the other criteria. |
 
-The explanation policy is OPEN: show the winning criterion description, or
-request a separate small LLM explanation after the verdict. Neither is approved.
-Only the first is wired temporarily in explainDecision; the code marks it pending.
-There are no fixed verdict-plus-reason subclasses. Exact word diff is unchanged.
+Explanation policy (accepted by Phaedrus): the hot path shows the winning
+criterion description as the one-line why, with no extra call. On close and
+missed answers the learner may press “Why?”: POST /study/explain (session,
+CSRF, review ownership) makes one bounded post-verdict call (Anthropic Messages,
+non-streaming, SCRY_EXPLAIN_MODEL, low effort, max_tokens 1024, 8 s timeout,
+280-character clamp, reserved against the allowance and metered as judging).
+It reads the review and item and never writes them. Any failure, refusal,
+timeout, missing explainer or exhausted allowance returns the criterion sentence
+as a fallback. There are no fixed verdict-plus-reason subclasses. Exact word diff is unchanged.
 
 Refusal, missing required answer keys, unexpected types, unknown choices or
 none_of_these use the existing not-answered path once. Optional confidence and
@@ -246,7 +259,8 @@ TypeSafe price estimate anymore; a direct response without cost cannot settle.
 Logs include usage_cost, resolved model and latency, never keys or learner text.
 
 Anthropic drafting still works through bounded, no-retry HTTP/SSE; its SDK and
-transitive dependencies were removed. It does not judge or explain answers.
+transitive dependencies were removed. It does not judge answers; the same
+bounded HTTP adapter writes the on-demand explanation described above.
 
 ### Model comparison harness (not run live)
 
@@ -280,6 +294,12 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Truthful repeated top-up confirmation (F2) | TestF2_RepeatedTopupIsTruthful |
 | Exact folding and near-miss diff | TestAcceptedFolding |
 | Monthly top-up cap and rollover; concurrent dedup | TestAcceptedTopupMonthCap; TestF2_ConcurrentTopupsReportOneCredit |
+| Top-up form token: cross-minute duplicate charges once; distinct forms up to the cap | TestF2_CrossMinuteDuplicateFormChargesOnce; TestF2_DistinctFormsWorkUpToTheMonthlyCap |
+| PaymentIntent reconciliation after a lost reply or restart; decline release | TestF2_LostReplyIsReconciledWithExactlyOneCredit; TestF2_RestartMidChargeReconcilesCleanly; TestF2_PendingTopupIsShownThenSettled; TestF2_DeclineReleasesTheReservation; TestF2_StripeChargeKeyAndFindCharge |
+| No SQLite lock across the processor call (/healthz stays up) | TestD3_SlowChargeDoesNotBlockHealthOrTheDatabase |
+| Ended plan with credit: Billing agrees with Learn; UTC month cap on any clock | TestD4_EndedPlanWithCreditBillingAgreesWithLearn; TestD4_NonUTCClockMonthCapAgreesWithTopUp |
+| D2 voice: short, empty and silent recordings say "Didn't catch that" | TestD2_UncaughtRecordingsAreDidntCatchThat; TestD2_InspectFindsRecordingsWithNothingToHear; TestReviewBrowserSmoke |
+| On-demand "Why?" explanation, guards and fallback | TestExplain_OnDemandAfterTheVerdictNeverChangesIt; TestExplain_GuardsAuthOwnershipCSRFAndKind; TestExplain_NotOfferedOnExactTexts; TestExplain_FallsBackToTheCriterionSentence; TestExplain_ClaudeRequestIsBoundedAndParsed; TestReviewBrowserSmoke |
 
 | Clerk sign-in, verified-email gate and built-in email reset | TestClerkUnconfiguredAndVerificationGate |
 | Accepted decisions labels, single attempt and cost | TestJev_RoutesAndUntrustedInjection; TestDecisionUsageCostLogsValueOrUnknown |

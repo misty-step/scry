@@ -139,7 +139,7 @@ func TestJev_EachFixedChoiceAndRouteSelection(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || got.Verdict != o.Verdict || got.Reason != o.Reason || len(got.Close) != 0 {
+			if err != nil || got.Verdict != o.Verdict || got.Reason != o.Reason {
 				t.Fatalf("%+v %v", got, err)
 			}
 		})

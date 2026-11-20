@@ -152,39 +152,6 @@ func (u *UserStore) Spend(ctx context.Context, use Usage, now time.Time) error {
 	})
 }
 
-// CreditTopUp atomically deduplicates a paid operation and grants its credit.
-
-func (u *UserStore) CreditTopUp(ctx context.Context, e LedgerEntry, credit int64, key string) (bool, error) {
-	added := false
-	err := u.s.BillingTransaction(ctx, func(ctx context.Context) error {
-		count, err := u.MonthTopups(ctx, e.At)
-		if err != nil {
-			return err
-		}
-		if count >= 4 {
-			return ErrTopupCap
-		}
-		fresh, err := u.s.MarkEvent(ctx, key, e.At)
-		if err != nil || !fresh {
-			return err
-		}
-		res, err := u.s.billingDB(ctx).ExecContext(ctx, "INSERT OR IGNORE INTO ledger (user_id,at,kind,description,amount_cents,status,ref) VALUES (?,?,?,?,?,?,?)", u.uid, ts(e.At), e.Kind, e.Description, e.AmountCents, e.Status, e.Ref)
-		if err != nil {
-			return err
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if n > 0 {
-			added = true
-			_, err = u.s.billingDB(ctx).ExecContext(ctx, "UPDATE subscriptions SET topup_micros=topup_micros+?,card_error='' WHERE user_id=?", credit, u.uid)
-		}
-		return err
-	})
-	return added && err == nil, err
-}
-
 func (s *Store) HasProcessedEvent(ctx context.Context, key string) (bool, error) {
 	var n int
 	err := s.billingDB(ctx).QueryRowContext(ctx, "SELECT count(*) FROM processed_events WHERE id=?", key).Scan(&n)
@@ -223,13 +190,4 @@ func (u *UserStore) OpenPlan(ctx context.Context, next Subscription) error {
 		}
 		return u.SaveSubscription(ctx, next)
 	})
-}
-
-var ErrTopupCap = errors.New("Monthly $20 top-up limit reached")
-
-func (u *UserStore) MonthTopups(ctx context.Context, now time.Time) (int, error) {
-	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	var n int
-	err := u.s.billingDB(ctx).QueryRowContext(ctx, "SELECT count(*) FROM ledger WHERE user_id=? AND kind='topup' AND status='paid' AND at>=? AND at<?", u.uid, ts(start), ts(start.AddDate(0, 1, 0))).Scan(&n)
-	return n, err
 }

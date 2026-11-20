@@ -63,8 +63,7 @@ func (s *Store) migrate() error {
 		return err
 	}
 	if v >= 1 {
-		_, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0))`)
-		return err
+		return s.migrateAdded()
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -80,8 +79,22 @@ func (s *Store) migrate() error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0))`)
-	return err
+	return s.migrateAdded()
+}
+
+// migrateAdded creates the tables added after schema version 1. Each is
+// idempotent, so it runs on every open.
+func (s *Store) migrateAdded() error {
+	for _, q := range []string{
+		`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0))`,
+		topupSchema,
+		`CREATE INDEX IF NOT EXISTS topups_pending ON topups(status, created_at)`,
+	} {
+		if _, err := s.db.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Close closes the database.
@@ -169,7 +182,7 @@ func LatestSnapshot(dir string) (string, time.Time) {
 // userTables lists every table holding learner-owned rows, parents first.
 // Export, per-user restore and the privacy tests all walk this list.
 var userTables = []string{
-	"subscriptions", "reservations", "ledger", "usage", "ideas", "idea_links", "items",
+	"subscriptions", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items",
 	"study_sessions", "session_items", "reviews", "drafts", "suggestions", "agent_tokens",
 }
 
@@ -229,6 +242,13 @@ func (s *Store) RestoreUser(ctx context.Context, snapshot, email string) (int64,
 	}
 	var total int64
 	for _, t := range userTables {
+		var present int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM snap.sqlite_master WHERE type = 'table' AND name = ?`, t).Scan(&present); err != nil {
+			return 0, err
+		}
+		if present == 0 {
+			continue // the snapshot predates this table
+		}
 		res, err := tx.ExecContext(ctx, `INSERT INTO `+t+` SELECT * FROM snap.`+t+` WHERE user_id = ?`, uid)
 		if err != nil {
 			return 0, fmt.Errorf("restore %s: %w", t, err)

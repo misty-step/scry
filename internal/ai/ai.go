@@ -25,13 +25,12 @@ type JudgeInput struct {
 	Answer          string
 }
 
-// Judgment is the model's decision, always with a one-line reason.
+// Judgment is the model's decision, always with a one-line reason: the
+// fixed sentence of the criterion it chose. Close parts are not marked on
+// the hot path; a tailored explanation is on demand (Explainer).
 type Judgment struct {
 	Verdict srs.Verdict
 	Reason  string
-	// Close holds the parts of the learner's answer, quoted exactly, that
-	// were close but not right. The page marks them with the highlighter.
-	Close []string
 }
 
 // Learner is what the model is told about who it is drafting for.

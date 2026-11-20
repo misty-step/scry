@@ -36,8 +36,9 @@ type Config struct {
 	TopupMicros     int64 // metered usage one top-up adds
 	TrialDays       int
 
-	SessionBudget time.Duration // how long a study session should take
-	GraceDays     int           // access kept while a failed card is retried
+	SessionBudget  time.Duration // how long a study session should take
+	ExplainTimeout time.Duration // bound on one on-demand explanation; zero means ai.ExplainTimeout
+	GraceDays      int           // access kept while a failed card is retried
 
 	BackupDir      string
 	BackupInterval time.Duration
@@ -61,17 +62,23 @@ func DefaultConfig() Config {
 
 // App is the running product.
 type App struct {
-	Store  *store.Store
-	Auth   auth.Provider
-	Pay    billing.Processor
-	Model  ai.Model
-	Speech speech.Transcriber
-	Alert  alert.Notifier
-	Log    *slog.Logger
-	Now    func() time.Time
-	Cfg    Config
+	Store *store.Store
+	Auth  auth.Provider
+	Pay   billing.Processor
+	Model ai.Model
+	// Explainer writes on-demand explanations after a verdict; nil means
+	// the fixed criterion sentence is all there is.
+	Explainer ai.Explainer
+	Speech    speech.Transcriber
+	Alert     alert.Notifier
+	Log       *slog.Logger
+	Now       func() time.Time
+	Cfg       Config
 
 	drafts sync.WaitGroup
+	// topupsInFlight holds the top-up keys being charged by this process.
+	topupsInFlight sync.Map
+	explained      explainCache
 }
 
 // FieldError is a mistake the learner can fix, said in words and shown

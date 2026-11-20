@@ -1,3 +1,12 @@
+{{define "explain"}}{{if .Judged.Explainable}}
+        <form method="post" action="/study/explain" class="explain" data-explain-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="review_id" value="{{.Judged.ReviewID}}">
+          {{if not .Judged.Explanation}}<button class="btn explain-btn" data-explain aria-controls="explanation">Why?<span class="sr"> Explain what differed</span></button>{{end}}
+          <p class="explanation" id="explanation" data-explanation aria-live="polite"{{if not .Judged.Explanation}} hidden{{end}}>{{.Judged.Explanation}}</p>
+          <p class="meta explain-note" data-explain-note{{if not .ExplainFallback}} hidden{{end}}>A fuller explanation isn't available right now.</p>
+        </form>
+{{end}}{{end}}
 {{define "main"}}
 <section class="session" data-session>
   <aside class="session-margin meta" aria-label="Where you are">
@@ -38,6 +47,7 @@
           <p class="judgment judgment-right"><span class="sr">The answer: </span>{{.Judged.Expected}}</p>
         </div>
         <p class="verdict"><span class="tag tag-missed">incorrect</span> <span class="why">{{.Judged.Why}}</span></p>
+        {{template "explain" .}}
         <form method="post" action="/study/next" class="judged-actions" data-next-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           <button class="btn btn-accent" autofocus data-next>Next</button>
@@ -45,9 +55,10 @@
         <p class="hints micro">enter for next</p>
       {{else}}
         <h1 class="prompt display">{{.Item.Prompt}}</h1>
-        <p class="answer-given display"><span class="sr">Your answer: </span>{{.Judged.Marked}}</p>
+        <p class="answer-given display"><span class="sr">Your answer: </span>{{.Judged.Answer}}</p>
         <p class="verdict"><span class="tag tag-close">almost correct</span> <span class="why">{{.Judged.Why}}</span></p>
         <p class="expected"><span class="meta">answer</span> {{.Judged.Expected}}</p>
+        {{template "explain" .}}
         <form method="post" action="/study/next" class="judged-actions" data-next-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           <button class="btn btn-accent" autofocus data-next>Next</button>

@@ -389,6 +389,12 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 .expected { color: var(--ink); font-size: var(--reading); }
 .expected .meta { margin-right: var(--s2); }
 .judged-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s4); }
+/* On-demand "Why?": a quiet control, then the explanation as body text. */
+.explain { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); max-width: var(--measure); }
+.explain-btn { font: 400 var(--meta)/1.4 var(--mono); }
+.explain-btn[aria-busy="true"] { color: var(--ink-muted); cursor: progress; }
+.explanation { color: var(--ink-body); font-size: var(--reading); max-width: var(--measure); overflow-wrap: anywhere; }
+.explanation[hidden], .explain-note[hidden] { display: none; }
 
 /* Missed: the one hard moment. */
 .judgment-pair { min-width: 0; display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s3) var(--s6); }

@@ -35,6 +35,9 @@ func (a *App) Run(ctx context.Context) {
 			if err := a.RunRenewals(ctx); err != nil {
 				a.Alert.Notify(ctx, "Plan renewals are failing", err.Error())
 			}
+			if err := a.ReconcileAllTopUps(ctx); err != nil {
+				a.Alert.Notify(ctx, "Top-up reconciliation is failing", err.Error())
+			}
 		case <-sweep.C:
 			if err := a.Store.Sweep(ctx, a.now(), 30*24*time.Hour); err != nil {
 				a.Alert.Notify(ctx, "Housekeeping is failing", err.Error())

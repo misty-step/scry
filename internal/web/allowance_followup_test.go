@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"scry/internal/app"
 	"scry/internal/auth"
 	"scry/internal/store"
 	"strings"
@@ -38,10 +39,11 @@ func TestF2_RepeatedTopupIsTruthful(t *testing.T) {
 	b := w.browser()
 	b.signUp("topuprepeat@example.com")
 	b.get("/billing")
-	_, body := b.post("/billing/topup")
+	form := b.topup // the same rendered form, submitted twice
+	_, body := b.post("/billing/topup", "topup_token", form)
 	has(t, body, "Topped up.")
 	before, _ := w.lib("topuprepeat@example.com").Subscription(ctx)
-	_, body = b.post("/billing/topup")
+	_, body = b.post("/billing/topup", "topup_token", form)
 	has(t, body, "already processed", "No additional credit")
 	hasNot(t, body, "Topped up.")
 	after, _ := w.lib("topuprepeat@example.com").Subscription(ctx)
@@ -56,8 +58,9 @@ func TestF2_ConcurrentTopupsReportOneCredit(t *testing.T) {
 	u := w.user("concurrentcredit@example.com")
 	results := make(chan bool, 8)
 	errs := make(chan error, 8)
+	token := app.NewTopupToken() // one form, submitted eight times at once
 	for i := 0; i < 8; i++ {
-		go func() { added, err := w.app.TopUpResult(ctx, u.ID); results <- added; errs <- err }()
+		go func() { added, err := w.app.TopUpResult(ctx, u.ID, token); results <- added; errs <- err }()
 	}
 	count := 0
 	for i := 0; i < 8; i++ {
@@ -79,17 +82,17 @@ func TestAcceptedTopupMonthCap(t *testing.T) {
 	b.signUp("cap@example.com")
 	u := w.user("cap@example.com")
 	for i := 0; i < 4; i++ {
-		if err := w.app.TopUp(ctx, u.ID); err != nil {
+		if err := w.app.TopUp(ctx, u.ID, app.NewTopupToken()); err != nil {
 			t.Fatal(err)
 		}
 		w.advance(time.Minute)
 	}
-	if err := w.app.TopUp(ctx, u.ID); !errors.Is(err, store.ErrTopupCap) {
+	if err := w.app.TopUp(ctx, u.ID, app.NewTopupToken()); !errors.Is(err, store.ErrTopupCap) {
 		t.Fatal(err)
 	}
 	has(t, b.mustGet("/billing"), "Monthly $20 top-up limit reached", "disabled", "December 1")
 	w.advance(31 * 24 * time.Hour)
-	if err := w.app.TopUp(ctx, u.ID); err != nil {
+	if err := w.app.TopUp(ctx, u.ID, app.NewTopupToken()); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -157,7 +160,7 @@ func TestAcceptedTopupConcurrentCap(t *testing.T) {
 	w.browser().signUp("caprace@example.com")
 	u := w.user("caprace@example.com")
 	for i := 0; i < 3; i++ {
-		if err := w.app.TopUp(ctx, u.ID); err != nil {
+		if err := w.app.TopUp(ctx, u.ID, app.NewTopupToken()); err != nil {
 			t.Fatal(err)
 		}
 		w.advance(time.Minute)
@@ -165,7 +168,7 @@ func TestAcceptedTopupConcurrentCap(t *testing.T) {
 	results := make(chan bool, 12)
 	for i := 0; i < 12; i++ {
 		go func() {
-			added, err := w.app.TopUpResult(ctx, u.ID)
+			added, err := w.app.TopUpResult(ctx, u.ID, app.NewTopupToken())
 			if err != nil && !errors.Is(err, store.ErrTopupCap) {
 				t.Error(err)
 			}
@@ -186,7 +189,7 @@ func TestAcceptedTopupConcurrentCap(t *testing.T) {
 		t.Fatal(sub)
 	}
 	w.advance(time.Minute)
-	if _, err := w.app.TopUpResult(ctx, u.ID); !errors.Is(err, store.ErrTopupCap) {
+	if _, err := w.app.TopUpResult(ctx, u.ID, app.NewTopupToken()); !errors.Is(err, store.ErrTopupCap) {
 		t.Fatal(err)
 	}
 }

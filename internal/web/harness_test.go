@@ -166,11 +166,12 @@ func (w *world) lib(email string) *store.UserStore { return w.store.For(w.user(e
 // browser is one person's browser: cookies, and the CSRF token of the
 // last page it saw.
 type browser struct {
-	t    *testing.T
-	w    *world
-	c    *http.Client
-	csrf string
-	path string // where the last request ended up
+	t     *testing.T
+	w     *world
+	c     *http.Client
+	csrf  string
+	topup string // the top-up form token of the last Billing page it saw
+	path  string // where the last request ended up
 }
 
 func (w *world) browser() *browser {
@@ -179,6 +180,7 @@ func (w *world) browser() *browser {
 }
 
 var csrfRE = regexp.MustCompile(`name="csrf" value="([^"]+)"`)
+var topupRE = regexp.MustCompile(`name="topup_token" value="([^"]+)"`)
 
 func (b *browser) do(req *http.Request) (int, string) {
 	b.t.Helper()
@@ -191,6 +193,9 @@ func (b *browser) do(req *http.Request) (int, string) {
 	body := string(raw)
 	if m := csrfRE.FindStringSubmatch(body); m != nil {
 		b.csrf = m[1]
+	}
+	if m := topupRE.FindStringSubmatch(body); m != nil {
+		b.topup = m[1]
 	}
 	b.path = resp.Request.URL.Path
 	// Entities are decoded so tests can look for the words a person reads.
@@ -206,6 +211,10 @@ func (b *browser) get(path string) (int, string) {
 func (b *browser) post(path string, kv ...string) (int, string) {
 	b.t.Helper()
 	form := url.Values{"csrf": {b.csrf}}
+	if path == "/billing/topup" {
+		// Like a person pressing the button on the Billing page last seen.
+		form.Set("topup_token", b.topup)
+	}
 	for i := 0; i+1 < len(kv); i += 2 {
 		form.Set(kv[i], kv[i+1])
 	}

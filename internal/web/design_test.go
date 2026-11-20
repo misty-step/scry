@@ -76,7 +76,7 @@ func TestG14_InlineLinksKeepTouchTargets(t *testing.T) {
 
 func TestVerifierDesignRegressions(t *testing.T) {
 	for file, wants := range map[string][]string{
-		"static/app.js":        {"res.status === 400", "Allow mic in site settings.", "Allow mic, then retry."},
+		"static/app.js":        {"Didn't catch that. Try again or type it.", "Allow mic in site settings.", "Allow mic, then retry."},
 		"static/app.css":       {"animation: strike 200ms", ".wordmark, .nav a, [data-again]"},
 		"templates/draft.html": {"Not enough allowance"},
 	} {

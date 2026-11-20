@@ -48,7 +48,7 @@ Ink steps are the base ink at fixed opacity, so both modes keep the same hierarc
 | line | ink at 12% | ink at 16% | Hairlines and rules |
 | accent | `#0562EF` | `#4D8DFF` | The one main action, anything due, concept links, focus ring |
 | right | `#1E7F4E` | `#5FD39A` | The "right" tag |
-| close | `#EEF17C` fill, ink text | `#EEF17C` at 30% fill, ink text | Highlighter mark behind the words that were close or missing |
+| close | `#EEF17C` fill, ink text | `#EEF17C` at 30% fill, ink text | Highlighter mark behind missing words in an exact text, and matched words in search |
 | missed | `#C23B26` | `#FF7A66` | The strike through a wrong answer and the "missed" tag |
 
 The accent appears at most once as a filled control per screen. Mode follows the system setting, with a toggle in Settings. Contrast: body and meta text meet 4.5:1 in both modes; ghost is never used for text the learner must read.
@@ -94,15 +94,16 @@ States: typing; checking (instant; no spinner unless a check takes over 400 ms, 
 
 ### Voice answer
 
-Space or the single round mic control starts listening. Words appear on the answer line after listening stops, set exactly like typed text; transcription is requested once, not repeatedly while speaking. While listening, the answer line stays empty (or keeps any text already typed), its hairline gently swells, and a mono label reads "listening". States: listening, heard (text settles; Enter checks), couldn't hear ("Didn't catch that. Try again or type it."), microphone blocked (one line telling the learner how to allow it).
+Space or the single round mic control starts listening. Words appear on the answer line after listening stops, set exactly like typed text; transcription is requested once, not repeatedly while speaking. While listening, the answer line stays empty (or keeps any text already typed), its hairline gently swells, and a mono label reads "listening". States: listening, heard (text settles; Enter checks), couldn't hear ("Didn't catch that. Try again or type it."; also for a recording stopped at once, too short to hold a word, or silent), microphone blocked (one line telling the learner how to allow it).
 
 ### The answer judgment
 
-Instant, under the answer.
+Instant, under the answer. The one-line why is the fixed sentence of the criterion the grader applied (accepted by Phaedrus: no extra model call on the hot path, so judging stays fast and cheap).
 
 - **Right:** a green mono "right" tag and the one-line why in body text. The item moves up into the scrollback.
-- **Close:** the parts that were close are marked with the highlighter, the tag reads "close", and the why says what differed.
+- **Close:** the learner's answer is set plainly at the prompt's size (no automatic highlight of close parts), the tag reads "close", the why is the criterion sentence, and the right answer follows.
 - **Missed:** the moment the type gets loud. The learner's answer is set at Judgment size and struck with a missed-red line that draws across; the right answer is set beside it at the same size in ink. If the pair cannot fit side by side without wrapping either answer, stack the answers in that order, left-aligned with a 16 px gap, just as on phones. Each stacked answer may wrap within the available width; never shrink the Judgment type to fit. Below, the tag "missed" and the one-line why. Keys: Enter for next.
+- **Why? (close and missed only):** under the verdict, a quiet bordered "Why?" control (44 px, never the accent; reached by Tab and Enter, or a tap). Nothing is explained until it is pressed. While waiting it reads "explaining" in mono. The explanation then appears in place as body text at the reading measure: one or two sentences, at most 280 characters, saying what differed between the learner's answer and the right one. It never changes the tag, the why, the schedule or the history. If no explanation can be had (provider error or timeout, none configured, allowance reached), the criterion sentence is shown with a meta line "A fuller explanation isn't available right now." Right answers and exact texts have no "Why?"; an exact text's word diff already says what differed.
 - **Exact texts** (texts the learner marked exact) are judged word for word in place: correct words stay plain ink, missing words are inserted and highlighted, wrong words are struck in ink-muted with the right word set right after them. A mono label above names the text and line ("Exact text · Nicene Creed · line 1"). The why counts the differences in words ("One word missing, one swapped."). Actions: "Again" (text button) and "Next" (accent).
 
 ### Session end
@@ -128,7 +129,7 @@ One prompt field at Display size: "What do you want to know?" with a mono hint u
 
 ### Billing and allowance
 
-A ledger page. Top: the plan and price in one sentence. The allowance as one sentence ("You've used 62% of this month's allowance. It resets on December 1.") with a thin 2 px meter under it, accent on a line-colored track. "Top up" is one button with its price on it ("Top up · $5"). Below, a ruled history of charges and top-ups with dates and amounts in tabular figures. Cancel is a plain text link with a one-step confirmation that states the end date. States: on trial (trial end date and the first charge), active, allowance near its limit (the sentence says so; no color alarm), allowance reached, card failed (the reason and "Update card").
+A ledger page. Top: the plan and price in one sentence. The allowance as one sentence ("You've used 62% of this month's allowance. It resets on December 1.") with a thin 2 px meter under it, accent on a line-colored track. "Top up" is one button with its price on it ("Top up · $5"); when four top-ups are used this UTC month it is disabled with "Monthly $20 top-up limit reached. Resets <date> UTC." A top-up still being confirmed says so and that it is charged at most once. Below, a ruled history of charges and top-ups with dates and amounts in tabular figures. Cancel is a plain text link with a one-step confirmation that states the end date. States: on trial (trial end date and the first charge), active, allowance near its limit (the sentence says so; no color alarm), allowance reached, card failed (the reason and "Update card"), ended (no allowance sentence and nothing said to be spendable; leftover top-up credit is said to be kept for when the plan restarts, matching Study and Learn, which need an active plan).
 
 ## Keys
 

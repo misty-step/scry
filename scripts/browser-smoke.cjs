@@ -10,11 +10,13 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
  const browser=await puppeteer.launch({executablePath:process.env.CHROME_BIN||"/usr/bin/google-chrome",headless:true,
  args:["--no-sandbox","--use-fake-ui-for-media-stream","--use-fake-device-for-media-stream","--autoplay-policy=no-user-gesture-required"]});
  try {
- const page=await browser.newPage(); const errors=[];let speech=0;
+ const page=await browser.newPage(); const errors=[];let speech=0,explains=0;
+ page.on("console",m=>{if(m.type()==="error")errors.push("console: "+m.text());});
+ page.on("response",r=>{if(r.status()>=400)errors.push("http "+r.status()+" "+r.url());});
  page.on("pageerror",e=>errors.push(e.message));
  await page.setRequestInterception(true);
  page.on("request",r=>{
-  if(r.url().startsWith(base+"/")){if(r.url().endsWith("/study/speech"))speech++;r.continue();}
+  if(r.url().startsWith(base+"/")){if(r.url().endsWith("/study/speech"))speech++;if(r.url().endsWith("/study/explain"))explains++;r.continue();}
   else if(r.url().startsWith("data:"))r.continue();
   else {errors.push("external request: "+r.url());r.abort();}
  });
@@ -41,15 +43,23 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
   await page.screenshot({path:out+"/study-"+width+"-"+theme+".png",fullPage:true});
  }
  await page.setViewport({width:1280,height:1000});
+ // D2: start and immediately stop: DESIGN's exact "couldn't hear" words.
  await page.keyboard.press("Escape");await page.keyboard.press("Space");await page.waitForSelector(".is-listening");
- await pause(1700);assert.equal(speech,0,"must not upload while recording");
+ await page.keyboard.press("Space");
+ await page.waitForFunction(()=>!document.querySelector(".is-listening"));
+ const uncaught=await page.$eval("[data-status]",e=>e.textContent);
+ console.log("D2 immediate stop status:",JSON.stringify(uncaught));
+ assert.equal(uncaught,"Didn't catch that. Try again or type it.");
+ assert.equal(speech,1);assert.equal(await page.$eval("#answer",e=>e.value),"");
+ await page.keyboard.press("Escape");await page.keyboard.press("Space");await page.waitForSelector(".is-listening");
+ await pause(1700);assert.equal(speech,1,"must not upload while recording");
  assert.equal(await page.$eval("#answer",e=>e.value),"","D1: no live transcription");
  assert((await page.$eval("[data-status]",e=>e.textContent)).includes("listening"));
  await page.keyboard.press("Space");
  await page.waitForFunction(()=>!document.querySelector(".is-listening"));
  console.log("speech result",await page.$eval("[data-status]",e=>e.textContent),await page.$eval("#answer",e=>e.value),errors);
  assert((await page.$eval("[data-status]",e=>e.textContent)).includes("heard"));
- assert.equal(speech,1);assert((await page.$eval("#answer",e=>e.value)).length>0);
+ assert.equal(speech,2);assert((await page.$eval("#answer",e=>e.value)).length>0);
  await page.keyboard.press("Enter");await page.waitForSelector(".answered-why");
  const visible=await page.$eval(".answered-why",e=>{let s=getComputedStyle(e),r=e.getBoundingClientRect();return r.height>20&&r.width>40&&s.clipPath==="none";});
  assert(visible,"right reason must be visible body text");
@@ -75,6 +85,32 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),JSON.stringify(await page.$$eval("*",es=>[innerWidth,document.documentElement.scrollWidth,...es.filter(e=>e.scrollWidth>e.clientWidth+1).map(e=>[e.className,e.clientWidth,e.scrollWidth])])));
   await page.screenshot({path:out+"/missed-"+width+"-"+theme+".png",fullPage:true});
  }
+ // Ruling: the verdict is instant with the fixed criterion sentence and a
+ // "Why?" control; nothing is explained until the learner asks.
+ await page.setViewport({width:1280,height:800});
+ assert.equal(explains,0,"no automatic explanation call");
+ assert.equal(await page.$eval(".verdict .why",e=>e.textContent),"The expected answer is different.");
+ const why=await page.$eval("[data-explain]",b=>({h:b.getBoundingClientRect().height,w:b.getBoundingClientRect().width,text:b.textContent}));
+ assert(why.h>=44&&why.w>=44&&why.text.startsWith("Why?"),JSON.stringify(why));
+ assert(await page.$eval("[data-explanation]",e=>e.hidden));
+ await page.click("[data-explain]");
+ await page.waitForFunction(()=>{const e=document.querySelector("[data-explanation]");return e&&!e.hidden&&e.textContent.length>0;});
+ const explained=await page.$eval("[data-explanation]",e=>e.textContent);
+ console.log("explanation:",explained);
+ assert(explained.startsWith("What differed:"),explained);
+ assert.equal(explains,1);
+ assert.equal(await page.$eval(".verdict .tag",e=>e.textContent),"incorrect","verdict unchanged");
+ assert.equal(await page.$eval(".verdict .why",e=>e.textContent),"The expected answer is different.");
+ assert(await page.$eval("[data-explain-note]",e=>e.hidden),"not a fallback");
+ for(const width of [1280,390])for(const theme of ["light","dark"]){
+  await page.setViewport({width,height:width===390?844:800});
+  await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+  const m=await page.$eval("[data-explanation]",e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return {w:r.width,right:r.right,vw:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,color:s.color};});
+  assert(!m.overflow&&m.right<=m.vw+1,JSON.stringify(m));
+  console.log("explanation",width,theme,m);
+  await page.screenshot({path:out+"/explain-"+width+"-"+theme+".png",fullPage:true});
+ }
+ await page.setViewport({width:1280,height:800});
  // A short pair fits beside itself on desktop, but still stacks on phones.
  await page.$eval(".struck-text",e=>e.textContent="No");
  await page.$eval(".judgment-right",e=>e.textContent="Yes");

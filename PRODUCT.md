@@ -12,7 +12,7 @@ Scry gets what's worth knowing into your head and keeps it there, for the fewest
 - As a learner, I can turn a favorite book into a set of its core ideas.
 - As a learner whose agents do work for me, my agents can add material to my library or suggest items from my conversations and reading. Suggestions wait in an inbox until I approve them with one tap.
 - As a learner, I open Scry, get what's due, answer by typing or speaking, and I'm done in about 5 minutes.
-- As a learner, I never grade myself. Every non-exact answer is graded correct, almost correct or incorrect on understanding, not case, punctuation or trivialities, by a decisions-model grader. Every answer is judged instantly with a one-line reason why. Texts I mark exact ignore case, punctuation and apostrophes, then are judged word for word. Near misses show a word-by-word diff.
+- As a learner, I never grade myself. Every non-exact answer is graded correct, almost correct or incorrect on understanding, not case, punctuation or trivialities, by a decisions-model grader. Every answer is judged instantly with a one-line reason why: the criterion the grader applied. When an answer is almost correct or incorrect, I can ask "Why?" and get a short explanation of what differed; asking never changes the grade. Texts I mark exact ignore case, punctuation and apostrophes, then are judged word for word. Near misses show a word-by-word diff.
 - As a learner, I can see how ideas connect, and each item belongs to an idea.
 - As a learner, my library and history are mine alone, and nobody else can see them.
 - As a paying user, I know what I pay and what my allowance covers, and I can top up or cancel any time.
@@ -22,7 +22,7 @@ Scry gets what's worth knowing into your head and keeps it there, for the fewest
 ## Business rules
 
 - No free tier. There's a 7-day trial with a card up front.
-- Prices cover costs plus a small margin, only to protect against abuse and runaway costs: a small monthly base with a capped allowance, and top-ups beyond it. Top-ups cost $5 each, up to $20 per person per calendar month; the limit resets at the start of each month.
+- Prices cover costs plus a small margin, only to protect against abuse and runaway costs: a small monthly base with a capped allowance, and top-ups beyond it. Top-ups cost $5 each, up to $20 per person per calendar month (UTC); the limit resets at the start of each UTC month. One press of Top up is one charge, however often the form is resubmitted.
 - Phaedrus is the first customer, with no special powers in the product.
 - Reliable from day one: outages are noticed and fixed without anyone being asked.
 

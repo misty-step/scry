@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -24,6 +25,13 @@ type Fake struct {
 	// Err, when set, is returned by every call. Tests use it to see what
 	// the app does when the provider is down.
 	Err error
+	// Verdicts, when set, is a scripted sequence of verdicts the fake hands
+	// out in turn, whatever the answer says (SCRY_TEST_JUDGMENTS in test
+	// mode), each with that verdict's fixed criterion sentence. It lets the
+	// running app show close and missed verdicts without any matcher.
+	Verdicts []srs.Verdict
+	mu       sync.Mutex
+	next     int
 }
 
 func (f *Fake) Name() string { return "test" }
@@ -35,6 +43,13 @@ func (f *Fake) Judge(_ context.Context, in JudgeInput) (Judgment, Usage, error) 
 	}
 	if f.Judgment != nil {
 		return *f.Judgment, use, nil
+	}
+	if len(f.Verdicts) > 0 {
+		f.mu.Lock()
+		v := f.Verdicts[f.next%len(f.Verdicts)]
+		f.next++
+		f.mu.Unlock()
+		return Judgment{Verdict: v, Reason: CriterionSentence(v)}, use, nil
 	}
 	return Judgment{Verdict: srs.Right, Reason: "Test fixture: right (not an assessment of your answer)."}, use, nil
 }

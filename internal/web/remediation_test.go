@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"scry/internal/ai"
+	"scry/internal/app"
 	"scry/internal/billing"
 	"scry/internal/speech"
 	"scry/internal/store"
@@ -38,8 +39,9 @@ func TestG1_TopUpCreditsOncePerPayment(t *testing.T) {
 	u := w.user("credit@example.com")
 	us := w.store.For(u.ID)
 	before, _ := us.Subscription(ctx)
+	token := app.NewTopupToken() // the same form, resubmitted
 	for i := 0; i < 3; i++ {
-		if err := w.app.TopUp(ctx, u.ID); err != nil {
+		if err := w.app.TopUp(ctx, u.ID, token); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -183,6 +185,10 @@ func wavSecond() []byte {
 	binary.LittleEndian.PutUint16(b[34:], 16)
 	copy(b[36:], "data")
 	binary.LittleEndian.PutUint32(b[40:], 96000)
+	// A quiet tone, not digital silence: silence is "didn't catch that".
+	for i := 44; i+1 < len(b); i += 2 {
+		binary.LittleEndian.PutUint16(b[i:], uint16(int16(1000*((i/2)%40-20)/20)))
+	}
 	return b
 }
 func TestG12_SpeechDurationComesFromAudio(t *testing.T) {
@@ -278,11 +284,11 @@ func TestG1_OnePaymentReferenceCannotCreditTwice(t *testing.T) {
 	b.signUp("replay@example.com")
 	u := w.user("replay@example.com")
 	w.app.Pay = replayChargePay{}
-	if err := w.app.TopUp(ctx, u.ID); err != nil {
+	if err := w.app.TopUp(ctx, u.ID, app.NewTopupToken()); err != nil {
 		t.Fatal(err)
 	}
 	w.advance(2 * time.Minute)
-	if err := w.app.TopUp(ctx, u.ID); err != nil {
+	if err := w.app.TopUp(ctx, u.ID, app.NewTopupToken()); err != nil {
 		t.Fatal(err)
 	}
 	sub, _ := w.store.For(u.ID).Subscription(ctx)

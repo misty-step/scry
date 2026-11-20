@@ -27,6 +27,7 @@ import (
 	"scry/internal/auth"
 	"scry/internal/billing"
 	"scry/internal/speech"
+	"scry/internal/srs"
 	"scry/internal/store"
 	"scry/internal/web"
 )
@@ -145,13 +146,46 @@ func build(log *slog.Logger) (*app.App, error) {
 		if pk != "" && sk != "" {
 			a.Auth = &auth.Clerk{PublishableKey: pk, SecretKey: sk}
 		}
-		a.Pay = billing.Fake{}
+		// Test mode only: start the app's clock at a given instant (RFC 3339,
+		// its zone kept) and let it run, to show month rollovers on a live
+		// binary, e.g. SCRY_TEST_CLOCK=2026-12-01T01:50:00+02:00.
+		if v := env("SCRY_TEST_CLOCK", ""); v != "" {
+			t0, perr := time.Parse(time.RFC3339Nano, v)
+			if perr != nil {
+				return nil, fmt.Errorf("SCRY_TEST_CLOCK: %w", perr)
+			}
+			started := time.Now()
+			a.Now = func() time.Time { return t0.Add(time.Since(started)) }
+		}
+		fake := billing.Fake{}
+		// Test mode only: hold each fake top-up charge, to exercise a slow
+		// processor (for example SCRY_TEST_CHARGE_DELAY=4s).
+		if d := env("SCRY_TEST_CHARGE_DELAY", ""); d != "" {
+			if fake.ChargeDelay, err = time.ParseDuration(d); err != nil {
+				return nil, fmt.Errorf("SCRY_TEST_CHARGE_DELAY: %w", err)
+			}
+		}
+		a.Pay = fake
 		if stripeSK != "" && stripePK != "" && price != "" && wh != "" {
 			if a.Pay, err = billing.NewStripe(stripeSK, stripePK, price, wh); err != nil {
 				return nil, err
 			}
 		}
-		a.Model = &ai.Fake{Delay: 350 * time.Millisecond}
+		model := &ai.Fake{Delay: 350 * time.Millisecond}
+		// Test mode only: a scripted verdict sequence, handed out in turn
+		// whatever the answer says, e.g. SCRY_TEST_JUDGMENTS=close,missed,right.
+		for _, v := range strings.Split(env("SCRY_TEST_JUDGMENTS", ""), ",") {
+			if v = strings.TrimSpace(v); v == "" {
+				continue
+			}
+			if !srs.Verdict(v).Valid() {
+				return nil, fmt.Errorf("SCRY_TEST_JUDGMENTS: %q is not right, close or missed", v)
+			}
+			model.Verdicts = append(model.Verdicts, srs.Verdict(v))
+		}
+		a.Model = model
+		// SCRY_TEST_EXPLAIN=fail or slow exercises the explanation fallback.
+		a.Explainer = &ai.FakeExplainer{Mode: env("SCRY_TEST_EXPLAIN", "")}
 		a.Speech = speech.Fake{Phrase: env("SCRY_TEST_SPEECH", "")}
 	} else {
 		a.Auth = &auth.Clerk{PublishableKey: need("CLERK_PUBLISHABLE_KEY"), SecretKey: need("CLERK_SECRET_KEY")}
@@ -162,7 +196,10 @@ func build(log *slog.Logger) (*app.App, error) {
 		if judge != nil {
 			judge.Model = env("SCRY_JUDGE_MODEL", "")
 		}
-		a.Model = ai.Split{JudgeProvider: judge, DraftProvider: ai.NewClaude(need("ANTHROPIC_API_KEY"), env("SCRY_DRAFT_MODEL", ""))}
+		claude := ai.NewClaude(need("ANTHROPIC_API_KEY"), env("SCRY_DRAFT_MODEL", ""))
+		claude.ExplainModel = env("SCRY_EXPLAIN_MODEL", "")
+		a.Model = ai.Split{JudgeProvider: judge, DraftProvider: claude}
+		a.Explainer = claude
 		a.Speech = speech.OpenAI{APIKey: need("OPENAI_API_KEY"), Model: env("SCRY_SPEECH_MODEL", "")}
 		sk, pk, price, wh := need("STRIPE_SECRET_KEY"), need("STRIPE_PUBLISHABLE_KEY"), need("STRIPE_PRICE_ID"), need("STRIPE_WEBHOOK_SECRET")
 		if len(missing) > 0 {
@@ -172,7 +209,7 @@ func build(log *slog.Logger) (*app.App, error) {
 			return nil, err
 		}
 	}
-	log.Info("adapters", "mode", mode, "auth", a.Auth.Name(), "billing", a.Pay.Name(), "model", a.Model.Name(), "speech", a.Speech.Name())
+	log.Info("adapters", "mode", mode, "auth", a.Auth.Name(), "billing", a.Pay.Name(), "model", a.Model.Name(), "explainer", a.Explainer.Name(), "speech", a.Speech.Name())
 	ok = true
 	return a, nil
 }

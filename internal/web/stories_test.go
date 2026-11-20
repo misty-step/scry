@@ -490,11 +490,13 @@ func TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason(t 
 	has(t, body, `<span class="tag tag-missed">incorrect</span>`, "The model has the final word in this test.")
 	body = b.next()
 
-	// "Close" comes with the parts that were close.
+	// "Close" comes with its one-line why and an on-demand "Why?" (no
+	// automatic close-part highlight on the hot path).
 	third, _ := b.current(body)
-	w.model.script = []ai.Judgment{{Verdict: srs.Close, Reason: "Right word, but it is spelled Charlie.", Close: []string{"Charly"}}}
+	w.model.script = []ai.Judgment{{Verdict: srs.Close, Reason: "Right word, but it is spelled Charlie."}}
 	body = b.answer(third, "Charly")
-	has(t, body, `<span class="tag tag-close">almost correct</span>`, "<mark>Charly</mark>", "Right word, but it is spelled Charlie.")
+	has(t, body, `<span class="tag tag-close">almost correct</span>`, "Charly", "Right word, but it is spelled Charlie.", "data-explain", "Why?")
+	hasNot(t, body, "<mark>")
 	b.next()
 
 	// Every answer went to the model, exactly once each.

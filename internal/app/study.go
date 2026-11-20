@@ -24,9 +24,8 @@ var ErrStale = errors.New("that item is no longer the current one")
 
 // Detail is what a review keeps beyond verdict and reason.
 type Detail struct {
-	Close []string    `json:"close,omitempty"` // parts of the answer that were close
-	Ops   []exact.Op  `json:"ops,omitempty"`   // the word-for-word comparison of an exact text
-	Diff  *exactCount `json:"diff,omitempty"`
+	Ops  []exact.Op  `json:"ops,omitempty"` // the word-for-word comparison of an exact text
+	Diff *exactCount `json:"diff,omitempty"`
 }
 
 type exactCount struct{ Missing, Swapped, Extra int }
@@ -149,7 +148,6 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 			return store.Review{}, ErrJudgeUnavailable
 		}
 		r.Verdict, r.Reason, r.Judge = j.Verdict, strings.Join(strings.Fields(j.Reason), " "), use.Model
-		detail.Close = j.Close
 		hold = j.Verdict != srs.Right
 	}
 	raw, _ := json.Marshal(detail)

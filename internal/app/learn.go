@@ -232,7 +232,12 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 	if a.Cfg.TestMode && a.Speech.Name() == "test" && strings.HasPrefix(string(audio.Data), "say:") {
 		audio.Seconds = 1
 	} else {
-		seconds, err := speech.Duration(audio.Data)
+		// A recording with nothing in it (stopped at once, too short for a
+		// word, or silent) is "didn't catch that": no provider call, no cost.
+		seconds, err := speech.Inspect(audio.Data)
+		if errors.Is(err, speech.ErrNoSpeech) {
+			return "", nil
+		}
 		if err != nil {
 			return "", err
 		}

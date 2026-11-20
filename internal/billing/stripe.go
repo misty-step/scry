@@ -218,6 +218,9 @@ func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amo
 		"off_session":    {"true"},
 		"confirm":        {"true"},
 		"description":    {description},
+		// The key is also kept on the PaymentIntent, so a lost reply can be
+		// reconciled by looking the intent up (FindCharge).
+		"metadata[scry_key]": {key},
 	}, key, &pi)
 	if err != nil {
 		return "", err
@@ -226,6 +229,56 @@ func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amo
 		return "", &DeclineError{Reason: "Your bank needs you to confirm this payment. Update your card and try again."}
 	}
 	return pi.ID, nil
+}
+
+// FindCharge reconciles a top-up whose reply was lost. It lists the
+// customer's PaymentIntents created since the attempt began (a list, not
+// search, so it is strongly consistent) and matches the Scry idempotency
+// key kept in metadata. It never creates or confirms anything.
+func (s *Stripe) FindCharge(ctx context.Context, customerRef, _, key string, since time.Time) (ChargeResult, error) {
+	q := url.Values{
+		"customer":     {customerRef},
+		"limit":        {"100"},
+		"created[gte]": {strconv.FormatInt(since.Add(-10*time.Minute).Unix(), 10)},
+	}
+	for page := 0; page < 5; page++ {
+		var list struct {
+			Data []struct {
+				ID               string            `json:"id"`
+				Status           string            `json:"status"`
+				Metadata         map[string]string `json:"metadata"`
+				LastPaymentError struct {
+					Message string `json:"message"`
+				} `json:"last_payment_error"`
+			} `json:"data"`
+			HasMore bool `json:"has_more"`
+		}
+		if err := s.do(ctx, http.MethodGet, "/v1/payment_intents?"+q.Encode(), nil, "", &list); err != nil {
+			return ChargeResult{}, err
+		}
+		for _, pi := range list.Data {
+			if pi.Metadata["scry_key"] != key {
+				continue
+			}
+			switch pi.Status {
+			case "succeeded":
+				return ChargeResult{Status: ChargeSucceeded, Ref: pi.ID}, nil
+			case "processing", "requires_capture":
+				return ChargeResult{Status: ChargePending, Ref: pi.ID}, nil
+			default: // canceled, requires_payment_method, requires_action, requires_confirmation
+				reason := pi.LastPaymentError.Message
+				if reason == "" {
+					reason = "Your bank needs you to confirm this payment. Update your card and try again."
+				}
+				return ChargeResult{Status: ChargeFailed, Ref: pi.ID, Reason: reason}, nil
+			}
+		}
+		if !list.HasMore || len(list.Data) == 0 {
+			break
+		}
+		q.Set("starting_after", list.Data[len(list.Data)-1].ID)
+	}
+	return ChargeResult{Status: ChargeNotFound}, nil
 }
 
 func (s *Stripe) SetCancelAtPeriodEnd(ctx context.Context, subscriptionRef string, cancel bool) error {

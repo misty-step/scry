@@ -13,6 +13,8 @@ func TestReviewBrowserSmoke(t *testing.T) {
 		t.Skip("set SCRY_BROWSER_SMOKE=1 and install puppeteer-core")
 	}
 	w := newWorld(t)
+	explainer := &ai.FakeExplainer{}
+	w.app.Explainer = explainer
 	w.model.script = []ai.Judgment{
 		{Verdict: srs.Right, Reason: "Your answer expresses the same idea."},
 		{Verdict: srs.Missed, Reason: "The expected answer is different."},
@@ -28,6 +30,9 @@ func TestReviewBrowserSmoke(t *testing.T) {
 	defer w.model.mu.Unlock()
 	if len(w.model.judged) != 2 {
 		t.Fatalf("wanted two submissions, got %d", len(w.model.judged))
+	}
+	if explainer.Calls() != 1 {
+		t.Fatalf("explainer calls = %d, want exactly the one click", explainer.Calls())
 	}
 	var calls int
 	if err := w.store.DB().QueryRow("SELECT count(*) FROM usage WHERE kind='speech'").Scan(&calls); err != nil || calls != 1 {

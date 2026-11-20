@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"errors"
-	"html/template"
 	"io"
 	"net/http"
 	"strconv"
@@ -73,13 +72,15 @@ type answeredRow struct {
 
 // judgedView is the judgment on screen.
 type judgedView struct {
-	Kind     string // close, missed, exact
-	Verdict  srs.Verdict
-	Why      string
-	Answer   string
-	Marked   template.HTML // the answer with its close parts highlighted
-	Expected string
-	Ops      []exact.Op
+	Kind        string // close, missed, exact
+	Verdict     srs.Verdict
+	Why         string // the fixed criterion sentence (or the exact diff count)
+	Answer      string
+	Expected    string
+	Ops         []exact.Op
+	ReviewID    int64
+	Explainable bool   // close or missed, model-judged: offer "Why?" on demand
+	Explanation string // filled in only after the learner asked (no-JS path)
 }
 
 func exactLabel(it store.Item) string {
@@ -128,15 +129,17 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 	cur := sess.Current()
 	if pendingReview != nil && shown != nil {
 		d := app.ParseDetail(*pendingReview)
-		j := judgedView{Verdict: pendingReview.Verdict, Why: pendingReview.Reason, Answer: pendingReview.Answer, Expected: shown.Item.Answer}
+		j := judgedView{Verdict: pendingReview.Verdict, Why: pendingReview.Reason, Answer: pendingReview.Answer, Expected: shown.Item.Answer, ReviewID: pendingReview.ID}
 		switch {
 		case shown.Item.Exact && len(d.Ops) > 0:
 			j.Kind, j.Ops = "exact", d.Ops
 		case pendingReview.Verdict == srs.Missed:
 			j.Kind = "missed"
 		default:
-			j.Kind, j.Marked = "close", markParts(pendingReview.Answer, d.Close)
+			j.Kind = "close"
 		}
+		j.Explainable = j.Kind != "exact" && pendingReview.Judge != "exact" &&
+			(pendingReview.Verdict == srs.Close || pendingReview.Verdict == srs.Missed)
 		data["Judged"] = j
 		cur = shown
 	}
@@ -258,6 +261,52 @@ func (s *Server) studyDone(w http.ResponseWriter, r *http.Request, c *rc) error 
 	return s.render(w, r, c, http.StatusOK, "done.html", map[string]any{"Title": "Done", "Nav": "study", "Head": "Done.", "Line": line + "."})
 }
 
+// studyExplain is the on-demand "Why?" on a close or missed answer. It
+// runs after the verdict and never changes it. With JavaScript it answers
+// JSON for the inline result; without, it re-renders the judgment with the
+// explanation in place. Failures fall back to the criterion sentence.
+func (s *Server) studyExplain(w http.ResponseWriter, r *http.Request, c *rc) error {
+	wantsJSON := r.Header.Get("X-Requested-With") == "fetch" || strings.Contains(r.Header.Get("Accept"), "application/json")
+	id, _ := strconv.ParseInt(r.FormValue("review_id"), 10, 64)
+	ex, err := s.App.Explain(r.Context(), c.user, id)
+	if err != nil {
+		if !wantsJSON {
+			if errors.Is(err, store.ErrNotFound) || errors.Is(err, app.ErrNotExplainable) {
+				return back(w, r, "/study")
+			}
+			return err
+		}
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "That answer isn't here to explain."})
+		case errors.Is(err, app.ErrNotExplainable):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "Only close and missed answers have an explanation."})
+		default:
+			s.Log.ErrorContext(r.Context(), "explain failed", "err", err, "user", c.user.ID)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Couldn't explain that just now."})
+		}
+		return nil
+	}
+	if wantsJSON {
+		writeJSON(w, http.StatusOK, map[string]any{"text": ex.Text, "fallback": ex.Fallback})
+		return nil
+	}
+	sess, err := c.us.ActiveSession(r.Context())
+	if err != nil {
+		return err
+	}
+	if sess == nil {
+		return back(w, r, "/study")
+	}
+	data := s.studyData(r.Context(), c, sess)
+	if j, ok := data["Judged"].(judgedView); ok && j.ReviewID == id {
+		j.Explanation = ex.Text
+		data["Judged"] = j
+		data["ExplainFallback"] = ex.Fallback
+	}
+	return s.render(w, r, c, http.StatusOK, "study.html", data)
+}
+
 // studySpeech hears a recording of a spoken answer and returns its words.
 func (s *Server) studySpeech(w http.ResponseWriter, r *http.Request, c *rc) error {
 	data, err := readLimited(r, 6<<20)
@@ -267,8 +316,11 @@ func (s *Server) studySpeech(w http.ResponseWriter, r *http.Request, c *rc) erro
 	}
 	text, err := s.App.Transcribe(r.Context(), c.user, speech.Audio{Data: data, MIME: r.Header.Get("Content-Type")})
 	switch {
+	case errors.Is(err, speech.ErrTooLong):
+		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "That recording is too long. Try a shorter answer, or type it."})
 	case errors.Is(err, speech.ErrAudio):
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		// Not a recording Scry's recorder makes; nothing to hear in it.
+		writeJSON(w, http.StatusUnsupportedMediaType, map[string]string{"error": "Scry couldn't read that recording. Type your answer instead."})
 
 	case errors.Is(err, app.ErrAllowance):
 		writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": "You've reached this month's allowance, so Scry can't listen right now. Type your answer, or top up in Billing."})
@@ -277,7 +329,10 @@ func (s *Server) studySpeech(w http.ResponseWriter, r *http.Request, c *rc) erro
 	case err != nil:
 		return err
 	default:
-		writeJSON(w, http.StatusOK, map[string]string{"text": text})
+		// Empty text means nothing was caught: short, empty or silent
+		// recordings, or a provider that heard no words. The page says
+		// DESIGN's "Didn't catch that. Try again or type it."
+		writeJSON(w, http.StatusOK, map[string]any{"text": text, "caught": text != ""})
 	}
 	return nil
 }
