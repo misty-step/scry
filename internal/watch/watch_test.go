@@ -207,3 +207,30 @@ func TestUnconfiguredFixAndFailedHandoffRetry(t *testing.T) {
 		t.Fatal("handoff not retried")
 	}
 }
+
+// Slice 12: a probe cut short by the watcher's own SIGTERM is not an outage,
+// so stopping scry-watch never opens an incident or runs a restart.
+func TestCanceledProbeIsNotAnOutage(t *testing.T) {
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
+	defer down.Close()
+	file := filepath.Join(t.TempDir(), "incidents.json")
+	w, e := Open(Config{File: file, HealthURL: down.URL, Threshold: 1, Notify: func(context.Context, string) error { return nil }})
+	if e != nil {
+		t.Fatal(e)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if e := w.Tick(ctx, time.Now()); e != nil {
+		t.Fatal(e)
+	}
+	if healthy, streak := w.Status(); healthy || streak != 0 || len(w.State.Incidents) != 0 {
+		t.Fatalf("canceled probe counted: healthy=%v streak=%d incidents=%d", healthy, streak, len(w.State.Incidents))
+	}
+	// A real failure still counts.
+	if e := w.Tick(context.Background(), time.Now()); e != nil {
+		t.Fatal(e)
+	}
+	if healthy, streak := w.Status(); healthy || streak != 1 || len(w.State.Incidents) != 1 {
+		t.Fatalf("real failure not counted: healthy=%v streak=%d incidents=%d", healthy, streak, len(w.State.Incidents))
+	}
+}

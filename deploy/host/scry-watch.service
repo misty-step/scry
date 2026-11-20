@@ -1,0 +1,21 @@
+[Unit]
+Description=Scry watcher (health probes, incidents, restarts)
+After=network-online.target scry.service
+Wants=network-online.target
+
+[Service]
+User=scry
+WorkingDirectory=/srv/scry
+# Defaults first; anything set in scry.env overrides them.
+Environment=SCRY_WATCH_HEALTH_URL=http://127.0.0.1:8080/healthz
+Environment=SCRY_WATCH_STATE=/srv/scry/data/watch/incidents.json
+Environment=SCRY_WATCH_LISTEN=127.0.0.1:8091
+Environment=SCRY_WATCH_INTERVAL=10s
+EnvironmentFile=/etc/scry/scry.env
+ExecStart=/usr/local/bin/scry-watch
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -51,3 +51,17 @@ func (u *UserStore) ReservedMicros(ctx context.Context) (int64, error) {
 	err := u.s.db.QueryRowContext(ctx, "SELECT COALESCE(SUM(amount),0) FROM reservations WHERE user_id=?", u.uid).Scan(&amount)
 	return amount, err
 }
+
+// FailStaleReservations releases every allowance hold left in the table and
+// reports how many it released. Scry is one process, so at startup no model
+// or speech call is in flight: any row still here was orphaned by an unclean
+// kill between Reserve and Settle and would otherwise hold that learner's
+// allowance forever. Call it once at boot, before serving, never while
+// requests are running.
+func (s *Store) FailStaleReservations(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, "DELETE FROM reservations")
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

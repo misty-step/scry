@@ -28,6 +28,8 @@ import (
 // Config is the product's numbers. Prices cover costs plus a small margin.
 type Config struct {
 	TestMode bool
+	// BuildSHA is the commit this binary was built from, for /healthz.
+	BuildSHA string
 
 	PriceCents      int64 // the monthly base
 	AllowanceMicros int64 // metered model usage included each month, in micro-dollars

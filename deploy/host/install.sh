@@ -8,10 +8,13 @@ chown scry:scry /srv/scry /srv/scry/data
 install -m 0644 scry-lib.sh /usr/local/lib/scry/scry-lib.sh
 install -m 0755 scry-deploy scry-rollback scry-status /usr/local/bin/
 install -m 0644 scry.service /etc/systemd/system/scry.service
+# The watcher's unit; enable it once /usr/local/bin/scry-watch is installed.
+install -m 0644 scry-watch.service /etc/systemd/system/scry-watch.service
 umask 077
 { echo "PORT=${PORT:-8080}"; echo "SCRY_DB=/srv/scry/data/scry.db"
   echo "SCRY_BASE_URL=${SCRY_BASE_URL:?}"; echo "SCRY_MODE=${SCRY_MODE:?}"
-  env | grep -E '^(CLERK|STRIPE|SENTRY|OPENAI|ANTHROPIC|ELEVENLABS|LITESTREAM)_[A-Z_]*=' || true
+  env | grep -E '^(CLERK|STRIPE|SENTRY|OPENAI|ANTHROPIC|OPENROUTER|TYPESAFE|ELEVENLABS|LITESTREAM)_[A-Z_]*=' || true
+  env | grep -E '^SCRY_(STRIPE_MODE|JUDGE_MODE|JUDGE_MODEL|DRAFT_MODEL|EXPLAIN_MODEL|SPEECH_MODEL|WATCH_[A-Z_]*)=' || true
 } > /etc/scry/scry.env
 systemctl daemon-reload
 systemctl enable scry >/dev/null
