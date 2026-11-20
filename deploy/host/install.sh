@@ -14,6 +14,7 @@ umask 077
 { echo "PORT=${PORT:-8080}"; echo "SCRY_DB=/srv/scry/data/scry.db"
   echo "SCRY_BASE_URL=${SCRY_BASE_URL:?}"; echo "SCRY_MODE=${SCRY_MODE:?}"
   env | grep -E '^(CLERK|STRIPE|SENTRY|OPENAI|ANTHROPIC|OPENROUTER|TYPESAFE|ELEVENLABS|LITESTREAM)_[A-Z_]*=' || true
+  env | grep -E '^ALERT_WEBHOOK_URL=' || true
   env | grep -E '^SCRY_(STRIPE_MODE|JUDGE_MODE|JUDGE_MODEL|DRAFT_MODEL|EXPLAIN_MODEL|SPEECH_MODEL|WATCH_[A-Z_]*)=' || true
 } > /etc/scry/scry.env
 systemctl daemon-reload

@@ -13,6 +13,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,6 +33,21 @@ func duration(k, d string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid duration: %s", k)
 	}
 	return v, nil
+}
+
+// healthURL is the /healthz the watcher probes: SCRY_WATCH_HEALTH_URL when
+// set, otherwise scry's own loopback listener on PORT (default 8080), the
+// same PORT scry reads from scry.env, so a custom port needs no second
+// setting.
+func healthURL() (string, error) {
+	if v := strings.TrimSpace(os.Getenv("SCRY_WATCH_HEALTH_URL")); v != "" {
+		return v, nil
+	}
+	port := strings.TrimSpace(env("PORT", "8080"))
+	if n, e := strconv.Atoi(port); e != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port {
+		return "", fmt.Errorf("invalid PORT")
+	}
+	return "http://127.0.0.1:" + port + "/healthz", nil
 }
 
 // log is one JSON line per event on stdout, for journald.
@@ -64,7 +81,10 @@ func run() error {
 	if e = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
 		return fmt.Errorf("watcher already owns state")
 	}
-	health := env("SCRY_WATCH_HEALTH_URL", "http://127.0.0.1:8080/healthz")
+	health, e := healthURL()
+	if e != nil {
+		return e
+	}
 	test := env("SCRY_MODE", "live") == "test"
 	u, e := url.Parse(health)
 	if e != nil {

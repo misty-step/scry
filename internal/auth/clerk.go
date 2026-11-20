@@ -68,11 +68,25 @@ type Clerk struct {
 	jwksClient *jwks.Client
 	userClient *user.Client
 
-	fetching sync.Mutex // one key-set fetch at a time
-	mu       sync.Mutex // guards keys, keysAt and users
+	// onJoin, package tests only, runs when a request joins a key-set
+	// fetch already in flight instead of starting its own.
+	onJoin func()
+
+	mu       sync.Mutex // guards keys, keysAt, inFlight and users
 	keys     *clerk.JSONWebKeySet
 	keysAt   time.Time
+	inFlight *jwksFetch // the one key-set fetch in progress, if any
 	users    map[string]cachedIdentity
+}
+
+// jwksFetch is one upstream key-set fetch. Every request that needs keys
+// while it runs waits for it and shares its outcome, success or error, so
+// an outage costs one upstream call per round rather than one per request.
+// set and err are written once, before done is closed.
+type jwksFetch struct {
+	done chan struct{}
+	set  *clerk.JSONWebKeySet
+	err  error
 }
 
 type cachedIdentity struct {
@@ -173,11 +187,15 @@ func (c *Clerk) maxUsers() int {
 	return DefaultUserCacheSize
 }
 
-// cachedKey looks kid up in the cached key set. fresh says the set is
-// within its TTL; recent says it was fetched within the kid-miss floor.
-func (c *Clerk) cachedKey(kid string, now time.Time) (key *clerk.JSONWebKey, fresh, recent bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+// jwksFetchTimeout bounds one shared key-set fetch. The fetch outlives
+// the request that started it (other requests may be waiting on it), so it
+// gets its own deadline instead of that request's.
+const jwksFetchTimeout = 10 * time.Second
+
+// cachedKeyLocked looks kid up in the cached key set; c.mu must be held.
+// fresh says the set is within its TTL; recent says it was fetched within
+// the kid-miss floor.
+func (c *Clerk) cachedKeyLocked(kid string, now time.Time) (key *clerk.JSONWebKey, fresh, recent bool) {
 	if c.keys == nil {
 		return nil, false, false
 	}
@@ -200,38 +218,62 @@ func findKey(set *clerk.JSONWebKeySet, kid string) *clerk.JSONWebKey {
 
 // key returns the public key a token names, from the cached key set while
 // it is fresh. The set is fetched again when it expires, or early when a
-// token names a kid it does not hold (a key rotation).
+// token names a kid it does not hold (a key rotation), at most once per
+// jwksMissFloor. At most one fetch runs at a time: concurrent requests join
+// it and share its result, including its error. A failed fetch is not
+// remembered, so the next request after it tries again.
 func (c *Clerk) key(ctx context.Context, kid string) (*clerk.JSONWebKey, error) {
 	if kid == "" {
 		return nil, errUnknownKey
 	}
-	if k, fresh, recent := c.cachedKey(kid, c.now()); k != nil {
-		return k, nil
-	} else if fresh && recent {
-		return nil, errUnknownKey
-	}
-	c.fetching.Lock()
-	defer c.fetching.Unlock()
-	// Another request may have fetched while this one waited.
-	if k, fresh, recent := c.cachedKey(kid, c.now()); k != nil {
-		return k, nil
-	} else if fresh && recent {
-		return nil, errUnknownKey
-	}
-	set, err := c.fetchJWKS(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if set == nil || len(set.Keys) == 0 {
-		return nil, errors.New("clerk returned no signing keys")
-	}
 	c.mu.Lock()
-	c.keys, c.keysAt = set, c.now()
+	if k, fresh, recent := c.cachedKeyLocked(kid, c.now()); k != nil {
+		c.mu.Unlock()
+		return k, nil
+	} else if fresh && recent {
+		c.mu.Unlock()
+		return nil, errUnknownKey
+	}
+	f := c.inFlight
+	if f == nil {
+		f = &jwksFetch{done: make(chan struct{})}
+		c.inFlight = f
+		go c.runFetch(context.WithoutCancel(ctx), f)
+	} else if c.onJoin != nil {
+		c.onJoin()
+	}
 	c.mu.Unlock()
-	if k := findKey(set, kid); k != nil {
+	select {
+	case <-f.done:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	if k := findKey(f.set, kid); k != nil {
 		return k, nil
 	}
 	return nil, errUnknownKey
+}
+
+// runFetch performs f, caches a good key set, and then releases everyone
+// waiting on f.
+func (c *Clerk) runFetch(ctx context.Context, f *jwksFetch) {
+	ctx, cancel := context.WithTimeout(ctx, jwksFetchTimeout)
+	defer cancel()
+	set, err := c.fetchJWKS(ctx)
+	if err == nil && (set == nil || len(set.Keys) == 0) {
+		err = errors.New("clerk returned no signing keys")
+	}
+	f.set, f.err = set, err
+	c.mu.Lock()
+	if err == nil {
+		c.keys, c.keysAt = set, c.now()
+	}
+	c.inFlight = nil
+	c.mu.Unlock()
+	close(f.done)
 }
 
 func (c *Clerk) Verify(ctx context.Context, token, origin string) (string, string, error) {
@@ -294,7 +336,12 @@ func (c *Clerk) identity(ctx context.Context, subject string) (string, string, e
 	if err != nil {
 		return "", "", err
 	}
-	c.remember(subject, cachedIdentity{id: id, email: email, expires: c.now().Add(c.userTTL())})
+	// The identity is only known to be current as of when the lookup
+	// started, so its lifetime counts from then; a lookup slower than the
+	// TTL is used for this request but never cached.
+	if expires := now.Add(c.userTTL()); c.now().Before(expires) {
+		c.remember(subject, cachedIdentity{id: id, email: email, expires: expires})
+	}
 	return id, email, nil
 }
 

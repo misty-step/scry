@@ -486,3 +486,149 @@ func TestClerkMode(t *testing.T) {
 		t.Fatal("mode")
 	}
 }
+
+// Pass 2: requests that arrive while a key-set fetch is in flight share
+// its outcome, an error included. Twelve concurrent sign-ins during a
+// Clerk JWKS outage (HTTP 503) make one upstream call, not twelve; once
+// the fetch has finished, the next request tries again and, with Clerk
+// back, succeeds.
+func TestClerkConcurrentJWKSFailureSharesOneFetch(t *testing.T) {
+	const n = 12
+	r := newClerkRig(t)
+	var jwksHits, joins atomic.Int64
+	var down atomic.Bool
+	down.Store(true)
+	release := make(chan struct{})
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch {
+		case strings.HasSuffix(req.URL.Path, "/jwks"):
+			jwksHits.Add(1)
+			if down.Load() {
+				<-release // hold the outage open until every request has joined
+				http.Error(w, `{"errors":[{"code":"unavailable"}]}`, http.StatusServiceUnavailable)
+				return
+			}
+			k := r.signers["kid_1"]
+			jwk := jose.JSONWebKey{Key: &k.PublicKey, KeyID: "kid_1", Algorithm: "RS256", Use: "sig"}
+			_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{jwk}})
+		case strings.HasSuffix(req.URL.Path, "/users/user_a"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"object": "user", "id": "user_a", "primary_email_address_id": "idn_a",
+				"email_addresses": []any{map[string]any{"id": "idn_a", "email_address": "a@example.com", "verification": map[string]any{"status": "verified"}}}})
+		default:
+			http.NotFound(w, req)
+		}
+	}))
+	defer api.Close()
+	c := &Clerk{PublishableKey: testPublishable, SecretKey: "sk_test_standin", Now: r.now, apiURL: api.URL + "/v1",
+		onJoin: func() { joins.Add(1) }}
+	tok := r.token(tokenOpts{sub: "user_a"})
+
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, err := c.Verify(context.Background(), tok, testOrigin)
+			errs <- err
+		}()
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for jwksHits.Load() < 1 || joins.Load() < n-1 {
+		if time.Now().After(deadline) {
+			close(release)
+			t.Fatalf("requests did not join one fetch: upstream %d, joined %d", jwksHits.Load(), joins.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(release)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err == nil {
+			t.Fatal("signed in with no key set")
+		}
+	}
+	if got := jwksHits.Load(); got != 1 {
+		t.Fatalf("%d concurrent requests during a 503 made %d upstream JWKS fetches, want 1", n, got)
+	}
+	c.mu.Lock()
+	inFlight, keys := c.inFlight, c.keys
+	c.mu.Unlock()
+	if inFlight != nil || keys != nil {
+		t.Fatal("failed fetch left in flight or cached")
+	}
+
+	down.Store(false)
+	id, _, err := c.Verify(context.Background(), tok, testOrigin)
+	if err != nil || id != "user_a" {
+		t.Fatalf("after recovery: %q %v", id, err)
+	}
+	if got := jwksHits.Load(); got != 2 {
+		t.Fatalf("upstream JWKS fetches after recovery = %d, want 2", got)
+	}
+}
+
+// A request that gives up while waiting on a shared fetch leaves promptly,
+// and its cancellation does not fail the fetch for everyone else.
+func TestClerkJWKSFetchOutlivesCanceledRequest(t *testing.T) {
+	r := newClerkRig(t)
+	r.addUser("user_a", "a@example.com", "verified")
+	started, release := make(chan struct{}), make(chan struct{})
+	r.c.FetchJWKS = func(ctx context.Context) (*clerk.JSONWebKeySet, error) {
+		close(started)
+		<-release
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return r.fetch(ctx)
+	}
+	tok := r.token(tokenOpts{sub: "user_a"})
+	ctx, cancel := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() { _, _, err := r.c.Verify(ctx, tok, testOrigin); first <- err }()
+	<-started
+	cancel()
+	if err := <-first; err == nil {
+		t.Fatal("canceled request signed in")
+	}
+	close(release)
+	r.mustVerify(tok, "user_a")
+	r.calls(1, 1)
+}
+
+// Pass 2: a cached identity's lifetime counts from when its lookup began.
+// A lookup slower than the TTL is used once but not cached; a faster one
+// expires TTL after it started, not TTL after it answered.
+func TestClerkIdentityTTLCountsFromLookupStart(t *testing.T) {
+	r := newClerkRig(t)
+	r.addUser("user_a", "a@example.com", "verified")
+	tok := r.token(tokenOpts{sub: "user_a"})
+	slow := func(d time.Duration) func(context.Context, string) (*clerk.User, error) {
+		return func(ctx context.Context, id string) (*clerk.User, error) {
+			r.advance(d) // the clock moves while user.Get is in flight
+			return r.lookup(ctx, id)
+		}
+	}
+
+	r.c.LookupUser = slow(DefaultUserTTL + time.Second)
+	r.mustVerify(tok, "user_a")
+	if n := r.c.cachedUsers(); n != 0 {
+		t.Fatalf("identity older than its TTL was cached (%d entries)", n)
+	}
+	r.c.LookupUser = r.lookup
+	r.mustVerify(tok, "user_a")
+	r.calls(1, 2) // the stale answer was not reused
+
+	r.advance(DefaultUserTTL + time.Second) // let that entry expire
+	r.c.LookupUser = slow(DefaultUserTTL * 2 / 3)
+	r.mustVerify(tok, "user_a")
+	r.calls(1, 3)
+	r.c.LookupUser = r.lookup
+	r.advance(DefaultUserTTL/3 - time.Second) // TTL-1s since the lookup began
+	r.mustVerify(tok, "user_a")
+	r.calls(1, 3)
+	r.advance(2 * time.Second) // TTL+1s since it began, TTL*2/3 since it answered
+	r.mustVerify(tok, "user_a")
+	r.calls(1, 4)
+}

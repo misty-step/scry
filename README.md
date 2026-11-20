@@ -122,11 +122,12 @@ No real monitoring service was contacted in this build.
 
 Run `cmd/scry-watch` beside the service as the single health/restart owner.
 On a host, `deploy/host/scry-watch.service` runs `/usr/local/bin/scry-watch` as
-`scry` with the defaults SCRY_WATCH_HEALTH_URL=http://127.0.0.1:8080/healthz,
-SCRY_WATCH_STATE=/srv/scry/data/watch/incidents.json,
+`scry` with the defaults SCRY_WATCH_STATE=/srv/scry/data/watch/incidents.json,
 SCRY_WATCH_LISTEN=127.0.0.1:8091 and SCRY_WATCH_INTERVAL=10s (scry.env
-overrides them). install.sh installs the unit; install the binary
-(`make build` writes bin/scry-watch) and `systemctl enable --now scry-watch`.
+overrides them). With no SCRY_WATCH_HEALTH_URL it probes
+http://127.0.0.1:$PORT/healthz using scry.env's PORT (default 8080).
+install.sh installs the unit and copies ALERT_WEBHOOK_URL into scry.env for
+operator notifications; install the binary (`make build` writes bin/scry-watch) and `systemctl enable --now scry-watch`.
 It logs JSON lines: one at start, one per change of health, one on a clean
 SIGTERM stop; a probe cut short by its own shutdown never counts as an outage.
 Disable the old watchdog cron and competing platform health restarters when
