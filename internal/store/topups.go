@@ -54,6 +54,11 @@ const TopupCap = 4
 // ErrTopupCap is the monthly limit.
 var ErrTopupCap = errors.New("Monthly $20 top-up limit reached")
 
+// ErrNoChargeRef is returned when a top-up would be marked paid without
+// the processor's id for the payment, from the caller or saved on the
+// attempt.
+var ErrNoChargeRef = errors.New("top-up settlement has no processor charge id")
+
 // TopupAttempt is one top-up form submission and what became of it.
 type TopupAttempt struct {
 	UserID       int64
@@ -184,6 +189,11 @@ func (u *UserStore) NoteTopupCharge(ctx context.Context, token, chargeRef string
 // The processor confirming a payment is authoritative: money it took is
 // always credited, so an attempt already recorded as failed is corrected
 // (its "card failed" history line is replaced by the paid one).
+//
+// An empty chargeRef never clears the attempt's saved charge_ref: the
+// saved one is used. With neither, nothing is changed and an error is
+// returned, so no attempt succeeds and no paid line is booked without the
+// processor's id (the ledger's ref is what makes a payment credit once).
 func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, description string, now time.Time) (bool, error) {
 	granted := false
 	err := u.s.BillingTransaction(ctx, func(ctx context.Context) error {
@@ -193,6 +203,12 @@ func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, descript
 		}
 		if a.Status != TopupPending && a.Status != TopupFailed {
 			return nil
+		}
+		if chargeRef == "" {
+			chargeRef = a.ChargeRef
+		}
+		if chargeRef == "" {
+			return ErrNoChargeRef
 		}
 		db := u.s.billingDB(ctx)
 		if _, err := db.ExecContext(ctx, `UPDATE topups SET status='succeeded', charge_ref=?, settled_at=?, reason='' WHERE user_id=? AND token=? AND status=?`,

@@ -925,3 +925,15 @@ Starting point 3108995 (PR #493). Every item has a named regression test (README
   history line) and redirects ok=released, exactly like a lookup that finds
   the intent canceled. canceled with a processor reason, and
   requires_payment_method, are still declines.
+
+## Slice #3, Pass 4b (Cold Critic edge fixes)
+
+- A payment_intent.canceled webhook keeps last_payment_error.message as
+  the reason (card fault + one failed history line), like a direct canceled
+  charge; with no message it still releases fault-free.
+- Stripe.ParseWebhook ignores a PaymentIntent event whose object has an
+  empty id, even with metadata.scry_key. Store.SucceedTopup never clears a
+  saved charge_ref with an empty one (it uses the saved id) and, with no id
+  at all, returns store.ErrNoChargeRef without changing the attempt or the
+  ledger; applyTopupEvent ignores such a paid event before marking it. So a
+  paid ledger line never has a blank ref.

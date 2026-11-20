@@ -453,9 +453,12 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 		// passed on by id: the attempt it belongs to may have recorded that
 		// id (charge_ref) already, and is then settled by it. An intent no
 		// attempt knows (a plan's invoice payment, reported by the invoice
-		// events above) matches nothing and is ignored by the app.
+		// events above) matches nothing and is ignored by the app. A real
+		// PaymentIntent always has an id; an event whose object has none is
+		// malformed and ignored even if it carries a key, so it can never
+		// settle an attempt under a blank charge_ref.
 		key := o.Metadata["scry_key"]
-		if key == "" && o.ID == "" {
+		if o.ID == "" {
 			return nil, nil
 		}
 		out.ChargeRef, out.ChargeKey, out.CustomerRef = o.ID, key, o.Customer
@@ -467,8 +470,8 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 			if out.Reason == "" {
 				out.Reason = "Your card was declined."
 			}
-		default: // canceled: nothing was taken, and there is no card fault to show
-			out.Kind = TopupFailed
+		default: // canceled: nothing was taken; a card fault only if Stripe named one
+			out.Kind, out.Reason = TopupFailed, o.LastPaymentError.Message
 		}
 	default:
 		return nil, nil

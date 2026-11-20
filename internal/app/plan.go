@@ -499,6 +499,11 @@ func (a *App) applyTopupEvent(ctx context.Context, ev billing.Event) error {
 		a.Log.WarnContext(ctx, "top-up event customer does not match the attempt; ignored", "event", ev.ID)
 		return nil
 	}
+	if ev.Kind == billing.TopupPaid && ev.ChargeRef == "" && att.ChargeRef == "" {
+		// Never paid without the processor's id (the adapter drops such events).
+		a.Log.WarnContext(ctx, "top-up paid event names no charge; ignored", "event", ev.ID)
+		return nil
+	}
 	fresh, err := a.Store.MarkEvent(ctx, ev.ID, a.now())
 	if err != nil || !fresh {
 		return err
