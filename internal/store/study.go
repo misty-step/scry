@@ -21,6 +21,18 @@ type Review struct {
 	Via       string // typed or spoken
 	Judge     string // which judge decided: a model id, or "exact"
 	Practice  bool   // an "Again" attempt; it does not move the schedule
+	// The question and expected answer exactly as they were when this
+	// answer was judged. Editing the item later does not change them, so
+	// an explanation of this verdict explains what was actually graded.
+	// Empty on reviews recorded before they were kept.
+	GradedPrompt   string
+	GradedExpected string
+}
+
+// reviewColumns are the columns added to reviews after it was first created.
+var reviewColumns = [][2]string{
+	{"graded_prompt", "TEXT NOT NULL DEFAULT ''"},
+	{"graded_expected", "TEXT NOT NULL DEFAULT ''"},
 }
 
 // SessionEntry is one item of a study session and, once answered, its review.
@@ -155,14 +167,15 @@ func (u *UserStore) session(ctx context.Context, where string) (*StudySession, e
 	return &s, rows.Err()
 }
 
-const reviewCols = `id, item_id, session_id, at, answer, verdict, reason, detail, via, judge, practice`
+const reviewCols = `id, item_id, session_id, at, answer, verdict, reason, detail, via, judge, practice, graded_prompt, graded_expected`
 
 func scanReview(row interface{ Scan(...any) error }) (Review, error) {
 	var r Review
 	var at int64
 	var practice int
 	var verdict string
-	err := row.Scan(&r.ID, &r.ItemID, &r.SessionID, &at, &r.Answer, &verdict, &r.Reason, &r.Detail, &r.Via, &r.Judge, &practice)
+	err := row.Scan(&r.ID, &r.ItemID, &r.SessionID, &at, &r.Answer, &verdict, &r.Reason, &r.Detail, &r.Via, &r.Judge, &practice,
+		&r.GradedPrompt, &r.GradedExpected)
 	r.At, r.Verdict, r.Practice = tm(at), srs.Verdict(verdict), practice == 1
 	return r, notFound(err)
 }
@@ -214,9 +227,10 @@ func (u *UserStore) RecordReview(ctx context.Context, r Review, next srs.State, 
 	var id int64
 	err := u.tx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `
-			INSERT INTO reviews (user_id, item_id, session_id, at, answer, verdict, reason, detail, via, judge, practice)
-			SELECT ?1, id, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11 FROM items WHERE id = ?2 AND user_id = ?1`,
-			u.uid, r.ItemID, r.SessionID, ts(r.At), r.Answer, string(r.Verdict), r.Reason, r.Detail, r.Via, r.Judge, b2i(r.Practice))
+			INSERT INTO reviews (user_id, item_id, session_id, at, answer, verdict, reason, detail, via, judge, practice, graded_prompt, graded_expected)
+			SELECT ?1, id, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13 FROM items WHERE id = ?2 AND user_id = ?1`,
+			u.uid, r.ItemID, r.SessionID, ts(r.At), r.Answer, string(r.Verdict), r.Reason, r.Detail, r.Via, r.Judge, b2i(r.Practice),
+			r.GradedPrompt, r.GradedExpected)
 		if err != nil {
 			return err
 		}

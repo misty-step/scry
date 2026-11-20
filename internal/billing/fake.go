@@ -174,8 +174,9 @@ func (f Fake) Charge(ctx context.Context, _, paymentRef string, _ int64, _, key 
 // FindCharge answers as a processor that finished every charge it was
 // sent: the card's behaviour decides the outcome, and the reference is the
 // one Charge gives for the same key.
-func (Fake) FindCharge(_ context.Context, _, paymentRef, key string, _ time.Time) (ChargeResult, error) {
-	behavior, _, err := parseToken(paymentRef)
+func (Fake) FindCharge(_ context.Context, q ChargeQuery) (ChargeResult, error) {
+	key := q.Key
+	behavior, _, err := parseToken(q.PaymentRef)
 	if err != nil {
 		return ChargeResult{}, err
 	}

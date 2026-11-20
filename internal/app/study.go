@@ -115,7 +115,10 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		via = "typed"
 	}
 	now := a.now()
-	r := store.Review{ItemID: item.ID, SessionID: s.ID, At: now, Answer: answer, Via: via, Practice: s.RetryItemID == item.ID}
+	// The graded question and expected answer are kept with the verdict, so
+	// "Why?" explains this judgment even if the item is edited afterwards.
+	r := store.Review{ItemID: item.ID, SessionID: s.ID, At: now, Answer: answer, Via: via, Practice: s.RetryItemID == item.ID,
+		GradedPrompt: item.Prompt, GradedExpected: item.Answer}
 	var detail Detail
 	hold := true
 	switch {

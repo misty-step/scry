@@ -11,6 +11,13 @@ import (
 // resubmitting the same form can never become a second charge. The row is
 // reserved as pending before the processor is called, and finalized after
 // it answers (or after reconciliation, when the answer was lost).
+//
+// customer_ref and payment_ref are the processor customer and card the
+// attempt was charged to, captured in the reservation transaction; they
+// never change, so reconciliation does not depend on the learner's current
+// (mutable) plan. charge_ref is the processor's id for the charge, kept as
+// soon as it is known, even while the attempt is still pending. Those two
+// columns are added by topupColumns.
 const topupSchema = `CREATE TABLE IF NOT EXISTS topups (
   user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token         TEXT NOT NULL,
@@ -25,7 +32,16 @@ const topupSchema = `CREATE TABLE IF NOT EXISTS topups (
   PRIMARY KEY (user_id, token)
 )`
 
-// Top-up attempt states.
+// topupColumns are the columns added to topups after it was first created.
+var topupColumns = [][2]string{
+	{"customer_ref", "TEXT NOT NULL DEFAULT ''"},
+	{"payment_ref", "TEXT NOT NULL DEFAULT ''"},
+}
+
+// Top-up attempt states. An attempt is only ever failed on a definitive
+// answer (a decline, or a charge the processor reports as canceled or
+// failed). A charge the processor has not shown yet stays pending, however
+// long that takes: a late success must still be credited.
 const (
 	TopupPending   = "pending"
 	TopupSucceeded = "succeeded"
@@ -48,8 +64,10 @@ type TopupAttempt struct {
 	CreditMicros int64
 	Created      time.Time
 	Settled      time.Time
-	ChargeRef    string
+	ChargeRef    string // the processor's id for the charge, once known
 	Reason       string // the processor's decline sentence, when failed
+	CustomerRef  string // the processor customer charged, fixed at reservation
+	PaymentRef   string // the card charged, fixed at reservation
 }
 
 // MonthBounds is the UTC calendar month containing t. Every top-up cap
@@ -61,12 +79,13 @@ func MonthBounds(t time.Time) (start, next time.Time) {
 	return start, start.AddDate(0, 1, 0)
 }
 
-const topupCols = `user_id, token, idem_key, status, amount_cents, credit_micros, created_at, settled_at, charge_ref, reason`
+const topupCols = `user_id, token, idem_key, status, amount_cents, credit_micros, created_at, settled_at, charge_ref, reason, customer_ref, payment_ref`
 
 func scanTopup(row interface{ Scan(...any) error }) (TopupAttempt, error) {
 	var t TopupAttempt
 	var created, settled int64
-	err := row.Scan(&t.UserID, &t.Token, &t.Key, &t.Status, &t.AmountCents, &t.CreditMicros, &created, &settled, &t.ChargeRef, &t.Reason)
+	err := row.Scan(&t.UserID, &t.Token, &t.Key, &t.Status, &t.AmountCents, &t.CreditMicros, &created, &settled, &t.ChargeRef, &t.Reason,
+		&t.CustomerRef, &t.PaymentRef)
 	t.Created, t.Settled = tm(created), tm(settled)
 	return t, notFound(err)
 }
@@ -97,9 +116,14 @@ func (u *UserStore) MonthTopups(ctx context.Context, now time.Time) (int, error)
 
 // ReserveTopup is the first short transaction of a top-up. It returns the
 // existing attempt for a form token that was already submitted (fresh is
-// false), or checks the UTC monthly cap and reserves a new pending
-// attempt. It never talks to the processor.
-func (u *UserStore) ReserveTopup(ctx context.Context, a TopupAttempt) (TopupAttempt, bool, error) {
+// false). Otherwise, under the same write lock, it reads the learner's plan
+// and asks eligible whether it may be charged (an ended plan may not),
+// checks the UTC monthly cap, and reserves a new pending attempt recording
+// the processor customer and card it will charge. Eligibility, the cap and
+// the charge's payment details are therefore one atomic decision: a plan
+// ended by a concurrent writer is seen here. ErrNotFound means no plan.
+// It never talks to the processor.
+func (u *UserStore) ReserveTopup(ctx context.Context, a TopupAttempt, eligible func(Subscription) error) (TopupAttempt, bool, error) {
 	var out TopupAttempt
 	fresh := false
 	err := u.s.BillingTransaction(ctx, func(ctx context.Context) error {
@@ -111,6 +135,15 @@ func (u *UserStore) ReserveTopup(ctx context.Context, a TopupAttempt) (TopupAtte
 		if !errors.Is(err, ErrNotFound) {
 			return err
 		}
+		sub, err := u.Subscription(ctx)
+		if err != nil {
+			return err
+		}
+		if eligible != nil {
+			if err := eligible(sub); err != nil {
+				return err
+			}
+		}
 		count, err := u.MonthTopups(ctx, a.Created)
 		if err != nil {
 			return err
@@ -118,8 +151,9 @@ func (u *UserStore) ReserveTopup(ctx context.Context, a TopupAttempt) (TopupAtte
 		if count >= TopupCap {
 			return ErrTopupCap
 		}
-		if _, err := u.s.billingDB(ctx).ExecContext(ctx, `INSERT INTO topups (`+topupCols+`) VALUES (?, ?, ?, 'pending', ?, ?, ?, 0, '', '')`,
-			u.uid, a.Token, a.Key, a.AmountCents, a.CreditMicros, ts(a.Created)); err != nil {
+		a.CustomerRef, a.PaymentRef = sub.CustomerRef, sub.PaymentRef
+		if _, err := u.s.billingDB(ctx).ExecContext(ctx, `INSERT INTO topups (`+topupCols+`) VALUES (?, ?, ?, 'pending', ?, ?, ?, 0, '', '', ?, ?)`,
+			u.uid, a.Token, a.Key, a.AmountCents, a.CreditMicros, ts(a.Created), a.CustomerRef, a.PaymentRef); err != nil {
 			return err
 		}
 		a.UserID, a.Status = u.uid, TopupPending
@@ -129,11 +163,27 @@ func (u *UserStore) ReserveTopup(ctx context.Context, a TopupAttempt) (TopupAtte
 	return out, fresh, err
 }
 
+// NoteTopupCharge records the processor's id for a pending attempt's
+// charge as soon as it is known (a charge still processing), so later
+// lookups and webhooks find it directly.
+func (u *UserStore) NoteTopupCharge(ctx context.Context, token, chargeRef string) error {
+	if chargeRef == "" {
+		return nil
+	}
+	_, err := u.s.billingDB(ctx).ExecContext(ctx, `UPDATE topups SET charge_ref=? WHERE user_id=? AND token=? AND status='pending' AND charge_ref=''`,
+		chargeRef, u.uid, token)
+	return err
+}
+
 // SucceedTopup is the second short transaction after a confirmed charge:
 // the attempt is marked succeeded, its ledger line is written and its
-// credit is granted, all at once and only if it was still pending. The
-// ledger line is dated when the attempt was made, so it counts toward the
-// month whose cap it reserved. It reports whether credit was granted now.
+// credit is granted, all at once and only once. The ledger line is dated
+// when the attempt was made, so it counts toward the month whose cap it
+// reserved. It reports whether credit was granted now.
+//
+// The processor confirming a payment is authoritative: money it took is
+// always credited, so an attempt already recorded as failed is corrected
+// (its "card failed" history line is replaced by the paid one).
 func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, description string, now time.Time) (bool, error) {
 	granted := false
 	err := u.s.BillingTransaction(ctx, func(ctx context.Context) error {
@@ -141,13 +191,18 @@ func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, descript
 		if err != nil {
 			return err
 		}
-		if a.Status != TopupPending {
+		if a.Status != TopupPending && a.Status != TopupFailed {
 			return nil
 		}
 		db := u.s.billingDB(ctx)
-		if _, err := db.ExecContext(ctx, `UPDATE topups SET status='succeeded', charge_ref=?, settled_at=? WHERE user_id=? AND token=? AND status='pending'`,
-			chargeRef, ts(now), u.uid, token); err != nil {
+		if _, err := db.ExecContext(ctx, `UPDATE topups SET status='succeeded', charge_ref=?, settled_at=?, reason='' WHERE user_id=? AND token=? AND status=?`,
+			chargeRef, ts(now), u.uid, token, a.Status); err != nil {
 			return err
+		}
+		if a.Status == TopupFailed {
+			if _, err := db.ExecContext(ctx, `DELETE FROM ledger WHERE user_id=? AND ref=?`, u.uid, a.Key+"-failed"); err != nil {
+				return err
+			}
 		}
 		// One processor payment can only ever credit once, whatever the key.
 		res, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO ledger (user_id,at,kind,description,amount_cents,status,ref) VALUES (?,?,?,?,?,?,?)",
@@ -197,15 +252,26 @@ func (u *UserStore) FailTopup(ctx context.Context, token, reason string, now tim
 	})
 }
 
-// PendingTopups lists the learner's attempts still waiting on the processor.
-func (u *UserStore) PendingTopups(ctx context.Context) ([]TopupAttempt, error) {
-	return queryTopups(ctx, u.s.billingDB(ctx), `SELECT `+topupCols+` FROM topups WHERE user_id=? AND status='pending' ORDER BY created_at`, u.uid)
+// PendingTopups lists the learner's attempts made since then that are
+// still waiting on the processor.
+func (u *UserStore) PendingTopups(ctx context.Context, since time.Time) ([]TopupAttempt, error) {
+	return queryTopups(ctx, u.s.billingDB(ctx), `SELECT `+topupCols+` FROM topups WHERE user_id=? AND status='pending' AND created_at>=? ORDER BY created_at`,
+		u.uid, ts(since))
 }
 
-// PendingTopups lists every learner's attempts created before cutoff that
-// are still pending, for the housekeeping reconciliation sweep.
-func (s *Store) PendingTopups(ctx context.Context, before time.Time) ([]TopupAttempt, error) {
-	return queryTopups(ctx, s.db, `SELECT `+topupCols+` FROM topups WHERE status='pending' AND created_at<=? ORDER BY created_at`, ts(before))
+// PendingTopups lists every learner's attempts created between after and
+// before that are still pending, for the housekeeping reconciliation sweep.
+func (s *Store) PendingTopups(ctx context.Context, after, before time.Time) ([]TopupAttempt, error) {
+	return queryTopups(ctx, s.db, `SELECT `+topupCols+` FROM topups WHERE status='pending' AND created_at>=? AND created_at<=? ORDER BY created_at`,
+		ts(after), ts(before))
+}
+
+// TopupByCharge finds the attempt a processor charge belongs to, by the
+// charge id recorded on it or by the idempotency key the charge carries.
+// It is for the processor's webhooks, which name no learner.
+func (s *Store) TopupByCharge(ctx context.Context, chargeRef, key string) (TopupAttempt, error) {
+	return scanTopup(s.billingDB(ctx).QueryRowContext(ctx, `SELECT `+topupCols+` FROM topups
+		WHERE (charge_ref != '' AND charge_ref = ?) OR (idem_key != '' AND idem_key = ?) LIMIT 1`, chargeRef, key))
 }
 
 func queryTopups(ctx context.Context, db billingQueries, q string, args ...any) ([]TopupAttempt, error) {

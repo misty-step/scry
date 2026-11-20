@@ -205,11 +205,39 @@ func (s *Stripe) UpdateCard(ctx context.Context, customerRef, subscriptionRef, c
 	return cardToken, card, err
 }
 
-func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amountCents int64, description, key string) (string, error) {
-	var pi struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
+// stripeIntent is the part of a PaymentIntent reconciliation reads.
+type stripeIntent struct {
+	ID               string            `json:"id"`
+	Status           string            `json:"status"`
+	Customer         string            `json:"customer"`
+	Metadata         map[string]string `json:"metadata"`
+	LastPaymentError struct {
+		Message string `json:"message"`
+	} `json:"last_payment_error"`
+}
+
+// confirmSentence is said when an off-session payment needs the learner.
+const confirmSentence = "Your bank needs you to confirm this payment. Update your card and try again."
+
+// result maps a PaymentIntent's status to what became of the charge.
+func (pi stripeIntent) result() ChargeResult {
+	switch pi.Status {
+	case "succeeded":
+		return ChargeResult{Status: ChargeSucceeded, Ref: pi.ID}
+	case "processing", "requires_capture":
+		return ChargeResult{Status: ChargePending, Ref: pi.ID}
 	}
+	// canceled, requires_payment_method, requires_action, requires_confirmation:
+	// an off-session charge in any of these will not be taken.
+	reason := pi.LastPaymentError.Message
+	if reason == "" {
+		reason = confirmSentence
+	}
+	return ChargeResult{Status: ChargeFailed, Ref: pi.ID, Reason: reason}
+}
+
+func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amountCents int64, description, key string) (string, error) {
+	var pi stripeIntent
 	err := s.do(ctx, http.MethodPost, "/v1/payment_intents", url.Values{
 		"amount":         {strconv.FormatInt(amountCents, 10)},
 		"currency":       {"usd"},
@@ -219,66 +247,77 @@ func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amo
 		"confirm":        {"true"},
 		"description":    {description},
 		// The key is also kept on the PaymentIntent, so a lost reply can be
-		// reconciled by looking the intent up (FindCharge).
+		// reconciled by looking the intent up (FindCharge), and its webhooks
+		// can be matched to the attempt.
 		"metadata[scry_key]": {key},
 	}, key, &pi)
 	if err != nil {
 		return "", err
 	}
-	if pi.Status != "succeeded" {
-		return "", &DeclineError{Reason: "Your bank needs you to confirm this payment. Update your card and try again."}
+	switch res := pi.result(); res.Status {
+	case ChargeSucceeded:
+		return pi.ID, nil
+	case ChargePending:
+		// Accepted but not finished: neither paid nor declined yet. The id
+		// is returned so the attempt can be settled later.
+		return pi.ID, &PendingError{Ref: pi.ID}
+	default:
+		return "", &DeclineError{Reason: res.Reason}
 	}
-	return pi.ID, nil
 }
 
-// FindCharge reconciles a top-up whose reply was lost. It lists the
-// customer's PaymentIntents created since the attempt began (a list, not
-// search, so it is strongly consistent) and matches the Scry idempotency
-// key kept in metadata. It never creates or confirms anything.
-func (s *Stripe) FindCharge(ctx context.Context, customerRef, _, key string, since time.Time) (ChargeResult, error) {
-	q := url.Values{
-		"customer":     {customerRef},
-		"limit":        {"100"},
-		"created[gte]": {strconv.FormatInt(since.Add(-10*time.Minute).Unix(), 10)},
-	}
-	for page := 0; page < 5; page++ {
-		var list struct {
-			Data []struct {
-				ID               string            `json:"id"`
-				Status           string            `json:"status"`
-				Metadata         map[string]string `json:"metadata"`
-				LastPaymentError struct {
-					Message string `json:"message"`
-				} `json:"last_payment_error"`
-			} `json:"data"`
-			HasMore bool `json:"has_more"`
+// findPages bounds how far FindCharge lists. A list that is still
+// truncated after this many pages is an incomplete lookup, never absence.
+const findPages = 20
+
+// FindCharge reconciles a top-up whose outcome is not known. With the
+// PaymentIntent's id it retrieves that intent directly. Without it (the
+// reply was lost) it lists the attempt's own customer's PaymentIntents
+// created since the attempt began (a list, not search, so it is strongly
+// consistent) and matches the Scry idempotency key kept in metadata. It
+// reports ChargeNotFound only after a complete scan, and that only means
+// "not visible yet". It never creates or confirms anything.
+func (s *Stripe) FindCharge(ctx context.Context, q ChargeQuery) (ChargeResult, error) {
+	if q.ChargeRef != "" {
+		var pi stripeIntent
+		if err := s.do(ctx, http.MethodGet, "/v1/payment_intents/"+url.PathEscape(q.ChargeRef), nil, "", &pi); err != nil {
+			return ChargeResult{}, err
 		}
-		if err := s.do(ctx, http.MethodGet, "/v1/payment_intents?"+q.Encode(), nil, "", &list); err != nil {
+		if pi.ID != q.ChargeRef || (pi.Metadata["scry_key"] != "" && pi.Metadata["scry_key"] != q.Key) {
+			return ChargeResult{}, fmt.Errorf("card processor: payment %s does not belong to this top-up", q.ChargeRef)
+		}
+		return pi.result(), nil
+	}
+	if q.CustomerRef == "" {
+		return ChargeResult{}, errors.New("card processor lookup: the top-up has no customer recorded")
+	}
+	form := url.Values{
+		"customer":     {q.CustomerRef},
+		"limit":        {"100"},
+		"created[gte]": {strconv.FormatInt(q.Since.Add(-10*time.Minute).Unix(), 10)},
+	}
+	for page := 0; page < findPages; page++ {
+		var list struct {
+			Data    []stripeIntent `json:"data"`
+			HasMore bool           `json:"has_more"`
+		}
+		if err := s.do(ctx, http.MethodGet, "/v1/payment_intents?"+form.Encode(), nil, "", &list); err != nil {
 			return ChargeResult{}, err
 		}
 		for _, pi := range list.Data {
-			if pi.Metadata["scry_key"] != key {
-				continue
-			}
-			switch pi.Status {
-			case "succeeded":
-				return ChargeResult{Status: ChargeSucceeded, Ref: pi.ID}, nil
-			case "processing", "requires_capture":
-				return ChargeResult{Status: ChargePending, Ref: pi.ID}, nil
-			default: // canceled, requires_payment_method, requires_action, requires_confirmation
-				reason := pi.LastPaymentError.Message
-				if reason == "" {
-					reason = "Your bank needs you to confirm this payment. Update your card and try again."
-				}
-				return ChargeResult{Status: ChargeFailed, Ref: pi.ID, Reason: reason}, nil
+			if pi.Metadata["scry_key"] == q.Key {
+				return pi.result(), nil
 			}
 		}
-		if !list.HasMore || len(list.Data) == 0 {
-			break
+		if !list.HasMore {
+			return ChargeResult{Status: ChargeNotFound}, nil // a complete scan
 		}
-		q.Set("starting_after", list.Data[len(list.Data)-1].ID)
+		if len(list.Data) == 0 {
+			break // "more" with nothing to continue from: not a complete scan
+		}
+		form.Set("starting_after", list.Data[len(list.Data)-1].ID)
 	}
-	return ChargeResult{Status: ChargeNotFound}, nil
+	return ChargeResult{}, ErrLookupIncomplete
 }
 
 func (s *Stripe) SetCancelAtPeriodEnd(ctx context.Context, subscriptionRef string, cancel bool) error {
@@ -332,7 +371,13 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 		Livemode bool   `json:"livemode"`
 		Data     struct {
 			Object struct {
-				ID            string `json:"id"`
+				ID               string            `json:"id"`
+				Object           string            `json:"object"`
+				Customer         string            `json:"customer"`
+				Metadata         map[string]string `json:"metadata"`
+				LastPaymentError struct {
+					Message string `json:"message"`
+				} `json:"last_payment_error"`
 				Subscription  string `json:"subscription"`
 				AmountPaid    int64  `json:"amount_paid"`
 				AmountDue     int64  `json:"amount_due"`
@@ -384,6 +429,25 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 		}
 	case "customer.subscription.deleted":
 		out.Kind, out.SubscriptionRef = SubscriptionEnded, o.ID
+	case "payment_intent.succeeded", "payment_intent.payment_failed", "payment_intent.canceled":
+		// Only Scry's own top-ups carry its key; a plan's invoice payments
+		// are reported by the invoice events above.
+		key := o.Metadata["scry_key"]
+		if key == "" || o.ID == "" {
+			return nil, nil
+		}
+		out.ChargeRef, out.ChargeKey, out.CustomerRef = o.ID, key, o.Customer
+		switch ev.Type {
+		case "payment_intent.succeeded":
+			out.Kind = TopupPaid
+		case "payment_intent.payment_failed":
+			out.Kind, out.Reason = TopupFailed, o.LastPaymentError.Message
+			if out.Reason == "" {
+				out.Reason = "Your card was declined."
+			}
+		default: // canceled: nothing was taken, and there is no card fault to show
+			out.Kind = TopupFailed
+		}
 	default:
 		return nil, nil
 	}

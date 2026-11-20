@@ -45,7 +45,7 @@ func TestF2_StripeChargeKeyAndFindCharge(t *testing.T) {
 	since := time.Unix(1_800_000_000, 0)
 	for st, want := range map[string]ChargeStatus{"succeeded": ChargeSucceeded, "processing": ChargePending, "canceled": ChargeFailed, "requires_payment_method": ChargeFailed} {
 		status = st
-		res, err := s.FindCharge(context.Background(), "cus_1", "pm_1", "topup-1-abc", since)
+		res, err := s.FindCharge(context.Background(), ChargeQuery{CustomerRef: "cus_1", PaymentRef: "pm_1", Key: "topup-1-abc", Since: since})
 		if err != nil || res.Status != want || res.Ref != "pi_1" {
 			t.Errorf("%s: %+v %v", st, res, err)
 		}
@@ -56,7 +56,7 @@ func TestF2_StripeChargeKeyAndFindCharge(t *testing.T) {
 	if !strings.Contains(listed, "customer=cus_1") || !strings.Contains(listed, "created%5Bgte%5D=1799999400") {
 		t.Fatalf("list query: %s", listed)
 	}
-	res, err := s.FindCharge(context.Background(), "cus_1", "pm_1", "topup-1-missing", since)
+	res, err := s.FindCharge(context.Background(), ChargeQuery{CustomerRef: "cus_1", PaymentRef: "pm_1", Key: "topup-1-missing", Since: since})
 	if err != nil || res.Status != ChargeNotFound {
 		t.Fatalf("missing: %+v %v", res, err)
 	}
@@ -69,7 +69,7 @@ func TestF2_FakeChargeIsIdempotentAndCanBeSlow(t *testing.T) {
 	a, _ := f.Charge(context.Background(), "", tok, 500, "", "k1")
 	b, _ := f.Charge(context.Background(), "", tok, 500, "", "k1")
 	c, _ := f.Charge(context.Background(), "", tok, 500, "", "k2")
-	found, _ := f.FindCharge(context.Background(), "", tok, "k1", time.Now())
+	found, _ := f.FindCharge(context.Background(), ChargeQuery{PaymentRef: tok, Key: "k1", Since: time.Now()})
 	if a != b || a == c || found.Ref != a || found.Status != ChargeSucceeded {
 		t.Fatal(a, b, c, found)
 	}

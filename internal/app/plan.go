@@ -158,19 +158,32 @@ var (
 	// ErrTopupToken is a top-up submitted without a valid form token.
 	ErrTopupToken = errors.New("top-up form token is missing or invalid")
 	// ErrTopupPending is a top-up whose charge has not been confirmed yet
-	// (still in flight, or the processor's answer was lost). It is settled
-	// by reconciliation and is never charged twice.
+	// (still in flight, still processing, or the processor's answer was
+	// lost). It is settled by reconciliation or by the processor's webhook
+	// and is never charged twice.
 	ErrTopupPending = errors.New("top-up is still being confirmed")
-	// ErrTopupReleased is a top-up the processor never received; nothing was
-	// charged and its place under the monthly cap is free again.
-	ErrTopupReleased = errors.New("top-up never reached the card processor; nothing was charged")
+	// ErrTopupUnconfirmed is a pending top-up the processor still shows no
+	// charge for, well after it was sent. Nothing has been taken so far, but
+	// that is not proof nothing will be: it stays pending (and keeps its
+	// place under the monthly cap) so a late charge is still credited.
+	ErrTopupUnconfirmed = errors.New("top-up has not been confirmed by the card processor; nothing has been charged so far")
+	// ErrTopupReleased is a top-up the processor reports it did not take
+	// (canceled); nothing was charged and its place under the monthly cap
+	// is free again.
+	ErrTopupReleased = errors.New("top-up was not charged by the card processor")
 )
 
-// TopupSettleWindow is how long after an attempt began the processor may
-// still be working on it. Only after this can "no such charge" be trusted
-// and the reservation released. It is well past the processor client's
-// 20-second timeout.
+// TopupSettleWindow is how long after an attempt began the processor is
+// expected to have answered. After it, a lookup that still finds nothing
+// is reported as unconfirmed rather than pending; it is still never taken
+// as proof that nothing was charged, because a processor can recover a
+// request and create the charge later.
 const TopupSettleWindow = 2 * time.Minute
+
+// TopupWatchWindow is how long Billing and the sweep keep asking the
+// processor about an attempt that is still pending. Beyond it the attempt
+// stays pending and is settled by the processor's webhook.
+const TopupWatchWindow = 35 * 24 * time.Hour
 
 // topupChargeTimeout bounds one processor call for a top-up.
 const topupChargeTimeout = 30 * time.Second
@@ -194,13 +207,15 @@ func (a *App) TopUp(ctx context.Context, userID int64, token string) error {
 // TopUpResult reports whether this request actually granted credit.
 //
 // The SQLite write lock is never held across the processor call:
-//  1. a short transaction checks the token and the UTC monthly cap and
-//     reserves a pending attempt;
-//  2. the processor is charged outside any transaction, with an
+//  1. a short transaction checks the token, that the plan may be charged,
+//     and the UTC monthly cap, and reserves a pending attempt recording the
+//     processor customer and card it will charge;
+//  2. that customer and card are charged outside any transaction, with an
 //     idempotency key scoped to the learner and the form token;
 //  3. a short transaction finalizes the attempt: succeeded with credit,
-//     failed and released, or left pending for reconciliation when the
-//     processor's answer is unknown.
+//     failed and released on a decline, or left pending (with the charge's
+//     id when known) for reconciliation and webhooks when the outcome is
+//     unknown or still processing.
 func (a *App) TopUpResult(ctx context.Context, userID int64, token string) (bool, error) {
 	if !tokenRE.MatchString(token) {
 		return false, ErrTopupToken
@@ -237,24 +252,38 @@ func (a *App) claimTopup(key string) (func(), <-chan struct{}) {
 	return func() { a.topupsInFlight.Delete(key); close(ch) }, nil
 }
 
+// topupEligible is the plan check made inside the reservation transaction,
+// against the plan row as it is under the write lock.
+func (a *App) topupEligible(sub store.Subscription) error {
+	if !a.HasAccess(sub) {
+		return ErrPlanEnded
+	}
+	return nil
+}
+
 func (a *App) topUpClaimed(ctx context.Context, userID int64, token, key string) (bool, error) {
-	sub, err := a.Plan(ctx, userID)
-	if err != nil {
+	// Brings a plan whose period ran out up to date, and refuses early.
+	// This read is not the authorization: that is repeated inside TX1.
+	if _, err := a.Plan(ctx, userID); err != nil {
 		return false, err
 	}
 	us := a.Store.For(userID)
 	att, fresh, err := us.ReserveTopup(ctx, store.TopupAttempt{Token: token, Key: key, AmountCents: a.Cfg.TopupCents,
-		CreditMicros: a.Cfg.TopupMicros, Created: a.now()})
+		CreditMicros: a.Cfg.TopupMicros, Created: a.now()}, a.topupEligible)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, ErrNoPlan
+	}
 	if err != nil {
 		return false, err
 	}
 	if !fresh {
-		return a.settleExisting(ctx, us, sub, att)
+		return a.settleExisting(ctx, us, att)
 	}
 	// The charge and what follows are not cut short by the browser going
 	// away: a charge abandoned half way is exactly what must not happen.
+	// The customer and card are the ones captured with the reservation.
 	cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), topupChargeTimeout)
-	ref, err := a.Pay.Charge(cctx, sub.CustomerRef, sub.PaymentRef, att.AmountCents, "Scry top-up", key)
+	ref, err := a.Pay.Charge(cctx, att.CustomerRef, att.PaymentRef, att.AmountCents, "Scry top-up", key)
 	cancel()
 	return a.finishCharge(context.WithoutCancel(ctx), us, att, ref, err)
 }
@@ -262,12 +291,21 @@ func (a *App) topUpClaimed(ctx context.Context, userID int64, token, key string)
 // finishCharge is the second short transaction, after the processor answered.
 func (a *App) finishCharge(ctx context.Context, us *store.UserStore, att store.TopupAttempt, ref string, err error) (bool, error) {
 	var d *billing.DeclineError
+	var p *billing.PendingError
 	switch {
 	case errors.As(err, &d):
 		if ferr := us.FailTopup(ctx, att.Token, d.Reason, a.now()); ferr != nil {
 			return false, ferr
 		}
 		return false, err
+	case errors.As(err, &p):
+		// Accepted, not finished: neither paid nor declined. Keep the
+		// charge's id so the lookup (or its webhook) settles it.
+		if nerr := us.NoteTopupCharge(ctx, att.Token, p.Ref); nerr != nil {
+			return false, nerr
+		}
+		a.Log.InfoContext(ctx, "top-up still processing; kept pending", "key", att.Key, "charge", p.Ref)
+		return false, ErrTopupPending
 	case err != nil:
 		// Indeterminate: the charge may or may not have happened. Keep the
 		// attempt pending (it still holds its cap slot) and reconcile later.
@@ -275,11 +313,24 @@ func (a *App) finishCharge(ctx context.Context, us *store.UserStore, att store.T
 		a.Alert.Notify(ctx, "Card processor is failing", err.Error())
 		return false, ErrTopupPending
 	}
-	return us.SucceedTopup(ctx, att.Token, ref, "Top-up", a.now())
+	return a.succeed(ctx, us, att, ref)
+}
+
+// succeed credits a confirmed charge. If the processor's webhook already
+// credited this very charge, the learner's request still succeeded.
+func (a *App) succeed(ctx context.Context, us *store.UserStore, att store.TopupAttempt, ref string) (bool, error) {
+	granted, err := us.SucceedTopup(ctx, att.Token, ref, "Top-up", a.now())
+	if err != nil || granted || att.Status != store.TopupPending {
+		return granted, err
+	}
+	if cur, cerr := us.Topup(ctx, att.Token); cerr == nil && cur.Status == store.TopupSucceeded && cur.ChargeRef == ref {
+		return true, nil
+	}
+	return false, nil
 }
 
 // settleExisting answers a form token that was already submitted.
-func (a *App) settleExisting(ctx context.Context, us *store.UserStore, sub store.Subscription, att store.TopupAttempt) (bool, error) {
+func (a *App) settleExisting(ctx context.Context, us *store.UserStore, att store.TopupAttempt) (bool, error) {
 	switch att.Status {
 	case store.TopupSucceeded:
 		return false, nil // a duplicate: already charged once and credited once
@@ -289,19 +340,38 @@ func (a *App) settleExisting(ctx context.Context, us *store.UserStore, sub store
 		}
 		return false, ErrTopupReleased
 	}
-	return a.reconcile(ctx, us, sub, att)
+	return a.reconcile(ctx, us, att)
+}
+
+// chargeQuery is how an attempt is looked up: by what was recorded on it
+// when it was made. A row from before those were recorded falls back to
+// the plan's current customer and card, the only ones it can have had
+// unless the plan was restarted since.
+func chargeQuery(att store.TopupAttempt, sub store.Subscription) billing.ChargeQuery {
+	q := billing.ChargeQuery{CustomerRef: att.CustomerRef, PaymentRef: att.PaymentRef, ChargeRef: att.ChargeRef, Key: att.Key, Since: att.Created}
+	if q.CustomerRef == "" && q.PaymentRef == "" {
+		q.CustomerRef, q.PaymentRef = sub.CustomerRef, sub.PaymentRef
+	}
+	return q
 }
 
 // reconcile settles a pending attempt that nobody in this process is
-// charging any more: its reply was lost, or the app restarted mid-charge.
-// It asks the processor what happened and never charges again.
-func (a *App) reconcile(ctx context.Context, us *store.UserStore, sub store.Subscription, att store.TopupAttempt) (bool, error) {
+// charging any more: its reply was lost, it was still processing, or the
+// app restarted mid-charge. It asks the processor what happened and never
+// charges again. Only a definitive answer settles it; a failed or
+// incomplete lookup, a charge still processing, and a charge the processor
+// does not show (however late) all leave it pending.
+func (a *App) reconcile(ctx context.Context, us *store.UserStore, att store.TopupAttempt) (bool, error) {
+	var sub store.Subscription
+	if att.CustomerRef == "" && att.PaymentRef == "" {
+		sub, _ = us.Subscription(ctx)
+	}
 	lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	res, err := a.Pay.FindCharge(lctx, sub.CustomerRef, sub.PaymentRef, att.Key, att.Created)
+	res, err := a.Pay.FindCharge(lctx, chargeQuery(att, sub))
 	cancel()
 	ctx = context.WithoutCancel(ctx)
 	if err != nil {
-		a.Log.WarnContext(ctx, "top-up reconciliation lookup failed", "err", err, "key", att.Key)
+		a.Log.WarnContext(ctx, "top-up reconciliation lookup was not conclusive; kept pending", "err", err, "key", att.Key)
 		return false, ErrTopupPending
 	}
 	a.Log.InfoContext(ctx, "top-up reconciled", "key", att.Key, "status", string(res.Status))
@@ -312,15 +382,19 @@ func (a *App) reconcile(ctx context.Context, us *store.UserStore, sub store.Subs
 		if err := us.FailTopup(ctx, att.Token, res.Reason, a.now()); err != nil {
 			return false, err
 		}
-		return false, &billing.DeclineError{Reason: res.Reason}
-	case billing.ChargeNotFound:
-		if a.now().Sub(att.Created) < TopupSettleWindow {
-			return false, ErrTopupPending // the processor may still be working on it
+		if res.Reason == "" {
+			return false, ErrTopupReleased
 		}
-		if err := us.FailTopup(ctx, att.Token, "", a.now()); err != nil {
+		return false, &billing.DeclineError{Reason: res.Reason}
+	case billing.ChargePending:
+		if err := us.NoteTopupCharge(ctx, att.Token, res.Ref); err != nil {
 			return false, err
 		}
-		return false, ErrTopupReleased
+	case billing.ChargeNotFound:
+		if a.now().Sub(att.Created) >= TopupSettleWindow {
+			a.Log.WarnContext(ctx, "top-up still not visible at the processor; kept pending", "key", att.Key, "age", a.now().Sub(att.Created).String())
+			return false, ErrTopupUnconfirmed
+		}
 	}
 	return false, ErrTopupPending
 }
@@ -331,12 +405,8 @@ func (a *App) reconcile(ctx context.Context, us *store.UserStore, sub store.Subs
 // many attempts were credited.
 func (a *App) ReconcileTopUps(ctx context.Context, userID int64) (int, error) {
 	us := a.Store.For(userID)
-	pending, err := us.PendingTopups(ctx)
+	pending, err := us.PendingTopups(ctx, a.now().Add(-TopupWatchWindow))
 	if err != nil || len(pending) == 0 {
-		return 0, err
-	}
-	sub, err := us.Subscription(ctx)
-	if err != nil {
 		return 0, err
 	}
 	credited := 0
@@ -348,7 +418,7 @@ func (a *App) ReconcileTopUps(ctx context.Context, userID int64) (int, error) {
 		// Re-read under the claim: the holder may have just finished it.
 		cur, err := us.Topup(ctx, att.Token)
 		if err == nil && cur.Status == store.TopupPending {
-			if ok, _ := a.reconcile(ctx, us, sub, cur); ok {
+			if ok, _ := a.reconcile(ctx, us, cur); ok {
 				credited++
 			}
 		}
@@ -358,9 +428,10 @@ func (a *App) ReconcileTopUps(ctx context.Context, userID int64) (int, error) {
 }
 
 // ReconcileAllTopUps is the housekeeping sweep over every learner's
-// pending top-ups older than a minute.
+// pending top-ups older than a minute (and inside the watch window).
 func (a *App) ReconcileAllTopUps(ctx context.Context) error {
-	pending, err := a.Store.PendingTopups(ctx, a.now().Add(-time.Minute))
+	now := a.now()
+	pending, err := a.Store.PendingTopups(ctx, now.Add(-TopupWatchWindow), now.Add(-time.Minute))
 	if err != nil {
 		return err
 	}
@@ -373,6 +444,48 @@ func (a *App) ReconcileAllTopUps(ctx context.Context) error {
 		if _, err := a.ReconcileTopUps(ctx, att.UserID); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// applyTopupEvent settles a top-up from the processor's verified webhook:
+// a late success is credited exactly once (even after a lookup saw
+// nothing, or after the attempt was recorded as failed), and a failure or
+// cancellation releases a still-pending attempt. It runs inside the
+// webhook's billing transaction, with the event's idempotency marker.
+func (a *App) applyTopupEvent(ctx context.Context, ev billing.Event) error {
+	att, err := a.Store.TopupByCharge(ctx, ev.ChargeRef, ev.ChargeKey)
+	if errors.Is(err, store.ErrNotFound) {
+		a.Log.WarnContext(ctx, "top-up event for unknown attempt", "event", ev.ID, "kind", ev.Kind)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if att.Key != ev.ChargeKey && att.ChargeRef != ev.ChargeRef {
+		return nil
+	}
+	if att.CustomerRef != "" && ev.CustomerRef != "" && att.CustomerRef != ev.CustomerRef {
+		a.Log.WarnContext(ctx, "top-up event customer does not match the attempt; ignored", "event", ev.ID)
+		return nil
+	}
+	fresh, err := a.Store.MarkEvent(ctx, ev.ID, a.now())
+	if err != nil || !fresh {
+		return err
+	}
+	us := a.Store.For(att.UserID)
+	switch ev.Kind {
+	case billing.TopupPaid:
+		granted, err := us.SucceedTopup(ctx, att.Token, ev.ChargeRef, "Top-up", a.now())
+		if err == nil {
+			a.Log.InfoContext(ctx, "top-up settled by webhook", "key", att.Key, "charge", ev.ChargeRef, "granted", granted)
+		}
+		return err
+	case billing.TopupFailed:
+		if err := us.NoteTopupCharge(ctx, att.Token, ev.ChargeRef); err != nil {
+			return err
+		}
+		return us.FailTopup(ctx, att.Token, ev.Reason, a.now())
 	}
 	return nil
 }
@@ -449,6 +562,9 @@ func (a *App) ApplyEvent(ctx context.Context, ev billing.Event) error {
 	return a.Store.BillingTransaction(ctx, func(ctx context.Context) error { return a.applyEvent(ctx, ev) })
 }
 func (a *App) applyEvent(ctx context.Context, ev billing.Event) error {
+	if ev.Kind == billing.TopupPaid || ev.Kind == billing.TopupFailed {
+		return a.applyTopupEvent(ctx, ev)
+	}
 	sub, err := a.Store.SubscriptionByRef(ctx, ev.SubscriptionRef)
 	if errors.Is(err, store.ErrNotFound) {
 		a.Log.WarnContext(ctx, "billing event for unknown subscription", "event", ev.ID, "kind", ev.Kind)

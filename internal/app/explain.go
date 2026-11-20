@@ -46,8 +46,10 @@ func (c *explainCache) put(id int64, s string) {
 
 // Explain writes the on-demand "what differed" explanation of one of the
 // learner's own judged answers. It runs strictly after the verdict and only
-// when asked: it reads the review and its item and never writes either, so
-// the recorded grade, review row and scheduling cannot change. It is
+// when asked: it reads the review and never writes it or its item, so the
+// recorded grade, review row and scheduling cannot change. It explains the
+// question and expected answer snapshotted on the review when it was
+// graded, never the item's current text, which may have been edited since. It is
 // bounded (reserved budget, timeout, output length) and falls back to the
 // review's fixed criterion sentence whenever the explainer is missing,
 // slow, failing or out of allowance; it never fails the learner outright.
@@ -70,8 +72,9 @@ func (a *App) Explain(ctx context.Context, u store.User, reviewID int64) (Explan
 	if a.Explainer == nil {
 		return fallback, nil
 	}
-	item, err := us.Item(ctx, r.ItemID)
-	if err != nil {
+	if r.GradedPrompt == "" && r.GradedExpected == "" {
+		// Recorded before graded inputs were kept: the item may have been
+		// edited since, so only the verdict's own sentence is certain.
 		return fallback, nil
 	}
 	reservation, err := a.reserve(ctx, u.ID, ai.ExplainBudgetMicros)
@@ -86,7 +89,7 @@ func (a *App) Explain(ctx context.Context, u store.User, reviewID int64) (Explan
 		timeout = ai.ExplainTimeout
 	}
 	ectx, cancel := context.WithTimeout(ctx, timeout)
-	text, use, err := a.Explainer.Explain(ectx, ai.ExplainInput{Question: item.Prompt, Expected: item.Answer, Answer: r.Answer, Verdict: r.Verdict})
+	text, use, err := a.Explainer.Explain(ectx, ai.ExplainInput{Question: r.GradedPrompt, Expected: r.GradedExpected, Answer: r.Answer, Verdict: r.Verdict})
 	cancel()
 	// Metered with judging, which it belongs to; an unused reservation is released.
 	a.settle(u.ID, reservation, "judge", use, 0)

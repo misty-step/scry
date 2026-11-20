@@ -835,3 +835,48 @@ Starting point 3108995 (PR #493). Every item has a named regression test (README
   server-side fallbacks (a refusal falls back to the criterion sentence, in line
   with the existing no-fallback cost policy). No live provider was called.
 
+## Slice #3, Pass 2 (Cold Critic remediation)
+
+- F2, absence is never proof: a PaymentIntent lookup that finds nothing,
+  however long after the attempt, leaves the attempt pending (it keeps its
+  slot under that UTC month's cap). Past TopupSettleWindow the learner is
+  told "no record yet, nothing charged so far; credited automatically if it
+  appears" (ok=unconfirmed). Only a definitive processor answer settles it:
+  succeeded -> credit once; canceled / requires_payment_method / a decline ->
+  failed. Billing and the minute sweep keep asking for TopupWatchWindow
+  (35 days); after that the attempt still stays pending and its webhook
+  still settles it. Choice: holding the cap slot (rather than releasing it)
+  means the $20 cap cannot be exceeded by a late success; the cost is that a
+  request Stripe never recovers uses one slot until the month ends.
+- Lookups: Stripe.FindCharge retrieves GET /v1/payment_intents/:id when the
+  attempt knows its intent id; otherwise it lists the attempt's own recorded
+  customer's intents, up to 20 pages, and a list still has_more after that
+  is billing.ErrLookupIncomplete (inconclusive), never "not found".
+- The attempt row records customer_ref and payment_ref inside the
+  reservation transaction, and charge_ref (the intent id) as soon as it is
+  known. Charge and every lookup use those, never the current subscription
+  (a resubscription opens a new customer). Rows from before these columns
+  fall back to the current plan's customer.
+- A 200 PaymentIntent in processing or requires_capture is
+  billing.PendingError: the id is kept, the attempt stays pending and the
+  learner sees "being confirmed", not a decline.
+- Webhooks: payment_intent.succeeded / payment_failed / canceled carrying
+  metadata.scry_key are matched to the attempt by charge_ref or idempotency
+  key (and refused if the customer differs), marked once by event id inside
+  the billing transaction, and settle it. A success always credits exactly
+  once, even after a lookup saw nothing or the attempt was marked failed
+  (the processor is authoritative; the "card failed" line is replaced by the
+  paid one, which in that rare case can take a month past the cap).
+  Intents without Scry's key (plan invoices) are ignored.
+- D3: whether the plan may be charged (App.HasAccess: trialing, active, or
+  past_due within grace) is decided inside TX1 against the row under the
+  write lock, together with the token, the cap and the captured customer and
+  card. The earlier App.Plan read only renews and refuses early. No network
+  call is made inside any transaction.
+- Explain: reviews snapshot graded_prompt and graded_expected when the
+  verdict is recorded; "Why?" explains those, so editing the card later does
+  not change what is explained. A review from before the snapshot gets the
+  verdict's criterion sentence, since its card may have been edited.
+- Migration: added columns are applied with ALTER TABLE on open, and
+  RestoreUser copies by shared column names, so a snapshot taken before the
+  columns existed still restores.

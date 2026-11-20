@@ -149,7 +149,8 @@ func (p *countingPay) Charge(ctx context.Context, cus, pm string, cents int64, d
 	return ref, nil
 }
 
-func (p *countingPay) FindCharge(_ context.Context, _, _, key string, _ time.Time) (billing.ChargeResult, error) {
+func (p *countingPay) FindCharge(_ context.Context, q billing.ChargeQuery) (billing.ChargeResult, error) {
+	key := q.Key
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.find != nil {
@@ -337,7 +338,7 @@ func TestF2_RestartMidChargeReconcilesCleanly(t *testing.T) {
 		t.Helper()
 		// The first transaction of TopUp, then the process "died".
 		if _, fresh, err := us.ReserveTopup(ctx, store.TopupAttempt{Token: token, Key: fmt.Sprintf("topup-%d-%s", u.ID, token),
-			AmountCents: 500, CreditMicros: w.app.Cfg.TopupMicros, Created: w.now()}); err != nil || !fresh {
+			AmountCents: 500, CreditMicros: w.app.Cfg.TopupMicros, Created: w.now()}, nil); err != nil || !fresh {
 			t.Fatal(fresh, err)
 		}
 	}
@@ -371,27 +372,35 @@ func TestF2_RestartMidChargeReconcilesCleanly(t *testing.T) {
 		t.Fatalf("failed attempt: %+v", att)
 	}
 
-	// Never reached the processor: kept pending while it might still be in
-	// flight, then released once the settle window has passed.
+	// Not visible at the processor: kept pending inside the settle window,
+	// and still kept pending (holding its cap slot, never released as
+	// "nothing was charged") after it, so a late charge is still credited.
 	reserve("restart-notfound-0003")
 	pay.find = &billing.ChargeResult{Status: billing.ChargeNotFound}
 	_, _ = w.app.ReconcileTopUps(ctx, u.ID)
 	if att, _ := us.Topup(ctx, "restart-notfound-0003"); att.Status != store.TopupPending {
-		t.Fatalf("released inside the settle window: %+v", att)
+		t.Fatalf("settled inside the settle window: %+v", att)
 	}
 	w.advance(app.TopupSettleWindow + time.Second)
 	if err := w.app.ReconcileAllTopUps(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if att, _ := us.Topup(ctx, "restart-notfound-0003"); att.Status != store.TopupFailed {
-		t.Fatalf("not released after the window: %+v", att)
+	if att, _ := us.Topup(ctx, "restart-notfound-0003"); att.Status != store.TopupPending {
+		t.Fatalf("absence after the window was taken as proof: %+v", att)
 	}
-	if credit() != w.app.Cfg.TopupMicros || paidTopups(t, us) != 1 || pay.total() != 0 {
+	if _, err := w.app.TopUpResult(ctx, u.ID, "restart-notfound-0003"); !errors.Is(err, app.ErrTopupUnconfirmed) || pay.total() != 0 {
+		t.Fatalf("resubmitted unconfirmed form: %v, charges=%d", err, pay.total())
+	}
+	// The processor shows the charge late: credited exactly once.
+	pay.find = &billing.ChargeResult{Status: billing.ChargeSucceeded, Ref: "pi_restart_late"}
+	_, _ = w.app.ReconcileTopUps(ctx, u.ID)
+	_, _ = w.app.ReconcileTopUps(ctx, u.ID)
+	if credit() != 2*w.app.Cfg.TopupMicros || paidTopups(t, us) != 2 || pay.total() != 0 {
 		t.Fatalf("final: credit=%d paid=%d charges=%d", credit(), paidTopups(t, us), pay.total())
 	}
-	// Resubmitting a released form never charges; it says nothing was charged.
-	if _, err := w.app.TopUpResult(ctx, u.ID, "restart-notfound-0003"); !errors.Is(err, app.ErrTopupReleased) || pay.total() != 0 {
-		t.Fatalf("resubmitted released form: %v, charges=%d", err, pay.total())
+	// Resubmitting the settled form never charges and adds nothing.
+	if added, err := w.app.TopUpResult(ctx, u.ID, "restart-notfound-0003"); added || err != nil || pay.total() != 0 {
+		t.Fatalf("resubmitted settled form: %v %v, charges=%d", added, err, pay.total())
 	}
 }
 

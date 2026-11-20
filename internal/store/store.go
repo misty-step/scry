@@ -94,7 +94,51 @@ func (s *Store) migrateAdded() error {
 			return err
 		}
 	}
-	return nil
+	for _, c := range topupColumns {
+		if err := s.addColumn("topups", c[0], c[1]); err != nil {
+			return err
+		}
+	}
+	for _, c := range reviewColumns {
+		if err := s.addColumn("reviews", c[0], c[1]); err != nil {
+			return err
+		}
+	}
+	_, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS topups_charge ON topups(charge_ref)`)
+	return err
+}
+
+// addColumn adds a column to an existing table unless it is already there.
+func (s *Store) addColumn(table, column, decl string) error {
+	cols, err := s.columns(context.Background(), s.db, "main", table)
+	if err != nil {
+		return err
+	}
+	for _, c := range cols {
+		if c == column {
+			return nil
+		}
+	}
+	_, err = s.db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + decl)
+	return err
+}
+
+// columns lists a table's columns in order, in the named schema.
+func (s *Store) columns(ctx context.Context, db querier, schema, table string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT name FROM pragma_table_info(?, ?) ORDER BY cid`, table, schema)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out = append(out, name)
+	}
+	return out, rows.Err()
 }
 
 // Close closes the database.
@@ -249,7 +293,13 @@ func (s *Store) RestoreUser(ctx context.Context, snapshot, email string) (int64,
 		if present == 0 {
 			continue // the snapshot predates this table
 		}
-		res, err := tx.ExecContext(ctx, `INSERT INTO `+t+` SELECT * FROM snap.`+t+` WHERE user_id = ?`, uid)
+		// By column name: a snapshot taken before a column was added
+		// restores into the current shape, the new column taking its default.
+		cols, err := s.sharedColumns(ctx, tx, t)
+		if err != nil {
+			return 0, err
+		}
+		res, err := tx.ExecContext(ctx, `INSERT INTO `+t+` (`+cols+`) SELECT `+cols+` FROM snap.`+t+` WHERE user_id = ?`, uid)
 		if err != nil {
 			return 0, fmt.Errorf("restore %s: %w", t, err)
 		}
@@ -257,6 +307,33 @@ func (s *Store) RestoreUser(ctx context.Context, snapshot, email string) (int64,
 		total += n
 	}
 	return total, tx.Commit()
+}
+
+// sharedColumns is the column list a table has both here and in the
+// attached snapshot, quoted for SQL.
+func (s *Store) sharedColumns(ctx context.Context, db querier, table string) (string, error) {
+	mine, err := s.columns(ctx, db, "main", table)
+	if err != nil {
+		return "", err
+	}
+	theirs, err := s.columns(ctx, db, "snap", table)
+	if err != nil {
+		return "", err
+	}
+	has := map[string]bool{}
+	for _, c := range theirs {
+		has[c] = true
+	}
+	var shared []string
+	for _, c := range mine {
+		if has[c] {
+			shared = append(shared, `"`+c+`"`)
+		}
+	}
+	if len(shared) == 0 {
+		return "", fmt.Errorf("snapshot table %s has no columns in common", table)
+	}
+	return strings.Join(shared, ", "), nil
 }
 
 func ts(t time.Time) int64 {
