@@ -10,6 +10,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.6
 	golang.org/x/crypto v0.59.0
 	modernc.org/sqlite v1.62.0
+	pgregory.net/rapid v1.3.0
 )
 
 require (

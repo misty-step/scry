@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"scry/internal/ai"
-	"scry/internal/srs"
 	"scry/internal/store"
 )
 
@@ -59,7 +58,7 @@ func (a *App) Explain(ctx context.Context, u store.User, reviewID int64) (Explan
 	if err != nil {
 		return Explanation{}, err
 	}
-	if r.Judge == "exact" || (r.Verdict != srs.Close && r.Verdict != srs.Missed) {
+	if !r.Explainable() {
 		return Explanation{}, ErrNotExplainable
 	}
 	fallback := Explanation{Text: r.Reason, Fallback: true}
