@@ -125,7 +125,7 @@ func interleave(cases []DraftingCase) []DraftingCase {
 
 func (r *Runner) draftOnce(ctx context.Context, m string, c DraftingCase) DraftingRecord {
 	rec := DraftingRecord{Surface: "drafting", CaseID: c.ID, Category: c.Category, Model: m}
-	t, err := r.budget.Reserve(r.estimate("drafting", m, 0))
+	t, err := r.reserve(ctx, r.estimate("drafting", m, 0))
 	if err != nil {
 		rec.Status, rec.Error = "skipped", err.Error()
 		return rec

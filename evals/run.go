@@ -314,8 +314,9 @@ func (r *Runner) Run(ctx context.Context) error {
 		before = accountUsage(ctx, r.cfg.Base, r.cfg.Key)
 	}
 	for _, s := range r.cfg.Surfaces {
-		if err := ctx.Err(); err != nil {
-			return err
+		if ctx.Err() != nil {
+			r.note("run interrupted before surface %s; it was not run", s)
+			continue
 		}
 		r.logf("== surface %s (budget so far: $%.6f of $%.2f)", s, r.budget.State().ChargedUSD, r.cfg.MaxSpend)
 		switch s {
@@ -332,12 +333,27 @@ func (r *Runner) Run(ctx context.Context) error {
 	for _, f := range r.files {
 		f.Close()
 	}
+	if ctx.Err() != nil {
+		r.note("run interrupted (%v): calls not yet dispatched were recorded as skipped; in-flight calls were cancelled", ctx.Err())
+	}
 	var after *float64
 	if !r.cfg.SkipAccount {
 		time.Sleep(5 * time.Second) // let the account counter catch up
-		after = accountUsage(ctx, r.cfg.Base, r.cfg.Key)
+		after = accountUsage(context.Background(), r.cfg.Base, r.cfg.Key)
 	}
 	return r.finish(started, before, after)
+}
+
+// ErrInterrupted is returned for calls not dispatched after an interrupt.
+var ErrInterrupted = errors.New("run interrupted: call not dispatched")
+
+// reserve is the one gate before every call: an interrupted run dispatches
+// nothing more, and the spend cap is checked.
+func (r *Runner) reserve(ctx context.Context, est float64) (*Ticket, error) {
+	if ctx.Err() != nil {
+		return nil, ErrInterrupted
+	}
+	return r.budget.Reserve(est)
 }
 
 // accountUsage is OpenRouter's lifetime usage for this key (GET
@@ -388,7 +404,7 @@ func (r *Runner) finish(started time.Time, before, after *float64) error {
 		}
 	}
 	account := map[string]any{"note": "OpenRouter GET /api/v1/key lifetime usage before and after this run (with --append: before the first invocation); the delta independently cross-checks the summed usage.cost (it can include other traffic on the same key, and calls that failed without reporting a cost, and can lag by seconds)."}
-	commands := []string{"go run ./evals/cmd/scry-eval " + strings.Join(r.cfg.Args, " ")}
+	commands := []string{fmt.Sprintf("[git %s] go run ./evals/cmd/scry-eval %s", sha, strings.Join(r.cfg.Args, " "))}
 	surfaces := append([]string(nil), r.cfg.Surfaces...)
 	notes := r.notes
 	results := r.summary

@@ -75,7 +75,7 @@ func (r *Runner) setCost(rec *SpeechRecord, model string, cost *float64) {
 // chatOnce is track 4A: Scry's production speech adapter.
 func (r *Runner) chatOnce(ctx context.Context, model string, clip SpeechClip) SpeechRecord {
 	rec := SpeechRecord{Surface: "speech", Track: "4A-chat-input_audio", ClipID: clip.ID, Model: model, ExpectedGrade: clip.ExpectedGrade, SpokenText: clip.SpokenText, AudioSeconds: clip.DurationS}
-	t, err := r.budget.Reserve(r.estimate("speech-chat", model, clip.DurationS))
+	t, err := r.reserve(ctx, r.estimate("speech-chat", model, clip.DurationS))
 	if err != nil {
 		rec.Status, rec.Error = "skipped", err.Error()
 		return rec
@@ -106,7 +106,7 @@ func (r *Runner) chatOnce(ctx context.Context, model string, clip SpeechClip) Sp
 // as base64 JSON (format "json") or an OpenAI-style multipart upload.
 func (r *Runner) sttOnce(ctx context.Context, model string, clip SpeechClip, format, track string) SpeechRecord {
 	rec := SpeechRecord{Surface: "speech", Track: track, ClipID: clip.ID, Model: model, RequestFormat: format, ExpectedGrade: clip.ExpectedGrade, SpokenText: clip.SpokenText, AudioSeconds: clip.DurationS}
-	t, err := r.budget.Reserve(r.estimate("speech-stt", model, clip.DurationS))
+	t, err := r.reserve(ctx, r.estimate("speech-stt", model, clip.DurationS))
 	if err != nil {
 		rec.Status, rec.Error = "skipped", err.Error()
 		return rec
@@ -221,7 +221,7 @@ func gateDecision(choice string, conf *float64, probs map[string]float64) string
 // question, criteria and gates; there is no transcript.
 func (r *Runner) audioGradeOnce(ctx context.Context, model string, clip SpeechClip) GradingRecord {
 	rec := GradingRecord{Surface: "speech", Track: "4C-direct-audio-grade", CaseID: clip.ID, Model: model, Label: clip.ExpectedGrade}
-	t, err := r.budget.Reserve(r.estimate("speech-audio-grade", model, clip.DurationS))
+	t, err := r.reserve(ctx, r.estimate("speech-audio-grade", model, clip.DurationS))
 	if err != nil {
 		rec.Predicted, rec.Error = "skipped", err.Error()
 		return rec

@@ -683,3 +683,33 @@ func TestAppendMergesAndCapsCumulatively(t *testing.T) {
 		t.Error("appending with a different blind seed must fail")
 	}
 }
+
+func TestInterruptStillWritesSummary(t *testing.T) {
+	const key = "sk-or-v1-offline-test-key-interrupt"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/models", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"data":[]}`) })
+	mux.HandleFunc("/api/alpha/decisions", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"model":"t/judge","answers":{"judgment":{"type":"choice","choice":"correct"}},"usage":{"input_tokens":1,"output_tokens":0,"cost":0.001}}`)
+		cancel() // the operator interrupts after the first call
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	out := t.TempDir()
+	r, err := NewRunner(Config{Surfaces: []string{"grading", "explainer"}, OutDir: out, MaxSpend: 1, Limit: 3, Key: key, Base: srv.URL, Log: io.Discard, SkipAccount: true, Models: map[string][]string{"grading": {"t/judge"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s := readSummary(t, out)
+	notes := fmt.Sprint(s["notes"])
+	if !strings.Contains(notes, "run interrupted before surface explainer") || !strings.Contains(notes, "recorded as skipped") {
+		t.Errorf("notes = %s", notes)
+	}
+	if got := path(s, "results", "grading", "models", 0, "skipped_for_budget"); got != 2.0 {
+		t.Errorf("skipped after interrupt = %v", got)
+	}
+}
