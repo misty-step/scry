@@ -273,14 +273,31 @@ func (e clientEvent) summary(build string) string {
 // uriPolicy holds the server-configured origins a URI may be attributed
 // to. It is built from configuration only, never from the request.
 type uriPolicy struct {
-	base  string // host[:port] of SCRY_BASE_URL, lowercase, if configured
-	clerk string // the configured Clerk Frontend API host, if any
+	base  uriOrigin // origin of SCRY_BASE_URL, if configured
+	clerk string    // the configured Clerk Frontend API host, if any
+}
+
+type uriOrigin struct{ scheme, host, port string }
+
+func defaultURIPort(scheme string) string {
+	if scheme == "http" {
+		return "80"
+	}
+	return "443"
+}
+
+func originOf(u *url.URL) uriOrigin {
+	scheme, host, port := strings.ToLower(u.Scheme), strings.ToLower(u.Hostname()), u.Port()
+	if port == "" {
+		port = defaultURIPort(scheme)
+	}
+	return uriOrigin{scheme, host, port}
 }
 
 func (s *Server) uriPolicy() uriPolicy {
 	var p uriPolicy
 	if u, err := url.Parse(strings.TrimSpace(s.BaseURL)); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" {
-		p.base = strings.ToLower(u.Host)
+		p.base = originOf(u)
 	}
 	if provider, ok := s.App.Auth.(*auth.Clerk); ok && provider.Configured() {
 		p.clerk = strings.ToLower(provider.Domain())
@@ -522,15 +539,16 @@ func (p uriPolicy) uri(s string) (string, bool) {
 // firstParty is true when u's host is Scry's configured SCRY_BASE_URL
 // origin, the production host or loopback.
 func (p uriPolicy) firstParty(u *url.URL) bool {
-	if p.base != "" && strings.ToLower(u.Host) == p.base {
+	origin := originOf(u)
+	if origin.host != "" && origin == p.base {
 		return true
 	}
-	anyPort, ok := firstPartyHosts[strings.ToLower(u.Hostname())]
+	anyPort, ok := firstPartyHosts[origin.host]
 	if !ok {
 		return false
 	}
-	if port := u.Port(); port != "" && port != "443" {
-		return anyPort && isPort(port)
+	if origin.port != defaultURIPort(origin.scheme) {
+		return anyPort && isPort(origin.port)
 	}
 	return true
 }
@@ -553,10 +571,11 @@ func asset(path string) string {
 // default port, the wildcard for an allowlisted subdomain, and externalURI
 // for anything else.
 func (p uriPolicy) integration(u *url.URL) string {
-	if port := u.Port(); port != "" && port != "443" {
+	origin := originOf(u)
+	if origin.port != defaultURIPort(origin.scheme) {
 		return externalURI
 	}
-	host := strings.ToLower(u.Hostname())
+	host := origin.host
 	if integrationHosts[host] || (p.clerk != "" && host == p.clerk) {
 		return "https://" + host
 	}

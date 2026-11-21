@@ -51,7 +51,7 @@ func TestClientErrLimiterGlobalBudget(t *testing.T) {
 
 // testPolicy is a Scry configured with SCRY_BASE_URL=https://scry.example
 // and a Clerk instance.
-var testPolicy = uriPolicy{base: "scry.example", clerk: "clerk.scry-csp.example"}
+var testPolicy = uriPolicy{base: uriOrigin{"https", "scry.example", "443"}, clerk: "clerk.scry-csp.example"}
 
 func TestSanitizeClientURI(t *testing.T) {
 	for in, want := range map[string]string{
@@ -81,6 +81,7 @@ func TestSanitizeClientURI(t *testing.T) {
 		"https://js.stripe.com/u/bob@example.com/42":                                 "https://js.stripe.com",
 		"https://js.stripe.com:443/v3/":                                              "https://js.stripe.com",
 		"http://js.stripe.com/v3/":                                                   "https://js.stripe.com",
+		"http://js.stripe.com:80/v3/":                                                "https://js.stripe.com",
 		"https://hooks.stripe.com/3d_secure":                                         "https://hooks.stripe.com",
 		"https://api.stripe.com/v1/payment_methods":                                  "https://api.stripe.com",
 		"https://r.stripe.com/b":                                                     "https://r.stripe.com",
@@ -99,6 +100,8 @@ func TestSanitizeClientURI(t *testing.T) {
 
 		// Everything else is external: no host, no path.
 		"https://js.stripe.com:8443/v3/":                         externalURI,
+		"http://js.stripe.com:443/v3/":                           externalURI,
+		"https://js.stripe.com:80/v3/":                           externalURI,
 		"wss://js.stripe.com/socket":                             externalURI,
 		"https://js.stripe.com.evil.example/v3/cards/42?x=1":     externalURI,
 		"https://evil-js.stripe.com/x":                           externalURI,
@@ -134,8 +137,12 @@ func TestSanitizeClientURI(t *testing.T) {
 		"/static/clerk.js":                                   "/static/clerk.js",
 		"/static/app.css":                                    "/static/app.css",
 		"https://scry.example/static/stripe.js#x":            "/static/stripe.js",
+		"https://scry.example:443/static/app.js":             "/static/app.js",
+		"http://scry.example/static/app.js":                  externalURI,
 		"https://scry.mistystep.io/static/app.js?token=x":    "/static/app.js",
 		"https://scry.mistystep.io:443/static/app.js":        "/static/app.js",
+		"http://scry.mistystep.io:80/static/app.js":          "/static/app.js",
+		"http://scry.mistystep.io:443/static/app.js":         externalURI,
 		"http://127.0.0.1:18080/static/app.css":              "/static/app.css",
 		"http://localhost:8080/static/clerk.js":              "/static/clerk.js",
 		"https://scry.mistystep.io:8443/static/app.js":       externalURI,
