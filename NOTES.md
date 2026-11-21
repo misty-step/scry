@@ -1114,16 +1114,28 @@ Pass 2 (cold critic remediation):
   scry-watch when configured) once per distinct sanitized message per 10
   minutes; repeats and reports blamed on browser extensions are warn-level
   local logs. Sentry receives only the message line, which is built from
-  sanitized fields; `script-sample`, `original-policy` and `referrer` are
-  never read. Routes are reduced to Scry's route templates or `/other`
-  (the brief's list plus `/library/texts/:id`; a trailing slash is ignored,
-  case is not). Unknown hosts keep `scheme://host[:port]`; a suspicious host
-  becomes `scheme://[redacted-host]` so the scheme is still visible. The
-  page's own host is the request's Host header. Card-like means 13 or more
-  digits with optional single space/dash separators, so a following short
-  number can be absorbed into `[number]`. `integration_error` keeps
-  stripe.js's fixed code plus at most 80 scrubbed characters of Stripe's
-  own error text; anything else becomes "unrecognized integration error".
+  closed allowlists alone; `script-sample`, `original-policy`, `referrer`
+  and any `message` field are never read. Routes are reduced to Scry's
+  route templates or `/other` (the brief's list plus `/library/texts/:id`; a
+  trailing slash is ignored, case is not; `/api/...` is `/other`).
+  Directives outside the standard list become `other-directive`. URIs are a
+  CSP keyword, `extension`, the bare path of a file embedded under
+  `static/` (only when relative or on SCRY_BASE_URL's origin,
+  scry.mistystep.io on its default port, or 127.0.0.1/localhost on any
+  port; the request Host header never counts), `https://<host>` for an
+  allowlisted integration host on its default port (`http:` is reported as
+  `https:`), the fixed wildcard `https://*.js.stripe.com` or
+  `https://*.protect.clerk.com` for any of their subdomains (the label is
+  never kept), or `external`. A Scry page URL that is not a static asset is
+  `external` too, as the brief's closed list has no other value for it.
+  `*.clerk.accounts.dev` is no longer named; the configured Clerk Frontend
+  API host is. For a CSP violation only route, directive, effective
+  directive, blocked URI, `disposition=report` (when report-only) and build
+  are kept. `js_error`/`unhandled_rejection` carry an allowlisted error
+  class (app.js takes `error.name`, else the `Uncaught X:` prefix) and a
+  line/column only when the source is a first-party asset or allowlisted
+  origin, not `external`. Reports of a known kind are accepted without a
+  message, since none is read.
 - Sentry events from the operator log are sent at level `error`
   (`sentry.CaptureEvent`), not CaptureMessage's default `info`, so Sentry
   error-level alert rules fire.
@@ -1133,4 +1145,3 @@ Pass 2 (cold critic remediation):
   cancelled navigations and for requests a cross-origin child frame (Stripe's
   hCaptcha logo) cancels itself; requests Scry's policy blocks fail as
   `ERR_BLOCKED_BY_CSP` and always count.
-

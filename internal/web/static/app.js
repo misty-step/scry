@@ -3,8 +3,10 @@
 
 // Client telemetry: a blocked resource, a script error or an unhandled
 // rejection is reported to /api/client-error so it reaches the operator
-// instead of failing silently. Reports carry no query strings, fragments
-// or page content, are de-duplicated and capped per page load.
+// instead of failing silently. Reports carry fixed codes and error class
+// names, never message text, query strings, fragments or page content; they
+// are de-duplicated and capped per page load. The server maps every field
+// onto its own closed allowlists again before logging.
 (function () {
   "use strict";
   var endpoint = "/api/client-error", max = 5, sent = 0, seen = {};
@@ -26,10 +28,21 @@
     }
   }
 
-  function text(v) {
-    var s = "";
-    try { s = v && v.message ? String(v.message) : String(v); } catch (err) { s = "unprintable"; }
-    return s.replace(/\b(https?|wss?):\/\/[^\s"'<>()]+/g, function (u) { return clean(u); }).slice(0, 300);
+  // errorClass is the error's standard class name (error.name, or the
+  // prefix of a browser's "Uncaught TypeError: ..." line), or fallback.
+  // The message itself is never sent.
+  var classes = /^(TypeError|ReferenceError|SyntaxError|RangeError|URIError|SecurityError|NetworkError|AbortError|DOMException|Error)$/;
+  function errorClass(v, line, fallback) {
+    var name = "";
+    try { if (v && typeof v === "object" && typeof v.name === "string") name = v.name; } catch (err) { /* opaque */ }
+    if (!classes.test(name)) {
+      var m = /^(?:Uncaught\s+)?([A-Za-z]+)(?::|$)/.exec(typeof line === "string" ? line : "");
+      name = m ? m[1] : "";
+    }
+    if (!classes.test(name)) {
+      try { if (typeof DOMException !== "undefined" && v instanceof DOMException) name = "DOMException"; } catch (err) { /* ignore */ }
+    }
+    return classes.test(name) ? name : fallback;
   }
 
   function send(report) {
@@ -54,8 +67,7 @@
     blocked[clean(e.blockedURI)] = 1;
     send({
       kind: "csp_violation", violatedDirective: e.violatedDirective || "", effectiveDirective: e.effectiveDirective || "",
-      blockedURI: clean(e.blockedURI), sourceFile: clean(e.sourceFile), line: e.lineNumber || 0, column: e.columnNumber || 0,
-      disposition: e.disposition || ""
+      blockedURI: clean(e.blockedURI), disposition: e.disposition || ""
     });
   });
 
@@ -65,24 +77,26 @@
       // A script, stylesheet or image that failed to load (capture phase).
       // The violation event can arrive just after the load error, so wait a
       // moment before deciding this is a separate failure.
-      var src = clean(el.src || el.href || ""), tag = el.tagName.toLowerCase();
+      var src = clean(el.src || el.href || "");
       setTimeout(function () {
-        if (!blocked[src]) send({ kind: "resource_error", message: "failed to load " + tag + " " + src, sourceFile: src });
+        if (!blocked[src]) send({ kind: "resource_error", code: "resource_load_failed", sourceFile: src });
       }, 100);
       return;
     }
     // Cross-origin scripts we don't control report only "Script error.".
     if (!e.filename && /^Script error\.?$/.test(e.message || "")) return;
     if (/^(chrome|moz|safari-web)-extension:/.test(e.filename || "")) return;
-    send({ kind: "js_error", message: text(e.error || e.message), sourceFile: clean(e.filename), line: e.lineno || 0, column: e.colno || 0 });
+    send({ kind: "js_error", errorClass: errorClass(e.error, e.message, "UnknownError"), sourceFile: clean(e.filename),
+      line: e.lineno || 0, column: e.colno || 0 });
   }, true);
 
   window.addEventListener("unhandledrejection", function (e) {
-    send({ kind: "unhandled_rejection", message: text(e.reason) || "(no reason)" });
+    send({ kind: "unhandled_rejection", errorClass: errorClass(e.reason, "", "UnhandledRejection") });
   });
 
-  // For Scry's own scripts (stripe.js) to report an integration failure.
-  window.scryReport = function (kind, message) { send({ kind: kind, message: text(message) }); };
+  // For Scry's own scripts (stripe.js) to report an integration failure
+  // by fixed code.
+  window.scryReport = function (kind, code) { send({ kind: kind, code: String(code) }); };
 })();
 (function () {
   "use strict";

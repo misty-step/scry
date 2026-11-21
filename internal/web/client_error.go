@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"mime"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -14,8 +14,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"scry/internal/auth"
 )
@@ -109,8 +107,9 @@ func (l *clientErrLimiter) first(fingerprint string, now time.Time) bool {
 	return true
 }
 
-// clientReport is the direct telemetry app.js sends. Every field is
-// untrusted and is sanitized before use.
+// clientReport is the direct telemetry app.js and stripe.js send. Every
+// field is untrusted. None is forwarded as text: each is mapped onto a
+// closed, server-defined set of values (or dropped) before it is logged.
 type clientReport struct {
 	Kind               string `json:"kind"`
 	Route              string `json:"route"`
@@ -120,8 +119,11 @@ type clientReport struct {
 	SourceFile         string `json:"sourceFile"`
 	Line               int    `json:"line"`
 	Column             int    `json:"column"`
-	Message            string `json:"message"`
+	Code               string `json:"code"`       // integration_error, resource_error
+	ErrorClass         string `json:"errorClass"` // js_error, unhandled_rejection
 	Disposition        string `json:"disposition"`
+	// A "message" field, if sent, is never read: free text can carry
+	// anything a learner typed or a page rendered.
 }
 
 // nativeCSPReport is what browsers POST to report-uri.
@@ -131,12 +133,9 @@ type nativeCSPReport struct {
 		ViolatedDirective  string `json:"violated-directive"`
 		EffectiveDirective string `json:"effective-directive"`
 		BlockedURI         string `json:"blocked-uri"`
-		SourceFile         string `json:"source-file"`
-		Line               int    `json:"line-number"`
-		Column             int    `json:"column-number"`
 		Disposition        string `json:"disposition"`
-		// original-policy, referrer and script-sample are never read: they
-		// can carry page content.
+		// source-file, line-number, column-number, original-policy,
+		// referrer and script-sample are never read.
 	} `json:"csp-report"`
 }
 
@@ -180,8 +179,7 @@ func (s *Server) clientError(w http.ResponseWriter, r *http.Request) {
 		}
 		n := native.Report
 		rep = clientReport{Kind: "csp_violation", Route: n.DocumentURI, ViolatedDirective: n.ViolatedDirective,
-			EffectiveDirective: n.EffectiveDirective, BlockedURI: n.BlockedURI, SourceFile: n.SourceFile,
-			Line: n.Line, Column: n.Column, Disposition: n.Disposition}
+			EffectiveDirective: n.EffectiveDirective, BlockedURI: n.BlockedURI, Disposition: n.Disposition}
 	case "application/json":
 		if json.Unmarshal(body, &rep) != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -191,9 +189,11 @@ func (s *Server) clientError(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnsupportedMediaType, map[string]string{"error": "send application/json or application/csp-report"})
 		return
 	}
-	ev, ok := sanitizeClientReport(rep, s.uriPolicy(r))
+	// The policy comes from server configuration only; nothing in the
+	// request (its Host header included) decides what is first-party.
+	ev, ok := sanitizeClientReport(rep, s.uriPolicy())
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing kind, directive or message"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing kind or directive"})
 		return
 	}
 	msg := ev.summary(s.App.Cfg.BuildSHA)
@@ -205,7 +205,7 @@ func (s *Server) clientError(w http.ResponseWriter, r *http.Request) {
 	case !s.clientErrs.first(msg, now):
 		level = slog.LevelWarn // already sent to Sentry in this window
 	}
-	attrs := []any{"kind", ev.kind, "route", ev.route, "violated_directive", ev.violated,
+	attrs := []any{"kind", ev.kind, "route", ev.route, "code", ev.code, "violated_directive", ev.violated,
 		"effective_directive", ev.effective, "blocked_uri", ev.blocked, "source_file", ev.source,
 		"line", ev.line, "column", ev.column, "disposition", ev.disposition, "build_sha", s.App.Cfg.BuildSHA}
 	if level == slog.LevelError {
@@ -216,12 +216,14 @@ func (s *Server) clientError(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// clientEvent is a report after sanitizing: nothing in it can carry a query
-// string, fragment, userinfo, email address or token.
+// clientEvent is a report after sanitizing. Every string in it is a member
+// of a closed, server-defined set: a route template, a CSP directive name,
+// a diagnostic code, a CSP keyword, an allowlisted origin or first-party
+// asset path, or "external". No caller text survives.
 type clientEvent struct {
-	kind, route, violated, effective, blocked, source, message, disposition string
-	line, column                                                            int
-	extension                                                               bool
+	kind, route, violated, effective, blocked, source, code, disposition string
+	line, column                                                         int
+	extension                                                            bool
 }
 
 func (e clientEvent) summary(build string) string {
@@ -246,18 +248,17 @@ func (e clientEvent) summary(build string) string {
 		if e.disposition == "report" {
 			b.WriteString(" disposition=report")
 		}
-	}
-	if e.message != "" {
-		b.WriteString(" message=")
-		b.WriteString(strconv.Quote(e.message))
-	}
-	if e.source != "" {
-		b.WriteString(" source=")
-		b.WriteString(e.source)
-		if e.line > 0 {
-			b.WriteString(":" + strconv.Itoa(e.line))
-			if e.column > 0 {
-				b.WriteString(":" + strconv.Itoa(e.column))
+	} else {
+		b.WriteString(" code=")
+		b.WriteString(e.code)
+		if e.source != "" {
+			b.WriteString(" source=")
+			b.WriteString(e.source)
+			if e.line > 0 {
+				b.WriteString(":" + strconv.Itoa(e.line))
+				if e.column > 0 {
+					b.WriteString(":" + strconv.Itoa(e.column))
+				}
 			}
 		}
 	}
@@ -269,17 +270,18 @@ func (e clientEvent) summary(build string) string {
 	return b.String()
 }
 
-// uriPolicy says which hosts a sanitized URI may name with a path: the
-// page's own host, where only /static/ assets keep their path and pages
-// become route templates, and the integrations Scry loads (Stripe, Clerk,
-// Cloudflare Turnstile). Every other host keeps only scheme://host.
+// uriPolicy holds the server-configured origins a URI may be attributed
+// to. It is built from configuration only, never from the request.
 type uriPolicy struct {
-	self  string // the page's own host[:port], lowercase
+	base  string // host[:port] of SCRY_BASE_URL, lowercase, if configured
 	clerk string // the configured Clerk Frontend API host, if any
 }
 
-func (s *Server) uriPolicy(r *http.Request) uriPolicy {
-	p := uriPolicy{self: strings.ToLower(r.Host)}
+func (s *Server) uriPolicy() uriPolicy {
+	var p uriPolicy
+	if u, err := url.Parse(strings.TrimSpace(s.BaseURL)); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" {
+		p.base = strings.ToLower(u.Host)
+	}
 	if provider, ok := s.App.Auth.(*auth.Clerk); ok && provider.Configured() {
 		p.clerk = strings.ToLower(provider.Domain())
 	}
@@ -292,45 +294,62 @@ func sanitizeClientReport(r clientReport, p uriPolicy) (clientEvent, bool) {
 		return clientEvent{}, false
 	}
 	e := clientEvent{kind: kind, route: sanitizeRoute(r.Route)}
-	e.violated = sanitizeDirective(r.ViolatedDirective)
-	e.effective = sanitizeDirective(r.EffectiveDirective)
-	if e.violated == "" {
-		e.violated = e.effective
-	}
-	var extBlocked, extSource bool
-	e.blocked, extBlocked = p.uri(r.BlockedURI)
-	e.source, extSource = p.uri(r.SourceFile)
-	e.extension = extBlocked || extSource
-	if kind == "integration_error" {
-		e.message = integrationMessage(r.Message, p)
-	} else {
-		e.message = p.text(r.Message, clientMessageMax)
-	}
-	if r.Line > 0 && r.Line < 1e7 {
-		e.line = r.Line
-	}
-	if r.Column > 0 && r.Column < 1e7 {
-		e.column = r.Column
-	}
-	if d := strings.ToLower(strings.TrimSpace(r.Disposition)); d == "enforce" || d == "report" {
-		e.disposition = d
-	}
-	if kind == "csp_violation" {
+	switch kind {
+	case "csp_violation":
+		e.violated = sanitizeDirective(r.ViolatedDirective)
+		e.effective = sanitizeDirective(r.EffectiveDirective)
+		if e.violated == "" {
+			e.violated = e.effective
+		}
+		e.blocked, e.extension = p.uri(r.BlockedURI)
+		if d := strings.ToLower(strings.TrimSpace(r.Disposition)); d == "enforce" || d == "report" {
+			e.disposition = d
+		}
 		return e, e.violated != ""
+	case "integration_error":
+		e.code = integrationCode(r.Code)
+	case "resource_error":
+		e.code = resourceLoadFailed
+		e.source, e.extension = p.uri(r.SourceFile)
+	case "js_error", "unhandled_rejection":
+		e.code = errorClass(r.ErrorClass, kind)
+		e.source, e.extension = p.uri(r.SourceFile)
+		if e.source != "" && e.source != externalURI {
+			if r.Line > 0 && r.Line < 1e7 {
+				e.line = r.Line
+			}
+			if r.Column > 0 && r.Column < 1e7 {
+				e.column = r.Column
+			}
+		}
 	}
-	return e, e.message != ""
+	return e, true
 }
 
-var directiveRe = regexp.MustCompile(`^[a-z][a-z-]{0,39}$`)
+// reportDirectives are the standard directive names a report may name. Any
+// other non-empty directive is otherDirective.
+var reportDirectives = map[string]bool{
+	"default-src": true, "script-src": true, "script-src-elem": true, "script-src-attr": true,
+	"style-src": true, "style-src-elem": true, "style-src-attr": true, "img-src": true, "font-src": true,
+	"connect-src": true, "frame-src": true, "worker-src": true, "child-src": true, "object-src": true,
+	"media-src": true, "manifest-src": true, "form-action": true, "frame-ancestors": true, "base-uri": true,
+	"navigate-to": true, "upgrade-insecure-requests": true,
+}
 
-// sanitizeDirective keeps the directive name only: older browsers send the
-// whole directive with its source list.
+const otherDirective = "other-directive"
+
+// sanitizeDirective is the directive's name if it is a standard one (older
+// browsers send the whole directive with its source list), otherDirective
+// for any other value, and "" for none.
 func sanitizeDirective(s string) string {
 	f := strings.Fields(strings.ToLower(s))
-	if len(f) == 0 || !directiveRe.MatchString(f[0]) {
+	if len(f) == 0 {
 		return ""
 	}
-	return f[0]
+	if reportDirectives[f[0]] {
+		return f[0]
+	}
+	return otherDirective
 }
 
 // otherRoute stands for every page path Scry does not serve: what a caller
@@ -366,9 +385,6 @@ func routeTemplate(path string) string {
 	if routeExact[path] {
 		return path
 	}
-	if path == "/api" || strings.HasPrefix(path, "/api/") {
-		return "/api/:path"
-	}
 	if i := strings.LastIndexByte(path, '/'); i > 0 && i < len(path)-1 {
 		if t, ok := routeWithID[path[:i]]; ok {
 			return t
@@ -392,334 +408,204 @@ func sanitizeRoute(s string) string {
 	case "http", "https":
 		return routeTemplate(u.Path)
 	case "":
-		if u.Host == "" && strings.HasPrefix(u.Path, "/") {
+		if u.Host == "" && strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(s, "//") {
 			return routeTemplate(u.Path)
 		}
 	}
 	return otherRoute
 }
 
+// externalURI stands for every URI that is not a CSP keyword, a
+// first-party asset or an allowlisted integration origin: its host and
+// path never reach logs or Sentry.
+const externalURI = "external"
+
+// uriKeywords are the values browsers report for non-URL sources; the
+// schemes in uriKeywordSchemes are reported by scheme alone.
 var (
-	tokenChars = regexp.MustCompile(`^[A-Za-z0-9_\-=~+]{20,}$`)
-	digits     = regexp.MustCompile(`^[0-9]+$`)
-	digitRun   = regexp.MustCompile(`[0-9]{6,}`)
-	hostRe     = regexp.MustCompile(`^[a-z0-9.\-\[\]:]{1,100}$`)
+	uriKeywords = map[string]bool{
+		"inline": true, "eval": true, "data": true, "blob": true, "wasm-eval": true,
+		"trusted-types-sink": true, "self": true, "none": true, "about": true, "filesystem": true,
+	}
+	uriKeywordSchemes = map[string]bool{"data": true, "blob": true, "about": true, "filesystem": true}
+	extensionSchemes  = map[string]bool{
+		"chrome-extension": true, "moz-extension": true, "safari-extension": true,
+		"safari-web-extension": true, "edge-extension": true,
+	}
 )
 
-// sanitizePath keeps a path's shape and drops what could identify a learner
-// or carry a credential: card-like numbers become :number, ids :id, emails
-// :email, and long token-shaped segments :token. It is used only for paths
-// Scry trusts the shape of (its own /static/ assets and the integrations'
-// scripts and frames).
-func sanitizePath(p string) string {
-	if p == "" {
-		return "/"
-	}
-	segs := strings.Split(p, "/")
-	for i, seg := range segs {
-		switch {
-		case seg == "":
-		case emailSegment(seg):
-			segs[i] = ":email"
-		case cardDigits.MatchString(seg):
-			segs[i] = ":number"
-		case digits.MatchString(seg):
-			segs[i] = ":id"
-		case tokenLike(seg) || looksSecret(seg):
-			segs[i] = ":token"
-		case digitRun.MatchString(seg):
-			segs[i] = ":id"
-		default:
-			segs[i] = cleanSegment(seg)
+// firstPartyHosts are the hosts, besides SCRY_BASE_URL's, whose /static/
+// assets are Scry's own. Loopback is any port (local runs and the
+// verifier); the production host is the default port only.
+var firstPartyHosts = map[string]bool{"scry.mistystep.io": false, "127.0.0.1": true, "localhost": true}
+
+// staticAssets is the closed set of first-party asset paths: exactly the
+// files embedded under static/.
+var staticAssets = sync.OnceValue(func() map[string]bool {
+	out := map[string]bool{}
+	_ = fs.WalkDir(staticFS, "static", func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			out["/"+path] = true
 		}
-	}
-	out := strings.Join(segs, "/")
-	if len(out) > 200 {
-		out = out[:200]
-	}
-	if !strings.HasPrefix(out, "/") {
-		out = "/" + out
-	}
+		return nil
+	})
 	return out
-}
+})
 
-// emailSegment is a path segment holding an email address, plain or
-// percent-encoded. Scoped package paths such as @clerk/clerk-js@5 are kept.
-func emailSegment(seg string) bool {
-	if dec, err := url.PathUnescape(seg); err == nil {
-		seg = dec
-	}
-	return emailInText.MatchString(seg)
-}
-
-// tokenLike is a long run of token characters with digits in it (a hash,
-// UUID, reset token or JWT part), ignoring a file extension. Plain words
-// joined by dashes, such as elements-inner-card.html, are kept.
-func tokenLike(seg string) bool {
-	if i := strings.LastIndexByte(seg, '.'); i > 0 && len(seg)-i <= 6 {
-		seg = seg[:i]
-	}
-	if !tokenChars.MatchString(seg) {
-		return false
-	}
-	n := 0
-	for _, r := range seg {
-		if r >= '0' && r <= '9' {
-			n++
-		}
-	}
-	return n >= 4
-}
-
-func cleanSegment(seg string) string {
-	var b strings.Builder
-	for _, r := range seg {
-		if b.Len() >= 64 {
-			break
-		}
-		if r < 0x80 && (unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("-_.~%+=,:@", r)) {
-			b.WriteRune(r)
-		} else {
-			b.WriteByte('_')
-		}
-	}
-	return b.String()
-}
-
-var keywordSources = map[string]bool{
-	"inline": true, "eval": true, "wasm-eval": true, "self": true, "none": true, "data": true, "blob": true,
-	"trusted-types-policy": true, "trusted-types-sink": true,
-}
-
-// integrationHosts are the third parties Scry's policy admits whose script
-// and frame paths are worth keeping (sanitized). integrationSuffixes cover
-// their per-instance subdomains.
+// integrationHosts are the third-party hosts Scry's pages load; each is
+// reported as https://<host> only. integrationWildcards are their
+// per-instance subdomains, reported as the wildcard itself.
 var (
 	integrationHosts = map[string]bool{
-		"js.stripe.com": true, "hooks.stripe.com": true, "api.stripe.com": true, "m.stripe.network": true,
-		"r.stripe.com": true, "q.stripe.com": true, "errors.stripe.com": true,
-		"challenges.cloudflare.com": true, "clerk.accounts.dev": true, "clerk.scry.mistystep.io": true,
-		"img.clerk.com": true, "protect.clerk.com": true, "clerk-telemetry.com": true,
-		"csp-probe.invalid": true, // scripts/verify-live.mjs --simulate-violation
+		"js.stripe.com": true, "hooks.stripe.com": true, "api.stripe.com": true, "r.stripe.com": true,
+		"m.stripe.network": true, "q.stripe.com": true, "errors.stripe.com": true,
+		"challenges.cloudflare.com": true, "img.clerk.com": true, "clerk-telemetry.com": true,
 	}
-	integrationSuffixes = []string{".js.stripe.com", ".protect.clerk.com", ".clerk.accounts.dev"}
+	integrationWildcards = []string{".js.stripe.com", ".protect.clerk.com"}
+	hostLabels           = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
 )
 
-func (p uriPolicy) integration(hostname string) bool {
-	if integrationHosts[hostname] || (p.clerk != "" && hostname == p.clerk) {
-		return true
-	}
-	for _, s := range integrationSuffixes {
-		if strings.HasSuffix(hostname, s) {
-			return true
-		}
-	}
-	return false
-}
+// The synthetic image scripts/verify-live.mjs --simulate-violation loads.
+const (
+	probeHost = "csp-probe.invalid"
+	probePath = "/probe.png"
+)
 
-// redactedHost replaces a host name that could itself carry data: an IP
-// address, an over-long name or label, or a label shaped like a token,
-// key, email or number.
-const redactedHost = "[redacted-host]"
-
-func suspiciousHost(hostname string) bool {
-	if hostname == "" || len(hostname) > 253 || net.ParseIP(hostname) != nil || strings.ContainsAny(hostname, "@%[]:") {
-		return true
-	}
-	for _, label := range strings.Split(hostname, ".") {
-		if len(label) > 63 || len(label) >= 40 || tokenLike(label) || looksSecret(label) || digitRun.MatchString(label) {
-			return true
-		}
-	}
-	return false
-}
-
-// uri reduces a URI to what is safe to forward, never with userinfo, query
-// or fragment:
-//   - a CSP keyword or bare scheme (inline, eval, data, blob, about)
-//   - Scry's own /static/ assets with their sanitized path, and its own
-//     pages as route templates
-//   - an integration's script or frame with its sanitized path
-//   - any other host as scheme://host only, or scheme://[redacted-host]
-//     when the host name itself looks like data
-//
-// It also says whether the URI belongs to a browser extension.
+// uri maps a reported URI onto a closed set of values: "" for none, a CSP
+// keyword, "extension" (and true) for a browser extension, a first-party
+// asset path such as /static/stripe.js, an allowlisted integration origin
+// such as https://js.stripe.com, or externalURI for anything else. No
+// query, fragment, userinfo, caller-chosen host or caller-chosen path is
+// ever returned.
 func (p uriPolicy) uri(s string) (string, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return "", false
 	}
-	lower := strings.ToLower(s)
-	if keywordSources[strings.Trim(lower, "'")] {
-		return strings.Trim(lower, "'"), false
-	}
 	if len(s) > 2048 {
-		s = s[:2048]
+		return externalURI, false
+	}
+	lower := strings.ToLower(s)
+	if k := strings.Trim(lower, "'"); uriKeywords[k] {
+		return k, false
+	}
+	if i := strings.IndexByte(lower, ':'); i > 0 {
+		scheme := lower[:i]
+		if extensionSchemes[scheme] {
+			return "extension", true
+		}
+		if uriKeywordSchemes[scheme] {
+			return scheme, false
+		}
 	}
 	u, err := url.Parse(s)
 	if err != nil {
-		if i := strings.IndexByte(lower, ':'); i > 0 && i < 30 {
-			return schemeOnly(lower[:i])
-		}
-		return "unparsed", false
+		return externalURI, false
 	}
-	scheme := strings.ToLower(u.Scheme)
-	switch scheme {
-	case "http", "https", "ws", "wss":
-		return scheme + "://" + p.hostPath(u), false
+	switch strings.ToLower(u.Scheme) {
 	case "":
-		if u.Host != "" { // protocol-relative //host/path
-			return "//" + p.hostPath(u), false
+		// Only a same-origin absolute path: never //host/... (protocol-
+		// relative) or a relative path.
+		if u.Host == "" && strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(s, "//") && !strings.HasPrefix(s, "/\\") {
+			return asset(u.Path), false
 		}
-		if strings.HasPrefix(u.Path, "/") {
-			return p.selfPath(u.Path), false
+	case "http", "https":
+		if p.firstParty(u) {
+			return asset(u.Path), false
 		}
-		return "unparsed", false
-	default:
-		return schemeOnly(scheme)
+		return p.integration(u), false
 	}
+	return externalURI, false
 }
 
-func (p uriPolicy) hostPath(u *url.URL) string {
-	host := strings.ToLower(u.Host)
-	if p.self != "" && host == p.self {
-		return host + p.selfPath(u.Path)
+// firstParty is true when u's host is Scry's configured SCRY_BASE_URL
+// origin, the production host or loopback.
+func (p uriPolicy) firstParty(u *url.URL) bool {
+	if p.base != "" && strings.ToLower(u.Host) == p.base {
+		return true
 	}
-	hostname := strings.ToLower(u.Hostname())
-	if !hostRe.MatchString(host) || suspiciousHost(hostname) {
-		return redactedHost
+	anyPort, ok := firstPartyHosts[strings.ToLower(u.Hostname())]
+	if !ok {
+		return false
 	}
-	if port := u.Port(); port != "" && !digits.MatchString(port) {
-		return redactedHost
+	if port := u.Port(); port != "" && port != "443" {
+		return anyPort && isPort(port)
 	}
-	if p.integration(hostname) {
-		return host + sanitizePath(u.Path)
-	}
-	return host
+	return true
 }
 
-// selfPath is a path on Scry itself: a static asset keeps its sanitized
-// path, anything else becomes its route template.
-func (p uriPolicy) selfPath(path string) string {
-	if strings.HasPrefix(path, "/static/") {
-		return sanitizePath(path)
-	}
-	return routeTemplate(path)
+func isPort(s string) bool {
+	n, err := strconv.Atoi(s)
+	return err == nil && n > 0 && n < 65536 && strconv.Itoa(n) == s
 }
 
-func schemeOnly(scheme string) (string, bool) {
-	if strings.HasSuffix(scheme, "-extension") {
-		return "extension", true
+// asset is a first-party path if it is exactly one of Scry's embedded
+// static files, externalURI otherwise.
+func asset(path string) string {
+	if staticAssets()[path] {
+		return path
 	}
-	if !directiveRe.MatchString(scheme) {
-		return "unparsed", false
-	}
-	return scheme, false
+	return externalURI
 }
 
-var (
-	urlInText   = regexp.MustCompile(`(?i)\b(?:https?|wss?|blob|data|chrome-extension|moz-extension|safari-web-extension):[^\s"'<>()]+`)
-	emailInText = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
-	secretText  = regexp.MustCompile(`(?i)\b(?:sk|pk|rk|whsec|sess|tok|key|pm|seti|pi|cus|sub)_[A-Za-z0-9_]{6,}|\beyJ[A-Za-z0-9_\-]{6,}(?:\.[A-Za-z0-9_\-]*){0,2}|\bbearer\s+\S+|\b(?:password|passwd|token|secret|session|csrf|authorization)\s*[=:]\s*\S+`)
-	longToken   = regexp.MustCompile(`[A-Za-z0-9_\-+=]{32,}`)
-	// card-number-shaped runs: 13 or more digits, each optionally
-	// separated by one space or dash, wherever they appear (inside a word
-	// or a path too)
-	cardDigits = regexp.MustCompile(`[0-9](?:[ \-]?[0-9]){12,}`)
-	// a word in a message carrying a query string or fragment, relative
-	// (/signin?token=x, path?email=y, ?secret=1, #frag) or left over
-	queryInText = regexp.MustCompile(`[^\s"'<>()?#]*[?#][^\s"'<>()]+`)
-)
-
-// looksSecret is true for a value shaped like a key, token or JWT.
-func looksSecret(s string) bool { return secretText.MatchString(s) }
-
-// clientMessageMax caps a forwarded free-text message (runes).
-const clientMessageMax = 160
-
-// text makes a free-text message safe to forward: one line, capped at max
-// runes, every absolute URL reduced as uri does, every relative URL's query
-// and fragment dropped, and emails, card-like numbers, long digit runs and
-// token-shaped strings replaced.
-func (p uriPolicy) text(s string, max int) string {
-	if !utf8.ValidString(s) {
-		s = strings.ToValidUTF8(s, "?")
+// integration is https://<host> for an allowlisted third-party host on its
+// default port, the wildcard for an allowlisted subdomain, and externalURI
+// for anything else.
+func (p uriPolicy) integration(u *url.URL) string {
+	if port := u.Port(); port != "" && port != "443" {
+		return externalURI
 	}
-	if len(s) > 4096 {
-		s = s[:4096]
-	}
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return ' '
+	host := strings.ToLower(u.Hostname())
+	switch {
+	case integrationHosts[host], p.clerk != "" && host == p.clerk:
+		return "https://" + host
+	case host == probeHost:
+		if u.Path == probePath {
+			return "https://" + probeHost + probePath
 		}
-		return r
-	}, s)
-	s = urlInText.ReplaceAllStringFunc(s, func(u string) string {
-		clean, _ := p.uri(u)
-		return clean
-	})
-	s = queryInText.ReplaceAllStringFunc(s, func(w string) string {
-		i := strings.IndexAny(w, "?#")
-		switch prefix := w[:i]; {
-		case prefix == "":
-			return w[:1] + "[redacted]"
-		case strings.HasPrefix(prefix, "/"):
-			return sanitizePath(prefix)
-		default:
-			return prefix
-		}
-	})
-	s = emailInText.ReplaceAllString(s, "[email]")
-	s = secretText.ReplaceAllString(s, "[redacted]")
-	s = cardDigits.ReplaceAllString(s, "[number]")
-	s = digitRun.ReplaceAllStringFunc(s, func(d string) string {
-		if len(d) >= 7 {
-			return "[number]"
-		}
-		return d
-	})
-	s = longToken.ReplaceAllString(s, "[redacted]")
-	s = strings.Join(strings.Fields(s), " ")
-	if utf8.RuneCountInString(s) > max {
-		r := []rune(s)
-		s = strings.TrimRight(string(r[:max]), " ") + "…"
+		return "https://" + probeHost
 	}
-	return s
+	for _, suffix := range integrationWildcards {
+		if prefix, ok := strings.CutSuffix(host, suffix); ok && prefix != "" && hostLabels.MatchString(prefix) {
+			return "https://*" + suffix
+		}
+	}
+	return externalURI
 }
 
-// integrationMessages are the failures Scry's own scripts (stripe.js)
-// report. An integration_error is forwarded as one of these fixed codes,
-// with at most a short scrubbed detail; any other text is not forwarded.
-var integrationMessages = []string{
-	"stripe.js unavailable",
-	"stripe card element failed to mount",
-	"stripe card element not ready after 15s",
-	"stripe card element loaderror",
-	"stripe createPaymentMethod rejected",
+// integrationCodes are the failures stripe.js reports. Any other code, or
+// none, is integrationUnknown.
+var integrationCodes = map[string]bool{
+	"stripe_script_missing": true, "stripe_mount_failed": true, "stripe_load_error": true,
+	"stripe_ready_timeout": true, "stripe_payment_method_failed": true,
 }
 
 const (
-	integrationDetailMax = 80
-	unknownIntegration   = "unrecognized integration error"
+	integrationUnknown = "integration_unknown"
+	resourceLoadFailed = "resource_load_failed"
 )
 
-func integrationMessage(raw string, p uriPolicy) string {
-	msg := strings.TrimSpace(raw)
-	if msg == "" {
-		return ""
+func integrationCode(code string) string {
+	if c := strings.TrimSpace(code); integrationCodes[c] {
+		return c
 	}
-	for _, code := range integrationMessages {
-		if !strings.HasPrefix(msg, code) {
-			continue
-		}
-		rest := msg[len(code):]
-		if rest != "" && !strings.HasPrefix(rest, ":") {
-			continue // "stripe.js unavailableXYZ" is not the code
-		}
-		if d := p.text(strings.TrimPrefix(rest, ":"), integrationDetailMax); d != "" {
-			return code + ": " + d
-		}
-		return code
+	return integrationUnknown
+}
+
+// errorClasses are the error names a js_error or unhandled_rejection may
+// report. The exception's message is never read.
+var errorClasses = map[string]bool{
+	"TypeError": true, "ReferenceError": true, "SyntaxError": true, "RangeError": true, "URIError": true,
+	"SecurityError": true, "NetworkError": true, "AbortError": true, "DOMException": true, "Error": true,
+	"UnhandledRejection": true, "UnknownError": true,
+}
+
+func errorClass(name, kind string) string {
+	if n := strings.TrimSpace(name); errorClasses[n] {
+		return n
 	}
-	return unknownIntegration
+	if kind == "unhandled_rejection" {
+		return "UnhandledRejection"
+	}
+	return "UnknownError"
 }

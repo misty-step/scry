@@ -40,6 +40,9 @@ type Server struct {
 	Log      *slog.Logger
 	DemoHint bool // show the demo account on the sign-in page (seeded test mode)
 	Secure   bool // set cookies Secure (behind TLS)
+	// BaseURL is SCRY_BASE_URL, Scry's external origin. Client telemetry
+	// attributes /static/ assets on it to Scry; the request Host never is.
+	BaseURL string
 
 	pages   map[string]*template.Template
 	handler http.Handler

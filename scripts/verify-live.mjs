@@ -378,7 +378,8 @@ async function localSignup(context, base, opt) {
 
 // simulateViolation loads / and makes the page load an image its policy
 // forbids, then checks the violation is seen and POSTed to
-// /api/client-error, answered 204, with no query string in what app.js sent.
+// /api/client-error, answered 204, with no query string and only closed
+// telemetry fields in what app.js sent.
 async function simulateViolation(context, base, opt) {
   const page = await context.newPage();
   const posts = [];
@@ -424,6 +425,12 @@ async function simulateViolation(context, base, opt) {
     check("simulated violation: app.js POSTed it to /api/client-error", fromApp.some(p => /"kind":"csp_violation"/.test(p.body) && /"img-src"/.test(p.body)), sim.appReports);
     check("simulated violation: /api/client-error answered 204", responses.length > 0 && responses.every(s => s === 204), responses);
     check("simulated violation: no query string or fragment sent", fromApp.length > 0 && fromApp.every(p => !p.body.includes("verify-probe-secret") && !p.body.includes("#frag")));
+    // app.js sends only the closed telemetry fields (no free-text message);
+    // the server maps each onto its own allowlists again before logging.
+    const fields = new Set(["kind", "route", "violatedDirective", "effectiveDirective", "blockedURI", "disposition", "code", "errorClass", "sourceFile", "line", "column"]);
+    check("simulated violation: app.js sent only closed telemetry fields", fromApp.length > 0 && fromApp.every(p => {
+      try { return Object.keys(JSON.parse(p.body)).every(k => fields.has(k)); } catch { return false; }
+    }), fromApp.map(p => { try { return Object.keys(JSON.parse(p.body)); } catch { return ["unparsed"]; } }));
   } catch (err) {
     check("simulated violation", false, String(err.message || err).split("\n")[0]);
   } finally {

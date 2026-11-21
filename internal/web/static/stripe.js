@@ -11,24 +11,26 @@
   var unavailable = "The card form couldn't load. Check your connection, allow js.stripe.com in any content blocker, then reload this page.";
   var broken = false;
 
-  function report(message) {
-    if (window.scryReport) window.scryReport("integration_error", message);
+  // report sends one of the fixed integration codes the server accepts;
+  // never Stripe's or the browser's error text.
+  function report(code) {
+    if (window.scryReport) window.scryReport("integration_error", code);
   }
 
   // fail shows an actionable message in place of a silent empty field, and
   // keeps the form from posting without a card.
-  function fail(message) {
+  function fail(code) {
     if (broken) return;
     broken = true;
     if (error) error.textContent = unavailable;
-    report(message);
+    report(code);
   }
 
   form.addEventListener("submit", function (e) {
     if (broken) { e.preventDefault(); if (error) error.textContent = unavailable; }
   });
 
-  if (!window.Stripe) { fail("stripe.js unavailable: window.Stripe is missing"); return; }
+  if (!window.Stripe) { fail("stripe_script_missing"); return; }
 
   var stripe, card;
   try {
@@ -38,18 +40,18 @@
     card = stripe.elements().create("card", { style: { base: { fontSize: "16px", lineHeight: "24px" } } });
     card.mount(mount);
   } catch (err) {
-    fail("stripe card element failed to mount: " + (err && err.message ? err.message : String(err)));
+    fail("stripe_mount_failed");
     return;
   }
   // The card field is an iframe from js.stripe.com; if it never becomes
   // ready (blocked by policy or network), say so rather than leave a blank.
   var ready = false;
-  var timer = setTimeout(function () { if (!ready) fail("stripe card element not ready after 15s"); }, 15000);
+  var timer = setTimeout(function () { if (!ready) fail("stripe_ready_timeout"); }, 15000);
   card.on("ready", function () { ready = true; clearTimeout(timer); });
   try {
-    card.on("loaderror", function (e) {
+    card.on("loaderror", function () {
       clearTimeout(timer);
-      fail("stripe card element loaderror: " + (e && e.error && e.error.type ? e.error.type : "unknown"));
+      fail("stripe_load_error");
     });
   } catch (err) { /* older Stripe.js: the ready timer still covers it */ }
   card.on("change", function (e) { if (!broken) error.textContent = e.error ? e.error.message : ""; });
@@ -66,10 +68,10 @@
       }
       hidden.value = res.paymentMethod.id;
       form.submit();
-    }, function (err) {
+    }, function () {
       error.textContent = "Couldn't reach the card processor. Check your connection and try again.";
       button.disabled = false;
-      report("stripe createPaymentMethod rejected: " + (err && err.message ? err.message : String(err)));
+      report("stripe_payment_method_failed");
     });
   });
 })();

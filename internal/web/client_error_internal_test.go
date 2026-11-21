@@ -49,8 +49,9 @@ func TestClientErrLimiterGlobalBudget(t *testing.T) {
 	}
 }
 
-// testPolicy is a Scry served at scry.example with a Clerk instance.
-var testPolicy = uriPolicy{self: "scry.example", clerk: "clerk.scry-csp.example"}
+// testPolicy is a Scry configured with SCRY_BASE_URL=https://scry.example
+// and a Clerk instance.
+var testPolicy = uriPolicy{base: "scry.example", clerk: "clerk.scry-csp.example"}
 
 func TestSanitizeClientURI(t *testing.T) {
 	for in, want := range map[string]string{
@@ -65,52 +66,90 @@ func TestSanitizeClientURI(t *testing.T) {
 		"data:image/png;base64,AAAA":          "data",
 		"blob:https://scry.example/1234-abcd": "blob",
 		"about:blank":                         "about",
+		"filesystem:https://x.example/temp/a": "filesystem",
 		"chrome-extension://abcdef/inject.js": "extension",
-		"javascript:alert(document.cookie)":   "javascript",
-		"not a url %%%":                       "unparsed",
-		"relative/path?x=1":                   "unparsed",
+		"moz-extension://abcdef/inject.js":    "extension",
+		"safari-extension://a/b":              "extension",
+		"safari-web-extension://a/b":          "extension",
+		"edge-extension://a/b":                "extension",
 
-		// Integrations keep their (sanitized) path; query, fragment and
-		// userinfo never survive.
-		"https://js.stripe.com/v3/?x=1#y":                                            "https://js.stripe.com/v3/",
-		"https://u:p@js.stripe.com/v3/elements-inner-card.html?a=b#c":                "https://js.stripe.com/v3/elements-inner-card.html",
-		"https://hooks.stripe.com/3d_secure":                                         "https://hooks.stripe.com/3d_secure",
-		"https://b.js.stripe.com/v3/fingerprinted/js/x.js":                           "https://b.js.stripe.com/v3/fingerprinted/js/x.js",
-		"https://happy-cat-12.clerk.accounts.dev/npm/x.js?k=pk_test_1":               "https://happy-cat-12.clerk.accounts.dev/npm/x.js",
-		"https://clerk.scry-csp.example/npm/@clerk/clerk-js@5/dist/clerk.browser.js": "https://clerk.scry-csp.example/npm/@clerk/clerk-js@5/dist/clerk.browser.js",
-		"https://js.stripe.com/reset/" + "abcdefghijklmnopqrstuvwxyz012345":          "https://js.stripe.com/reset/:token",
-		"https://js.stripe.com/u/bob@example.com/42":                                 "https://js.stripe.com/u/:email/:id",
-		"https://js.stripe.com/u/bob%40example.com":                                  "https://js.stripe.com/u/:email",
-		"https://js.stripe.com/cards/4242424242424242":                               "https://js.stripe.com/cards/:number",
-		"https://js.stripe.com/4242-4242-4242-4242":                                  "https://js.stripe.com/:number",
-		"https://js.stripe.com/c/card4242424242424242.png":                           "https://js.stripe.com/c/:number",
+		// Allowlisted integrations are https://<host> only: no path, query,
+		// fragment, userinfo or port.
+		"https://js.stripe.com/v3/?x=1#y":                                            "https://js.stripe.com",
+		"https://u:p@js.stripe.com/v3/elements-inner-card.html?a=b#c":                "https://js.stripe.com",
+		"https://js.stripe.com/cards/4242424242424242":                               "https://js.stripe.com",
+		"https://js.stripe.com/u/bob@example.com/42":                                 "https://js.stripe.com",
+		"https://js.stripe.com:443/v3/":                                              "https://js.stripe.com",
+		"http://js.stripe.com/v3/":                                                   "https://js.stripe.com",
+		"https://hooks.stripe.com/3d_secure":                                         "https://hooks.stripe.com",
+		"https://api.stripe.com/v1/payment_methods":                                  "https://api.stripe.com",
+		"https://r.stripe.com/b":                                                     "https://r.stripe.com",
+		"https://m.stripe.network/inner.html":                                        "https://m.stripe.network",
+		"https://q.stripe.com/x":                                                     "https://q.stripe.com",
+		"https://errors.stripe.com/x":                                                "https://errors.stripe.com",
+		"https://challenges.cloudflare.com/turnstile/v0/api.js":                      "https://challenges.cloudflare.com",
+		"https://img.clerk.com/avatar/alice-smith.png":                               "https://img.clerk.com",
+		"https://clerk-telemetry.com/v1/event":                                       "https://clerk-telemetry.com",
+		"https://clerk.scry-csp.example/npm/@clerk/clerk-js@5/dist/clerk.browser.js": "https://clerk.scry-csp.example",
+		"https://b.js.stripe.com/v3/fingerprinted/js/x.js":                           "https://*.js.stripe.com",
+		"https://alice-smith.js.stripe.com/x":                                        "https://*.js.stripe.com",
+		"https://a.b.protect.clerk.com/p":                                            "https://*.protect.clerk.com",
 		"https://csp-probe.invalid/probe.png?token=verify-probe-secret#frag":         "https://csp-probe.invalid/probe.png",
+		"https://csp-probe.invalid/private/notes.png":                                "https://csp-probe.invalid",
 
-		// Unknown hosts keep scheme://host only: no path at all.
-		"https://u:p@Evil.Example:8443/a/b?c":                    "https://evil.example:8443",
-		"wss://ws.example/socket?token=abc":                      "wss://ws.example",
-		"https://cdn.example/lib.js?key=pk_live_abcdefgh":        "https://cdn.example",
-		"https://x.example/u/bob@example.com/42":                 "https://x.example",
-		"https://x.example/cards/4242424242424242":               "https://x.example",
-		"https://x.example/private-notes/my-diagnosis":           "https://x.example",
-		"//x.example/protocol-relative/secret":                   "//x.example",
-		"http://203.0.113.9/a?b":                                 "http://[redacted-host]",
-		"http://[2001:db8::1]:8080/a":                            "http://[redacted-host]",
-		"https://bob@example.com@evil.example/x":                 "https://evil.example",
-		"https://sk_live_abcdef123456.evil.example/x":            "https://[redacted-host]",
-		"https://a1b2c3d4e5f6a7b8c9d0e1f2.evil.example/":         "https://[redacted-host]",
-		"https://4242424242424242.evil.example/":                 "https://[redacted-host]",
-		"https://" + strings.Repeat("a", 64) + ".evil.example/x": "https://[redacted-host]",
-		"https://scry.example.evil.example/static/app.js?x=1":    "https://scry.example.evil.example",
-		"https://js.stripe.com.evil.example/v3/cards/42?x=1":     "https://js.stripe.com.evil.example",
+		// Everything else is external: no host, no path.
+		"https://js.stripe.com:8443/v3/":                         externalURI,
+		"wss://js.stripe.com/socket":                             externalURI,
+		"https://js.stripe.com.evil.example/v3/cards/42?x=1":     externalURI,
+		"https://evil-js.stripe.com/x":                           externalURI,
+		"https://.js.stripe.com/x":                               externalURI,
+		"https://protect.clerk.com/x":                            externalURI,
+		"https://clerk.accounts.dev/x":                           externalURI,
+		"https://u:p@Evil.Example:8443/a/b?c":                    externalURI,
+		"wss://ws.example/socket?token=abc":                      externalURI,
+		"https://cdn.example/lib.js?key=pk_live_abcdefgh":        externalURI,
+		"https://x.example/private-notes/my-diagnosis":           externalURI,
+		"//x.example/protocol-relative/secret":                   externalURI,
+		"//scry.example/static/app.js":                           externalURI,
+		"//js.stripe.com/v3/":                                    externalURI,
+		"/\\evil.example/static/app.js":                          externalURI,
+		"http://203.0.113.9/a?b":                                 externalURI,
+		"http://[2001:db8::1]:8080/a":                            externalURI,
+		"https://bob@example.com@evil.example/x":                 externalURI,
+		"https://sk_live_abcdef123456.evil.example/x":            externalURI,
+		"https://" + strings.Repeat("a", 64) + ".evil.example/x": externalURI,
+		"https://scry.example.evil.example/static/app.js?x=1":    externalURI,
+		"javascript:alert(document.cookie)":                      externalURI,
+		"not a url %%%":                                          externalURI,
+		"relative/path?x=1":                                      externalURI,
+		"bob@example.com":                                        externalURI,
+		"trusted-types-policy":                                   externalURI,
+		"https://" + strings.Repeat("x", 3000):                   externalURI,
 
-		// Scry itself: /static/ keeps its path, pages are route templates.
-		"/static/app.js?v=2":                                "/static/app.js",
-		"https://scry.example/static/stripe.js#x":           "https://scry.example/static/stripe.js",
-		"https://scry.example/library/items/42?q=private":   "https://scry.example/library/items/:id",
-		"https://scry.example/private/bob/4242424242424242": "https://scry.example/other",
-		"/my-secret-page":                                   "/other",
-		"/api/v1/items?token=x":                             "/api/:path",
+		// First-party: exactly the embedded static files, as a bare path,
+		// on a relative URL, SCRY_BASE_URL's origin, the production host or
+		// loopback. Any other first-party path is external.
+		"/static/app.js?v=2":                                 "/static/app.js",
+		"/static/stripe.js#x":                                "/static/stripe.js",
+		"/static/clerk.js":                                   "/static/clerk.js",
+		"/static/app.css":                                    "/static/app.css",
+		"https://scry.example/static/stripe.js#x":            "/static/stripe.js",
+		"https://scry.mistystep.io/static/app.js?token=x":    "/static/app.js",
+		"https://scry.mistystep.io:443/static/app.js":        "/static/app.js",
+		"http://127.0.0.1:18080/static/app.css":              "/static/app.css",
+		"http://localhost:8080/static/clerk.js":              "/static/clerk.js",
+		"https://scry.mistystep.io:8443/static/app.js":       externalURI,
+		"https://scry.example:8443/static/app.js":            externalURI,
+		"/static/private-notes.js":                           externalURI,
+		"/static/app.js/extra":                               externalURI,
+		"/static/../static/app.js":                           externalURI,
+		"https://scry.example/library/items/42?q=private":    externalURI,
+		"https://scry.example/private/bob/4242424242424242":  externalURI,
+		"https://scry.mistystep.io/signin?token=x":           externalURI,
+		"/my-secret-page":                                    externalURI,
+		"/api/v1/items?token=x":                              externalURI,
+		"https://evil.example/static/app.js":                 externalURI,
+		"https://scry.mistystep.io.evil.example/static/a.js": externalURI,
 	} {
 		if got, _ := testPolicy.uri(in); got != want {
 			t.Errorf("uri(%q) = %q, want %q", in, got, want)
@@ -119,10 +158,60 @@ func TestSanitizeClientURI(t *testing.T) {
 	if _, ext := testPolicy.uri("moz-extension://x/y"); !ext {
 		t.Error("moz-extension is an extension")
 	}
-	// Without a known own host (no Host header), a scheme://host URL is an
-	// unknown host and keeps no path.
-	if got, _ := (uriPolicy{}).uri("https://scry.example/static/app.js"); got != "https://scry.example" {
-		t.Errorf("no self host: %q", got)
+	// Without SCRY_BASE_URL, an arbitrary host is never first-party, and
+	// without Clerk configured no Clerk host is an integration.
+	for in, want := range map[string]string{
+		"https://scry.example/static/app.js":           externalURI,
+		"https://clerk.scry-csp.example/npm/x.js":      externalURI,
+		"https://scry.mistystep.io/static/stripe.js":   "/static/stripe.js",
+		"https://js.stripe.com/v3/elements-inner.html": "https://js.stripe.com",
+	} {
+		if got, _ := (uriPolicy{}).uri(in); got != want {
+			t.Errorf("unconfigured uri(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// The first-party asset allowlist is exactly the embedded static files.
+func TestClientStaticAssetsAreEmbeddedFiles(t *testing.T) {
+	assets := staticAssets()
+	for _, want := range []string{"/static/app.js", "/static/stripe.js", "/static/clerk.js", "/static/app.css"} {
+		if !assets[want] {
+			t.Errorf("missing %s from %v", want, assets)
+		}
+	}
+	for path := range assets {
+		if _, err := staticFS.ReadFile(strings.TrimPrefix(path, "/")); err != nil {
+			t.Errorf("%s is not embedded: %v", path, err)
+		}
+	}
+}
+
+func TestSanitizeClientDirective(t *testing.T) {
+	for _, d := range []string{"default-src", "script-src", "script-src-elem", "script-src-attr", "style-src",
+		"style-src-elem", "style-src-attr", "img-src", "font-src", "connect-src", "frame-src", "worker-src",
+		"child-src", "object-src", "media-src", "manifest-src", "form-action", "frame-ancestors", "base-uri",
+		"navigate-to", "upgrade-insecure-requests"} {
+		if got := sanitizeDirective(d); got != d {
+			t.Errorf("sanitizeDirective(%q) = %q", d, got)
+		}
+	}
+	for in, want := range map[string]string{
+		"":                                  "",
+		"   ":                               "",
+		"FRAME-SRC":                         "frame-src",
+		"frame-src https://js.stripe.com":   "frame-src",
+		"alice-smith-diagnosis":             otherDirective,
+		"script-src-private":                otherDirective,
+		"require-trusted-types-for":         otherDirective,
+		"bob@example.com":                   otherDirective,
+		"https://evil.example/frame-src":    otherDirective,
+		strings.Repeat("img-src", 10):       otherDirective,
+		"img-src\n4242424242424242 private": "img-src",
+	} {
+		if got := sanitizeDirective(in); got != want {
+			t.Errorf("sanitizeDirective(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
@@ -150,11 +239,11 @@ func TestSanitizeClientRoute(t *testing.T) {
 		"/billing/card":                                  "/billing/card",
 		"/settings":                                      "/settings",
 		"/healthz":                                       "/healthz",
-		"/api/v1/items":                                  "/api/:path",
-		"/api/client-error?x=1":                          "/api/:path",
 		"https://scry.mistystep.io":                      "/",
 
 		"":                                   "/other",
+		"/api/v1/items":                      "/other",
+		"/api/client-error?x=1":              "/other",
 		"javascript:alert(1)":                "/other",
 		"relative/path":                      "/other",
 		"//evil.example/study":               "/other",
@@ -174,62 +263,82 @@ func TestSanitizeClientRoute(t *testing.T) {
 	}
 }
 
-func TestSanitizeClientText(t *testing.T) {
-	got := testPolicy.text("line one\nline two with bob@example.com Bearer abc.def token=xyz https://h.example/p?q=1 ", 300)
-	want := "line one line two with [email] [redacted] [redacted] https://h.example"
-	if got != want {
-		t.Fatalf("got %q\nwant %q", got, want)
-	}
+// Diagnostic codes are server-defined: integration codes and error classes
+// come from closed allowlists, and no message text is ever read.
+func TestSanitizeClientCodes(t *testing.T) {
 	for in, want := range map[string]string{
-		// Relative URLs and bare queries lose their query and fragment.
-		"redirect to /signup?token=abc123 failed":      "redirect to /signup failed",
-		"bad /signin?token=secret123#frag here":        "bad /signin here",
-		"/foo/bar?token=abc#frag":                      "/foo/bar",
-		"got ?secret=1 back":                           "got ?[redacted] back",
-		"jump #access_token=xyz":                       "jump #[redacted]",
-		"path?email=a@b.com":                           "path",
-		"fetch(\"/api/v1/items?key=k\") failed":        "fetch(\"/api/v1/items\") failed",
-		"at https://js.stripe.com/v3/x.js?y=1:3:4":     "at https://js.stripe.com/v3/x.js",
-		"at https://scry.example/library/items/42?q=1": "at https://scry.example/library/items/:id",
-		"at https://evil.example/private/notes?q=1":    "at https://evil.example",
-		// Card-like numbers anywhere: in text, in paths, inside words.
-		"card 4242 4242 4242 4242 declined":  "card [number] declined",
-		"card 4242-4242-4242-4242":           "card [number]",
-		"GET /cards/4242424242424242 failed": "GET /cards/[number] failed",
-		"GET /4242-4242-4242-4242/x":         "GET /[number]/x",
-		"id=card4242424242424242":            "id=card[number]",
-		"phone 5551234567":                   "phone [number]",
-		"line 12 column 345678 ok":           "line 12 column 345678 ok",
-		"TypeError: card is undefined":       "TypeError: card is undefined",
+		"stripe_script_missing":        "stripe_script_missing",
+		"stripe_mount_failed":          "stripe_mount_failed",
+		"stripe_load_error":            "stripe_load_error",
+		"stripe_ready_timeout":         "stripe_ready_timeout",
+		"stripe_payment_method_failed": "stripe_payment_method_failed",
+		"integration_unknown":          integrationUnknown,
+		"":                             integrationUnknown,
+		"stripe_script_missing: alice": integrationUnknown,
+		"STRIPE_MOUNT_FAILED":          integrationUnknown,
+		"stripe.js unavailable":        integrationUnknown,
+		"my diagnosis bob@example.com": integrationUnknown,
 	} {
-		if got := testPolicy.text(in, 300); got != want {
-			t.Errorf("text(%q) = %q, want %q", in, got, want)
+		ev, ok := sanitizeClientReport(clientReport{Kind: "integration_error", Code: in}, testPolicy)
+		if !ok || ev.code != want {
+			t.Errorf("integration_error code %q = %q (ok %v), want %q", in, ev.code, ok, want)
 		}
 	}
-	long := testPolicy.text(strings.Repeat("a ", 400), clientMessageMax)
-	if n := len([]rune(long)); n > clientMessageMax+1 {
-		t.Fatalf("not capped: %d runes", n)
+	for _, c := range []struct{ kind, class, want string }{
+		{"js_error", "TypeError", "TypeError"},
+		{"js_error", "ReferenceError", "ReferenceError"},
+		{"js_error", "SyntaxError", "SyntaxError"},
+		{"js_error", "RangeError", "RangeError"},
+		{"js_error", "URIError", "URIError"},
+		{"js_error", "SecurityError", "SecurityError"},
+		{"js_error", "NetworkError", "NetworkError"},
+		{"js_error", "AbortError", "AbortError"},
+		{"js_error", "DOMException", "DOMException"},
+		{"js_error", "Error", "Error"},
+		{"js_error", "", "UnknownError"},
+		{"js_error", "AliceSmithError", "UnknownError"},
+		{"js_error", "TypeError: card 4242424242424242", "UnknownError"},
+		{"unhandled_rejection", "TypeError", "TypeError"},
+		{"unhandled_rejection", "", "UnhandledRejection"},
+		{"unhandled_rejection", "private text", "UnhandledRejection"},
+	} {
+		ev, ok := sanitizeClientReport(clientReport{Kind: c.kind, ErrorClass: c.class}, testPolicy)
+		if !ok || ev.code != c.want {
+			t.Errorf("%s class %q = %q (ok %v), want %q", c.kind, c.class, ev.code, ok, c.want)
+		}
+	}
+	ev, ok := sanitizeClientReport(clientReport{Kind: "resource_error", Code: "alice", SourceFile: "https://x.example/a.js"}, testPolicy)
+	if !ok || ev.code != resourceLoadFailed || ev.source != externalURI {
+		t.Errorf("resource_error = %+v", ev)
+	}
+	// Line and column are kept only for an identified source.
+	ev, _ = sanitizeClientReport(clientReport{Kind: "js_error", SourceFile: "/static/app.js", Line: 3, Column: 9}, testPolicy)
+	if ev.summary("b") != "client js_error route=/other code=UnknownError source=/static/app.js:3:9 build=b" {
+		t.Errorf("summary %q", ev.summary("b"))
+	}
+	ev, _ = sanitizeClientReport(clientReport{Kind: "js_error", SourceFile: "https://x.example/a.js", Line: 3, Column: 9}, testPolicy)
+	if ev.line != 0 || ev.column != 0 || ev.summary("b") != "client js_error route=/other code=UnknownError source=external build=b" {
+		t.Errorf("external source keeps position: %q", ev.summary("b"))
 	}
 }
 
-func TestSanitizeClientMessagesByKind(t *testing.T) {
-	ev, ok := sanitizeClientReport(clientReport{Kind: "js_error", Route: "/study", Message: strings.Repeat("boom ", 100)}, testPolicy)
-	if !ok || len([]rune(ev.message)) > clientMessageMax+1 || strings.ContainsAny(ev.message, "\n\r") {
-		t.Fatalf("js_error message not capped to one %d-rune line: %q", clientMessageMax, ev.message)
-	}
-	for in, want := range map[string]string{
-		"stripe.js unavailable: window.Stripe is missing":                              "stripe.js unavailable: window.Stripe is missing",
-		"stripe.js unavailable":                                                        "stripe.js unavailable",
-		"stripe card element not ready after 15s":                                      "stripe card element not ready after 15s",
-		"stripe card element loaderror: invalid_request_error":                         "stripe card element loaderror: invalid_request_error",
-		"stripe createPaymentMethod rejected: Failed to fetch https://x.example/a?b=c": "stripe createPaymentMethod rejected: Failed to fetch https://x.example",
-		"stripe card element failed to mount: " + strings.Repeat("x ", 200):            "stripe card element failed to mount: " + strings.TrimSpace(strings.Repeat("x ", 40)) + "…",
-		"my diagnosis is private, bob@example.com":                                     unknownIntegration,
-		"stripe.js unavailableANDSECRET":                                               unknownIntegration,
-	} {
-		ev, ok := sanitizeClientReport(clientReport{Kind: "integration_error", Message: in}, testPolicy)
-		if !ok || ev.message != want {
-			t.Errorf("integration_error %q = %q (ok %v), want %q", in, ev.message, ok, want)
+// A report's summary and attributes are built only from closed sets, so no
+// caller-supplied value can reach the log or Sentry, whatever is sent.
+func TestSanitizeClientReportClosedSets(t *testing.T) {
+	hostile := "alice-smith bob@example.com 4242424242424242 https://evil.example/private?token=sk_live_x#frag //proto.example/p"
+	for _, kind := range []string{"csp_violation", "js_error", "unhandled_rejection", "resource_error", "integration_error"} {
+		ev, ok := sanitizeClientReport(clientReport{Kind: kind, Route: hostile, ViolatedDirective: hostile,
+			EffectiveDirective: hostile, BlockedURI: hostile, SourceFile: hostile, Code: hostile,
+			ErrorClass: hostile, Disposition: hostile, Line: 5, Column: 6}, testPolicy)
+		if !ok {
+			t.Fatalf("%s refused", kind)
+		}
+		for _, v := range []string{ev.summary("b"), ev.route, ev.violated, ev.effective, ev.blocked, ev.source, ev.code, ev.disposition} {
+			for _, leak := range []string{"alice", "bob", "4242", "evil", "private", "token", "sk_live", "frag", "proto"} {
+				if strings.Contains(v, leak) {
+					t.Errorf("%s: %q carries %q", kind, v, leak)
+				}
+			}
 		}
 	}
 }

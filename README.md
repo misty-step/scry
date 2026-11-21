@@ -43,7 +43,7 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 | SCRY_MODE | Bare binary defaults to live and fails without credentials. **Use test for this delivery.** make run and image set test. |
 | SCRY_DB | data/scry.db; make run uses data/demo.db unless overridden |
 | SCRY_SEED_DEMO | 1 seeds demo, only in test mode |
-| SCRY_BASE_URL | External HTTPS origin; forces Secure cookies |
+| SCRY_BASE_URL | External HTTPS origin; forces Secure cookies, and is the origin (besides scry.mistystep.io and loopback) whose /static/ assets client telemetry attributes to Scry |
 | SCRY_TEST_SPEECH | Optional fixed test transcription |
 | SCRY_TEST_JUDGMENTS | Test mode only: comma-separated verdict script (right, close, missed) |
 | SCRY_TEST_EXPLAIN | Test mode only: fail or slow exercises the explanation fallback |
@@ -128,16 +128,23 @@ script errors, unhandled rejections, failed resource loads, a card field that
 never loads). It is public and CSRF-exempt, accepts `application/csp-report`
 and `application/json` up to 8 KiB (413 beyond), allows 20 reports per address
 and 240 overall per minute (429 beyond; the address table is capped at 4096),
-and forwards nothing a caller chose: the route becomes one of Scry's route
-templates (`/library/items/:id`, `/api/:path`, …) or `/other`; a blocked URI or
-source file keeps its sanitized path only for Scry's own `/static/` assets and
-the integrations it loads (Stripe, Clerk, Turnstile), any other host is
-`scheme://host` (or `[redacted-host]` when the name is an IP, over-long or
-token-shaped), and never a query, fragment or userinfo; messages lose the query
-and fragment of absolute and relative URLs and have emails, card-like numbers,
-long digit runs and token-shaped values replaced, capped at one 160-character
-line, while `integration_error` is one of stripe.js's fixed codes. It logs each report as one error line naming kind, route, directive, blocked
-URI and build SHA, which live mode forwards to Sentry through the existing
+and forwards nothing a caller chose: every field is mapped onto a closed,
+server-defined set before it is logged. The route is one of Scry's route
+templates (`/library/items/:id`, …) or `/other`; the directive is a standard
+CSP directive name or `other-directive`; a blocked URI or source file is a CSP
+keyword (`inline`, `eval`, `data`, `blob`, …), `extension`, the bare path of an
+embedded `/static/` file (only when relative or on SCRY_BASE_URL's origin,
+scry.mistystep.io or loopback; the request Host header is never trusted),
+`https://<host>` for an allowlisted Stripe, Clerk or Turnstile host
+(`https://*.js.stripe.com` / `https://*.protect.clerk.com` for their
+subdomains), or `external`; never a path, query, fragment or userinfo. No
+message text is read: `integration_error` carries one of stripe.js's fixed
+codes (`stripe_script_missing`, …, else `integration_unknown`),
+`resource_error` the code `resource_load_failed`, and `js_error` /
+`unhandled_rejection` an allowlisted error class (`TypeError`, …,
+`UnknownError`) with the source and line/column. It logs each report as one
+error line naming kind, route, directive or code, blocked URI or source and
+build SHA, which live mode forwards to Sentry through the existing
 SENTRY_DSN. Identical reports within 10 minutes (the browser's native report
 and app.js's) and browser-extension noise are logged at warn level only.
 Behind a reverse proxy every client shares the proxy's address, so the
@@ -423,7 +430,7 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Slice 20: OpenRouter drafting stream (keepalives, chunked JSONL, [DONE], usage.cost, refusal, truncation, redaction, no redirects) and explainer | internal/ai.TestSlice20_OpenRouterDraftStream; internal/ai.TestSlice20_OpenRouterDraftCostNeverInferred; internal/ai.TestSlice20_OpenRouterDraftFailures; internal/ai.TestSlice20_OpenRouterDraftStopsAtDone; internal/ai.TestSlice20_OpenRouterNoRedirectAndRedaction; internal/ai.TestSlice20_OpenRouterExplain; internal/ai.TestSlice20_OpenRouterExplainClampsAndFails; internal/ai.TestSlice20_NewClaudeWithRouterPrecedence; internal/ai.TestSlice20_DirectExplainUnchanged |
 | Slice 20: OpenRouter speech (input_audio, MIME formats, empty audio, redaction, bounded reads, no redirects), JWT-shaped key rejection, NewTranscriber precedence | internal/speech.TestSlice20_OpenRouterTranscribeRequest; internal/speech.TestSlice20_OpenRouterAudioFormat; internal/speech.TestSlice20_EmptyAudioIsNothingHeard; internal/speech.TestSlice20_OpenRouterTranscriptCleanup; internal/speech.TestSlice20_OpenRouterTranscribeFailures; internal/speech.TestSlice20_JWTShapedKeys; internal/speech.TestSlice20_TranscribeRefusesJWTShapedKeys; internal/speech.TestSlice20_NewTranscriberPrecedence; internal/speech.TestSlice20_OpenAIErrorRedactedAndBounded |
 | Slice 30: one composed CSP on every route for local, Stripe-only, Clerk-only and Clerk+Stripe (Stripe frames never dropped by Clerk; report-uri; tight base-uri, form-action, frame-ancestors) | TestSlice30CSPComposesStripeAndClerk |
-| Slice 30: browser CSP reports and app.js telemetry reach Sentry with route, directive, sanitized blocked URI and build SHA; secrets stripped; 413/429/400/415; de-duplicated; extensions kept local; CSRF-exempt; bounded memory | TestSlice30ClientErrorsReachSentry; TestSlice30ClientErrorStripsSecretsBeforeSentry; TestSlice30ClientErrorForwardsNoCallerData; TestSlice30ClientErrorLimits; TestSlice30ClientErrorDedupesAndKeepsExtensionsLocal; TestSlice30ClientErrorIsCSRFExempt; TestClientErrLimiterStaysBounded; TestClientErrLimiterGlobalBudget; TestSanitizeClientURI; TestSanitizeClientRoute; TestSanitizeClientText; TestSanitizeClientMessagesByKind; TestSentryLivePathSendsErrorLevel |
-| Slice 30: app.js reports violations/errors/rejections sanitized, de-duplicated, capped at 5 per page; stripe.js shows an actionable message and reports when Stripe.js is missing or the card field never loads | TestSlice30AppJSReportsClientErrors; TestSlice30StripeJSFailsLoudly |
+| Slice 30: browser CSP reports and app.js telemetry reach Sentry with route, directive, sanitized blocked URI and build SHA; secrets stripped; 413/429/400/415; de-duplicated; extensions kept local; CSRF-exempt; bounded memory | TestSlice30ClientErrorsReachSentry; TestSlice30ClientErrorStripsSecretsBeforeSentry; TestSlice30ClientErrorForwardsNoCallerData; TestSlice30ClientErrorLimits; TestSlice30ClientErrorDedupesAndKeepsExtensionsLocal; TestSlice30ClientErrorIsCSRFExempt; TestClientErrLimiterStaysBounded; TestClientErrLimiterGlobalBudget; TestSanitizeClientURI; TestClientStaticAssetsAreEmbeddedFiles; TestSanitizeClientDirective; TestSanitizeClientRoute; TestSanitizeClientCodes; TestSanitizeClientReportClosedSets; TestSentryLivePathSendsErrorLevel |
+| Slice 30: app.js reports violations/errors/rejections as fixed codes and error classes (no message text), de-duplicated, capped at 5 per page; stripe.js shows an actionable message and reports when Stripe.js is missing or the card field never loads | TestSlice30AppJSReportsClientErrors; TestSlice30StripeJSFailsLoudly |
 | Slice 12: /healthz build SHA, mode and provider readiness, no secrets; 503 on database failure | cmd/scry.TestHealthzAcrossModes; cmd/scry.TestHealthzDatabaseFailure; cmd/scry.TestBuildSHA; TestHealthzReadinessFields |
 | Slice 12: scry-watch never counts its own shutdown as an outage | internal/watch.TestCanceledProbeIsNotAnOutage |
