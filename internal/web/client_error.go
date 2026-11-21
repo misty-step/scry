@@ -32,7 +32,9 @@ const (
 	clientErrorWindow  = time.Minute
 	clientErrorMaxIPs  = 4096 // addresses tracked at once; memory stays bounded
 	clientErrorRepeat  = 10 * time.Minute
-	clientErrorMaxSeen = 1024 // distinct reports remembered for de-duplication
+	// A rolling repeat window can overlap parts of two fixed admission
+	// windows, plus the complete windows between them.
+	clientErrorMaxSeen = clientErrorAll * (int(clientErrorRepeat/clientErrorWindow) + 1)
 )
 
 // clientErrLimiter bounds what anonymous browsers can make Scry log: a fixed
@@ -100,7 +102,7 @@ func (l *clientErrLimiter) first(fingerprint string, now time.Time) bool {
 			}
 		}
 		if len(l.seen) >= clientErrorMaxSeen {
-			l.seen = map[string]time.Time{}
+			return false // preserve unexpired fingerprints rather than re-forward repeats
 		}
 	}
 	l.seen[fingerprint] = now

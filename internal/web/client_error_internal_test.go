@@ -49,6 +49,31 @@ func TestClientErrLimiterGlobalBudget(t *testing.T) {
 	}
 }
 
+func TestClientErrLimiterPreservesDedupWindowAtGlobalBudget(t *testing.T) {
+	var l clientErrLimiter
+	now := time.Date(2026, 11, 21, 9, 0, 0, 0, time.UTC)
+	fingerprint := "initial"
+	// Start the first admission window before recording the fingerprint, so
+	// another fixed window starts before its rolling window expires.
+	if !l.allow("seed", now) || !l.allow("seed", now.Add(time.Second)) || !l.first(fingerprint, now.Add(time.Second)) {
+		t.Fatal("first report was not accepted")
+	}
+	for bucket := 1; bucket <= int(clientErrorRepeat/clientErrorWindow); bucket++ {
+		tick := now.Add(time.Duration(bucket) * clientErrorWindow)
+		for i := 0; i < clientErrorAll; i++ {
+			if !l.allow(strconv.Itoa(i), tick) || !l.first(strconv.Itoa(bucket*clientErrorAll+i), tick) {
+				t.Fatalf("new report refused at bucket %d report %d", bucket, i)
+			}
+		}
+	}
+	if l.first(fingerprint, now.Add(clientErrorRepeat)) {
+		t.Fatal("the initial report was forwarded again before expiry")
+	}
+	if !l.first(fingerprint, now.Add(clientErrorRepeat+time.Second)) {
+		t.Fatal("the initial report was not forwarded again after expiry")
+	}
+}
+
 // testPolicy is a Scry configured with SCRY_BASE_URL=https://scry.example
 // and a Clerk instance.
 var testPolicy = uriPolicy{base: uriOrigin{"https", "scry.example", "443"}, clerk: "clerk.scry-csp.example"}
