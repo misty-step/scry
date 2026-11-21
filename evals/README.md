@@ -31,7 +31,7 @@ go run ./evals/cmd/scry-eval --surface drafting --out evals/results/latest --max
 | `--models key=a,b` | override one model list (keys: `grading`, `explainer`, `drafting`, `drafting-optional`, `speech-chat`, `speech-stt`, `speech-stt-probe`, `speech-audio-grade`); an empty list (`key=`) skips that list |
 | `--evidence dir` | also write flat copies with collector-friendly names (`*.jsonl` → `*.jsonl.txt`) |
 | `--seed` | blind-label shuffle seed (default `scry-eval-v1`) |
-| `--append` | continue a run in `--out`: raw logs are appended, the summary, blind sets and key are merged (a re-run surface replaces its earlier result), and the earlier invocations' spend counts against `--max-spend` |
+| `--append` | continue a run in `--out`: raw logs are appended, the summary, blind sets and key are merged, and the earlier invocations' spend counts against `--max-spend`. A surface that dispatched no call this time (interrupted, or every call refused for budget) keeps its earlier result, blind sets and key verbatim. A surface that ran merges per model: a model that made calls replaces its earlier row (`rows_from_earlier_invocations` lists the rows kept, `earlier_dataset` the earlier case count), and a case in both invocations is re-laid out blind over the union of models, so adding one model to an earlier run extends its comparison instead of replacing it |
 | `--case-parallel k` | drafting cases in flight at once (default 1), to keep wall-clock down |
 
 Outputs (in `--out`): `eval-summary.json` (every metric, total spend, git SHA,
@@ -50,12 +50,19 @@ cost, then 2× the highest exact cost that model has had so far. It refuses the
 call if spent + in-flight reservations + estimate would pass the cap. After the
 call, the reservation is replaced by the provider's exact `usage.cost`. A call
 whose cost is not reported (a timeout, an upstream error) is charged at its
-estimate, so missing costs make the breaker trip earlier, never later. Refused
+estimate, so missing costs make the breaker trip earlier, never later. A
+negative, NaN or infinite `usage.cost` is treated as missing, so a malformed
+cost can never lower the recorded spend. Refused
 calls are logged as `skipped` and left out of the metrics. Cases run in order,
 with all models of one case in parallel, so a stop leaves every model with the
 same cases. The summary also records OpenRouter's account usage (`GET
 /api/v1/key`) before and after the run, which checks the summed costs
 independently.
+
+If a raw log (`<surface>-raw.jsonl`) cannot be opened, encoded or written, or
+fails to close, the first such error is kept: no further paid call is
+dispatched, the summary is still written with a note, and the command exits
+non-zero with that error.
 
 ## The four surfaces
 

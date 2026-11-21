@@ -84,6 +84,13 @@ type Runner struct {
 	key      BlindKey
 	summary  map[string]any
 	prior    *priorRun
+	// outErr is the first raw-log open, encode, write or close failure.
+	// Once set, no further paid call is dispatched and Run returns it.
+	outErr error
+	// produced marks the surfaces that dispatched at least one call in
+	// this invocation; only those replace an earlier invocation's
+	// results and blind artifacts under --append.
+	produced map[string]bool
 }
 
 // priorRun is what an earlier invocation in the same OutDir left.
@@ -165,7 +172,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 	if cfg.CaseParallel < 1 {
 		cfg.CaseParallel = 1
 	}
-	r := &Runner{cfg: cfg, data: data, budget: &Budget{Max: cfg.MaxSpend}, files: map[string]*os.File{}, observed: map[string]float64{},
+	r := &Runner{cfg: cfg, data: data, budget: &Budget{Max: cfg.MaxSpend}, files: map[string]*os.File{}, observed: map[string]float64{}, produced: map[string]bool{},
 		key:     BlindKey{Seed: cfg.Seed, Note: "Sealed provenance for blind-samples.json: surface/case -> blind label -> model slug. Do not open before rating.", Sets: map[string]map[string]string{}},
 		summary: map[string]any{}}
 	if cfg.Append {
@@ -212,16 +219,22 @@ func (r *Runner) note(format string, args ...any) {
 	r.logf("NOTE %s", s)
 }
 
-// write appends one raw record to <surface>-raw.jsonl.
+// ErrRecording is returned for calls not dispatched because the raw log
+// can no longer be written: a paid call whose record would be lost is
+// never started.
+var ErrRecording = errors.New("raw log recording failed: call not dispatched")
+
+// write appends one raw record to <surface>-raw.jsonl. The first failure
+// (encode, open or write) is kept in outErr, which stops dispatch.
 func (r *Runner) write(surface string, rec any) {
 	b, err := json.Marshal(rec)
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if err != nil {
-		r.logf("record encode failed: %v", err)
+		r.failOutputLocked(fmt.Errorf("encode %s record: %w", surface, err))
 		return
 	}
 	b = []byte(redact(string(b), r.cfg.Key))
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	f := r.files[surface]
 	if f == nil {
 		flags := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
@@ -230,12 +243,41 @@ func (r *Runner) write(surface string, rec any) {
 		}
 		f, err = os.OpenFile(filepath.Join(r.cfg.OutDir, surface+"-raw.jsonl"), flags, 0o644)
 		if err != nil {
-			fmt.Fprintf(r.cfg.Log, "cannot create raw log: %v\n", err)
+			r.failOutputLocked(fmt.Errorf("open %s raw log: %w", surface, err))
 			return
 		}
 		r.files[surface] = f
 	}
-	f.Write(append(b, '\n'))
+	if _, err := f.Write(append(b, '\n')); err != nil {
+		r.failOutputLocked(fmt.Errorf("write %s raw log: %w", surface, err))
+	}
+}
+
+// failOutputLocked keeps the first output error. r.mu must be held.
+func (r *Runner) failOutputLocked(err error) {
+	err = errors.New(redact(err.Error(), r.cfg.Key))
+	if r.outErr == nil {
+		r.outErr = err
+	}
+	fmt.Fprintln(r.cfg.Log, "OUTPUT ERROR "+err.Error())
+}
+
+// closeFiles closes every raw log, keeping the first close error.
+func (r *Runner) closeFiles() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for surface, f := range r.files {
+		if err := f.Close(); err != nil {
+			r.failOutputLocked(fmt.Errorf("close %s raw log: %w", surface, err))
+		}
+		delete(r.files, surface)
+	}
+}
+
+func (r *Runner) outputErr() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.outErr
 }
 
 // matrix runs fn for every case and model: cases in order, the models of
@@ -330,8 +372,10 @@ func (r *Runner) Run(ctx context.Context) error {
 			r.summary["speech"] = r.runSpeech(ctx)
 		}
 	}
-	for _, f := range r.files {
-		f.Close()
+	r.closeFiles()
+	outErr := r.outputErr()
+	if outErr != nil {
+		r.note("raw log recording failed (%v): no further calls were dispatched after it; the run is incomplete", outErr)
 	}
 	if ctx.Err() != nil {
 		r.note("run interrupted (%v): calls not yet dispatched were recorded as skipped; in-flight calls were cancelled", ctx.Err())
@@ -341,19 +385,42 @@ func (r *Runner) Run(ctx context.Context) error {
 		time.Sleep(5 * time.Second) // let the account counter catch up
 		after = accountUsage(context.Background(), r.cfg.Base, r.cfg.Key)
 	}
-	return r.finish(started, before, after)
+	ferr := r.finish(started, before, after)
+	if outErr != nil {
+		return fmt.Errorf("raw log recording failed: %w", outErr)
+	}
+	return ferr
 }
 
 // ErrInterrupted is returned for calls not dispatched after an interrupt.
 var ErrInterrupted = errors.New("run interrupted: call not dispatched")
 
-// reserve is the one gate before every call: an interrupted run dispatches
-// nothing more, and the spend cap is checked.
-func (r *Runner) reserve(ctx context.Context, est float64) (*Ticket, error) {
+// reserve is the one gate before every call: an interrupted run, or one
+// whose raw log can no longer be written, dispatches nothing more, and the
+// spend cap is checked against the call's estimate.
+func (r *Runner) reserve(ctx context.Context, surface, model string, audioSeconds float64) (*Ticket, error) {
 	if ctx.Err() != nil {
 		return nil, ErrInterrupted
 	}
-	return r.budget.Reserve(est)
+	if r.outputErr() != nil {
+		return nil, ErrRecording
+	}
+	t, err := r.budget.Reserve(r.estimate(surface, model, audioSeconds))
+	if err == nil {
+		r.mu.Lock()
+		r.produced[topSurface(surface)] = true
+		r.mu.Unlock()
+	}
+	return t, err
+}
+
+// topSurface maps an estimate key (speech-chat, speech-today, ...) to its
+// surface.
+func topSurface(s string) string {
+	if strings.HasPrefix(s, "speech") {
+		return "speech"
+	}
+	return s
 }
 
 // accountUsage is OpenRouter's lifetime usage for this key (GET
@@ -421,16 +488,8 @@ func (r *Runner) finish(started time.Time, before, after *float64) error {
 			}
 			commands = append(prev, commands...)
 		}
-		merged := map[string]any{}
-		if pr, ok := p.Summary["results"].(map[string]any); ok {
-			for k, v := range pr {
-				merged[k] = v
-			}
-		}
-		for k, v := range results {
-			merged[k] = v // a re-run surface replaces its earlier result
-		}
-		results = merged
+		pr, _ := p.Summary["results"].(map[string]any)
+		results = mergeResults(pr, results, r.produced)
 		var all []string
 		if ps, ok := p.Summary["surfaces"].([]any); ok {
 			for _, s := range ps {
@@ -448,18 +507,7 @@ func (r *Runner) finish(started time.Time, before, after *float64) error {
 				notes = append(notes, fmt.Sprint(n))
 			}
 		}
-		var keep []BlindSet
-		for _, b := range p.Blind {
-			if !oneOf(b.Surface, r.cfg.Surfaces...) {
-				keep = append(keep, b)
-			}
-		}
-		r.blind = append(keep, r.blind...)
-		for k, v := range p.Key.Sets {
-			if _, ok := r.key.Sets[k]; !ok && !oneOf(strings.SplitN(k, "/", 2)[0], r.cfg.Surfaces...) {
-				r.key.Sets[k] = v
-			}
-		}
+		r.blind, r.key.Sets = mergeBlind(r.cfg.Seed, p.Blind, p.Key.Sets, r.blind, r.key.Sets, r.produced)
 	}
 	if before != nil && after != nil {
 		account["usage_before_usd"], account["usage_after_usd"], account["delta_usd"] = *before, *after, *after-*before
@@ -517,6 +565,213 @@ func (r *Runner) finish(started time.Time, before, after *float64) error {
 	}
 	r.logf("== done: exact spend $%.6f over %d calls (%d unknown-cost, %d refused for budget); outputs in %s", state.ExactUSD, state.Calls, state.UnknownCostCalls, state.RefusedForBudget, r.cfg.OutDir)
 	return nil
+}
+
+// mergeResults folds this invocation's results into an earlier one's
+// (--append). A surface that dispatched nothing here (interrupted, or every
+// call refused for budget) keeps its earlier result untouched. A surface
+// that did run is merged per model row: a model that made calls here
+// replaces its earlier row, and earlier rows for models not run here are
+// kept and listed under rows_from_earlier_invocations.
+func mergeResults(prior, cur map[string]any, produced map[string]bool) map[string]any {
+	out := map[string]any{}
+	for k, v := range prior {
+		out[k] = v
+	}
+	for k, v := range cur {
+		pv, has := prior[k]
+		switch {
+		case !has:
+			out[k] = v
+		case !produced[k]:
+			// keep the earlier result
+		default:
+			pm, ok1 := pv.(map[string]any)
+			cm, ok2 := asJSONMap(v)
+			if !ok1 || !ok2 {
+				out[k] = v
+				continue
+			}
+			merged, kept := mergeLevel(pm, cm)
+			if ed, ok := pm["earlier_dataset"]; ok && kept {
+				merged["earlier_dataset"] = ed
+			} else if kept && pm["dataset"] != nil && !jsonEqual(pm["dataset"], cm["dataset"]) {
+				merged["earlier_dataset"] = pm["dataset"]
+			}
+			out[k] = merged
+		}
+	}
+	return out
+}
+
+// mergeLevel merges one map level: "models" row lists per model, nested
+// maps (speech tracks) recursively, anything else from cur. Keys only the
+// earlier invocation wrote survive. kept reports whether any earlier row
+// was kept at this level or below.
+func mergeLevel(prior, cur map[string]any) (map[string]any, bool) {
+	out := map[string]any{}
+	for k, v := range prior {
+		if k != "rows_from_earlier_invocations" && k != "earlier_dataset" {
+			out[k] = v
+		}
+	}
+	kept := false
+	for k, v := range cur {
+		pv, has := prior[k]
+		if !has {
+			out[k] = v
+			continue
+		}
+		if k == "models" {
+			rows, from := mergeRows(pv, v)
+			out[k] = rows
+			if len(from) > 0 {
+				out["rows_from_earlier_invocations"] = from
+				kept = true
+			}
+			continue
+		}
+		pm, ok1 := pv.(map[string]any)
+		cm, ok2 := v.(map[string]any)
+		if ok1 && ok2 && k != "dataset" {
+			m, kk := mergeLevel(pm, cm)
+			out[k], kept = m, kept || kk
+			continue
+		}
+		out[k] = v
+	}
+	return out, kept
+}
+
+// mergeRows merges two model-row lists by "model": a current row that made
+// calls wins; otherwise the earlier row is kept. Earlier order first, then
+// models new in this invocation.
+func mergeRows(pv, cv any) ([]any, []string) {
+	prows, _ := pv.([]any)
+	crows, _ := cv.([]any)
+	model := func(row any) string {
+		m, _ := row.(map[string]any)
+		s, _ := m["model"].(string)
+		return s
+	}
+	calls := func(row any) float64 {
+		m, _ := row.(map[string]any)
+		n, _ := m["calls"].(float64)
+		return n
+	}
+	byModel := map[string]any{}
+	for _, row := range crows {
+		byModel[model(row)] = row
+	}
+	var out []any
+	var kept []string
+	seen := map[string]bool{}
+	for _, row := range prows {
+		m := model(row)
+		seen[m] = true
+		if c, ok := byModel[m]; ok && (calls(c) > 0 || calls(row) == 0) {
+			out = append(out, c)
+			continue
+		}
+		out = append(out, row)
+		kept = append(kept, m)
+	}
+	for _, row := range crows {
+		if !seen[model(row)] {
+			out = append(out, row)
+		}
+	}
+	return out, kept
+}
+
+// mergeBlind folds this invocation's blind sets and key into an earlier
+// one's (--append). Sets for surfaces that dispatched nothing here are kept
+// verbatim, with their key entries. For a surface that ran, a case present
+// in both is re-laid out over the union of models: this invocation's
+// output for a model wins unless it was skipped or not run, in which case
+// the earlier output stands. Labels are re-derived with BlindAssign over
+// the union, so the key stays the only provenance.
+func mergeBlind(seed string, pSets []BlindSet, pKey map[string]map[string]string, cSets []BlindSet, cKey map[string]map[string]string, produced map[string]bool) ([]BlindSet, map[string]map[string]string) {
+	id := func(b BlindSet) string { return b.Surface + "/" + b.CaseID }
+	cur := map[string]BlindSet{}
+	for _, b := range cSets {
+		cur[id(b)] = b
+	}
+	var sets []BlindSet
+	key := map[string]map[string]string{}
+	used := map[string]bool{}
+	for _, ps := range pSets {
+		k := id(ps)
+		cs, has := cur[k]
+		if !produced[ps.Surface] {
+			used[k] = true // an unrun surface never replaces earlier artifacts
+		}
+		if !has || !produced[ps.Surface] || pKey[k] == nil {
+			if has && produced[ps.Surface] { // earlier set without a key: cannot de-anonymize, replace
+				continue
+			}
+			sets = append(sets, ps)
+			if pKey[k] != nil {
+				key[k] = pKey[k]
+			}
+			continue
+		}
+		used[k] = true
+		outs := map[string]BlindOutput{}
+		var models []string
+		for _, o := range ps.Outputs {
+			if m := pKey[k][o.ModelLabel]; m != "" {
+				outs[m] = o
+				models = append(models, m)
+			}
+		}
+		for _, o := range cs.Outputs {
+			m := cKey[k][o.ModelLabel]
+			if m == "" {
+				continue
+			}
+			if _, had := outs[m]; !had {
+				models = append(models, m)
+			}
+			if prev, had := outs[m]; !had || blindRan(o.Status) || !blindRan(prev.Status) {
+				outs[m] = o
+			}
+		}
+		set, assign := BuildBlind(seed, cs.Surface, cs.CaseID, cs.Context, models, outs)
+		sets = append(sets, set)
+		key[k] = assign
+	}
+	for _, cs := range cSets {
+		k := id(cs)
+		if used[k] {
+			continue
+		}
+		sets = append(sets, cs)
+		if cKey[k] != nil {
+			key[k] = cKey[k]
+		}
+	}
+	return sets, key
+}
+
+// blindRan reports whether a blind output came from a dispatched call.
+func blindRan(status string) bool {
+	return status != "not run" && !strings.HasPrefix(status, "skipped")
+}
+
+func asJSONMap(v any) (map[string]any, bool) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, false
+	}
+	var m map[string]any
+	return m, json.Unmarshal(b, &m) == nil
+}
+
+func jsonEqual(a, b any) bool {
+	x, _ := json.Marshal(a)
+	y, _ := json.Marshal(b)
+	return bytes.Equal(x, y)
 }
 
 var metricDefinitions = map[string]string{

@@ -88,7 +88,7 @@ func (r *Runner) runExplainer(ctx context.Context) map[string]any {
 	matrix(len(cases), models, func(i int, m string) {
 		c := cases[i]
 		rec := ExplainerRecord{Surface: "explainer", CaseID: c.ID, Domain: c.Domain, Verdict: c.Verdict, Model: m}
-		t, err := r.reserve(ctx, r.estimate("explainer", m, 0))
+		t, err := r.reserve(ctx, "explainer", m, 0)
 		if err != nil {
 			rec.Status, rec.Error = "skipped", err.Error()
 		} else {

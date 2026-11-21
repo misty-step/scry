@@ -163,6 +163,7 @@ func (t *Ticket) Settle(cost *float64) {
 	defer b.mu.Unlock()
 	b.reserved -= t.est
 	b.calls++
+	cost = validCost(cost) // a malformed cost must never lower the recorded spend
 	if cost == nil {
 		b.unknown++
 		b.spent += t.est

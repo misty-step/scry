@@ -125,7 +125,7 @@ func interleave(cases []DraftingCase) []DraftingCase {
 
 func (r *Runner) draftOnce(ctx context.Context, m string, c DraftingCase) DraftingRecord {
 	rec := DraftingRecord{Surface: "drafting", CaseID: c.ID, Category: c.Category, Model: m}
-	t, err := r.reserve(ctx, r.estimate("drafting", m, 0))
+	t, err := r.reserve(ctx, "drafting", m, 0)
 	if err != nil {
 		rec.Status, rec.Error = "skipped", err.Error()
 		return rec
@@ -218,6 +218,10 @@ func (r *Runner) runDrafting(ctx context.Context) map[string]any {
 	}
 	var optional []string
 	for _, m := range r.models("drafting-optional") {
+		if oneOf(m, models...) {
+			r.note("drafting optional %s not run: it is already in the main drafting list", m)
+			continue
+		}
 		p := r.cat.Verify(m).Price
 		est := 0.0
 		if n > 0 {

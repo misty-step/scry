@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -95,11 +96,22 @@ func parseUsage(raw []byte) usageInfo {
 	}
 	u.Model, u.Provider = out.Model, out.Provider
 	if out.Usage != nil {
-		u.Cost = out.Usage.Cost
+		u.Cost = validCost(out.Usage.Cost)
 		u.Prompt, u.Completion = max(out.Usage.Prompt, out.Usage.Input), max(out.Usage.Completion, out.Usage.Output)
 		u.Seconds = out.Usage.Seconds
 	}
 	return u
+}
+
+// validCost is c when it is a usable charge, else nil (unknown). A
+// negative, NaN or infinite usage.cost is malformed: settling it as exact
+// would lower the spend breaker's recorded spend, while an unknown cost is
+// charged its reservation, which keeps the cap conservative.
+func validCost(c *float64) *float64 {
+	if c == nil || *c < 0 || math.IsNaN(*c) || math.IsInf(*c, 0) {
+		return nil
+	}
+	return c
 }
 
 // errorSnippet is a short, key-free description of a failed response body.

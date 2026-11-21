@@ -713,3 +713,261 @@ func TestInterruptStillWritesSummary(t *testing.T) {
 		t.Errorf("skipped after interrupt = %v", got)
 	}
 }
+
+// CodeRabbit (PR #497): a negative, NaN or infinite usage.cost is unknown,
+// so it is charged its reservation and can never lower recorded spend.
+func TestMalformedCostIsUnknown(t *testing.T) {
+	for _, body := range []string{`{"usage":{"cost":-0.5}}`, `{"usage":{"cost":-1e-9}}`} {
+		if u := parseUsage([]byte(body)); u.Cost != nil {
+			t.Errorf("parseUsage(%s).Cost = %v, want nil", body, *u.Cost)
+		}
+	}
+	if u := parseUsage([]byte(`{"usage":{"cost":0}}`)); u.Cost == nil || *u.Cost != 0 {
+		t.Errorf("a zero cost is exact, got %v", u.Cost)
+	}
+	if u := parseUsage([]byte(`{"usage":{"cost":0.0012}}`)); u.Cost == nil || *u.Cost != 0.0012 {
+		t.Errorf("a positive cost is exact, got %v", u.Cost)
+	}
+	for _, c := range []float64{-1, math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if validCost(&c) != nil {
+			t.Errorf("validCost(%v) != nil", c)
+		}
+	}
+	// The breaker itself: a malformed exact cost is charged the estimate.
+	b := &Budget{Max: 1}
+	tk, _ := b.Reserve(0.25)
+	neg := -10.0
+	tk.Settle(&neg)
+	if st := b.State(); st.ChargedUSD != 0.25 || st.ExactUSD != 0 || st.UnknownCostCalls != 1 {
+		t.Errorf("after a negative cost: %+v", st)
+	}
+
+	// End to end: a provider reporting a negative cost cannot reopen the cap.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/models", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"data":[]}`) })
+	var calls int
+	mux.HandleFunc("/api/alpha/decisions", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		fmt.Fprint(w, `{"model":"t/judge","answers":{"judgment":{"type":"choice","choice":"correct","confidence":0.9,"probabilities":{"correct":0.9,"almost correct":0.05,"incorrect":0.05,"none_of_these":0}}},"usage":{"input_tokens":1,"output_tokens":0,"cost":-5}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	out := t.TempDir()
+	r, err := NewRunner(Config{Surfaces: []string{"grading"}, OutDir: out, MaxSpend: 0.0012, Key: "sk-or-v1-offline-neg", Base: srv.URL, Log: io.Discard, SkipAccount: true, Models: map[string][]string{"grading": {"t/judge"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// Each call reserves the 0.0005 grading floor and, its cost unknown,
+	// is charged that: 0.0005, 0.001, then 0.0015 > 0.0012 is refused.
+	if calls != 2 {
+		t.Fatalf("dispatched %d calls, want 2 (a negative cost must not lower spend)", calls)
+	}
+	s := readSummary(t, out)
+	if got := path(s, "spend", "exact_usage_cost_usd").(float64); got != 0 {
+		t.Errorf("exact spend = %v, want 0", got)
+	}
+	if got := path(s, "spend", "guard_charged_usd").(float64); math.Abs(got-0.001) > 1e-12 {
+		t.Errorf("charged = %v, want 0.001", got)
+	}
+}
+
+// grading server that counts calls, for the raw-log tests.
+func countingJudge(t *testing.T) (*httptest.Server, *int) {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/models", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"data":[]}`) })
+	calls := new(int)
+	var mu sync.Mutex
+	mux.HandleFunc("/api/alpha/decisions", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		*calls++
+		mu.Unlock()
+		fmt.Fprint(w, `{"model":"t/judge","answers":{"judgment":{"type":"choice","choice":"correct","confidence":0.9,"probabilities":{"correct":0.9,"almost correct":0.05,"incorrect":0.05,"none_of_these":0}}},"usage":{"input_tokens":1,"output_tokens":0,"cost":0.00001}}`)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv, calls
+}
+
+// CodeRabbit (PR #497): a raw log that cannot be opened stops dispatch and
+// fails the run.
+func TestRawLogOpenFailureStopsDispatch(t *testing.T) {
+	srv, calls := countingJudge(t)
+	out := t.TempDir()
+	// A directory where the raw log should go makes the open fail.
+	if err := os.Mkdir(filepath.Join(out, "grading-raw.jsonl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewRunner(Config{Surfaces: []string{"grading", "explainer"}, OutDir: out, MaxSpend: 1, Limit: 4, Key: "sk-or-v1-offline-open", Base: srv.URL, Log: io.Discard, SkipAccount: true, Models: map[string][]string{"grading": {"t/judge"}, "explainer": {"t/writer"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "open grading raw log") {
+		t.Fatalf("Run error = %v, want the raw-log open failure", err)
+	}
+	if *calls != 1 {
+		t.Errorf("dispatched %d paid calls, want 1 (none after recording failed)", *calls)
+	}
+	s := readSummary(t, out)
+	if got := path(s, "spend", "settled_calls"); got != 1.0 {
+		t.Errorf("settled calls = %v, want 1", got)
+	}
+	if notes := fmt.Sprint(s["notes"]); !strings.Contains(notes, "raw log recording failed") {
+		t.Errorf("notes = %s", notes)
+	}
+	if b, _ := os.ReadFile(filepath.Join(out, "explainer-raw.jsonl")); bytes.Contains(b, []byte(`"status":"ok"`)) {
+		t.Error("explainer dispatched after grading's raw log failed")
+	}
+}
+
+// CodeRabbit (PR #497): a write failure is kept (before a later close
+// failure on the same file), stops dispatch and is returned from Run.
+func TestRawLogWriteFailureStopsDispatch(t *testing.T) {
+	srv, calls := countingJudge(t)
+	out := t.TempDir()
+	r, err := NewRunner(Config{Surfaces: []string{"grading"}, OutDir: out, MaxSpend: 1, Limit: 5, Key: "sk-or-v1-offline-write", Base: srv.URL, Log: io.Discard, SkipAccount: true, Models: map[string][]string{"grading": {"t/judge"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(out, "grading-raw.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close() // writes and the final close both fail
+	r.files["grading"] = f
+	err = r.Run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "write grading raw log") {
+		t.Fatalf("Run error = %v, want the first (write) failure", err)
+	}
+	if *calls != 1 {
+		t.Errorf("dispatched %d paid calls, want 1", *calls)
+	}
+	s := readSummary(t, out)
+	if got := path(s, "results", "grading", "models", 0, "skipped_for_budget"); got != 4.0 {
+		t.Errorf("not-dispatched = %v, want 4", got)
+	}
+}
+
+// CodeRabbit (PR #497): --append keeps earlier blind artifacts for a
+// surface that produced nothing this time (interrupt or budget), and a
+// surface that did run merges per model instead of dropping earlier ones.
+func TestAppendPreservesBlindForUnrunSurfaces(t *testing.T) {
+	const key = "sk-or-v1-offline-test-key-blind"
+	f := &fakeRouter{key: key, calls: map[string]int{}}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	out := t.TempDir()
+	run := func(ctx context.Context, surfaces []string, limit int, maxSpend float64, models map[string][]string, appendRun bool) {
+		t.Helper()
+		r, err := NewRunner(Config{Surfaces: surfaces, OutDir: out, MaxSpend: maxSpend, Limit: limit, Key: key, Base: srv.URL, Log: io.Discard, SkipAccount: true, Append: appendRun, Models: models})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Run(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	type blindFile struct{ Sets []BlindSet }
+	read := func() (blindFile, BlindKey) {
+		t.Helper()
+		var b blindFile
+		var k BlindKey
+		raw, _ := os.ReadFile(filepath.Join(out, "blind-samples.json"))
+		if err := json.Unmarshal(raw, &b); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ = os.ReadFile(filepath.Join(out, "blind-key.json"))
+		if err := json.Unmarshal(raw, &k); err != nil {
+			t.Fatal(err)
+		}
+		return b, k
+	}
+	okOutputs := func(b blindFile) int {
+		n := 0
+		for _, s := range b.Sets {
+			for _, o := range s.Outputs {
+				if o.Status == "ok" {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	// 1. explainer on 2 cases with t/writer.
+	run(context.Background(), []string{"explainer"}, 2, 1, map[string][]string{"explainer": {"t/writer"}}, false)
+	b0, k0 := read()
+	if len(b0.Sets) != 2 || okOutputs(b0) != 2 {
+		t.Fatalf("baseline blind = %+v", b0)
+	}
+
+	// 2. --append grading,explainer, interrupted during grading: explainer
+	// never runs, so its blind sets and key must survive unchanged.
+	ctx, cancel := context.WithCancel(context.Background())
+	mux := http.NewServeMux()
+	mux.Handle("/", f)
+	mux.HandleFunc("/api/alpha/decisions", func(w http.ResponseWriter, r *http.Request) { f.ServeHTTP(w, r); cancel() })
+	isrv := httptest.NewServer(mux)
+	defer isrv.Close()
+	r, err := NewRunner(Config{Surfaces: []string{"grading", "explainer"}, OutDir: out, MaxSpend: 1, Limit: 2, Key: key, Base: isrv.URL, Log: io.Discard, SkipAccount: true, Append: true, Models: map[string][]string{"grading": {"t/judge"}, "explainer": {"t/writer"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	b1, k1 := read()
+	if len(b1.Sets) != 2 || okOutputs(b1) != 2 || !jsonEqual(k1.Sets, k0.Sets) {
+		t.Fatalf("interrupt dropped earlier blind artifacts: sets=%d ok=%d key=%v", len(b1.Sets), okOutputs(b1), k1.Sets)
+	}
+	s := readSummary(t, out)
+	if got := path(s, "results", "explainer", "models", 0, "ok"); got != 2.0 {
+		t.Errorf("explainer result after interrupt = %v, want the earlier ok=2", got)
+	}
+
+	// 3. --append explainer with the cap already spent: every call refused,
+	// so nothing replaces the earlier explainer artifacts.
+	spent := path(readSummary(t, out), "spend", "guard_charged_usd").(float64)
+	run(context.Background(), []string{"explainer"}, 2, spent, map[string][]string{"explainer": {"t/writer"}}, true)
+	b2, k2 := read()
+	if len(b2.Sets) != 2 || okOutputs(b2) != 2 || !jsonEqual(k2.Sets, k0.Sets) {
+		t.Fatalf("budget refusal dropped earlier blind artifacts: sets=%d ok=%d", len(b2.Sets), okOutputs(b2))
+	}
+	s = readSummary(t, out)
+	if got := path(s, "results", "explainer", "models", 0, "ok"); got != 2.0 {
+		t.Errorf("explainer result after refusal = %v, want the earlier ok=2", got)
+	}
+
+	// 4. --append explainer with a new model on 1 case: e01 now compares
+	// both models, e02 keeps t/writer, and both rows are in the summary.
+	run(context.Background(), []string{"explainer"}, 1, 1, map[string][]string{"explainer": {"t/writer2"}}, true)
+	b3, k3 := read()
+	if len(b3.Sets) != 2 || okOutputs(b3) != 3 {
+		t.Fatalf("merged blind: sets=%d ok=%d", len(b3.Sets), okOutputs(b3))
+	}
+	e01 := k3.Sets["explainer/e01"]
+	if len(e01) != 2 || !jsonEqual(e01, BlindAssign("scry-eval-v1", "explainer", "e01", []string{"t/writer", "t/writer2"})) {
+		t.Errorf("e01 key = %v", e01)
+	}
+	if !jsonEqual(k3.Sets["explainer/e02"], k0.Sets["explainer/e02"]) {
+		t.Errorf("e02 key changed: %v", k3.Sets["explainer/e02"])
+	}
+	s = readSummary(t, out)
+	rows := path(s, "results", "explainer", "models").([]any)
+	if len(rows) != 2 || path(rows, 0, "model") != "t/writer" || path(rows, 0, "ok") != 2.0 || path(rows, 1, "model") != "t/writer2" || path(rows, 1, "ok") != 1.0 {
+		t.Errorf("explainer rows = %v", rows)
+	}
+	if got := fmt.Sprint(path(s, "results", "explainer", "rows_from_earlier_invocations")); got != "[t/writer]" {
+		t.Errorf("rows_from_earlier_invocations = %s", got)
+	}
+	if got := path(s, "results", "explainer", "earlier_dataset", "cases"); got != 2.0 {
+		t.Errorf("earlier_dataset cases = %v", got)
+	}
+	raw, _ := os.ReadFile(filepath.Join(out, "blind-samples.json"))
+	if bytes.Contains(raw, []byte("t/writer")) {
+		t.Error("merged blind samples leak a model slug")
+	}
+}

@@ -71,7 +71,7 @@ func decisionAnswer(raw []byte) (choice string, conf *float64, probs map[string]
 // judgeOnce runs Scry's production Jev adapter once (model "" is the
 // production default) and fills rec.
 func (r *Runner) judgeOnce(ctx context.Context, surface, model string, in ai.JudgeInput, rec *GradingRecord) {
-	t, err := r.reserve(ctx, r.estimate(surface, model, 0))
+	t, err := r.reserve(ctx, surface, model, 0)
 	if err != nil {
 		rec.Predicted = "skipped"
 		rec.Error = err.Error()
