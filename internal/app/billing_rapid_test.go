@@ -325,7 +325,9 @@ func (m *billingMachine) ProcessorSettles(t *rapid.T) {
 }
 
 // Invoice bills the next period of the latest subscription, paid or
-// failed (a failed invoice carries no period, as Stripe's does not).
+// failed. A failed invoice carries the period it was for (as Stripe's
+// invoice.payment_failed lines do) or, drawn, no period at all (an
+// invoice without lines, which the app cannot order).
 func (m *billingMachine) Invoice(t *rapid.T) {
 	p := m.w.pay
 	p.mu.Lock()
@@ -342,6 +344,9 @@ func (m *billingMachine) Invoice(t *rapid.T) {
 		s.paid = k
 	} else {
 		ev.Kind, ev.Reason = billing.InvoiceFailed, "Your card was declined."
+		if rapid.Bool().Draw(t, "failed_with_period") {
+			ev.PeriodStart, ev.PeriodEnd = s.end0.AddDate(0, k-1, 0), s.end0.AddDate(0, k, 0)
+		}
 	}
 	s.invoiced = k
 	p.emitted = append(p.emitted, ev)
@@ -403,8 +408,13 @@ func (m *billingMachine) Spend(t *rapid.T) {
 func (m *billingMachine) ReserveSettle(t *rapid.T) {
 	amount := rapid.Int64Range(1, 2_000_000).Draw(t, "amount")
 	id := fmt.Sprintf("res-%d", rapid.Int64().Draw(t, "id"))
-	err := m.w.us.Reserve(m.w.ctx, id, amount)
-	if errors.Is(err, store.ErrBudget) {
+	sub := m.sub(t)
+	err := m.w.us.ReserveAt(m.w.ctx, id, amount, m.w.now(), time.Duration(m.w.app.Cfg.GraceDays)*24*time.Hour)
+	// The store's atomic guard agrees with app.HasAccess on every plan.
+	if access := m.w.app.HasAccess(sub); errors.Is(err, store.ErrReservationNoAccess) == access {
+		t.Fatalf("reserve on %s (past due since %v) = %v; HasAccess %v", sub.Status, sub.PastDueSince, err, access)
+	}
+	if errors.Is(err, store.ErrBudget) || errors.Is(err, store.ErrReservationNoAccess) {
 		return
 	}
 	if err != nil {

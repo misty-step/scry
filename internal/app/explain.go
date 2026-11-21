@@ -78,7 +78,7 @@ func (a *App) Explain(ctx context.Context, u store.User, reviewID int64) (Explan
 	}
 	reservation, err := a.reserve(ctx, u.ID, ai.ExplainBudgetMicros)
 	if err != nil {
-		if !errors.Is(err, ErrAllowance) {
+		if !errors.Is(err, ErrAllowance) && !errors.Is(err, ErrPlanEnded) {
 			a.Log.ErrorContext(ctx, "explanation reservation failed", "err", err, "user", u.ID)
 		}
 		return fallback, nil

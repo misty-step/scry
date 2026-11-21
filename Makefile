@@ -1,6 +1,6 @@
 PORT ?= 8080
 
-.PHONY: run test build vet docker clean
+.PHONY: run test build vet verify-formal docker clean
 
 # Start Scry on PORT in test mode, with seeded demo data. No keys needed.
 run:
@@ -18,6 +18,12 @@ build:
 
 vet:
 	go vet ./...
+
+# Quint specs (typecheck, tests, Rust-backend simulation), the rapid state
+# machines and transition tables (-race, then deeper), and fuzz smoke runs.
+# VERIFY_APALACHE=1 adds bounded Apalache model checking (slow).
+verify-formal:
+	./scripts/verify-formal.sh
 
 docker:
 	docker build --build-arg BUILD_SHA=$(BUILD_SHA) -t scry .

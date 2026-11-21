@@ -980,3 +980,36 @@ Choices where the brief was silent:
   copies OPENROUTER_/TYPESAFE_ keys and the SCRY_*_MODE/model/watch settings
   into scry.env; live mode already needed a Jev key that the old filter
   dropped.
+
+## Slice #13 — explicit state machines (reservations, Stripe)
+
+Choices where the brief was silent:
+
+- Reservations are an explicit machine (`store.TransitionReservation`):
+  none → held → settled | released | swept. A settle that finds no row is a
+  replay and returns nil without spending. Only `held` is stored; the
+  terminal states are the row's absence, so the store cannot tell a
+  never-reserved id from a finished one. Ids are random tokens, so this is
+  not a real ambiguity.
+- `Reserve` checks access (trialing, active, or past_due within grace) and
+  the budget in the same `INSERT … SELECT`. The app calls `ReserveAt` with
+  its own clock and `GraceDays`. A refusal on access is
+  `store.ErrReservationNoAccess`, which the app reports as `ErrPlanEnded`
+  (redirect to Billing). `Reserve` without a clock uses the wall clock and
+  the shipped 7-day grace. An amount ≤ 0 is `ErrInvalidReservationAmount`.
+- `reservations.created_at`: added by `addColumn` on open. Old rows read 0
+  and are released by the next TTL sweep. Housekeeping runs
+  `SweepExpiredReservations(now − 1h)` hourly (`app.ReservationTTL`; the
+  longest provider call is the 5-minute draft). This also releases G2's
+  deliberately held unknown-outcome holds after an hour, instead of only at
+  the next restart.
+- Settle debits the clamped actual cost (allowance first, then top-up,
+  never below zero), not `min(cost, reserved)` as the Quint spec's `step`
+  models. This keeps the Transcribe rule that a recording's known cost is
+  never forgiven. The spec's `inv_debit_within_reservation` and
+  `inv_reserved_within_available` are therefore not Go invariants. The
+  rapid test checks the non-negative balances, recovery and idempotence
+  invariants instead.
+- Stripe `invoice.payment_failed` now carries the period from its first
+  line, as `invoice.paid` already did. A failure for a period that is not
+  newer than the plan's current one is ignored (`applyEvent`).

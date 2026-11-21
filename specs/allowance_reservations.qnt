@@ -55,6 +55,19 @@
 //       slow owner settling after its row hit TTL loses that usage, so TTL
 //       must exceed the longest provider call (runDraft has no deadline).
 //
+// Go implementation of `step` (slice 13, phase 2b), internal/store/reservation.go:
+//   ReservationState held / settled / released / swept and
+//   TransitionReservation mirror res_state (orphan is not stored: it is a
+//   held row nobody will settle; expired is swept by the TTL sweep). Reserve
+//   (ReserveAt) carries the access guard in its INSERT .. SELECT; created_at
+//   plus SweepExpiredReservations (hourly, TTL 1h) is ExpireTTL;
+//   FailStaleReservations at boot is Restart's sweep. One deliberate
+//   divergence: Settle debits min(cost, available) (Spend is clamped), not
+//   min(cost, reserved), so a recording's known cost is never forgiven;
+//   inv_debit_within_reservation and inv_reserved_within_available are spec
+//   properties of the cap-at-reservation policy only. The Go rapid test
+//   (internal/store/reservation_rapid_test.go) checks the rest after every step.
+//
 // Time is abstract ticks (one tick = one housekeeping window); GRACE and TTL
 // are counted in ticks. Amounts are micros, scaled down.
 //

@@ -86,12 +86,17 @@ func (s *Store) migrate() error {
 // idempotent, so it runs on every open.
 func (s *Store) migrateAdded() error {
 	for _, q := range []string{
-		`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0))`,
+		`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0), created_at INTEGER NOT NULL DEFAULT 0)`,
 		topupSchema,
 	} {
 		if _, err := s.db.Exec(q); err != nil {
 			return err
 		}
+	}
+	// A reservations table from before the TTL sweep gains created_at; its
+	// old rows read 0 (age unknown) and are released by the next sweep.
+	if err := s.addColumn("reservations", "created_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
 	}
 	for _, c := range topupColumns {
 		if err := s.addColumn("topups", c[0], c[1]); err != nil {

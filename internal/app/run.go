@@ -42,10 +42,25 @@ func (a *App) Run(ctx context.Context) {
 			if err := a.Store.Sweep(ctx, a.now(), 30*24*time.Hour); err != nil {
 				a.Alert.Notify(ctx, "Housekeeping is failing", err.Error())
 			}
+			a.SweepReservations(ctx)
 		case <-backup:
 			a.Backup(ctx)
 		}
 	}
+}
+
+// SweepReservations releases allowance holds older than ReservationTTL
+// that nobody settled, and reports how many it released.
+func (a *App) SweepReservations(ctx context.Context) int64 {
+	n, err := a.Store.SweepExpiredReservations(ctx, a.now().Add(-ReservationTTL))
+	if err != nil {
+		a.Alert.Notify(ctx, "Housekeeping is failing", "reservation sweep: "+err.Error())
+		return 0
+	}
+	if n > 0 {
+		a.Log.WarnContext(ctx, "released expired allowance reservations", "count", n, "ttl", ReservationTTL.String())
+	}
+	return n
 }
 
 // Watch checks Scry's own health and raises an alert when it is unwell.

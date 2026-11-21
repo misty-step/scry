@@ -64,7 +64,7 @@ func (a *App) HasAccess(s store.Subscription) bool {
 	case store.SubTrialing, store.SubActive:
 		return true
 	case store.SubPastDue:
-		return a.now().Sub(s.PastDueSince) <= time.Duration(a.Cfg.GraceDays)*24*time.Hour
+		return a.now().Sub(s.PastDueSince) <= a.grace()
 	}
 	return false
 }
@@ -748,14 +748,32 @@ func (a *App) RunRenewals(ctx context.Context) error {
 	return nil
 }
 
-// reserve claims a worst-case provider budget before any work starts.
+// grace is how long a past_due plan keeps access (HasAccess).
+func (a *App) grace() time.Duration { return time.Duration(a.Cfg.GraceDays) * 24 * time.Hour }
+
+// ReservationTTL is how long a hold may stay unsettled before the hourly
+// housekeeping sweep releases it. It is far longer than the longest
+// provider call (a draft, bounded at 5 minutes), so it only ever releases
+// holds nobody will settle: an abandoned request, or a provider outcome
+// that stayed unknown (held on purpose, so a retry cannot spend unmetered).
+const ReservationTTL = time.Hour
+
+// reserve claims a worst-case provider budget before any work starts. The
+// store checks access (HasAccess, by this app's clock and grace) and the
+// budget in one atomic statement, so a plan that ended or ran out of grace
+// after the caller's Plan() read is still refused (ErrPlanEnded).
 func (a *App) reserve(ctx context.Context, userID int64, amount int64) (string, error) {
 	id := randomToken(24)
-	err := a.Store.For(userID).Reserve(ctx, id, amount)
-	if errors.Is(err, store.ErrBudget) {
+	err := a.Store.For(userID).ReserveAt(ctx, id, amount, a.now(), a.grace())
+	switch {
+	case errors.Is(err, store.ErrBudget):
 		return "", ErrAllowance
+	case errors.Is(err, store.ErrReservationNoAccess):
+		return "", ErrPlanEnded
+	case err != nil:
+		return "", err
 	}
-	return id, err
+	return id, nil
 }
 func (a *App) settle(userID int64, id, kind string, u ai.Usage, seconds float64) {
 	cost := Cost(u)

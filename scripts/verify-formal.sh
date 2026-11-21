@@ -9,6 +9,7 @@
 #      tables (-race), plus a deeper rapid pass on the packages that use it.
 #   3. Go native fuzz smoke tests, FUZZTIME each.
 #
+# Make target: make verify-formal.
 # Knobs (environment): QUINT_SAMPLES (5000), QUINT_STEPS (30),
 # VERIFY_APALACHE (0), APALACHE_STEPS (2), APALACHE_TIMEOUT (90),
 # FUZZTIME (3s), RAPID_CHECKS (300), RAPID_STEPS (100).
@@ -128,8 +129,18 @@ fi
 
 run "go rapid + transition tables (-race)" \
 	go test -race -count=1 -run 'Rapid|TransitionTable|ValidateState' ./...
-# rapid's flags exist only in the packages that import it.
-rapid_pkgs=$(grep -l 'pgregory.net/rapid' $(git ls-files '*_test.go') 2>/dev/null | xargs -r -n1 dirname | sort -u | sed 's|^|./|')
+# rapid's flags exist only in the packages that import it (tracked test
+# files and new ones not yet committed). internal/store (sessions and
+# reservations), internal/app (study and billing) and internal/srs.
+rapid_pkgs=$(grep -l 'pgregory.net/rapid' $(git ls-files --cached --others --exclude-standard '*_test.go') 2>/dev/null | xargs -r -n1 dirname | sort -u | sed 's|^|./|')
+case " $(echo $rapid_pkgs) " in
+*" ./internal/store "*) ;;
+*)
+	echo "verify-formal: internal/store is missing from the rapid packages: $rapid_pkgs" >&2
+	results+=("FAIL  rapid package list (no ./internal/store)")
+	failed=1
+	;;
+esac
 if [ -n "$rapid_pkgs" ]; then
 	# shellcheck disable=SC2086
 	run "go rapid deep (${RAPID_CHECKS} checks x ${RAPID_STEPS} steps)" \
