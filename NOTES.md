@@ -1115,7 +1115,18 @@ Pass 2 (cold critic remediation):
   minutes; repeats and reports blamed on browser extensions are warn-level
   local logs. Sentry receives only the message line, which is built from
   sanitized fields; `script-sample`, `original-policy` and `referrer` are
-  never read. Numeric path segments become `:id` so routes group.
+  never read. Routes are reduced to Scry's route templates or `/other`
+  (the brief's list plus `/library/texts/:id`; a trailing slash is ignored,
+  case is not). Unknown hosts keep `scheme://host[:port]`; a suspicious host
+  becomes `scheme://[redacted-host]` so the scheme is still visible. The
+  page's own host is the request's Host header. Card-like means 13 or more
+  digits with optional single space/dash separators, so a following short
+  number can be absorbed into `[number]`. `integration_error` keeps
+  stripe.js's fixed code plus at most 80 scrubbed characters of Stripe's
+  own error text; anything else becomes "unrecognized integration error".
+- Sentry events from the operator log are sent at level `error`
+  (`sentry.CaptureEvent`), not CaptureMessage's default `info`, so Sentry
+  error-level alert rules fire.
 - Per-address limits use the connection address, like the sign-in limiter;
   behind a proxy that is one shared budget, which also bounds Sentry volume.
 - `scripts/verify-live.mjs` treats `net::ERR_ABORTED` as benign only for

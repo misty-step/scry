@@ -7,16 +7,19 @@
 //        --screenshot /tmp/card.png --simulate-violation
 //
 // Checks /healthz, the signed-out /signup/card redirect and its
-// Content-Security-Policy, then loads /, /signin and /signup (and, when
-// signed in, /signup/card and /billing/card) asserting zero CSP violations,
-// console errors, page errors and failed requests. When Stripe Elements is
-// on the card page it waits for the js.stripe.com iframe and checks it is
-// visible and sized. Prints one JSON summary on stdout; exits 0 only when
-// every check passes.
+// Content-Security-Policy, then loads /, /signin and /signup in a cookie-free
+// browser context, asserting zero CSP violations, console errors, page errors
+// and failed requests. Signed in (--session-cookie and/or --local-signup,
+// each in its own separate context) it checks /signup/card, or /billing/card
+// when the account already has a plan and /signup/card redirects to /study
+// or /billing. When Stripe Elements is on the card page it waits for the
+// js.stripe.com iframe and checks it is visible and sized. Prints one JSON
+// summary on stdout; exits 0 only when every check passes.
 //
 // Flags (env in brackets):
 //   --url <base>                 [SCRY_VERIFY_URL] required
-//   --screenshot <file.png>      [SCRY_VERIFY_SCREENSHOT] card-page screenshot
+//   --screenshot <file.png>      [SCRY_VERIFY_SCREENSHOT] card-page screenshot (with
+//                                both signed-in modes the second gets a -<mode> suffix)
 //   --session-cookie name=value  [SCRY_VERIFY_SESSION_COOKIE] a signed-in session
 //                                (prefer the env var; the value is never printed)
 //   --local-signup               sign up a fresh local-auth learner (refused when
@@ -164,47 +167,114 @@ async function main() {
   // ---- the browser ---------------------------------------------------------
   const browser = await chromium.launch({ executablePath: chromePath(), headless: true, args: ["--no-sandbox"] });
   try {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-    context.setDefaultTimeout(opt.timeout);
-    await context.addInitScript(() => {
-      window.__scryCSP = [];
-      document.addEventListener("securitypolicyviolation", e => {
-        window.__scryCSP.push({ directive: e.effectiveDirective || e.violatedDirective, blocked: e.blockedURI, source: e.sourceFile, line: e.lineNumber });
-      }, true);
-    });
+    // Public pages are what a signed-out visitor sees, so they are checked in
+    // a context that never holds a session: a signed-in session would
+    // redirect / and /signup elsewhere.
+    const pub = await newContext(browser, opt);
+    await signedOutCard(pub, base);
+    for (const p of ["/", "/signin", "/signup"]) await visit(pub, base, p, opt, { expectStatus: 200 });
 
-    if (opt.sessionCookie) {
-      const at = opt.sessionCookie.indexOf("=");
-      if (at < 1) throw new Error("--session-cookie must be name=value");
-      await context.addCookies([{ name: opt.sessionCookie.slice(0, at), value: opt.sessionCookie.slice(at + 1), url: base }]);
-      summary.session = { cookie: opt.sessionCookie.slice(0, at) }; // the value is never printed
-    }
-
-    for (const p of ["/", "/signin", "/signup"]) await visit(context, base, p, opt, { expectStatus: 200 });
-
-    let signedIn = !!opt.sessionCookie;
-    if (opt.localSignup) signedIn = await localSignup(context, base, opt) || signedIn;
-    if (signedIn) {
-      const card = await visit(context, base, "/signup/card", opt, { card: true, allowRedirect: true });
-      const billing = await visit(context, base, "/billing/card", opt, { card: true, allowRedirect: true, optional: true });
-      if (summary.stripe && !card?.stripe && !billing?.stripe) {
-        check("Stripe card field shown on a card page", false, "neither /signup/card nor /billing/card rendered #card-element[data-key]");
+    // Each signed-in mode gets its own context, apart from the public one.
+    const modes = [];
+    if (opt.sessionCookie) modes.push("session-cookie");
+    if (opt.localSignup) modes.push("local-signup");
+    for (const mode of modes) {
+      const ctx = await newContext(browser, opt);
+      try {
+        let signedIn;
+        if (mode === "session-cookie") {
+          const at = opt.sessionCookie.indexOf("=");
+          if (at < 1) throw new Error("--session-cookie must be name=value");
+          await ctx.addCookies([{ name: opt.sessionCookie.slice(0, at), value: opt.sessionCookie.slice(at + 1), url: base }]);
+          summary.session = Object.assign(summary.session || {}, { cookie: opt.sessionCookie.slice(0, at) }); // the value is never printed
+          signedIn = true;
+        } else {
+          signedIn = await localSignup(ctx, base, opt);
+        }
+        if (signedIn) await signedInCard(ctx, base, opt, mode, modes.length > 1 && mode !== modes[0]);
+      } finally {
+        await ctx.close();
       }
-    } else {
-      summary.checks.push({ name: "signed-in card pages", ok: true, skipped: "no --session-cookie or --local-signup" });
     }
+    if (!modes.length) summary.checks.push({ name: "signed-in card pages", ok: true, skipped: "no --session-cookie or --local-signup" });
 
-    if (opt.simulateViolation) await simulateViolation(context, base, opt);
+    if (opt.simulateViolation) await simulateViolation(pub, base, opt);
+    await pub.close();
   } finally {
     await browser.close();
   }
 }
 
+async function newContext(browser, opt) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  context.setDefaultTimeout(opt.timeout);
+  await context.addInitScript(() => {
+    window.__scryCSP = [];
+    document.addEventListener("securitypolicyviolation", e => {
+      window.__scryCSP.push({ directive: e.effectiveDirective || e.violatedDirective, blocked: e.blockedURI, source: e.sourceFile, line: e.lineNumber });
+    }, true);
+  });
+  return context;
+}
+
+// signedOutCard repeats the signed-out /signup/card check from inside the
+// public browser context: it must hold no session (303 to sign-in) and the
+// page must carry the same policy.
+async function signedOutCard(ctx, base) {
+  const cookies = await ctx.cookies(base);
+  check("public context holds no cookies", cookies.length === 0, cookies.map(c => c.name));
+  try {
+    const res = await ctx.request.get(base + "/signup/card", { maxRedirects: 0, failOnStatusCode: false });
+    const loc = res.headers()["location"] || "";
+    const to = loc ? new URL(loc, base + "/signup/card") : null;
+    check("public context: GET /signup/card 303 to /signin?next=%2Fsignup%2Fcard",
+      res.status() === 303 && !!to && to.pathname + to.search === "/signin?next=%2Fsignup%2Fcard", { status: res.status(), location: to ? to.pathname + to.search : "" });
+    check("public context: /signup/card carries the same CSP", (res.headers()["content-security-policy"] || "") === (summary.csp || "") && !!summary.csp);
+    await res.dispose();
+  } catch (err) {
+    check("public context: GET /signup/card", false, String(err.message || err).split("\n")[0]);
+  }
+}
+
+// signedInCard checks the card field a signed-in learner sees: on
+// /signup/card for an account still choosing a plan, or, when the account
+// already has one (/signup/card redirects to /study or /billing), on
+// /billing/card. Either way the Stripe iframe must mount cleanly. The first
+// redirect hop decides, since /study itself may redirect on (to /shelf).
+async function signedInCard(ctx, base, opt, mode, altShot) {
+  const shot = opt.screenshot && altShot ? opt.screenshot.replace(/(\.png)?$/i, "-" + mode + ".png") : opt.screenshot;
+  let target = "/signup/card", hop = "";
+  try {
+    const res = await ctx.request.get(base + "/signup/card", { maxRedirects: 0, failOnStatusCode: false });
+    const loc = res.headers()["location"] || "";
+    hop = loc ? new URL(loc, base + "/signup/card").pathname : "";
+    await res.dispose();
+    if (res.status() !== 200) {
+      if (res.status() >= 300 && res.status() < 400 && (hop === "/study" || hop === "/billing")) {
+        target = "/billing/card";
+        (summary.session ||= {})[mode] = "account already has a plan (/signup/card redirects to " + hop + "): checking /billing/card";
+      } else {
+        check(mode + ": signed in", false, "GET /signup/card answered " + res.status() + (hop ? " to " + hop : "") + " (the session was not accepted)");
+        return;
+      }
+    }
+  } catch (err) {
+    check(mode + ": GET /signup/card", false, String(err.message || err).split("\n")[0]);
+    return;
+  }
+  const rec = await visit(ctx, base, target, opt, { card: true, screenshot: shot, mode });
+  if (!rec) return;
+  if (summary.stripe) check(mode + ": Stripe card field shown on " + target, rec.stripe, rec.stripe ? undefined : target + " rendered no #card-element[data-key]");
+  (summary.cardPages ||= []).push({ mode, path: target, signupCardRedirect: hop || null, stripeIframe: rec.stripeIframe || null });
+}
+
 // visit opens path in a fresh page and records every way it can fail
 // silently in a learner's browser.
-async function visit(context, base, p, opt, { expectStatus, card, allowRedirect, optional } = {}) {
+async function visit(context, base, p, opt, { expectStatus, card, screenshot, mode } = {}) {
   const page = await context.newPage();
   const rec = { path: p, cspViolations: [], consoleErrors: [], pageErrors: [], failedRequests: [], ignoredRequests: [] };
+  if (mode) rec.mode = mode;
+  const label = (mode ? mode + " " : "") + p;
   const origin = new URL(base).origin;
   page.on("console", m => { if (m.type() === "error") rec.consoleErrors.push({ text: m.text().slice(0, 300).replace(/\b(https?:\/\/[^\s?#"']+)[?#][^\s"']*/g, "$1"), at: clean(m.location().url || "") }); });
   page.on("pageerror", e => rec.pageErrors.push(String(e.message || e).slice(0, 300)));
@@ -232,24 +302,15 @@ async function visit(context, base, p, opt, { expectStatus, card, allowRedirect,
     res = await page.goto(base + p, { waitUntil: "load" });
     await page.waitForLoadState("networkidle", { timeout: Math.min(opt.timeout, 15000) }).catch(() => {});
   } catch (err) {
-    check("load " + p, false, String(err.message || err).split("\n")[0]);
+    check("load " + label, false, String(err.message || err).split("\n")[0]);
     await page.close();
     return null;
   }
   const final = new URL(page.url());
   rec.status = res ? res.status() : 0;
   rec.finalPath = final.pathname;
-  if (final.pathname !== p) {
-    if (optional || allowRedirect) {
-      rec.skipped = "redirected to " + final.pathname;
-      summary.pages.push(rec);
-      if (!optional) check("signed-in " + p + " reachable", false, "redirected to " + final.pathname + " (the session may be invalid or the account already has a plan)");
-      await page.close();
-      return null;
-    }
-    check(p + " stays on " + p, false, "ended at " + final.pathname);
-  }
-  if (expectStatus) check("GET " + p + " " + expectStatus, rec.status === expectStatus, { status: rec.status });
+  if (final.pathname !== p) check(label + " stays on " + p, false, "ended at " + final.pathname);
+  if (expectStatus) check("GET " + label + " " + expectStatus, rec.status === expectStatus, { status: rec.status });
 
   let stripe = false;
   if (card) {
@@ -263,17 +324,18 @@ async function visit(context, base, p, opt, { expectStatus, card, allowRedirect,
         const box = await frame.boundingBox();
         const src = await frame.getAttribute("src");
         rec.stripeIframe = { src: clean(src), width: box && Math.round(box.width), height: box && Math.round(box.height) };
-        check(p + ": Stripe iframe visible, height >= 20 and width >= 150", !!box && box.height >= 20 && box.width >= 150, rec.stripeIframe);
+        check(label + ": Stripe iframe visible, height >= 20 and width >= 150", !!box && box.height >= 20 && box.width >= 150, rec.stripeIframe);
       } catch (err) {
-        check(p + ": Stripe iframe attached and visible", false, String(err.message || err).split("\n")[0]);
+        check(label + ": Stripe iframe attached and visible", false, String(err.message || err).split("\n")[0]);
       }
       const shown = (await page.locator("#card-error").textContent().catch(() => "")) || "";
-      check(p + ": no card-field error shown", shown.trim() === "", shown.trim());
+      check(label + ": no card-field error shown", shown.trim() === "", shown.trim());
     }
-    if (opt.screenshot && !summary.screenshot) {
-      fs.mkdirSync(path.dirname(path.resolve(opt.screenshot)), { recursive: true });
-      await page.screenshot({ path: opt.screenshot, fullPage: true });
-      summary.screenshot = opt.screenshot;
+    if (screenshot) {
+      fs.mkdirSync(path.dirname(path.resolve(screenshot)), { recursive: true });
+      await page.screenshot({ path: screenshot, fullPage: true });
+      (summary.screenshots ||= []).push(screenshot);
+      rec.screenshot = screenshot;
     }
   }
   await page.waitForTimeout(500);
@@ -283,10 +345,10 @@ async function visit(context, base, p, opt, { expectStatus, card, allowRedirect,
       for (const x of v) rec.cspViolations.push({ frame: clean(f.url()), directive: x.directive, blocked: clean(x.blocked || ""), source: clean(x.source || ""), line: x.line });
     } catch { /* a frame that went away */ }
   }
-  check(p + ": 0 securitypolicyviolation", rec.cspViolations.length === 0, rec.cspViolations);
-  check(p + ": 0 console.error", rec.consoleErrors.length === 0, rec.consoleErrors);
-  check(p + ": 0 pageerror", rec.pageErrors.length === 0, rec.pageErrors);
-  check(p + ": 0 failed or blocked requests", rec.failedRequests.length === 0, rec.failedRequests);
+  check(label + ": 0 securitypolicyviolation", rec.cspViolations.length === 0, rec.cspViolations);
+  check(label + ": 0 console.error", rec.consoleErrors.length === 0, rec.consoleErrors);
+  check(label + ": 0 pageerror", rec.pageErrors.length === 0, rec.pageErrors);
+  check(label + ": 0 failed or blocked requests", rec.failedRequests.length === 0, rec.failedRequests);
   rec.stripe = stripe;
   summary.pages.push(rec);
   await page.close();
@@ -305,7 +367,7 @@ async function localSignup(context, base, opt) {
     await page.fill("#password", "verify-live-" + Math.random().toString(36).slice(2));
     await Promise.all([page.waitForURL(u => new URL(u).pathname !== "/signup", { timeout: opt.timeout }), page.click("form[action='/signup'] button, main form button")]);
     const at = new URL(page.url()).pathname;
-    summary.session = { localSignup: true, landedOn: at };
+    summary.session = Object.assign(summary.session || {}, { localSignup: true, landedOn: at });
     return check("local sign-up lands on /signup/card", at === "/signup/card", { landedOn: at });
   } catch (err) {
     return check("local sign-up", false, String(err.message || err).split("\n")[0]);

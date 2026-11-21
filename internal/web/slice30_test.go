@@ -31,6 +31,10 @@ import (
 
 const clerkTestDomain = "clerk.scry-csp.example"
 
+// cspRigHost is the host the rig's reports arrive on: Scry's own pages and
+// /static/ assets are on it.
+const cspRigHost = "scry.example"
+
 func clerkTestKey() string {
 	return "pk_test_" + base64.RawStdEncoding.EncodeToString([]byte(clerkTestDomain+"$"))
 }
@@ -121,7 +125,10 @@ func (r *cspRig) policy(path string) (int, string, http.Header) {
 
 func (r *cspRig) report(contentType, body string) int {
 	r.t.Helper()
-	resp, err := http.Post(r.srv.URL+"/api/client-error", contentType, strings.NewReader(body))
+	req, _ := http.NewRequest(http.MethodPost, r.srv.URL+"/api/client-error", strings.NewReader(body))
+	req.Header.Set("Content-Type", contentType)
+	req.Host = cspRigHost // as a deployed Scry sees its own pages
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		r.t.Fatal(err)
 	}
@@ -317,16 +324,84 @@ func TestSlice30ClientErrorStripsSecretsBeforeSentry(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("captured %v", got)
 	}
-	has(t, got[0], "route=/signup/card ", "blocked=https://evil.example/pixel/a.png ", "directive=img-src")
-	has(t, got[1], "route=/library/items/:id ", "blocked=https://cdn.example/lib.js ", "directive=script-src-elem")
-	has(t, got[2], "route=/settings/tokens/:token ", "[email]", "https://api.example/v1/x", "[redacted]", "[number]")
+	has(t, got[0], "route=/signup/card ", "blocked=https://evil.example ", "directive=img-src")
+	has(t, got[1], "route=/library/items/:id ", "blocked=https://cdn.example ", "directive=script-src-elem")
+	has(t, got[2], "route=/other ", "[email]", "https://api.example ", "[redacted]", "[number]")
 	for _, secret := range []string{"tok_routeSecret123", "next=", "#frag", "learner", "hunter2", "sess_abcdef", "sk_live", "pk_live",
-		"bob@example.com", "private", "secret=1", "abcdef123", "eyJ", "4242 4242", "?"} {
+		"bob@example.com", "private", "secret=1", "abcdef123", "eyJ", "4242 4242", "?", "/pixel", "a.png", "lib.js", "/v1/x", "settings/tokens"} {
 		if strings.Contains(strings.Join(got, "\n"), secret) {
 			t.Errorf("Sentry message carries %q:\n%s", secret, strings.Join(got, "\n"))
 		}
 		if secret != "?" && strings.Contains(r.logs.String(), secret) {
 			t.Errorf("log carries %q", secret)
+		}
+	}
+}
+
+// Cold Critic, slice 30 pass 1: caller-chosen route segments, relative-URL
+// query strings, card-like numbers in paths and messages, and third-party
+// paths must never reach Sentry or the log. Routes are Scry's own route
+// templates or /other; unknown hosts keep only scheme://host.
+func TestSlice30ClientErrorForwardsNoCallerData(t *testing.T) {
+	r := newCSPRig(t, true, false)
+	for _, c := range []struct {
+		name, contentType, body string
+		want                    []string
+	}{
+		{"unknown route collapses to /other", "application/json",
+			`{"kind":"js_error","route":"/my-diagnosis/hiv-positive/bob","message":"boom one"}`,
+			[]string{"route=/other ", `message="boom one"`}},
+		{"unknown route in a native report", "application/csp-report",
+			`{"csp-report":{"document-uri":"https://scry.example/reset/4242424242424242/alice-smith","violated-directive":"img-src","blocked-uri":"https://evil.example/x"}}`,
+			[]string{"route=/other ", "blocked=https://evil.example "}},
+		{"known route with an id keeps only its template", "application/json",
+			`{"kind":"js_error","route":"/learn/my-private-topic","message":"boom two"}`,
+			[]string{"route=/learn/:id "}},
+		{"relative URL query strings are stripped", "application/json",
+			`{"kind":"js_error","route":"/signup","message":"redirect /signup?token=zqsecret77 then path?email=a@b.com and ?code=xyz789"}`,
+			[]string{`message="redirect /signup then path and ?[redacted]"`}},
+		{"card numbers in messages are redacted", "application/json",
+			`{"kind":"unhandled_rejection","route":"/billing/card","message":"declined 4242 4242 4242 4242 at /cards/4242424242424242 and /4242-4242-4242-4242"}`,
+			[]string{`message="declined [number] at /cards/[number] and /[number]"`}},
+		{"card numbers in integration paths are redacted", "application/json",
+			`{"kind":"csp_violation","route":"/signup/card","violatedDirective":"frame-src","blockedURI":"https://js.stripe.com/cards/4242424242424242/x.html?pan=4242424242424242"}`,
+			[]string{"blocked=https://js.stripe.com/cards/:number/x.html "}},
+		{"unknown third-party URIs keep scheme://host only", "application/json",
+			`{"kind":"csp_violation","route":"/study","violatedDirective":"connect-src","blockedURI":"https://tracker.example/u/alice-smith/notes/my-diagnosis.json"}`,
+			[]string{"blocked=https://tracker.example "}},
+		{"unknown third-party source files keep scheme://host only", "application/json",
+			`{"kind":"js_error","route":"/study","message":"boom three","sourceFile":"https://cdn.example/users/alice-smith/inject.js","line":3}`,
+			[]string{"source=https://cdn.example:3 "}},
+		{"a host name carrying data is redacted", "application/json",
+			`{"kind":"csp_violation","route":"/","violatedDirective":"img-src","blockedURI":"https://sk_live_abcdef123456.evil.example/p"}`,
+			[]string{"blocked=https://[redacted-host] "}},
+		{"first-party static assets keep their path", "application/json",
+			`{"kind":"js_error","route":"/study","message":"boom four","sourceFile":"https://scry.example/static/app.js?v=9","line":1}`,
+			[]string{"source=https://scry.example/static/app.js:1 "}},
+		{"integration errors are fixed codes", "application/json",
+			`{"kind":"integration_error","route":"/signup/card","message":"my notes say bob@example.com 4242424242424242"}`,
+			[]string{`message="unrecognized integration error"`}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			before := len(r.captured())
+			if status := r.report(c.contentType, c.body); status != http.StatusNoContent {
+				t.Fatalf("status %d", status)
+			}
+			got := r.captured()
+			if len(got) != before+1 {
+				t.Fatalf("captured %d new events: %v", len(got)-before, got)
+			}
+			has(t, got[len(got)-1], c.want...)
+		})
+	}
+	all := strings.Join(r.captured(), "\n")
+	for _, leak := range []string{"diagnosis", "hiv", "bob", "alice", "smith", "reset", "4242", "token=", "zqsecret77", "email=",
+		"a@b.com", "code=", "xyz789", "/u/", "notes", "inject.js", "users", "sk_live", "pan=", "my-private-topic", "v=9"} {
+		if strings.Contains(all, leak) {
+			t.Errorf("Sentry carries %q:\n%s", leak, all)
+		}
+		if strings.Contains(r.logs.String(), leak) {
+			t.Errorf("log carries %q", leak)
 		}
 	}
 }
