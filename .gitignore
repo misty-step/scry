@@ -6,3 +6,4 @@
 *.db-shm
 .env
 _apalache-out/
+/evals/results/
