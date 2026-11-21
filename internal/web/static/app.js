@@ -1,5 +1,89 @@
 // Scry's progressive enhancement. Every page works without this file;
 // with it, the keyboard does more and the study session never reloads.
+
+// Client telemetry: a blocked resource, a script error or an unhandled
+// rejection is reported to /api/client-error so it reaches the operator
+// instead of failing silently. Reports carry no query strings, fragments
+// or page content, are de-duplicated and capped per page load.
+(function () {
+  "use strict";
+  var endpoint = "/api/client-error", max = 5, sent = 0, seen = {};
+  var keywords = { "inline": 1, "eval": 1, "wasm-eval": 1, "self": 1, "trusted-types-policy": 1, "trusted-types-sink": 1 };
+
+  // clean keeps scheme, host and path: never userinfo, query or fragment.
+  function clean(uri) {
+    if (!uri) return "";
+    uri = String(uri);
+    if (keywords[uri]) return uri;
+    try {
+      var u = new URL(uri, location.href);
+      if (u.protocol === "http:" || u.protocol === "https:" || u.protocol === "ws:" || u.protocol === "wss:") {
+        return u.protocol + "//" + u.host + u.pathname;
+      }
+      return u.protocol.replace(":", "");
+    } catch (err) {
+      return uri.split(/[?#]/)[0].slice(0, 200);
+    }
+  }
+
+  function text(v) {
+    var s = "";
+    try { s = v && v.message ? String(v.message) : String(v); } catch (err) { s = "unprintable"; }
+    return s.replace(/\b(https?|wss?):\/\/[^\s"'<>()]+/g, function (u) { return clean(u); }).slice(0, 300);
+  }
+
+  function send(report) {
+    report.route = location.pathname;
+    var key = JSON.stringify(report);
+    if (seen[key] || sent >= max) return;
+    seen[key] = 1;
+    sent++;
+    var body = JSON.stringify(report);
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }))) return;
+    } catch (err) { /* fall through to fetch */ }
+    try {
+      fetch(endpoint, { method: "POST", body: body, keepalive: true, credentials: "same-origin",
+        headers: { "Content-Type": "application/json" } }).catch(function () {});
+    } catch (err) { /* nothing else to try */ }
+  }
+
+  var blocked = {}; // URIs the policy blocked: their load errors are not news
+
+  document.addEventListener("securitypolicyviolation", function (e) {
+    blocked[clean(e.blockedURI)] = 1;
+    send({
+      kind: "csp_violation", violatedDirective: e.violatedDirective || "", effectiveDirective: e.effectiveDirective || "",
+      blockedURI: clean(e.blockedURI), sourceFile: clean(e.sourceFile), line: e.lineNumber || 0, column: e.columnNumber || 0,
+      disposition: e.disposition || ""
+    });
+  });
+
+  window.addEventListener("error", function (e) {
+    var el = e.target;
+    if (el && el !== window && el.tagName) {
+      // A script, stylesheet or image that failed to load (capture phase).
+      // The violation event can arrive just after the load error, so wait a
+      // moment before deciding this is a separate failure.
+      var src = clean(el.src || el.href || ""), tag = el.tagName.toLowerCase();
+      setTimeout(function () {
+        if (!blocked[src]) send({ kind: "resource_error", message: "failed to load " + tag + " " + src, sourceFile: src });
+      }, 100);
+      return;
+    }
+    // Cross-origin scripts we don't control report only "Script error.".
+    if (!e.filename && /^Script error\.?$/.test(e.message || "")) return;
+    if (/^(chrome|moz|safari-web)-extension:/.test(e.filename || "")) return;
+    send({ kind: "js_error", message: text(e.error || e.message), sourceFile: clean(e.filename), line: e.lineno || 0, column: e.colno || 0 });
+  }, true);
+
+  window.addEventListener("unhandledrejection", function (e) {
+    send({ kind: "unhandled_rejection", message: text(e.reason) || "(no reason)" });
+  });
+
+  // For Scry's own scripts (stripe.js) to report an integration failure.
+  window.scryReport = function (kind, message) { send({ kind: kind, message: text(message) }); };
+})();
 (function () {
   "use strict";
 

@@ -1,0 +1,11 @@
+{
+  "name": "scry-scripts",
+  "private": true,
+  "description": "Browser tooling for Scry: scripts/verify-live.mjs (Playwright, system Chrome).",
+  "scripts": {
+    "verify-live": "node verify-live.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

@@ -46,6 +46,8 @@ type Server struct {
 
 	mu       sync.Mutex
 	attempts map[string][]time.Time
+
+	clientErrs clientErrLimiter
 }
 
 // rc is what a handler knows about the request's learner.
@@ -106,6 +108,9 @@ func New(a *app.App, log *slog.Logger) *Server {
 	// The wordmark has no glyph for now, so there is no icon to serve.
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
 	mux.HandleFunc("POST /webhooks/stripe", s.webhook)
+	// Browser CSP reports and client error telemetry: public, CSRF-exempt,
+	// size- and rate-limited, sanitized before it reaches the logs.
+	mux.HandleFunc("POST "+clientErrorPath, s.clientError)
 	mux.HandleFunc("POST /api/v1/suggestions", s.apiSuggest)
 	mux.HandleFunc("POST /api/v1/items", s.apiAdd)
 	mux.HandleFunc("GET /api/v1/ideas", s.apiIdeas)
@@ -235,22 +240,8 @@ func (s *Server) observe(next http.Handler) http.Handler {
 // secure sets the headers that keep the page to its own origin.
 func (s *Server) secure(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		script, frame, connect := "'self'", "'none'", "'self'"
-		if s.App.Pay.PublishableKey() != "" {
-			script, frame, connect = "'self' https://js.stripe.com", "https://js.stripe.com", "'self' https://api.stripe.com"
-		}
 		h := w.Header()
-		if provider, ok := s.App.Auth.(*auth.Clerk); ok && provider.Configured() {
-			origin := "https://" + provider.Domain()
-			script += " " + origin + " https://challenges.cloudflare.com"
-			connect += " " + origin + " https://challenges.cloudflare.com"
-			frame = "https://challenges.cloudflare.com"
-		}
-		h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; script-src "+script+
-			"; frame-src "+frame+"; connect-src "+connect+"; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
-		if provider, ok := s.App.Auth.(*auth.Clerk); ok && provider.Configured() {
-			h.Set("Content-Security-Policy", strings.Replace(h.Get("Content-Security-Policy"), "style-src 'self'", "style-src 'self' 'unsafe-inline'", 1))
-		}
+		h.Set("Content-Security-Policy", s.policy())
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
 		h.Set("Permissions-Policy", "microphone=(self), camera=(), geolocation=()")
