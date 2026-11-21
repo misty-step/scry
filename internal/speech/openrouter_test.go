@@ -155,6 +155,8 @@ func TestSlice20_OpenRouterTranscribeFailures(t *testing.T) {
 		{"not json", `<html>bad gateway</html>`, 502, "speech provider: status 502"},
 		{"no choices", `{"choices":[]}`, 200, "no transcript"},
 		{"content filter", `{"choices":[{"message":{"content":""},"finish_reason":"content_filter"}]}`, 200, "speech provider declined"},
+		{"finish reason error with partial text", `{"choices":[{"message":{"content":"The capital of"},"finish_reason":"error"}]}`, 200, "speech provider failed before finishing the transcript"},
+		{"finish reason error with no text", `{"choices":[{"message":{"content":null},"finish_reason":"error"}]}`, 200, "speech provider failed before finishing the transcript"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			o := routerServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -281,5 +283,30 @@ func TestSlice20_OpenAIErrorRedactedAndBounded(t *testing.T) {
 	_, err := OpenAI{APIKey: "oai-SECRETstandin", BaseURL: srv.URL}.Transcribe(context.Background(), Audio{Data: []byte("x")})
 	if err == nil || strings.Contains(err.Error(), "oai-SECRETstandin") || !strings.Contains(err.Error(), "[redacted]") || len(err.Error()) > 300 {
 		t.Fatalf("%v", err)
+	}
+}
+
+// SCRY_SPEECH_MODEL on OpenRouter goes through the same strict slug check
+// as SCRY_DRAFT_MODEL and SCRY_EXPLAIN_MODEL (safeerr.IsRouterSlug):
+// whitespace inside, a leading or trailing slash, or an empty segment is
+// refused at boot, never sent to the provider.
+func TestSlice20_NewTranscriberRejectsMalformedSlugs(t *testing.T) {
+	for _, m := range []string{
+		"google/gemini 2.5-flash", "google/\tgemini", "google /gemini", "google/gemini\u00a0flash",
+		"/google/gemini-2.5-flash", "google/gemini-2.5-flash/", "/gemini", "google/", "google//gemini", "/", "gemini-2.5-flash",
+	} {
+		tr, err := NewTranscriber(routerKey, "", m)
+		if err == nil || tr != nil || !strings.Contains(err.Error(), "not an OpenRouter model slug") || strings.Contains(err.Error(), routerKey) {
+			t.Errorf("SCRY_SPEECH_MODEL=%q: %v %v", m, tr, err)
+		}
+	}
+	for _, m := range []string{"google/gemini-2.5-flash", "openai/gpt-4o-audio-preview", "  google/gemini-2.5-pro  "} {
+		if tr, err := NewTranscriber(routerKey, "", m); err != nil || tr.(OpenRouter).Model != strings.TrimSpace(m) {
+			t.Errorf("SCRY_SPEECH_MODEL=%q: %v %v", m, tr, err)
+		}
+	}
+	// The direct OpenAI fallback takes plain OpenAI model names.
+	if tr, err := NewTranscriber("", "oai-standin", "gpt-4o-mini-transcribe"); err != nil || tr.Name() != "openai" {
+		t.Fatalf("%v %v", tr, err)
 	}
 }

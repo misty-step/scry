@@ -1057,3 +1057,32 @@ Choices where the brief was silent:
   a contradiction. The /healthz warning lists each real capability and its
   route.
 
+Pass 2 (cold critic remediation):
+
+- G2 on OpenRouter: `App.runDraft` settles a reservation only when
+  `Usage.Model` is set. The OpenRouter drafting stream now sets it only once
+  a usage chunk arrives (or on a clean `[DONE]` completion whose usage chunk
+  upstream omitted). Any failure before usage (truncated stream, stream
+  error object, `finish_reason` error, `content_filter` without usage,
+  invalid chunk, sink error, disconnect) returns an empty model, so the
+  reservation stays held until reconciled or swept, as on the direct route.
+  Usage reported on a chunk that also fails is kept and settles at its cost.
+  TestG2_OpenRouterDraftTruncatedWithoutUsageKeepsReservation covers it end
+  to end on the real adapter.
+- The OpenRouter explainer follows the same rule at the adapter (empty model
+  without reported usage). `App.Explain` is unchanged on purpose: its small
+  reservation is released on failure, which
+  TestExplain_FallsBackToTheCriterionSentence already requires.
+- `finish_reason: "error"` is an explicit error on the explainer and on
+  OpenRouter speech; partial text is never returned.
+- One slug check, `safeerr.IsRouterSlug`, for SCRY_DRAFT_MODEL,
+  SCRY_EXPLAIN_MODEL and SCRY_SPEECH_MODEL on OpenRouter: at least
+  vendor/model, no whitespace or control characters, no leading, trailing
+  or doubled slash.
+- SCRY_JUDGE_MODE=live in test mode checks the key Jev will use
+  (OPENROUTER_API_KEY, else TYPESAFE_API_KEY) like realAI, so a JWT-shaped
+  key stops the boot.
+- Test mode refuses live Clerk keys (pk_live_/sk_live_) whatever
+  SCRY_AUTH_MODE says, as it refuses live Stripe keys, even when only one is
+  set. SCRY_AUTH_MODE=test/clerk-test now also refuses a Clerk key with
+  neither prefix.

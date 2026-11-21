@@ -87,7 +87,14 @@ func (c *Claude) draftOpenRouter(ctx context.Context, user string, sink DraftSin
 		return DraftResult{}, Usage{}, fmt.Errorf("draft provider status %d", resp.StatusCode)
 	}
 	p := &draftLines{sink: sink}
-	use := Usage{Model: c.DraftModel}
+	// G2: use.Model stays empty until the provider reports usage. App.runDraft
+	// settles a reservation only when use.Model is set; on any failure with
+	// no usage reported (a truncated stream, a stream error, a refusal or a
+	// sink error before the usage chunk) the outcome is unknown, so the
+	// reservation must stay held. The model name is tracked separately.
+	use := Usage{}
+	model := c.DraftModel
+	reported := false
 	stopped := false
 	var eventData []string
 	process := func() error {
@@ -117,13 +124,21 @@ func (c *Claude) draftOpenRouter(ctx context.Context, user string, sink DraftSin
 		if err := json.Unmarshal([]byte(raw), &ev); err != nil {
 			return errors.New("invalid draft stream")
 		}
+		if ev.Model != "" {
+			model = ev.Model
+		}
+		if ev.Usage != nil {
+			// Reported usage is recorded even on a chunk that also fails, so
+			// a billed failure settles at its reported cost.
+			ev.Usage.apply(&use)
+			reported = true
+		}
+		if reported {
+			use.Model = redactModel(model, c.secret)
+		}
 		if ev.Error != nil {
 			return errors.New("draft provider stream failed")
 		}
-		if ev.Model != "" {
-			use.Model = ev.Model
-		}
-		ev.Usage.apply(&use)
 		if len(ev.Choices) == 0 {
 			return nil
 		}
@@ -166,6 +181,11 @@ func (c *Claude) draftOpenRouter(ctx context.Context, user string, sink DraftSin
 		return p.res, use, errors.New("draft stream ended before completion")
 	}
 	res, err := p.finish()
+	if err == nil && !reported {
+		// A clean completion whose usage chunk upstream omitted: the outcome
+		// is known, so it settles (at the tokens reported, none).
+		use.Model = redactModel(model, c.secret)
+	}
 	return res, use, err
 }
 
@@ -201,19 +221,28 @@ func (c *Claude) explainOpenRouter(ctx context.Context, model, user string) (str
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return "", Usage{}, fmt.Errorf("explanation provider status %d", resp.StatusCode)
 	}
-	use := Usage{Model: model}
+	// G2, as in draftOpenRouter: use.Model is set only when the provider
+	// reported usage, or on a clean success; a failure with no usage
+	// reported leaves it empty (outcome unknown).
 	if out.Model != "" {
-		use.Model = out.Model
+		model = out.Model
 	}
-	out.Usage.apply(&use)
+	use := Usage{}
+	if out.Usage != nil {
+		out.Usage.apply(&use)
+		use.Model = redactModel(model, c.secret)
+	}
 	if resp.StatusCode != http.StatusOK || out.Error != nil {
 		return "", use, fmt.Errorf("explanation provider status %d", resp.StatusCode)
 	}
 	if len(out.Choices) == 0 {
 		return "", use, errors.New("explanation was empty")
 	}
-	if out.Choices[0].FinishReason == "content_filter" {
+	switch out.Choices[0].FinishReason {
+	case "content_filter":
 		return "", use, errors.New("explanation provider declined")
+	case "error":
+		return "", use, errors.New("explanation provider failed")
 	}
 	text := ""
 	if out.Choices[0].Message.Content != nil {
@@ -222,6 +251,9 @@ func (c *Claude) explainOpenRouter(ctx context.Context, model, user string) (str
 	s := ClampExplanation(text)
 	if s == "" {
 		return "", use, errors.New("explanation was empty")
+	}
+	if use.Model == "" {
+		use.Model = redactModel(model, c.secret)
 	}
 	return s, use, nil
 }

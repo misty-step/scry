@@ -125,8 +125,12 @@ func (o OpenRouter) Transcribe(ctx context.Context, a Audio) (result string, ret
 	if len(out.Choices) == 0 {
 		return "", errors.New("speech provider returned no transcript")
 	}
-	if out.Choices[0].FinishReason == "content_filter" {
+	switch out.Choices[0].FinishReason {
+	case "content_filter":
 		return "", errors.New("speech provider declined")
+	case "error":
+		// The provider failed mid-generation: any text is partial, never a transcript.
+		return "", errors.New("speech provider failed before finishing the transcript")
 	}
 	text := ""
 	if c := out.Choices[0].Message.Content; c != nil {

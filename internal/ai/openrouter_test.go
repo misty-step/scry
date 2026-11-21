@@ -327,3 +327,138 @@ func TestSlice20_DirectExplainUnchanged(t *testing.T) {
 		t.Fatalf("%q %v", text, err)
 	}
 }
+
+// G2: App.runDraft settles a draft's reservation only when Usage.Model is
+// set, and holds it otherwise (the provider may have billed a call whose
+// outcome is unknown). So every OpenRouter failure that arrives before a
+// usage chunk must return an empty Usage.Model, and every stream that did
+// report usage must return it set, even when the stream then fails.
+func TestSlice20_OpenRouterDraftUsageModelOnlyWithReportedUsage(t *testing.T) {
+	head := chunk(`{"kind":"topic","title":"X"}` + "\n")
+	usageWith := func(extra string) string {
+		return `data: {"model":"anthropic/claude-sonnet-5.5","usage":{"prompt_tokens":40,"completion_tokens":7,"cost":0.0002}` + extra + "}\n\n"
+	}
+	sinkErr := fmt.Errorf("sink failed")
+	for _, tc := range []struct {
+		name, body string
+		sink       DraftSink
+		want       string // error substring
+		usage      bool   // usage was reported, so Model must be set
+	}{
+		{"mid-stream error object", head + `data: {"error":{"code":502,"message":"upstream"}}` + "\n\n", DraftSink{}, "draft provider stream failed", false},
+		{"truncated without DONE", head + chunk(`{"idea":{"title":"Half`), DraftSink{}, "draft stream ended before completion", false},
+		{"invalid JSON chunk", head + "data: {not json\n\n", DraftSink{}, "invalid draft stream", false},
+		{"finish_reason error", head + finishChunk("error") + "data: [DONE]\n\n", DraftSink{}, "draft provider stream failed", false},
+		{"content_filter without usage", head + finishChunk("content_filter") + "data: [DONE]\n\n", DraftSink{}, "draft provider declined", false},
+		{"sink error before usage", head + usageChunk + "data: [DONE]\n\n", DraftSink{Head: func(DraftHead) error { return sinkErr }}, "sink failed", false},
+		{"usage then truncated", head + usageChunk, DraftSink{}, "draft stream ended before completion", true},
+		{"usage then stream error", head + usageChunk + `data: {"error":{"code":502}}` + "\n\n", DraftSink{}, "draft provider stream failed", true},
+		{"content_filter with usage", head + usageWith(`,"choices":[{"delta":{},"finish_reason":"content_filter"}]`) + "data: [DONE]\n\n", DraftSink{}, "draft provider declined", true},
+		{"error object with usage", head + usageWith(`,"error":{"code":502}`), DraftSink{}, "draft provider stream failed", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprint(w, tc.body)
+			})
+			_, use, err := c.Draft(context.Background(), DraftInput{Query: "x"}, tc.sink)
+			if err == nil || (tc.want != "" && !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("err %v, want %q", err, tc.want)
+			}
+			if tc.usage {
+				if use.Model != "anthropic/claude-sonnet-5.5" || use.InputTokens == 0 {
+					t.Fatalf("reported usage lost: %+v", use)
+				}
+				return
+			}
+			if use.Model != "" {
+				t.Fatalf("Usage.Model = %q with no usage reported: the reservation would be settled at $0 (%+v)", use.Model, use)
+			}
+		})
+	}
+	t.Run("clean completion without a usage chunk still names the model", func(t *testing.T) {
+		c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, chunk("{\"done\":true}\n")+"data: [DONE]\n\n")
+		})
+		_, use, err := c.Draft(context.Background(), DraftInput{Query: "x"}, DraftSink{})
+		if err != nil || use.Model != "anthropic/claude-sonnet-5.5" {
+			t.Fatalf("%+v %v", use, err)
+		}
+	})
+	t.Run("clean completion without any model falls back to the requested one", func(t *testing.T) {
+		c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"{\\\"done\\\":true}\\n\"}}]}\n\ndata: [DONE]\n\n")
+		})
+		_, use, err := c.Draft(context.Background(), DraftInput{Query: "x"}, DraftSink{})
+		if err != nil || use.Model != DefaultOpenRouterDraftModel {
+			t.Fatalf("%+v %v", use, err)
+		}
+	})
+}
+
+// G2 for the explainer: a failure with no usage reported leaves
+// Usage.Model empty; reported usage is always kept.
+func TestSlice20_OpenRouterExplainUsageModelOnlyWithReportedUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		status     int
+		usage      bool
+	}{
+		{"http error without usage", `{"error":{"code":401,"message":"no"}}`, 401, false},
+		{"error object on 200 without usage", `{"model":"anthropic/claude-sonnet-5.5","error":{"code":502}}`, 200, false},
+		{"finish_reason error without usage", `{"model":"anthropic/claude-sonnet-5.5","choices":[{"message":{"content":"partial"},"finish_reason":"error"}]}`, 200, false},
+		{"content_filter without usage", `{"model":"anthropic/claude-sonnet-5.5","choices":[{"message":{"content":""},"finish_reason":"content_filter"}]}`, 200, false},
+		{"no choices without usage", `{"model":"anthropic/claude-sonnet-5.5","choices":[]}`, 200, false},
+		{"not json", `<html>`, 502, false},
+		{"finish_reason error with usage", `{"model":"anthropic/claude-sonnet-5.5","choices":[{"message":{"content":"partial"},"finish_reason":"error"}],"usage":{"prompt_tokens":9,"completion_tokens":3}}`, 200, true},
+		{"refusal with usage", `{"model":"anthropic/claude-sonnet-5.5","choices":[{"message":{"content":""},"finish_reason":"content_filter"}],"usage":{"prompt_tokens":9,"completion_tokens":1}}`, 200, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			})
+			text, use, err := c.Explain(context.Background(), ExplainInput{Question: "q", Expected: "e", Answer: "a", Verdict: srs.Missed})
+			if err == nil || text != "" {
+				t.Fatalf("%q %v: want an error and no text", text, err)
+			}
+			if got := use.Model != ""; got != tc.usage {
+				t.Fatalf("Usage.Model = %q, usage reported = %v", use.Model, tc.usage)
+			}
+		})
+	}
+	t.Run("success without usage still names the model", func(t *testing.T) {
+		c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"choices":[{"message":{"content":"It differs."},"finish_reason":"stop"}]}`)
+		})
+		text, use, err := c.Explain(context.Background(), ExplainInput{Question: "q", Expected: "e", Answer: "a", Verdict: srs.Missed})
+		if err != nil || text != "It differs." || use.Model != DefaultOpenRouterExplainModel {
+			t.Fatalf("%q %+v %v", text, use, err)
+		}
+	})
+}
+
+// finish_reason "error" on the non-streaming explainer is an explicit
+// failure, never partial text.
+func TestSlice20_OpenRouterExplainFinishReasonError(t *testing.T) {
+	c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"You named the ci"},"finish_reason":"error"}],"usage":{"prompt_tokens":9,"completion_tokens":3}}`)
+	})
+	text, _, err := c.Explain(context.Background(), ExplainInput{Question: "q", Expected: "e", Answer: "a", Verdict: srs.Missed})
+	if err == nil || !strings.Contains(err.Error(), "explanation provider failed") || text != "" {
+		t.Fatalf("%q %v", text, err)
+	}
+}
+
+// SCRY_DRAFT_MODEL and SCRY_EXPLAIN_MODEL on OpenRouter share speech's
+// strict slug check (safeerr.IsRouterSlug).
+func TestSlice20_NewClaudeWithRouterRejectsMalformedSlugs(t *testing.T) {
+	for _, m := range []string{"anthropic/claude sonnet", "anthropic/\tclaude", "/anthropic/claude-sonnet-5.5", "anthropic/claude-sonnet-5.5/", "anthropic//claude", "claude-opus-5-5"} {
+		if c, err := NewClaudeWithRouter("", "or-router", m, ""); err == nil || c != nil || !strings.Contains(err.Error(), "SCRY_DRAFT_MODEL") {
+			t.Errorf("draft %q: %v", m, err)
+		}
+		if c, err := NewClaudeWithRouter("", "or-router", "", m); err == nil || c != nil || !strings.Contains(err.Error(), "SCRY_EXPLAIN_MODEL") {
+			t.Errorf("explain %q: %v", m, err)
+		}
+	}
+}

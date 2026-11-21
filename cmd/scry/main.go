@@ -134,12 +134,13 @@ func operatorHandler(base slog.Handler, test bool) slog.Handler {
 //
 //	SCRY_STRIPE_MODE=test  in live mode: Stripe test keys (stripe-test), surfaced in /healthz
 //	SCRY_STRIPE_MODE=live  in test mode: refused (a test build never charges real cards)
-//	SCRY_JUDGE_MODE=live   in test mode: real Jev grades, drafts stay fake; needs a Jev key
+//	SCRY_JUDGE_MODE=live   in test mode: real Jev grades, drafts stay fake; needs a valid Jev key
 //	SCRY_JUDGE_MODE=test   in live mode: refused (live grading is never stubbed)
 //	SCRY_AI_MODE=live      in test mode: all four real AI adapters, surfaced in /healthz
 //	SCRY_AI_MODE=test      in live mode: refused (live AI is never stubbed)
 //	SCRY_AUTH_MODE=test|clerk-test in live mode: Clerk test keys required, surfaced in /healthz
 //	SCRY_AUTH_MODE=live    in live mode: live Clerk keys required; in test mode: refused
+//	live Clerk keys        in test mode: refused, whatever SCRY_AUTH_MODE says
 //
 // Live mode with Clerk test keys and SCRY_AUTH_MODE unset still boots, as
 // before, but /healthz warns about it.
@@ -294,9 +295,19 @@ func build(log *slog.Logger) (*app.App, error) {
 		} else if judgeMode == "live" {
 			// Explicitly asked for: grade with real Jev, keep drafting fake.
 			// Without a key this stops; it never falls back to the fake.
-			judge, jerr := ai.NewJev(env("TYPESAFE_API_KEY", ""), env("OPENROUTER_API_KEY", ""), log)
+			router, typesafe := env("OPENROUTER_API_KEY", ""), env("TYPESAFE_API_KEY", "")
+			judge, jerr := ai.NewJev(typesafe, router, log)
 			if jerr != nil {
 				return nil, errors.New("SCRY_JUDGE_MODE=live needs OPENROUTER_API_KEY or TYPESAFE_API_KEY")
+			}
+			// The same key check as realAI, on the key Jev will actually use:
+			// OPENROUTER_API_KEY whenever it is set, else TYPESAFE_API_KEY.
+			name, key := "OPENROUTER_API_KEY", router
+			if router == "" {
+				name, key = "TYPESAFE_API_KEY", typesafe
+			}
+			if kerr := safeerr.CheckAPIKey(name, key); kerr != nil {
+				return nil, fmt.Errorf("SCRY_JUDGE_MODE=live: %w", kerr)
 			}
 			judge.Model = env("SCRY_JUDGE_MODEL", "")
 			a.Model = ai.Split{JudgeProvider: judge, DraftProvider: model}
@@ -386,10 +397,12 @@ func bootProblems(lead string, missing []string, tail string, invalid []string) 
 }
 
 // checkClerkKeys pins Clerk to one instance kind. A publishable and secret
-// key from different kinds (one live, one test) never boot. With
+// key from different kinds (one live, one test) never boot. SCRY_MODE=test
+// never accepts a live Clerk key (pk_live_/sk_live_), whatever
+// SCRY_AUTH_MODE says, just as it never accepts live Stripe keys. With
 // SCRY_AUTH_MODE=live both must be live keys; with test or clerk-test,
-// neither may be, and in test mode both must be present. Errors name the
-// variable, never its value.
+// each key set must be a test key (pk_test_/sk_test_), and in test mode
+// both must be present. Errors name the variable, never its value.
 func checkClerkKeys(test bool, authMode, pk, sk string) error {
 	kind := func(key, live, testp string) string {
 		switch {
@@ -401,9 +414,17 @@ func checkClerkKeys(test bool, authMode, pk, sk string) error {
 		return ""
 	}
 	pkKind, skKind := kind(pk, "pk_live_", "pk_test_"), kind(sk, "sk_live_", "sk_test_")
+	keys := []struct{ name, key, kind string }{{"CLERK_PUBLISHABLE_KEY", pk, pkKind}, {"CLERK_SECRET_KEY", sk, skKind}}
+	if test {
+		for _, k := range keys {
+			if k.kind == "live" {
+				return fmt.Errorf("SCRY_MODE=test refuses live Clerk keys: %s is a live key (a test build never signs learners into the production Clerk instance)", k.name)
+			}
+		}
+	}
 	switch authMode {
 	case "live":
-		for _, k := range []struct{ name, key, kind string }{{"CLERK_PUBLISHABLE_KEY", pk, pkKind}, {"CLERK_SECRET_KEY", sk, skKind}} {
+		for _, k := range keys {
 			if k.key != "" && k.kind != "live" {
 				return fmt.Errorf("SCRY_AUTH_MODE=live needs live Clerk keys, but %s is not a live key", k.name)
 			}
@@ -412,9 +433,12 @@ func checkClerkKeys(test bool, authMode, pk, sk string) error {
 		if test && (pk == "" || sk == "") {
 			return fmt.Errorf("SCRY_AUTH_MODE=%s needs CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY", authMode)
 		}
-		for _, k := range []struct{ name, kind string }{{"CLERK_PUBLISHABLE_KEY", pkKind}, {"CLERK_SECRET_KEY", skKind}} {
-			if k.kind == "live" {
+		for _, k := range keys {
+			switch {
+			case k.kind == "live":
 				return fmt.Errorf("SCRY_AUTH_MODE=%s needs Clerk test keys, but %s is a live key", authMode, k.name)
+			case k.key != "" && k.kind != "test":
+				return fmt.Errorf("SCRY_AUTH_MODE=%s needs Clerk test keys, but %s is not a test key", authMode, k.name)
 			}
 		}
 	}

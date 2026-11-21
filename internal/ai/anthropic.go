@@ -67,7 +67,7 @@ func NewClaudeWithRouter(directKey, routerKey, draftModel, explainModel string) 
 			explainModel = DefaultOpenRouterExplainModel
 		}
 		for _, m := range []struct{ env, v string }{{"SCRY_DRAFT_MODEL", draftModel}, {"SCRY_EXPLAIN_MODEL", explainModel}} {
-			if !isRouterSlug(m.v) {
+			if !safeerr.IsRouterSlug(m.v) {
 				return nil, fmt.Errorf("%s=%q is not an OpenRouter model slug (vendor/model) and OPENROUTER_API_KEY is set", m.env, m.v)
 			}
 		}
@@ -79,11 +79,6 @@ func NewClaudeWithRouter(directKey, routerKey, draftModel, explainModel string) 
 		return c, nil
 	}
 	return nil, errors.New("set OPENROUTER_API_KEY or ANTHROPIC_API_KEY for drafting and explanations")
-}
-
-func isRouterSlug(m string) bool {
-	vendor, model, ok := strings.Cut(m, "/")
-	return ok && vendor != "" && model != "" && !strings.ContainsAny(m, " \t\n")
 }
 
 func (c *Claude) Name() string {

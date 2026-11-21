@@ -675,3 +675,67 @@ func TestSlice20_LiveDirectFallbacksAndKeyChecks(t *testing.T) {
 		}
 	})
 }
+
+// SCRY_JUDGE_MODE=live in test mode runs the same key check as realAI on
+// the key Jev will use: a JWT-shaped key stops the boot loudly, naming the
+// variable and never echoing the value.
+func TestSlice20_JudgeModeLiveRefusesJWTShapedKeys(t *testing.T) {
+	t.Run("JWT-shaped OPENROUTER_API_KEY", func(t *testing.T) {
+		modeEnv(t, "test", map[string]string{"OPENROUTER_API_KEY": jwtKey, "SCRY_JUDGE_MODE": "live"})
+		err := failBoot(t, "SCRY_JUDGE_MODE=live: OPENROUTER_API_KEY is JWT-shaped")
+		if strings.Contains(err.Error(), "eyJ") {
+			t.Fatalf("boot error echoes the key: %s", err)
+		}
+	})
+	t.Run("JWT-shaped TYPESAFE_API_KEY on the fallback", func(t *testing.T) {
+		modeEnv(t, "test", map[string]string{"TYPESAFE_API_KEY": jwtKey, "SCRY_JUDGE_MODE": "live"})
+		failBoot(t, "SCRY_JUDGE_MODE=live: TYPESAFE_API_KEY is JWT-shaped")
+	})
+	t.Run("an unused JWT-shaped TYPESAFE_API_KEY does not block OpenRouter", func(t *testing.T) {
+		modeEnv(t, "test", map[string]string{"OPENROUTER_API_KEY": slice20Keys["OPENROUTER_ONLY"], "TYPESAFE_API_KEY": jwtKey, "SCRY_JUDGE_MODE": "live"})
+		a, err := tryBuild(t)
+		if err != nil || a.Readiness().Providers["grading"] != "jev-openrouter" {
+			t.Fatal(err)
+		}
+	})
+}
+
+// A test build never accepts a live Clerk key, whatever SCRY_AUTH_MODE
+// says (as with Stripe); under SCRY_AUTH_MODE=test or clerk-test every
+// Clerk key set must be a test key.
+func TestSlice20_ClerkKeysInTestMode(t *testing.T) {
+	for _, authMode := range []string{"", "test", "clerk-test"} {
+		for _, tc := range []struct {
+			name, pk, sk, want string
+		}{
+			{"live pk and sk", clerkLivePK, liveKeys["CLERK_SECRET_KEY"], "CLERK_PUBLISHABLE_KEY is a live key"},
+			{"live pk only", clerkLivePK, "", "CLERK_PUBLISHABLE_KEY is a live key"},
+			{"live sk only", "", liveKeys["CLERK_SECRET_KEY"], "CLERK_SECRET_KEY is a live key"},
+			{"live sk with test pk", slice20Keys["CLERK_TEST_PK"], liveKeys["CLERK_SECRET_KEY"], "CLERK_SECRET_KEY is a live key"},
+		} {
+			t.Run("SCRY_AUTH_MODE="+authMode+"/"+tc.name, func(t *testing.T) {
+				modeEnv(t, "test", map[string]string{"CLERK_PUBLISHABLE_KEY": tc.pk, "CLERK_SECRET_KEY": tc.sk, "SCRY_AUTH_MODE": authMode})
+				failBoot(t, tc.want)
+			})
+		}
+	}
+	for _, m := range []string{"test", "clerk-test"} {
+		for _, tc := range []struct{ name, mode string }{{"test mode", "test"}, {"live mode", "live"}} {
+			t.Run("SCRY_AUTH_MODE="+m+" refuses a key of no known kind in "+tc.name, func(t *testing.T) {
+				sets := []map[string]string{clerkTestKeys, {"SCRY_AUTH_MODE": m, "CLERK_SECRET_KEY": "CLERKSECRETnoprefix0019"}}
+				if tc.mode == "live" {
+					sets = append([]map[string]string{liveKeys}, sets...)
+				}
+				modeEnv(t, tc.mode, sets...)
+				failBoot(t, "SCRY_AUTH_MODE="+m+" needs Clerk test keys, but CLERK_SECRET_KEY is not a test key")
+			})
+		}
+	}
+	t.Run("test keys still boot with SCRY_AUTH_MODE unset", func(t *testing.T) {
+		modeEnv(t, "test", clerkTestKeys)
+		a, err := tryBuild(t)
+		if err != nil || a.Readiness().AuthMode != "clerk-test" {
+			t.Fatal(err)
+		}
+	})
+}

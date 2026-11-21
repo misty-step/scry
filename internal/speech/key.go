@@ -28,7 +28,7 @@ func NewTranscriber(openRouterKey, openAIKey, model string) (Transcriber, error)
 		if err := ValidateAPIKey("OPENROUTER_API_KEY", openRouterKey); err != nil {
 			return nil, err
 		}
-		if model != "" && !strings.Contains(strings.Trim(model, "/"), "/") {
+		if model != "" && !safeerr.IsRouterSlug(model) {
 			return nil, fmt.Errorf("SCRY_SPEECH_MODEL=%q is not an OpenRouter model slug (vendor/model) and OPENROUTER_API_KEY is set", model)
 		}
 		return OpenRouter{APIKey: openRouterKey, Model: model}, nil
