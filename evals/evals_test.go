@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -1164,5 +1165,153 @@ func TestAppendSameModelFewerCasesBlindMatchesSummary(t *testing.T) {
 	raw, _ = os.ReadFile(filepath.Join(out, "blind-samples.json"))
 	if json.Unmarshal(raw, &b) != nil || len(b.Sets) != 1 || b.Sets[0].CaseID != "e01" {
 		t.Errorf("blind sets = %+v, want e01 only", b.Sets)
+	}
+}
+
+// Cold Critic (PR #497): --append over earlier blind outputs whose
+// blind-key.json is missing, unreadable, malformed or incomplete must fail
+// before any provider request (catalog included) is dispatched, so the run
+// spends nothing and leaves the earlier artifacts untouched.
+func TestAppendRejectsMissingOrIncompletePriorBlindKey(t *testing.T) {
+	const key = "sk-or-v1-offline-test-key-blindkey"
+	f := &fakeRouter{key: key, calls: map[string]int{}}
+	var requests atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		f.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	out := t.TempDir()
+	cfg := func(appendRun bool) Config {
+		return Config{Surfaces: []string{"explainer"}, OutDir: out, MaxSpend: 1, Limit: 2, Key: key, Base: srv.URL, Log: io.Discard, SkipAccount: true, Append: appendRun,
+			Models: map[string][]string{"explainer": {"t/writer", "t/writer2"}}}
+	}
+	r, err := NewRunner(cfg(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	keyPath, samplesPath := filepath.Join(out, "blind-key.json"), filepath.Join(out, "blind-samples.json")
+	goodKey, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	samples, err := os.ReadFile(samplesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, _ := os.ReadFile(filepath.Join(out, "eval-summary.json"))
+	var blind struct{ Sets []BlindSet }
+	if err := json.Unmarshal(samples, &blind); err != nil || len(blind.Sets) != 2 || len(blind.Sets[0].Outputs) != 2 {
+		t.Fatalf("baseline blind sets = %+v, %v", blind.Sets, err)
+	}
+	var bk BlindKey
+	if err := json.Unmarshal(goodKey, &bk); err != nil || len(bk.Sets) != 2 {
+		t.Fatalf("baseline blind key = %+v, %v", bk, err)
+	}
+	// Key with one case/label entry removed.
+	victim := blind.Sets[1].Surface + "/" + blind.Sets[1].CaseID
+	delete(bk.Sets[victim], blind.Sets[1].Outputs[0].ModelLabel)
+	incomplete, _ := json.Marshal(bk)
+
+	cases := []struct {
+		name  string
+		setup func(t *testing.T)
+		want  string
+	}{
+		{"key missing", func(t *testing.T) {
+			if err := os.Remove(keyPath); err != nil {
+				t.Fatal(err)
+			}
+		}, "blind-key.json is missing"},
+		{"key missing one case/label", func(t *testing.T) {
+			if err := os.WriteFile(keyPath, incomplete, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, "lacks 1 of 4 blind label(s)"},
+		{"key malformed", func(t *testing.T) {
+			if err := os.WriteFile(keyPath, []byte("{not json"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, "blind-key.json is malformed"},
+		{"key unreadable", func(t *testing.T) {
+			// A directory in its place: exists, but cannot be read as a file.
+			if err := os.Remove(keyPath); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(keyPath, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Remove(keyPath) })
+		}, "blind-key.json is unreadable"},
+		{"samples malformed", func(t *testing.T) {
+			if err := os.WriteFile(keyPath, goodKey, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(samplesPath, []byte("[truncated"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.WriteFile(samplesPath, samples, 0o644) })
+		}, "blind-samples.json is malformed"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			c.setup(t)
+			requests.Store(0)
+			r, err := NewRunner(cfg(true))
+			if err == nil {
+				err = r.Run(context.Background())
+			}
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("Run err = %v, want it to contain %q", err, c.want)
+			}
+			if !strings.Contains(err.Error(), "use a fresh --out directory") {
+				t.Errorf("error does not tell the operator how to recover: %v", err)
+			}
+			if n := requests.Load(); n != 0 {
+				t.Fatalf("%d provider request(s) dispatched before the preflight rejected --append; want 0", n)
+			}
+			if now, _ := os.ReadFile(filepath.Join(out, "eval-summary.json")); !bytes.Equal(now, summary) {
+				t.Error("a rejected --append rewrote eval-summary.json")
+			}
+		})
+	}
+
+	// Run re-checks on its own: a key that disappears after NewRunner
+	// accepted the directory still stops the run before any request.
+	if err := os.WriteFile(keyPath, goodKey, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err = NewRunner(cfg(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(keyPath); err != nil {
+		t.Fatal(err)
+	}
+	requests.Store(0)
+	if err := r.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "blind-key.json is missing") {
+		t.Fatalf("Run after the key vanished: err = %v", err)
+	}
+	if n := requests.Load(); n != 0 {
+		t.Fatalf("Run dispatched %d request(s) after the key vanished; want 0", n)
+	}
+
+	// Control: with the intact key restored the same --append dispatches.
+	if err := os.WriteFile(keyPath, goodKey, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	requests.Store(0)
+	r, err = NewRunner(cfg(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("--append with an intact blind key: %v", err)
+	}
+	if requests.Load() == 0 {
+		t.Error("--append with an intact blind key dispatched nothing")
 	}
 }

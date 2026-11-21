@@ -26,8 +26,8 @@ verify-formal:
 	./scripts/verify-formal.sh
 
 # Live 4-surface micro-eval bench on OpenRouter (grading, explainer, speech,
-# drafting). Spends real money from OPENROUTER_API_KEY, capped by
-# EVAL_MAX_SPEND; see evals/README.md. Examples:
+# drafting). Spends real money from OPENROUTER_API_KEY, uses
+# EVAL_MAX_SPEND for pre-dispatch admission; see evals/README.md. Examples:
 #   make eval
 #   make eval EVAL_ARGS="--surface grading --limit 3"
 EVAL_OUT ?= evals/results/latest

@@ -137,6 +137,63 @@ func loadPrior(dir string) (*priorRun, error) {
 	return p, nil
 }
 
+// checkPriorBlindKey refuses an --append whose earlier blind outputs could
+// no longer be de-anonymized: if blind-samples.json in dir holds any blind
+// output, blind-key.json must exist, parse, and map every (surface/case_id,
+// model_label) of those outputs to a model slug. Merging over such a trail
+// would keep or reshuffle outputs nobody can attribute, so it fails before
+// anything is dispatched.
+func checkPriorBlindKey(dir string) error {
+	const fix = "restore blind-key.json from the earlier run, or use a fresh --out directory"
+	samples := filepath.Join(dir, "blind-samples.json")
+	b, err := os.ReadFile(samples)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("--append: earlier blind-samples.json is unreadable (%v); fix it, or use a fresh --out directory; nothing was dispatched", err)
+	}
+	var blind struct{ Sets []BlindSet }
+	if err := json.Unmarshal(b, &blind); err != nil {
+		return fmt.Errorf("--append: earlier blind-samples.json is malformed (%v); fix it, or use a fresh --out directory; nothing was dispatched", err)
+	}
+	need := 0
+	for _, s := range blind.Sets {
+		need += len(s.Outputs)
+	}
+	if need == 0 {
+		return nil
+	}
+	kb, err := os.ReadFile(filepath.Join(dir, "blind-key.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("--append: earlier blind-samples.json has %d blind set(s) but blind-key.json is missing; %s; nothing was dispatched", len(blind.Sets), fix)
+	}
+	if err != nil {
+		return fmt.Errorf("--append: earlier blind-key.json is unreadable (%v); %s; nothing was dispatched", err, fix)
+	}
+	var key BlindKey
+	if err := json.Unmarshal(kb, &key); err != nil {
+		return fmt.Errorf("--append: earlier blind-key.json is malformed (%v); %s; nothing was dispatched", err, fix)
+	}
+	var missing []string
+	for _, s := range blind.Sets {
+		id := s.Surface + "/" + s.CaseID
+		for _, o := range s.Outputs {
+			if key.Sets[id][o.ModelLabel] == "" {
+				missing = append(missing, id+" "+o.ModelLabel)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		shown := missing
+		if len(shown) > 5 {
+			shown = shown[:5]
+		}
+		return fmt.Errorf("--append: earlier blind-key.json lacks %d of %d blind label(s) in blind-samples.json (e.g. %s); %s; nothing was dispatched", len(missing), need, strings.Join(shown, ", "), fix)
+	}
+	return nil
+}
+
 const defaultBase = "https://openrouter.ai"
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -180,6 +237,9 @@ func NewRunner(cfg Config) (*Runner, error) {
 		key:     BlindKey{Seed: cfg.Seed, Note: "Sealed provenance for blind-samples.json: surface/case -> blind label -> model slug. Do not open before rating.", Sets: map[string]map[string]string{}},
 		summary: map[string]any{}}
 	if cfg.Append {
+		if err := checkPriorBlindKey(cfg.OutDir); err != nil {
+			return nil, err
+		}
 		if r.prior, err = loadPrior(cfg.OutDir); err != nil {
 			return nil, err
 		}
@@ -350,6 +410,13 @@ func (r *Runner) observe(surface, model string, cost *float64) {
 // Run executes the configured surfaces and writes every output file.
 func (r *Runner) Run(ctx context.Context) error {
 	started := time.Now().UTC()
+	if r.cfg.Append {
+		// NewRunner checked this too; re-checked here, before the catalog
+		// fetch or any provider call, in case OutDir changed in between.
+		if err := checkPriorBlindKey(r.cfg.OutDir); err != nil {
+			return err
+		}
+	}
 	cat, err := FetchCatalog(ctx, r.cfg.Base)
 	if err != nil {
 		return err
