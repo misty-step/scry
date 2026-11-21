@@ -27,6 +27,7 @@ import (
 	"scry/internal/app"
 	"scry/internal/auth"
 	"scry/internal/billing"
+	"scry/internal/safeerr"
 	"scry/internal/speech"
 	"scry/internal/srs"
 	"scry/internal/store"
@@ -122,13 +123,26 @@ func operatorHandler(base slog.Handler, test bool) slog.Handler {
 // with credentials from the environment. Outside test mode a missing
 // credential stops the process; nothing falls back to a test adapter.
 //
-// Two explicit, optional overrides exist for a staged cutover, and every
-// combination that could silently stub or silently charge is refused:
+// The four AI capabilities (grading, drafting, explainer, speech) all run
+// on OPENROUTER_API_KEY when it is set; only when it is unset does each
+// fall back to its direct key (TYPESAFE_API_KEY, ANTHROPIC_API_KEY,
+// OPENAI_API_KEY). See realAI.
+//
+// Explicit, optional overrides exist for a staged cutover, and every
+// combination that could silently stub, silently charge or silently sign
+// learners into the wrong user pool is refused:
 //
 //	SCRY_STRIPE_MODE=test  in live mode: Stripe test keys (stripe-test), surfaced in /healthz
 //	SCRY_STRIPE_MODE=live  in test mode: refused (a test build never charges real cards)
 //	SCRY_JUDGE_MODE=live   in test mode: real Jev grades, drafts stay fake; needs a Jev key
 //	SCRY_JUDGE_MODE=test   in live mode: refused (live grading is never stubbed)
+//	SCRY_AI_MODE=live      in test mode: all four real AI adapters, surfaced in /healthz
+//	SCRY_AI_MODE=test      in live mode: refused (live AI is never stubbed)
+//	SCRY_AUTH_MODE=test|clerk-test in live mode: Clerk test keys required, surfaced in /healthz
+//	SCRY_AUTH_MODE=live    in live mode: live Clerk keys required; in test mode: refused
+//
+// Live mode with Clerk test keys and SCRY_AUTH_MODE unset still boots, as
+// before, but /healthz warns about it.
 func build(log *slog.Logger) (*app.App, error) {
 	mode := env("SCRY_MODE", "live")
 	if mode != "test" && mode != "live" {
@@ -143,11 +157,33 @@ func build(log *slog.Logger) (*app.App, error) {
 	if err != nil {
 		return nil, err
 	}
+	aiMode, err := modeChoice("SCRY_AI_MODE")
+	if err != nil {
+		return nil, err
+	}
+	authMode := env("SCRY_AUTH_MODE", "")
+	switch authMode {
+	case "", "live", "test", "clerk-test":
+	default:
+		return nil, fmt.Errorf("SCRY_AUTH_MODE must be live, test, clerk-test or unset, not %q", authMode)
+	}
 	if test && stripeMode == "live" {
 		return nil, errors.New("SCRY_STRIPE_MODE=live is refused with SCRY_MODE=test: a test build never charges real cards")
 	}
 	if !test && judgeMode == "test" {
 		return nil, errors.New("SCRY_JUDGE_MODE=test is refused with SCRY_MODE=live: live grading is never stubbed")
+	}
+	if !test && aiMode == "test" {
+		return nil, errors.New("SCRY_AI_MODE=test is refused with SCRY_MODE=live: live AI is never stubbed")
+	}
+	if aiMode == "live" && judgeMode == "test" {
+		return nil, errors.New("SCRY_JUDGE_MODE=test contradicts SCRY_AI_MODE=live: choose one")
+	}
+	if test && authMode == "live" {
+		return nil, errors.New("SCRY_AUTH_MODE=live is refused with SCRY_MODE=test: a test build never signs learners into the production Clerk instance")
+	}
+	if err := checkClerkKeys(test, authMode, env("CLERK_PUBLISHABLE_KEY", ""), env("CLERK_SECRET_KEY", "")); err != nil {
+		return nil, err
 	}
 	st, err := store.Open(env("SCRY_DB", "data/scry.db"))
 	if err != nil {
@@ -242,7 +278,20 @@ func build(log *slog.Logger) (*app.App, error) {
 			model.Verdicts = append(model.Verdicts, srs.Verdict(v))
 		}
 		a.Model = model
-		if judgeMode == "live" {
+		// SCRY_TEST_EXPLAIN=fail or slow exercises the explanation fallback.
+		a.Explainer = &ai.FakeExplainer{Mode: env("SCRY_TEST_EXPLAIN", "")}
+		a.Speech = speech.Fake{Phrase: env("SCRY_TEST_SPEECH", "")}
+		if aiMode == "live" {
+			// Explicitly asked for: all four real AI adapters on a test build.
+			// Without keys this stops; it never falls back to the fakes.
+			judge, claude, ear, aiMissing, invalid := realAI(log)
+			if len(aiMissing) > 0 || len(invalid) > 0 {
+				return nil, bootProblems("SCRY_AI_MODE=live needs", aiMissing, "", invalid)
+			}
+			a.Model = ai.Split{JudgeProvider: judge, DraftProvider: claude}
+			a.Explainer, a.Speech = claude, ear
+			log.Warn("test mode is calling real AI providers (SCRY_AI_MODE=live)", "model", a.Model.Name(), "speech", ear.Name())
+		} else if judgeMode == "live" {
 			// Explicitly asked for: grade with real Jev, keep drafting fake.
 			// Without a key this stops; it never falls back to the fake.
 			judge, jerr := ai.NewJev(env("TYPESAFE_API_KEY", ""), env("OPENROUTER_API_KEY", ""), log)
@@ -253,26 +302,15 @@ func build(log *slog.Logger) (*app.App, error) {
 			a.Model = ai.Split{JudgeProvider: judge, DraftProvider: model}
 			log.Warn("test mode is grading with the real Jev grader (SCRY_JUDGE_MODE=live)", "grader", a.Model.Name())
 		}
-		// SCRY_TEST_EXPLAIN=fail or slow exercises the explanation fallback.
-		a.Explainer = &ai.FakeExplainer{Mode: env("SCRY_TEST_EXPLAIN", "")}
-		a.Speech = speech.Fake{Phrase: env("SCRY_TEST_SPEECH", "")}
 	} else {
 		a.Auth = &auth.Clerk{PublishableKey: need("CLERK_PUBLISHABLE_KEY"), SecretKey: need("CLERK_SECRET_KEY")}
-		judge, jerr := ai.NewJev(env("TYPESAFE_API_KEY", ""), env("OPENROUTER_API_KEY", ""), log)
-		if jerr != nil {
-			missing = append(missing, "OPENROUTER_API_KEY or TYPESAFE_API_KEY")
-		}
-		if judge != nil {
-			judge.Model = env("SCRY_JUDGE_MODEL", "")
-		}
-		claude := ai.NewClaude(need("ANTHROPIC_API_KEY"), env("SCRY_DRAFT_MODEL", ""))
-		claude.ExplainModel = env("SCRY_EXPLAIN_MODEL", "")
+		judge, claude, ear, aiMissing, invalid := realAI(log)
+		missing = append(missing, aiMissing...)
 		a.Model = ai.Split{JudgeProvider: judge, DraftProvider: claude}
-		a.Explainer = claude
-		a.Speech = speech.OpenAI{APIKey: need("OPENAI_API_KEY"), Model: env("SCRY_SPEECH_MODEL", "")}
+		a.Explainer, a.Speech = claude, ear
 		sk, pk, price, wh := need("STRIPE_SECRET_KEY"), need("STRIPE_PUBLISHABLE_KEY"), need("STRIPE_PRICE_ID"), need("STRIPE_WEBHOOK_SECRET")
-		if len(missing) > 0 {
-			return nil, fmt.Errorf("live mode needs these environment variables: %s (or set SCRY_MODE=test)", strings.Join(missing, ", "))
+		if len(missing) > 0 || len(invalid) > 0 {
+			return nil, bootProblems("live mode needs these environment variables:", missing, " (or set SCRY_MODE=test)", invalid)
 		}
 		liveStripe := stripeMode != "test"
 		if a.Pay, err = billing.NewStripeWithMode(liveStripe, sk, pk, price, wh); err != nil {
@@ -281,12 +319,109 @@ func build(log *slog.Logger) (*app.App, error) {
 		if !liveStripe {
 			log.Warn("live mode is billing with Stripe test-mode keys (SCRY_STRIPE_MODE=test): no real card is charged", "billing", a.Pay.Name())
 		}
+		if c, _ := a.Auth.(*auth.Clerk); c != nil && c.Mode() == "clerk-test" {
+			log.Warn("live mode is signing learners in with a Clerk development instance (clerk-test keys)", "auth", c.Mode(), "auth_mode", authMode)
+		}
 	}
 	rd := a.Readiness()
 	log.Info("adapters", "mode", mode, "build_sha", rd.BuildSHA, "auth", rd.AuthMode, "billing", rd.BillingMode, "model", a.Model.Name(),
 		"grading", rd.Providers["grading"], "drafting", rd.Providers["drafting"], "explainer", a.Explainer.Name(), "speech", a.Speech.Name())
 	ok = true
 	return a, nil
+}
+
+// realAI wires the four real AI adapters with one precedence rule, the
+// same as ai.NewJev's: when OPENROUTER_API_KEY is set it carries grading,
+// drafting, explanations and speech, and no direct key is needed or read;
+// only when it is unset does each capability fall back to its direct key
+// (TYPESAFE_API_KEY for Jev, ANTHROPIC_API_KEY for drafting and
+// explanations, OPENAI_API_KEY for speech). It reports every missing key
+// and every invalid one (such as a JWT-shaped key), never a key's value.
+func realAI(log *slog.Logger) (judge *ai.Jev, claude *ai.Claude, ear speech.Transcriber, missing, invalid []string) {
+	router, typesafe := env("OPENROUTER_API_KEY", ""), env("TYPESAFE_API_KEY", "")
+	anthropic, openai := env("ANTHROPIC_API_KEY", ""), env("OPENAI_API_KEY", "")
+	check := func(name, key string) {
+		if key != "" {
+			if err := safeerr.CheckAPIKey(name, key); err != nil {
+				invalid = append(invalid, err.Error())
+			}
+		}
+	}
+	if router != "" {
+		check("OPENROUTER_API_KEY", router)
+	} else {
+		check("TYPESAFE_API_KEY", typesafe)
+		check("ANTHROPIC_API_KEY", anthropic)
+	}
+	var err error
+	if judge, err = ai.NewJev(typesafe, router, log); err != nil {
+		missing = append(missing, "OPENROUTER_API_KEY or TYPESAFE_API_KEY")
+	} else {
+		judge.Model = env("SCRY_JUDGE_MODEL", "")
+	}
+	if router == "" && anthropic == "" {
+		missing = append(missing, "OPENROUTER_API_KEY or ANTHROPIC_API_KEY")
+	} else if claude, err = ai.NewClaudeWithRouter(anthropic, router, env("SCRY_DRAFT_MODEL", ""), env("SCRY_EXPLAIN_MODEL", "")); err != nil {
+		invalid = append(invalid, err.Error())
+	}
+	if router == "" && openai == "" {
+		missing = append(missing, "OPENROUTER_API_KEY or OPENAI_API_KEY")
+	} else if ear, err = speech.NewTranscriber(router, openai, env("SCRY_SPEECH_MODEL", "")); err != nil {
+		if !(router != "" && safeerr.LooksLikeJWT(router)) { // already reported once
+			invalid = append(invalid, err.Error())
+		}
+	}
+	return judge, claude, ear, missing, invalid
+}
+
+// bootProblems is one loud boot error naming every missing variable and
+// every invalid one. It never contains a value.
+func bootProblems(lead string, missing []string, tail string, invalid []string) error {
+	var parts []string
+	if len(missing) > 0 {
+		parts = append(parts, lead+" "+strings.Join(missing, ", ")+tail)
+	}
+	parts = append(parts, invalid...)
+	return errors.New(strings.Join(parts, "; "))
+}
+
+// checkClerkKeys pins Clerk to one instance kind. A publishable and secret
+// key from different kinds (one live, one test) never boot. With
+// SCRY_AUTH_MODE=live both must be live keys; with test or clerk-test,
+// neither may be, and in test mode both must be present. Errors name the
+// variable, never its value.
+func checkClerkKeys(test bool, authMode, pk, sk string) error {
+	kind := func(key, live, testp string) string {
+		switch {
+		case strings.HasPrefix(key, live):
+			return "live"
+		case strings.HasPrefix(key, testp):
+			return "test"
+		}
+		return ""
+	}
+	pkKind, skKind := kind(pk, "pk_live_", "pk_test_"), kind(sk, "sk_live_", "sk_test_")
+	switch authMode {
+	case "live":
+		for _, k := range []struct{ name, key, kind string }{{"CLERK_PUBLISHABLE_KEY", pk, pkKind}, {"CLERK_SECRET_KEY", sk, skKind}} {
+			if k.key != "" && k.kind != "live" {
+				return fmt.Errorf("SCRY_AUTH_MODE=live needs live Clerk keys, but %s is not a live key", k.name)
+			}
+		}
+	case "test", "clerk-test":
+		if test && (pk == "" || sk == "") {
+			return fmt.Errorf("SCRY_AUTH_MODE=%s needs CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY", authMode)
+		}
+		for _, k := range []struct{ name, kind string }{{"CLERK_PUBLISHABLE_KEY", pkKind}, {"CLERK_SECRET_KEY", skKind}} {
+			if k.kind == "live" {
+				return fmt.Errorf("SCRY_AUTH_MODE=%s needs Clerk test keys, but %s is a live key", authMode, k.name)
+			}
+		}
+	}
+	if pkKind != "" && skKind != "" && pkKind != skKind {
+		return errors.New("CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY belong to different Clerk instances (one live, one test)")
+	}
+	return nil
 }
 
 // Clerk owns its accounts: skip the entire local demo fixture with Clerk.

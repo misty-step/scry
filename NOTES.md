@@ -1013,3 +1013,47 @@ Choices where the brief was silent:
 - Stripe `invoice.payment_failed` now carries the period from its first
   line, as `invoice.paid` already did. A failure for a period that is not
   newer than the plan's current one is ignored (`applyEvent`).
+
+## Slice 20: OpenRouter for everything
+
+Choices where the brief was silent:
+
+- Precedence is NewJev's everywhere (`ai.NewClaudeWithRouter`,
+  `speech.NewTranscriber`, `cmd/scry.realAI`): when OPENROUTER_API_KEY is set
+  it carries grading, drafting, explanations and speech, and the direct keys
+  are not read at all. A stale JWT-shaped OPENAI_API_KEY beside a good
+  OPENROUTER_API_KEY therefore boots. Each fallback key is checked only when
+  it is the route in use.
+- TestLiveRequiresEveryCredential and two /healthz expectations changed with
+  that rule: ANTHROPIC_API_KEY and OPENAI_API_KEY are no longer required when
+  OPENROUTER_API_KEY is set, so the test now checks both sides (covered with
+  the router key; each one named when it is unset). The direct-fallback
+  /healthz case was added next to the full-live one.
+- The JWT-shape check (`safeerr.LooksLikeJWT`: three base64url segments whose
+  header starts eyJ or decodes to a JSON object) runs at boot on every AI key
+  in use (OpenRouter, or Typesafe/Anthropic/OpenAI on the fallback) and again
+  inside both speech adapters' Transcribe. Errors name the variable, never
+  the value.
+- On OpenRouter a model override must be a vendor/model slug. A leftover
+  direct name such as SCRY_DRAFT_MODEL=claude-opus-5-5 stops the boot
+  instead of failing every call.
+- OpenRouter explanations drop Anthropic's `output_config` (effort low);
+  the default there is anthropic/claude-sonnet-5.5 for both drafting and
+  explanations. Budgets keep the existing conservative price ceilings; the
+  exact `usage.cost` is recorded when OpenRouter returns a sane one (0–$100)
+  and never inferred.
+- OpenRouter speech sends the recording as `input_audio` (format from the
+  MIME type, default webm) to google/gemini-2.5-flash with temperature 0 and
+  512 output tokens. A transcript wrapped in one pair of quotation marks is
+  unwrapped; words are never changed. An empty recording is "nothing heard"
+  with no call, on both speech adapters.
+- SCRY_AUTH_MODE accepts test and clerk-test as the same thing. Unset keeps
+  the old behaviour (live mode boots on Clerk test keys) but /healthz now
+  always warns about it. A Clerk key pair from different instances never
+  boots. In test mode an explicit test/clerk-test needs both Clerk keys,
+  like SCRY_STRIPE_MODE=test needs all four Stripe settings.
+- SCRY_AI_MODE=live in test mode wires the real adapters through the same
+  `realAI` as live mode. Combined with SCRY_JUDGE_MODE=test it is refused as
+  a contradiction. The /healthz warning lists each real capability and its
+  route.
+

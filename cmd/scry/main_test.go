@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -50,6 +51,9 @@ func adapterEnv(t *testing.T, mode string) {
 		t.Setenv(key, "")
 	}
 	t.Setenv("TYPESAFE_API_KEY", "")
+	for _, key := range []string{"SCRY_AI_MODE", "SCRY_AUTH_MODE", "SCRY_JUDGE_MODE", "SCRY_STRIPE_MODE", "SCRY_DRAFT_MODEL", "SCRY_EXPLAIN_MODEL", "SCRY_SPEECH_MODEL"} {
+		t.Setenv(key, "")
+	}
 	t.Setenv("SCRY_MODE", mode)
 	t.Setenv("SCRY_DB", filepath.Join(t.TempDir(), "test.db"))
 	t.Setenv("BACKUP_DIR", "")
@@ -98,22 +102,43 @@ func TestAdapterSelection(t *testing.T) {
 	}
 }
 
+// Slice 20: OPENROUTER_API_KEY alone carries all four AI capabilities, so
+// the direct AI keys are alternatives, not requirements. Every non-AI
+// credential is still required; with OPENROUTER_API_KEY unset, every
+// direct AI key is required and a missing one is named.
 func TestLiveRequiresEveryCredential(t *testing.T) {
+	directAI := map[string]bool{"ANTHROPIC_API_KEY": true, "OPENAI_API_KEY": true}
 	for missing := range adapterKeys {
-		t.Run(missing, func(t *testing.T) {
-			adapterEnv(t, "live")
-			for key, value := range adapterKeys {
-				t.Setenv(key, value)
+		for _, router := range []bool{true, false} {
+			if missing == "OPENROUTER_API_KEY" && !router {
+				continue
 			}
-			t.Setenv(missing, "")
-			a, err := build(slog.New(slog.NewTextHandler(io.Discard, nil)))
-			if a != nil {
-				a.Store.Close()
-			}
-			if err == nil || !strings.Contains(err.Error(), missing) {
-				t.Fatalf("missing %s: %v", missing, err)
-			}
-		})
+			t.Run(fmt.Sprintf("%s/router=%v", missing, router), func(t *testing.T) {
+				adapterEnv(t, "live")
+				for key, value := range adapterKeys {
+					t.Setenv(key, value)
+				}
+				t.Setenv("SCRY_STRIPE_MODE", "test") // the stand-ins are Stripe test keys
+				if !router {
+					t.Setenv("OPENROUTER_API_KEY", "")
+					t.Setenv("TYPESAFE_API_KEY", "standin")
+				}
+				t.Setenv(missing, "")
+				a, err := build(slog.New(slog.NewTextHandler(io.Discard, nil)))
+				if a != nil {
+					a.Store.Close()
+				}
+				if router && directAI[missing] {
+					if err != nil {
+						t.Fatalf("OPENROUTER_API_KEY must cover %s: %v", missing, err)
+					}
+					return
+				}
+				if err == nil || !strings.Contains(err.Error(), missing) {
+					t.Fatalf("missing %s: %v", missing, err)
+				}
+			})
+		}
 	}
 }
 

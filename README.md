@@ -49,7 +49,11 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 | SCRY_TEST_EXPLAIN | Test mode only: fail or slow exercises the explanation fallback |
 | SCRY_TEST_CLOCK | Test mode only: start the app clock at an RFC 3339 instant (zone kept) |
 | SCRY_TEST_CHARGE_DELAY | Test mode only: hold each fake top-up charge (e.g. 4s) |
-| SCRY_EXPLAIN_MODEL | Live: model for on-demand “Why?” explanations (default claude-opus-5-5, low effort) |
+| OPENROUTER_API_KEY | Live: the one AI key. When set it carries all four AI capabilities (Jev grading, Claude drafting, the “Why?” explainer, speech) and no ANTHROPIC_API_KEY or OPENAI_API_KEY is needed or read. A JWT-shaped value stops the boot. |
+| TYPESAFE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY | Live, optional direct fallbacks used only when OPENROUTER_API_KEY is unset: Jev on Typesafe, drafting and explanations on Anthropic, speech on OpenAI. Each missing one is named at boot; a JWT-shaped one stops the boot. |
+| SCRY_DRAFT_MODEL | Live: drafting model. Default anthropic/claude-sonnet-5.5 on OpenRouter (must be a vendor/model slug there), claude-opus-5-5 on Anthropic |
+| SCRY_EXPLAIN_MODEL | Live: model for on-demand “Why?” explanations. Default anthropic/claude-sonnet-5.5 on OpenRouter (vendor/model slug), claude-opus-5-5 with low effort on Anthropic |
+| SCRY_SPEECH_MODEL | Live: transcription model. Default google/gemini-2.5-flash on OpenRouter (vendor/model slug; audio sent as input_audio), gpt-4o-mini-transcribe on OpenAI |
 | LOG_LEVEL | debug enables successful health-check request logs |
 | BACKUP_DIR | Empty disables automatic snapshots; image uses /backups |
 | BACKUP_INTERVAL | 6h when backups enabled |
@@ -57,13 +61,18 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 | ALERT_WEBHOOK_URL | Ignored in test mode; alerts go to JSON logs |
 | SCRY_STRIPE_MODE | Optional: unset, live or test (anything else stops the boot). Unset follows SCRY_MODE. In live mode, test is the explicit staged-cutover switch to Stripe test keys (/healthz says billing_mode stripe-test and warns). In test mode, live is refused. |
 | SCRY_JUDGE_MODE | Optional: unset, live or test (anything else stops the boot). In test mode, live grades with real Jev (OPENROUTER_API_KEY or TYPESAFE_API_KEY required, SCRY_JUDGE_MODEL honoured) while drafting, explanations, speech and billing stay fake. In live mode, test is refused. |
+| SCRY_AI_MODE | Optional: unset, live or test (anything else stops the boot). In test mode, live wires all four real AI adapters (OPENROUTER_API_KEY, or every direct fallback key) while auth and billing follow their own rules; /healthz warns. In live mode, test is refused: live AI is never stubbed. SCRY_JUDGE_MODE=test with SCRY_AI_MODE=live is refused. |
+| SCRY_AUTH_MODE | Optional: unset, live, test or clerk-test (anything else stops the boot). In live mode, test/clerk-test is the staged-cutover switch to a Clerk development instance (both Clerk keys must be test keys); live requires both keys to be live keys. In test mode, live is refused and test/clerk-test requires both Clerk test keys. Live mode on Clerk test keys always shows a /healthz warning, even with SCRY_AUTH_MODE unset. Clerk keys from different instances (one live, one test) never boot. |
 
 Interfaces isolate auth, billing, model, speech, and alerts. Test adapters use
 local bcrypt auth, fake cards, scripted judgments, simulated speech, and log-only
 alerts. **No keys are needed or used.** Inactive provider adapters are included:
-Clerk (CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY), Jev (OPENROUTER_API_KEY or TYPESAFE_API_KEY),
-Anthropic drafting only (ANTHROPIC_API_KEY; optional SCRY_DRAFT_MODEL), speech (OPENAI_API_KEY; optional
-SCRY_SPEECH_MODEL), Stripe (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY,
+Clerk (CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY), and the four AI capabilities on OPENROUTER_API_KEY
+alone: Jev grading, Claude drafting and explanations (OpenRouter chat completions), and speech
+(OpenRouter input_audio). Only without OPENROUTER_API_KEY do they fall back to direct keys: Jev on
+TYPESAFE_API_KEY, Anthropic drafting and explanations on ANTHROPIC_API_KEY, OpenAI speech on
+OPENAI_API_KEY. Model overrides: SCRY_JUDGE_MODEL, SCRY_DRAFT_MODEL, SCRY_EXPLAIN_MODEL,
+SCRY_SPEECH_MODEL. Stripe (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY,
 STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET). Do not enable them for this delivery.
 Stripe is mode-matched: a live adapter (stripe-live) accepts only sk_live_/rk_live_ and pk_live_ keys
 and livemode:true webhooks; a test adapter (stripe-test) only sk_test_/rk_test_ and pk_test_ keys and
@@ -359,5 +368,8 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Slice 12: Clerk key set and identity cached within TTL, key rotation refresh, failures never cached, token always verified, bounded, race-safe | internal/auth.TestClerkCachesKeySetAndIdentityWithinTTL; internal/auth.TestClerkKeyRotationRefreshesKeySet; internal/auth.TestClerkNeverCachesFailures; internal/auth.TestClerkAlwaysVerifiesTokenEvenWhenCached; internal/auth.TestClerkIdentityCacheIsBounded; internal/auth.TestClerkCacheConcurrent; internal/auth.TestClerkStructLiteralUsesCachedSDKClients |
 | Slice 12: Clerk request logs carry the user id | TestClerkRequestLogsCarryUserID |
 | Slice 12: mode-matched Stripe keys and webhooks; SCRY_STRIPE_MODE / SCRY_JUDGE_MODE fail loud | internal/billing.TestStripeModeMatchedKeys; internal/billing.TestStripeWebhookLivemodeMatchesAdapter; cmd/scry.TestStripeModeSelection; cmd/scry.TestJudgeModeSelection |
+| Slice 20: all four AI capabilities on OPENROUTER_API_KEY alone; direct fallbacks only without it; JWT-shaped keys refused loudly; SCRY_AI_MODE / SCRY_AUTH_MODE fail closed; Clerk test keys in live mode warned in /healthz | cmd/scry.TestSlice20_LiveOnOpenRouterAloneWithStagedCutover; cmd/scry.TestSlice20_ClerkTestWarningInLiveMode; cmd/scry.TestSlice20_AuthModeSelection; cmd/scry.TestSlice20_AIModeSelection; cmd/scry.TestSlice20_LiveDirectFallbacksAndKeyChecks; cmd/scry.TestLiveRequiresEveryCredential; internal/app.TestSlice20_ReadinessLabelsBothRoutes |
+| Slice 20: OpenRouter drafting stream (keepalives, chunked JSONL, [DONE], usage.cost, refusal, truncation, redaction, no redirects) and explainer | internal/ai.TestSlice20_OpenRouterDraftStream; internal/ai.TestSlice20_OpenRouterDraftCostNeverInferred; internal/ai.TestSlice20_OpenRouterDraftFailures; internal/ai.TestSlice20_OpenRouterDraftStopsAtDone; internal/ai.TestSlice20_OpenRouterNoRedirectAndRedaction; internal/ai.TestSlice20_OpenRouterExplain; internal/ai.TestSlice20_OpenRouterExplainClampsAndFails; internal/ai.TestSlice20_NewClaudeWithRouterPrecedence; internal/ai.TestSlice20_DirectExplainUnchanged |
+| Slice 20: OpenRouter speech (input_audio, MIME formats, empty audio, redaction, bounded reads, no redirects), JWT-shaped key rejection, NewTranscriber precedence | internal/speech.TestSlice20_OpenRouterTranscribeRequest; internal/speech.TestSlice20_OpenRouterAudioFormat; internal/speech.TestSlice20_EmptyAudioIsNothingHeard; internal/speech.TestSlice20_OpenRouterTranscriptCleanup; internal/speech.TestSlice20_OpenRouterTranscribeFailures; internal/speech.TestSlice20_JWTShapedKeys; internal/speech.TestSlice20_TranscribeRefusesJWTShapedKeys; internal/speech.TestSlice20_NewTranscriberPrecedence; internal/speech.TestSlice20_OpenAIErrorRedactedAndBounded |
 | Slice 12: /healthz build SHA, mode and provider readiness, no secrets; 503 on database failure | cmd/scry.TestHealthzAcrossModes; cmd/scry.TestHealthzDatabaseFailure; cmd/scry.TestBuildSHA; TestHealthzReadinessFields |
 | Slice 12: scry-watch never counts its own shutdown as an outage | internal/watch.TestCanceledProbeIsNotAnOutage |
