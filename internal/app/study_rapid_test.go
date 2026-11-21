@@ -1,0 +1,992 @@
+package app_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"pgregory.net/rapid"
+
+	"scry/internal/ai"
+	"scry/internal/alert"
+	"scry/internal/app"
+	"scry/internal/billing"
+	"scry/internal/srs"
+	"scry/internal/store"
+)
+
+// scriptedModel judges with whatever verdict the test chose last. fail
+// makes it fail with no usage (no model name): an unknown outcome. With
+// failUse set as well, the failure reports that usage instead (a refusal
+// the provider metered). panics makes the call panic with no usage.
+type scriptedModel struct {
+	mu      sync.Mutex
+	verdict srs.Verdict
+	fail    bool
+	failUse *ai.Usage
+	panics  bool
+	calls   int
+	// gate, when set, is waited on by every Judge call before it answers.
+	gate    chan struct{}
+	arrived chan struct{}
+}
+
+func (m *scriptedModel) Name() string { return "scripted" }
+
+func (m *scriptedModel) Judge(ctx context.Context, in ai.JudgeInput) (ai.Judgment, ai.Usage, error) {
+	m.mu.Lock()
+	m.calls++
+	v, fail, failUse, panics, gate, arrived := m.verdict, m.fail, m.failUse, m.panics, m.gate, m.arrived
+	m.mu.Unlock()
+	if arrived != nil {
+		arrived <- struct{}{}
+	}
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+		}
+	}
+	if panics {
+		panic("the judge panicked mid-call")
+	}
+	if fail {
+		var use ai.Usage
+		if failUse != nil {
+			use = *failUse
+		}
+		return ai.Judgment{}, use, errors.New("the model is down")
+	}
+	return ai.Judgment{Verdict: v, Reason: "scripted reason for " + string(v)},
+		ai.Usage{Model: "test-judge", InputTokens: 10, OutputTokens: 5}, nil
+}
+
+func (m *scriptedModel) Draft(context.Context, ai.DraftInput, ai.DraftSink) (ai.DraftResult, ai.Usage, error) {
+	return ai.DraftResult{}, ai.Usage{}, errors.New("not drafting in study tests")
+}
+
+func (m *scriptedModel) set(v srs.Verdict) { m.mu.Lock(); m.verdict = v; m.mu.Unlock() }
+
+// echoExplainer explains by echoing exactly what it was given, so a test
+// can see which question and expected answer the explanation was about.
+type echoExplainer struct{}
+
+func (echoExplainer) Name() string { return "echo" }
+
+func explanationOf(question, expected, answer string, v srs.Verdict) string {
+	return fmt.Sprintf("why %s: q=%s e=%s a=%s", v, question, expected, answer)
+}
+
+func (echoExplainer) Explain(_ context.Context, in ai.ExplainInput) (string, ai.Usage, error) {
+	return explanationOf(in.Question, in.Expected, in.Answer, in.Verdict), ai.Usage{Model: "test-judge", InputTokens: 3, OutputTokens: 3}, nil
+}
+
+type studyWorld struct {
+	ctx   context.Context
+	st    *store.Store
+	app   *app.App
+	model *scriptedModel
+	user  store.User
+	us    *store.UserStore
+	mu    sync.Mutex
+	clock time.Time
+}
+
+func (w *studyWorld) now() time.Time { w.mu.Lock(); defer w.mu.Unlock(); return w.clock }
+
+func (w *studyWorld) advance(d time.Duration) { w.mu.Lock(); w.clock = w.clock.Add(d); w.mu.Unlock() }
+
+type fataler interface {
+	Helper()
+	Fatal(...any)
+}
+
+// newStudyWorld is a real SQLite-backed Scry with an active plan.
+func newStudyWorld(t fataler, path string) *studyWorld {
+	t.Helper()
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &studyWorld{ctx: context.Background(), st: st, model: &scriptedModel{verdict: srs.Right},
+		clock: time.Date(2026, 11, 17, 9, 0, 0, 0, time.UTC)}
+	cfg := app.DefaultConfig()
+	cfg.TestMode = true
+	w.app = &app.App{Store: st, Pay: billing.Fake{}, Model: w.model, Explainer: echoExplainer{}, Alert: &alert.Recorder{},
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Now: w.now, Cfg: cfg}
+	if w.user, err = st.CreateUser(w.ctx, "learner@example.com", "learner", "UTC", w.clock); err != nil {
+		t.Fatal(err)
+	}
+	w.us = st.For(w.user.ID)
+	if err := w.us.SaveSubscription(w.ctx, store.Subscription{UserID: w.user.ID, CustomerRef: "cus_t", SubscriptionRef: "sub_t",
+		PaymentRef: "tok_test_ok_Visa_4242", Status: "active", PeriodStart: w.clock, PeriodEnd: w.clock.AddDate(50, 0, 0),
+		AllowanceMicros: 1 << 50}); err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+// addItems adds one item per flag (exact or not), each in an idea of its
+// own, so an item can be moved to Trash and back with its idea alone.
+func (w *studyWorld) addItems(t fataler, exact ...bool) []int64 {
+	t.Helper()
+	var ids []int64
+	for i, ex := range exact {
+		idea, err := w.us.CreateIdea(w.ctx, 0, fmt.Sprintf("Idea %d", i), "", "", w.now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := w.us.AddItem(w.ctx, store.NewItem{IdeaID: idea, Prompt: fmt.Sprintf("question %d", i),
+			Answer: fmt.Sprintf("answer number %d", i), Exact: ex}, w.now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// reviewRow is a review exactly as stored.
+type reviewRow struct {
+	ID, ItemID, SessionID, At            int64
+	Answer, Verdict, Reason, Detail, Via string
+	Judge                                string
+	Practice                             int
+	GradedPrompt, GradedExpected         string
+}
+
+func (w *studyWorld) reviews(t fataler) map[int64]reviewRow {
+	t.Helper()
+	rows, err := w.st.DB().Query(`SELECT id, item_id, session_id, at, answer, verdict, reason, detail, via, judge, practice,
+		graded_prompt, graded_expected FROM reviews`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[int64]reviewRow{}
+	for rows.Next() {
+		var r reviewRow
+		if err := rows.Scan(&r.ID, &r.ItemID, &r.SessionID, &r.At, &r.Answer, &r.Verdict, &r.Reason, &r.Detail, &r.Via, &r.Judge,
+			&r.Practice, &r.GradedPrompt, &r.GradedExpected); err != nil {
+			t.Fatal(err)
+		}
+		out[r.ID] = r
+	}
+	return out
+}
+
+// schedule reads an item's FSRS state, removed or not.
+func (w *studyWorld) schedule(t fataler, id int64) srs.State {
+	t.Helper()
+	var s srs.State
+	var last, due int64
+	if err := w.st.DB().QueryRow(`SELECT stability, difficulty, reps, lapses, last_review, due_at FROM items WHERE id = ?`, id).
+		Scan(&s.Stability, &s.Difficulty, &s.Reps, &s.Lapses, &last, &due); err != nil {
+		t.Fatal(err)
+	}
+	if last != 0 {
+		s.Last = time.Unix(last, 0).UTC()
+	}
+	if due != 0 {
+		s.Due = time.Unix(due, 0).UTC()
+	}
+	return s
+}
+
+// ideaOf is the idea an item belongs to.
+func (w *studyWorld) ideaOf(t fataler, item int64) int64 {
+	t.Helper()
+	var idea int64
+	if err := w.st.DB().QueryRow(`SELECT idea_id FROM items WHERE id = ?`, item).Scan(&idea); err != nil {
+		t.Fatal(err)
+	}
+	return idea
+}
+
+func (w *studyWorld) count(t fataler, q string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := w.st.DB().QueryRow(q, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// studyMachine is the rapid state machine over the real store and app.
+// Its model is what the formal spec (specs/study_session.qnt) says must
+// hold: the session phase, per-item FSRS history, and every review row
+// exactly as first written.
+type studyMachine struct {
+	w       *studyWorld
+	items   []int64
+	exact   map[int64]bool
+	text    map[int64][2]string // the item's current prompt and answer
+	removed map[int64]bool
+	trashed map[int64]bool      // ideas in Trash
+	viaIdea map[int64]bool      // items removed with their idea (restored with it)
+	sched   map[int64]srs.State // last observed schedule
+	reviews map[int64]reviewRow // every review as first written
+	graded  map[int64][2]string // the prompt and answer the review was judged against
+	edits   int
+}
+
+func (m *studyMachine) session(t *rapid.T) *store.StudySession {
+	s, err := m.w.us.ActiveSession(m.w.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func (m *studyMachine) Study(t *rapid.T) {
+	if _, err := m.w.app.Study(m.w.ctx, m.w.user); err != nil {
+		t.Fatalf("Study: %v", err)
+	}
+}
+
+// learn records the reviews an action just wrote.
+func (m *studyMachine) learn(t *rapid.T) []reviewRow {
+	var fresh []reviewRow
+	for id, r := range m.w.reviews(t) {
+		if _, ok := m.reviews[id]; !ok {
+			m.reviews[id] = r
+			fresh = append(fresh, r)
+		}
+	}
+	return fresh
+}
+
+func (m *studyMachine) Answer(t *rapid.T) {
+	before := m.session(t)
+	if before == nil {
+		t.Skip("no session")
+	}
+	phase, cur := before.Phase(), before.Current()
+	if cur == nil || (phase != store.PhaseAsking && phase != store.PhaseRetryingExact) {
+		t.Skip("nothing to answer")
+	}
+	item := cur.Item
+	v := rapid.SampledFrom(srs.Verdicts).Draw(t, "verdict")
+	m.w.model.set(v)
+	answer := "something else entirely"
+	if rapid.Bool().Draw(t, "rightWords") {
+		answer = item.Answer
+	}
+	sched := m.w.schedule(t, item.ID)
+	scoredBefore := cur.Review
+	calls := m.w.model.calls
+	r, err := m.w.app.Answer(m.w.ctx, m.w.user, item.ID, answer, "typed")
+	fresh := m.learn(t)
+	after := m.session(t)
+	if phase == store.PhaseRetryingExact && (!m.exact[item.ID] || m.removed[item.ID]) {
+		// The retried text is no longer exact (or is gone): the retry is
+		// dropped, nothing is judged and nothing is recorded.
+		if !errors.Is(err, app.ErrStale) || len(fresh) != 0 || m.w.model.calls != calls {
+			t.Fatalf("answer to a retry that is no longer exact: err=%v, %d reviews, judged %v", err, len(fresh), m.w.model.calls != calls)
+		}
+		if after != nil && after.Phase() == store.PhaseRetryingExact {
+			t.Fatal("the retry of a no-longer-exact item was kept")
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("Answer in %s: %v", phase, err)
+	}
+	if len(fresh) != 1 || fresh[0].ID != r.ID {
+		t.Fatalf("Answer wrote %d reviews", len(fresh))
+	}
+	m.graded[r.ID] = [2]string{item.Prompt, item.Answer}
+	got := m.w.schedule(t, item.ID)
+	if phase == store.PhaseRetryingExact {
+		if !r.Practice || fresh[0].Practice != 1 || fresh[0].Judge != "exact" {
+			t.Fatalf("a retry was not recorded as exact practice: %+v", fresh[0])
+		}
+		if got != sched {
+			t.Fatalf("practice moved the schedule: %+v -> %+v", sched, got)
+		}
+		for _, e := range after.Entries {
+			if e.Item.ID == item.ID && (e.Review == nil || scoredBefore == nil || e.Review.ID != scoredBefore.ID) {
+				t.Fatal("practice replaced the scored review of the session entry")
+			}
+		}
+		if after.Phase() != store.PhasePendingReview || after.PendingReviewID != r.ID {
+			t.Fatalf("practice judgment not on screen: %s", after.Phase())
+		}
+		return
+	}
+	if r.Practice || got.Reps != sched.Reps+1 {
+		t.Fatalf("scored answer: practice=%v reps %d -> %d", r.Practice, sched.Reps, got.Reps)
+	}
+	want, err := srs.NextChecked(sched, r.Verdict, m.w.now())
+	if err != nil || want.Reps != got.Reps || want.Lapses != got.Lapses || !want.Due.Truncate(time.Second).Equal(got.Due) {
+		t.Fatalf("schedule %+v, want %+v (%v)", got, want, err)
+	}
+}
+
+// StaleAnswer submits for an item that is not the one on screen, or while
+// a judgment waits: it must be refused and change nothing.
+func (m *studyMachine) StaleAnswer(t *rapid.T) {
+	s := m.session(t)
+	item := rapid.SampledFrom(m.items).Draw(t, "item")
+	if s != nil && (s.Phase() == store.PhaseAsking || s.Phase() == store.PhaseRetryingExact) {
+		if cur := s.Current(); cur != nil && cur.Item.ID == item {
+			t.Skip("that is the current item")
+		}
+	}
+	calls := m.w.model.calls
+	if _, err := m.w.app.Answer(m.w.ctx, m.w.user, item, "late", "typed"); !errors.Is(err, app.ErrStale) {
+		t.Fatalf("stale answer accepted: %v", err)
+	}
+	if fresh := m.learn(t); len(fresh) != 0 || m.w.model.calls != calls {
+		t.Fatal("a stale answer was judged or recorded")
+	}
+}
+
+func (m *studyMachine) Next(t *rapid.T) {
+	before := m.session(t)
+	again := rapid.Bool().Draw(t, "again")
+	if err := m.w.app.Next(m.w.ctx, m.w.user, again); err != nil {
+		t.Fatalf("Next(again=%v): %v", again, err)
+	}
+	after := m.session(t)
+	if before == nil {
+		if after != nil {
+			t.Fatal("Next opened a session")
+		}
+		return
+	}
+	switch before.Phase() {
+	case store.PhasePendingReview:
+		pend := m.reviews[before.PendingReviewID]
+		if again && pend.Judge == "exact" && m.exact[pend.ItemID] && !m.removed[pend.ItemID] {
+			if after == nil || after.Phase() != store.PhaseRetryingExact || after.RetryItemID != pend.ItemID {
+				t.Fatalf("Again on an exact text did not retry it")
+			}
+			return
+		}
+		if after != nil && after.Phase() != store.PhaseAsking {
+			t.Fatalf("Next from a judgment left the session %s", after.Phase())
+		}
+	case store.PhaseRetryingExact:
+		if again && (after == nil || after.RetryItemID != before.RetryItemID) {
+			t.Fatal("Again while retrying changed the retry")
+		}
+		if !again && after != nil && after.Phase() != store.PhaseAsking {
+			t.Fatal("skipping a retry did not return to asking")
+		}
+	case store.PhaseAsking:
+		if after != nil && (after.ID != before.ID || after.Phase() != store.PhaseAsking) {
+			t.Fatal("Next with nothing on screen changed the session")
+		}
+	}
+}
+
+// Edit changes an item's words, and sometimes whether it is exact,
+// in the middle of a session.
+func (m *studyMachine) Edit(t *rapid.T) {
+	id := rapid.SampledFrom(m.items).Draw(t, "item")
+	if m.removed[id] {
+		t.Skip("removed")
+	}
+	m.edits++
+	ex := m.exact[id]
+	if rapid.Bool().Draw(t, "toggleExact") {
+		ex = !ex
+	}
+	prompt, answer := fmt.Sprintf("edited question %d", m.edits), fmt.Sprintf("edited answer %d", m.edits)
+	if err := m.w.us.UpdateItem(m.w.ctx, id, prompt, answer, ex); err != nil {
+		t.Fatal(err)
+	}
+	m.exact[id], m.text[id] = ex, [2]string{prompt, answer}
+}
+
+func (m *studyMachine) Remove(t *rapid.T) {
+	id := rapid.SampledFrom(m.items).Draw(t, "item")
+	if m.removed[id] || len(m.removed)+1 >= len(m.items) {
+		t.Skip("keep at least one item")
+	}
+	if err := m.w.us.RemoveItem(m.w.ctx, id, m.w.now()); err != nil {
+		t.Fatal(err)
+	}
+	m.removed[id] = true
+}
+
+// TrashIdea moves an item's idea to Trash mid-session (taking the item
+// with it unless it was already removed), and RestoreIdea brings it back:
+// an earlier item coming back becomes the current item again.
+func (m *studyMachine) TrashIdea(t *rapid.T) {
+	id := rapid.SampledFrom(m.items).Draw(t, "item")
+	idea := m.w.ideaOf(t, id)
+	if m.trashed[idea] || (!m.removed[id] && len(m.removed)+1 >= len(m.items)) {
+		t.Skip("in Trash, or keep at least one item")
+	}
+	// Trash is later than any earlier removal: RestoreIdea brings back only
+	// what was removed at the moment the idea was, so an item removed on its
+	// own in the same second would come back with it.
+	m.w.advance(time.Minute)
+	if err := m.w.us.RemoveIdea(m.w.ctx, idea, m.w.now()); err != nil {
+		t.Fatal(err)
+	}
+	m.trashed[idea] = true
+	if !m.removed[id] {
+		m.removed[id], m.viaIdea[id] = true, true
+	}
+}
+
+func (m *studyMachine) RestoreIdea(t *rapid.T) {
+	id := rapid.SampledFrom(m.items).Draw(t, "item")
+	idea := m.w.ideaOf(t, id)
+	if !m.trashed[idea] {
+		t.Skip("not in Trash")
+	}
+	if err := m.w.us.RestoreIdea(m.w.ctx, idea); err != nil {
+		t.Fatal(err)
+	}
+	delete(m.trashed, idea)
+	if m.viaIdea[id] {
+		delete(m.removed, id)
+		delete(m.viaIdea, id)
+	}
+}
+
+// StaleAdvance is a delayed Next from a tab that read the session before
+// it last moved: it must be refused and change nothing, so it can never
+// dismiss a judgment or retry put on screen since.
+func (m *studyMachine) StaleAdvance(t *rapid.T) {
+	s := m.session(t)
+	if s == nil {
+		t.Skip("no session")
+	}
+	seen := s.Observed()
+	if rapid.Bool().Draw(t, "pending") {
+		seen.PendingReviewID += rapid.Int64Range(1, 3).Draw(t, "delta")
+	} else {
+		seen.RetryItemID += rapid.SampledFrom(m.items).Draw(t, "other")
+	}
+	if err := m.w.us.Advance(m.w.ctx, seen, 0); !errors.Is(err, store.ErrIllegalTransition) {
+		t.Fatalf("stale advance %+v of %+v: %v", seen, s.Observed(), err)
+	}
+	if after := m.session(t); after == nil || after.Observed() != s.Observed() {
+		t.Fatal("a stale advance moved the session")
+	}
+}
+
+// Explain asks "Why?" about the judgment on screen or any earlier review.
+func (m *studyMachine) Explain(t *rapid.T) {
+	if len(m.reviews) == 0 {
+		t.Skip("nothing reviewed")
+	}
+	var ids []int64
+	for id := range m.reviews {
+		ids = append(ids, id)
+	}
+	id := rapid.SampledFrom(sortedIDs(ids)).Draw(t, "review")
+	if s := m.session(t); s != nil && s.PendingReviewID != 0 && rapid.Bool().Draw(t, "onScreen") {
+		id = s.PendingReviewID
+	}
+	r := m.reviews[id]
+	before := m.w.schedule(t, r.ItemID)
+	ex, err := m.w.app.Explain(m.w.ctx, m.w.user, id)
+	explainable := r.Judge != "exact" && (r.Verdict == string(srs.Close) || r.Verdict == string(srs.Missed))
+	switch {
+	case !explainable:
+		if !errors.Is(err, app.ErrNotExplainable) {
+			t.Fatalf("Explain(%s by %s) = %v", r.Verdict, r.Judge, err)
+		}
+	case err != nil:
+		t.Fatalf("Explain: %v", err)
+	default:
+		g := m.graded[id]
+		if want := explanationOf(g[0], g[1], r.Answer, srs.Verdict(r.Verdict)); ex.Fallback || ex.Text != want {
+			t.Fatalf("explanation %q (fallback %v), want the graded snapshot %q", ex.Text, ex.Fallback, want)
+		}
+	}
+	if m.w.reviews(t)[id] != r || m.w.schedule(t, r.ItemID) != before {
+		t.Fatal("Explain changed the review or its item")
+	}
+}
+
+func (m *studyMachine) EndSession(t *rapid.T) {
+	s := m.session(t)
+	if s == nil {
+		t.Skip("no session")
+	}
+	if err := m.w.us.EndSession(m.w.ctx, s.ID, m.w.now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.w.us.EndSession(m.w.ctx, s.ID, m.w.now()); !errors.Is(err, store.ErrIllegalTransition) {
+		t.Fatalf("ending an ended session: %v", err)
+	}
+	if err := m.w.us.Advance(m.w.ctx, s.Observed(), 0); !errors.Is(err, store.ErrIllegalTransition) {
+		t.Fatalf("advancing an ended session: %v", err)
+	}
+}
+
+func (m *studyMachine) Wait(t *rapid.T) {
+	m.w.advance(time.Duration(rapid.IntRange(1, 96).Draw(t, "hours")) * time.Hour)
+}
+
+func (m *studyMachine) Check(t *rapid.T) {
+	m.learn(t)
+	s := m.session(t)
+	if s != nil {
+		inSession := map[int64]bool{}
+		for _, e := range s.Entries {
+			inSession[e.Item.ID] = true
+			if e.Review != nil && (e.Review.Practice || e.Review.ItemID != e.Item.ID || e.Review.SessionID != s.ID) {
+				t.Fatalf("entry %d points at review %+v", e.Item.ID, *e.Review)
+			}
+		}
+		switch s.Phase() {
+		case store.PhasePendingReview:
+			r, ok := m.reviews[s.PendingReviewID]
+			if !ok || r.SessionID != s.ID || !inSession[r.ItemID] || (r.Practice == 1 && r.Judge != "exact") {
+				t.Fatalf("pending review %d is not a judgment of this session: %+v", s.PendingReviewID, r)
+			}
+		case store.PhaseRetryingExact:
+			if !inSession[s.RetryItemID] || m.w.count(t, `SELECT COUNT(*) FROM reviews WHERE session_id = ? AND item_id = ? AND judge = 'exact'`,
+				s.ID, s.RetryItemID) == 0 {
+				t.Fatalf("retrying item %d that was never judged as an exact text here", s.RetryItemID)
+			}
+		}
+		if s.PendingReviewID != 0 && s.RetryItemID != 0 {
+			t.Fatal("a judgment and a retry at once")
+		}
+	}
+	if n := m.w.count(t, `SELECT COUNT(*) FROM study_sessions WHERE ended_at > 0 AND (pending_review_id != 0 OR retry_item_id != 0)`); n != 0 {
+		t.Fatalf("%d ended sessions still hold a judgment or retry", n)
+	}
+	if n := m.w.count(t, `SELECT COUNT(*) FROM (SELECT 1 FROM reviews WHERE practice = 0 GROUP BY session_id, item_id HAVING COUNT(*) > 1)`); n != 0 {
+		t.Fatalf("%d items scored twice in one session", n)
+	}
+	if n := m.w.count(t, `SELECT COUNT(*) FROM session_items si LEFT JOIN reviews r ON r.id = si.review_id
+		WHERE si.review_id != 0 AND (r.id IS NULL OR r.practice = 1 OR r.item_id != si.item_id OR r.session_id != si.session_id)`); n != 0 {
+		t.Fatalf("%d session entries point at the wrong review", n)
+	}
+	now := m.w.reviews(t)
+	for id, r := range m.reviews {
+		if now[id] != r {
+			t.Fatalf("review %d was rewritten: %+v -> %+v", id, r, now[id])
+		}
+		if g, ok := m.graded[id]; ok && (r.GradedPrompt != g[0] || r.GradedExpected != g[1]) {
+			t.Fatalf("review %d graded against %q/%q, the item was %q/%q", id, r.GradedPrompt, r.GradedExpected, g[0], g[1])
+		}
+	}
+	for _, id := range m.items {
+		got, prev := m.w.schedule(t, id), m.sched[id]
+		if err := srs.ValidateState(got); err != nil {
+			t.Fatalf("item %d: %v", id, err)
+		}
+		if got.Reps < prev.Reps || got.Lapses < prev.Lapses {
+			t.Fatalf("item %d went backwards: %+v -> %+v", id, prev, got)
+		}
+		if scored := m.w.count(t, `SELECT COUNT(*) FROM reviews WHERE item_id = ? AND practice = 0`, id); scored != got.Reps {
+			t.Fatalf("item %d has %d reps but %d scored reviews", id, got.Reps, scored)
+		}
+		m.sched[id] = got
+	}
+}
+
+func sortedIDs(ids []int64) []int64 {
+	for i := 1; i < len(ids); i++ {
+		for j := i; j > 0 && ids[j] < ids[j-1]; j-- {
+			ids[j], ids[j-1] = ids[j-1], ids[j]
+		}
+	}
+	return ids
+}
+
+// TestRapidStudyStateMachine is the model-based test of Study against the
+// formal invariants of specs/study_session.qnt, on the real SQLite store
+// and app: phase consistency, FSRS bounds and monotonicity, practice never
+// moving the schedule or replacing the scored review, "Why?" explaining
+// the graded snapshot without writing anything, and stale or out-of-phase
+// submissions (and delayed moves on) being refused, with items moved to
+// Trash and back mid-session.
+func TestRapidStudyStateMachine(t *testing.T) {
+	dir := rapidDir(t)
+	var n atomic.Int64
+	rapid.Check(t, func(t *rapid.T) {
+		w := newStudyWorld(t, filepath.Join(dir, fmt.Sprintf("study%d.db", n.Add(1))))
+		defer w.st.Close()
+		count := rapid.IntRange(1, 4).Draw(t, "items")
+		var exact []bool
+		for i := 0; i < count; i++ {
+			exact = append(exact, rapid.Bool().Draw(t, "exact"))
+		}
+		m := &studyMachine{w: w, exact: map[int64]bool{}, text: map[int64][2]string{}, removed: map[int64]bool{},
+			trashed: map[int64]bool{}, viaIdea: map[int64]bool{},
+			sched: map[int64]srs.State{}, reviews: map[int64]reviewRow{}, graded: map[int64][2]string{}}
+		m.items = w.addItems(t, exact...)
+		for i, id := range m.items {
+			m.exact[id] = exact[i]
+		}
+		t.Repeat(rapid.StateMachineActions(m))
+	})
+}
+
+// TestStudyDoubleSubmitSchedulesOnce is the regression test for the
+// double-submit race: two requests answer the same item at once, both
+// pass the pre-check before either is recorded, and both are judged. Only
+// one may be recorded; the other is ErrStale. Before the transition was
+// guarded inside the write transaction, both were recorded and the item's
+// schedule moved twice (reps +2).
+func TestStudyDoubleSubmitSchedulesOnce(t *testing.T) {
+	w := newStudyWorld(t, filepath.Join(t.TempDir(), "race.db"))
+	defer w.st.Close()
+	items := w.addItems(t, false)
+	if _, err := w.app.Study(w.ctx, w.user); err != nil {
+		t.Fatal(err)
+	}
+	gate, arrived := make(chan struct{}), make(chan struct{}, 2)
+	w.model.mu.Lock()
+	w.model.verdict, w.model.gate, w.model.arrived = srs.Close, gate, arrived
+	w.model.mu.Unlock()
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			_, err := w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed")
+			errs <- err
+		}()
+	}
+	<-arrived
+	<-arrived // both requests are being judged: neither has been recorded
+	close(gate)
+	var ok, stale int
+	for i := 0; i < 2; i++ {
+		switch err := <-errs; {
+		case err == nil:
+			ok++
+		case errors.Is(err, app.ErrStale):
+			stale++
+		default:
+			t.Fatalf("Answer: %v", err)
+		}
+	}
+	if ok != 1 || stale != 1 {
+		t.Fatalf("%d recorded, %d stale; want 1 and 1", ok, stale)
+	}
+	if s := w.schedule(t, items[0]); s.Reps != 1 {
+		t.Fatalf("reps = %d after one judged answer, want 1", s.Reps)
+	}
+	if n := w.count(t, `SELECT COUNT(*) FROM reviews`); n != 1 {
+		t.Fatalf("%d reviews recorded, want 1", n)
+	}
+	if reserved, err := w.us.ReservedMicros(w.ctx); err != nil || reserved != 0 {
+		t.Fatalf("reserved %d after both settled (%v)", reserved, err)
+	}
+}
+
+// TestStudyJudgeFailureReleasesReservation: a failed judgment decides
+// its reservation by what is known of the provider's outcome (G2, as
+// runDraft does). A failure that reports usage (a refusal the provider
+// metered, or reported at zero cost) is settled at that cost, so nothing
+// stays held. A failure or panic with no usage is an unknown outcome: the
+// call may have been billed, so the hold is kept and a retry on a one-judge
+// budget is refused rather than spent unmetered. Before, the reservation
+// was settled at zero on every failure, deleting the hold.
+func TestStudyJudgeFailureReleasesReservation(t *testing.T) {
+	cost := func(n int64) *int64 { return &n }
+	for _, tc := range []struct {
+		name     string
+		use      *ai.Usage // reported with the failure; nil: none
+		panics   bool
+		held     bool  // the hold is kept: the outcome is unknown
+		spent    int64 // what the failure was metered at
+		retryErr error // a retry on a one-judge budget
+	}{
+		{name: "refused at no cost", use: &ai.Usage{Model: "test-judge", CostMicros: cost(0)}},
+		{name: "refused and metered", use: &ai.Usage{Model: "test-judge", CostMicros: cost(700)}, spent: 700},
+		{name: "unknown outcome", held: true, retryErr: app.ErrAllowance},
+		{name: "panic mid-call", panics: true, held: true, retryErr: app.ErrAllowance},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newStudyWorld(t, filepath.Join(t.TempDir(), "judge.db"))
+			defer w.st.Close()
+			items := w.addItems(t, false)
+			w.oneJudgeBudget(t, tc.spent) // after what the failure is metered at, one judgment is left
+			if _, err := w.app.Study(w.ctx, w.user); err != nil {
+				t.Fatal(err)
+			}
+			w.model.mu.Lock()
+			w.model.fail, w.model.failUse, w.model.panics = true, tc.use, tc.panics
+			w.model.mu.Unlock()
+			err := func() (err error) {
+				defer func() {
+					if r := recover(); r != nil {
+						err = fmt.Errorf("panic: %v", r)
+					}
+				}()
+				_, err = w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed")
+				return err
+			}()
+			if (tc.panics && (err == nil || errors.Is(err, app.ErrJudgeUnavailable))) || (!tc.panics && !errors.Is(err, app.ErrJudgeUnavailable)) {
+				t.Fatalf("Answer with the judge failing: %v", err)
+			}
+			want := int64(0)
+			if tc.held {
+				want = ai.JudgeBudgetMicros
+			}
+			if reserved, err := w.us.ReservedMicros(w.ctx); err != nil || reserved != want {
+				t.Fatalf("%d micros reserved after the failure, want %d (%v)", reserved, want, err)
+			}
+			if sub, _ := w.us.Subscription(w.ctx); sub.UsedMicros != tc.spent {
+				t.Fatalf("the failure was metered at %d, want %d", sub.UsedMicros, tc.spent)
+			}
+			w.model.mu.Lock()
+			w.model.fail, w.model.failUse, w.model.panics = false, nil, false
+			calls := w.model.calls
+			w.model.mu.Unlock()
+			_, err = w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed")
+			if tc.retryErr != nil {
+				if !errors.Is(err, tc.retryErr) || w.model.calls != calls {
+					t.Fatalf("retry after an unknown outcome: %v, judged again %v; want %v with no call", err, w.model.calls != calls, tc.retryErr)
+				}
+			} else if err != nil || w.model.calls != calls+1 {
+				t.Fatalf("retry after a settled failure: %v", err)
+			}
+			if s := w.schedule(t, items[0]); (tc.retryErr != nil) != (s.Reps == 0) {
+				t.Fatalf("reps = %d", s.Reps)
+			}
+		})
+	}
+}
+
+// oneJudgeBudget leaves the learner exactly one judgment's reservation,
+// plus extra micros.
+func (w *studyWorld) oneJudgeBudget(t fataler, extra int64) {
+	t.Helper()
+	sub, err := w.us.Subscription(w.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub.AllowanceMicros, sub.UsedMicros, sub.TopupMicros = ai.JudgeBudgetMicros+extra, 0, 0
+	if err := w.us.SaveSubscription(w.ctx, sub); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// lostResponse is a transport that sends the request (it reads the whole
+// body, as a real connection would) and then loses the response.
+type lostResponse struct{ sent atomic.Int64 }
+
+func (l *lostResponse) RoundTrip(req *http.Request) (*http.Response, error) {
+	if _, err := io.Copy(io.Discard, req.Body); err != nil {
+		return nil, err
+	}
+	req.Body.Close()
+	l.sent.Add(1)
+	return nil, io.ErrUnexpectedEOF
+}
+
+// TestG2_UnknownJudgeOutcomeRetainsHold is the Cold Critic's probe on the
+// production judge: the real Jev adapter sends the request and the
+// response is lost (unexpected EOF), so it returns no usage. The provider
+// may have done (and billed) the work, so the reservation is kept, and a
+// retry on a one-judge budget is refused instead of being sent unmetered.
+// Only the TTL sweep releases the hold. Before, the hold was settled at
+// zero and deleted, and the retry was sent.
+func TestG2_UnknownJudgeOutcomeRetainsHold(t *testing.T) {
+	w := newStudyWorld(t, filepath.Join(t.TempDir(), "g2.db"))
+	defer w.st.Close()
+	transport := &lostResponse{}
+	w.app.Model = ai.Split{JudgeProvider: &ai.Jev{APIKey: "local-secret", BaseURL: "http://jev.test",
+		HTTP: &http.Client{Transport: transport}, Log: w.app.Log}, DraftProvider: w.model}
+	items := w.addItems(t, false)
+	w.oneJudgeBudget(t, 0)
+	if _, err := w.app.Study(w.ctx, w.user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed"); !errors.Is(err, app.ErrJudgeUnavailable) {
+		t.Fatalf("Answer with the response lost: %v", err)
+	}
+	if transport.sent.Load() != 1 {
+		t.Fatalf("%d requests sent, want 1", transport.sent.Load())
+	}
+	if reserved, err := w.us.ReservedMicros(w.ctx); err != nil || reserved != ai.JudgeBudgetMicros {
+		t.Fatalf("%d micros reserved after an unknown outcome, want the hold of %d kept (%v)", reserved, ai.JudgeBudgetMicros, err)
+	}
+	if _, err := w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed"); !errors.Is(err, app.ErrAllowance) {
+		t.Fatalf("retry on a one-judge budget with the hold kept: %v, want ErrAllowance", err)
+	}
+	if transport.sent.Load() != 1 {
+		t.Fatal("the retry was sent to the provider unmetered")
+	}
+	if n := w.count(t, `SELECT COUNT(*) FROM reviews`); n != 0 || w.schedule(t, items[0]).Reps != 0 {
+		t.Fatal("an unjudged answer was recorded")
+	}
+	// The hold is released by the TTL sweep, never by the failed request.
+	if n, err := w.st.SweepExpiredReservations(w.ctx, w.now().Add(time.Hour)); err != nil || n != 1 {
+		t.Fatalf("sweep released %d holds (%v), want 1", n, err)
+	}
+	if reserved, _ := w.us.ReservedMicros(w.ctx); reserved != 0 {
+		t.Fatalf("%d micros reserved after the sweep", reserved)
+	}
+}
+
+// TestStudyAnswerMustStillTargetCurrentItem is the Cold Critic's repro: a
+// two-item session; item 1's idea goes to Trash (item 2 is now current);
+// item 2 is answered and the judge is in flight; item 1's idea is restored
+// (item 1 is current again); then the judge returns. The answer is for an
+// item that is no longer current, so it is ErrStale and nothing is
+// recorded (specs/study_session.qnt, commitWith: currentOf(...) == i).
+// Before, item 2 was recorded and rescheduled out of order.
+func TestStudyAnswerMustStillTargetCurrentItem(t *testing.T) {
+	w := newStudyWorld(t, filepath.Join(t.TempDir(), "current.db"))
+	defer w.st.Close()
+	items := w.addItems(t, false, false)
+	if _, err := w.app.Study(w.ctx, w.user); err != nil {
+		t.Fatal(err)
+	}
+	idea1 := w.ideaOf(t, items[0])
+	if err := w.us.RemoveIdea(w.ctx, idea1, w.now()); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := w.us.ActiveSession(w.ctx); s == nil || s.Current() == nil || s.Current().Item.ID != items[1] {
+		t.Fatal("item 2 is not current with item 1's idea in Trash")
+	}
+	gate, arrived := make(chan struct{}), make(chan struct{}, 1)
+	w.model.mu.Lock()
+	w.model.verdict, w.model.gate, w.model.arrived = srs.Close, gate, arrived
+	w.model.mu.Unlock()
+	errs := make(chan error, 1)
+	go func() {
+		_, err := w.app.Answer(w.ctx, w.user, items[1], "an answer", "typed")
+		errs <- err
+	}()
+	<-arrived // item 2 is being judged
+	if err := w.us.RestoreIdea(w.ctx, idea1); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := w.us.ActiveSession(w.ctx); s == nil || s.Current() == nil || s.Current().Item.ID != items[0] {
+		t.Fatal("item 1 is not current again after its idea was restored")
+	}
+	close(gate)
+	if err := <-errs; !errors.Is(err, app.ErrStale) {
+		t.Fatalf("an answer for an item no longer current: %v, want ErrStale", err)
+	}
+	if n := w.count(t, `SELECT COUNT(*) FROM reviews WHERE item_id = ?`, items[1]); n != 0 {
+		t.Fatalf("%d reviews recorded for item 2", n)
+	}
+	if s := w.schedule(t, items[1]); s.Reps != 0 {
+		t.Fatalf("item 2 reps = %d, want 0", s.Reps)
+	}
+	s, _ := w.us.ActiveSession(w.ctx)
+	if s == nil || s.Phase() != store.PhaseAsking || s.Current().Item.ID != items[0] {
+		t.Fatal("the session no longer asks for item 1")
+	}
+}
+
+// TestStudyStaleAdvanceMustNotDismissAnotherReview is the Cold Critic's
+// interleaving: tab 1 reads the session with review 1 on screen and is
+// delayed before it advances; tab 2 advances and answers item 2, putting
+// review 2 on screen; tab 1's delayed Advance (for review 1) must be
+// refused and leave review 2 on screen (specs/study_session.qnt,
+// commitNextWith: se.pending == tb.pending). Before, it cleared review 2.
+func TestStudyStaleAdvanceMustNotDismissAnotherReview(t *testing.T) {
+	w := newStudyWorld(t, filepath.Join(t.TempDir(), "advance.db"))
+	defer w.st.Close()
+	items := w.addItems(t, false, false)
+	if _, err := w.app.Study(w.ctx, w.user); err != nil {
+		t.Fatal(err)
+	}
+	w.model.set(srs.Close) // held on screen
+	r1, err := w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab1, _ := w.us.ActiveSession(w.ctx)
+	if tab1.Phase() != store.PhasePendingReview || tab1.PendingReviewID != r1.ID {
+		t.Fatalf("review 1 is not on screen: %s", tab1.Phase())
+	}
+	// Tab 2 moves on and answers item 2.
+	if err := w.app.Next(w.ctx, w.user, false); err != nil {
+		t.Fatal(err)
+	}
+	r2, err := w.app.Answer(w.ctx, w.user, items[1], "an answer", "typed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Tab 1's delayed move on, for the review it saw.
+	err = w.us.Advance(w.ctx, tab1.Observed(), 0)
+	var te *store.TransitionError
+	if !errors.Is(err, store.ErrIllegalTransition) || !errors.As(err, &te) {
+		t.Fatalf("a delayed Advance for review %d with review %d on screen: %v", r1.ID, r2.ID, err)
+	}
+	s, _ := w.us.ActiveSession(w.ctx)
+	if s == nil || s.Phase() != store.PhasePendingReview || s.PendingReviewID != r2.ID {
+		t.Fatalf("review 2 was dismissed by tab 1's delayed Advance: %+v", s)
+	}
+	// Seen afresh, the same move is taken.
+	if err := w.app.Next(w.ctx, w.user, false); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := w.us.ActiveSession(w.ctx); s != nil && s.PendingReviewID != 0 {
+		t.Fatal("an up-to-date Next did not move on")
+	}
+}
+
+// TestStudyRetryOfEditedTextIsDropped: an exact text put back up with
+// "Again" and then edited to be judged by the model is not practised as
+// a model-judged "practice" answer: the retry is dropped, nothing is
+// judged or recorded, and the session moves on.
+func TestStudyRetryOfEditedTextIsDropped(t *testing.T) {
+	w := newStudyWorld(t, filepath.Join(t.TempDir(), "retry.db"))
+	defer w.st.Close()
+	items := w.addItems(t, true, false)
+	if _, err := w.app.Study(w.ctx, w.user); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.app.Answer(w.ctx, w.user, items[0], "wrong words", "typed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.app.Next(w.ctx, w.user, true); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := w.us.ActiveSession(w.ctx)
+	if s.Phase() != store.PhaseRetryingExact || s.RetryItemID != items[0] {
+		t.Fatalf("Again did not retry: %s", s.Phase())
+	}
+	if err := w.us.UpdateItem(w.ctx, items[0], "question 0", "answer number 0", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.app.Answer(w.ctx, w.user, items[0], "answer number 0", "typed"); !errors.Is(err, app.ErrStale) {
+		t.Fatalf("practice of a no-longer-exact text: %v", err)
+	}
+	if w.model.calls != 0 || w.count(t, `SELECT COUNT(*) FROM reviews`) != 1 {
+		t.Fatal("the dropped retry was judged or recorded")
+	}
+	s, _ = w.us.ActiveSession(w.ctx)
+	if s == nil || s.Phase() != store.PhaseAsking || s.Current().Item.ID != items[1] {
+		t.Fatal("the session did not move on to the next item")
+	}
+	// Repeated Enter with nothing on screen changes nothing.
+	if err := w.app.Next(w.ctx, w.user, false); err != nil {
+		t.Fatal(err)
+	}
+	if s2, _ := w.us.ActiveSession(w.ctx); s2 == nil || s2.ID != s.ID || s2.Phase() != store.PhaseAsking {
+		t.Fatal("Next in the asking phase changed the session")
+	}
+}
+
+// rapidDir is where a rapid test keeps its throwaway databases: on tmpfs
+// when there is one (each check opens a fresh database, and fsyncs to
+// disk would dominate), otherwise the test's temporary directory.
+func rapidDir(t *testing.T) string {
+	if fi, err := os.Stat("/dev/shm"); err == nil && fi.IsDir() {
+		if dir, err := os.MkdirTemp("/dev/shm", "scry-rapid-"); err == nil {
+			t.Cleanup(func() { os.RemoveAll(dir) })
+			return dir
+		}
+	}
+	return t.TempDir()
+}

@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -22,7 +24,7 @@ const topupSchema = `CREATE TABLE IF NOT EXISTS topups (
   user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token         TEXT NOT NULL,
   idem_key      TEXT NOT NULL UNIQUE,
-  status        TEXT NOT NULL CHECK (status IN ('pending','succeeded','failed')),
+  status        TEXT NOT NULL CHECK (status IN ('pending','succeeded','failed','refund_due')),
   amount_cents  INTEGER NOT NULL,
   credit_micros INTEGER NOT NULL,
   created_at    INTEGER NOT NULL,
@@ -38,21 +40,106 @@ var topupColumns = [][2]string{
 	{"payment_ref", "TEXT NOT NULL DEFAULT ''"},
 }
 
-// Top-up attempt states. An attempt is only ever failed on a definitive
-// answer (a decline, or a charge the processor reports as canceled or
-// failed). A charge the processor has not shown yet stays pending, however
-// long that takes: a late success must still be credited.
+// TopupStatus is the state of one top-up attempt. The machine is
+//
+//	pending   -> succeeded   the processor confirmed the charge (credited)
+//	pending   -> failed      a definitive refusal or cancellation (slot freed)
+//	failed    -> succeeded   a late authoritative success, with a free slot
+//	failed    -> refund_due  a late authoritative success over the month's cap
+//
+// succeeded and refund_due are terminal; failed only ever moves forward.
+// An attempt is only ever failed on a definitive answer (a decline, or a
+// charge the processor reports as canceled or failed). A charge the
+// processor has not shown yet stays pending, however long that takes: a
+// late success must still be credited, or, past the cap, refunded.
+type TopupStatus string
+
 const (
-	TopupPending   = "pending"
-	TopupSucceeded = "succeeded"
-	TopupFailed    = "failed"
+	TopupStatusPending   TopupStatus = "pending"
+	TopupStatusSucceeded TopupStatus = "succeeded"
+	TopupStatusFailed    TopupStatus = "failed"
+	// TopupStatusRefundDue is money the processor took after the attempt
+	// had failed and its month's cap had since been used up by other
+	// top-ups. It is never credited; the charge is owed back.
+	TopupStatusRefundDue TopupStatus = "refund_due"
 )
+
+// The original names of the top-up states, kept for callers.
+const (
+	TopupPending   = TopupStatusPending
+	TopupSucceeded = TopupStatusSucceeded
+	TopupFailed    = TopupStatusFailed
+	TopupRefundDue = TopupStatusRefundDue
+)
+
+// TopupStatuses lists every top-up state.
+var TopupStatuses = []TopupStatus{TopupStatusPending, TopupStatusSucceeded, TopupStatusFailed, TopupStatusRefundDue}
+
+// Valid reports whether s is a known top-up state.
+func (s TopupStatus) Valid() bool {
+	for _, v := range TopupStatuses {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+// Terminal reports whether no transition leaves s.
+func (s TopupStatus) Terminal() bool {
+	return s == TopupStatusSucceeded || s == TopupStatusRefundDue
+}
+
+// topupTransitions is the whole top-up machine: every legal (from, to).
+var topupTransitions = map[TopupStatus][]TopupStatus{
+	TopupStatusPending: {TopupStatusSucceeded, TopupStatusFailed},
+	TopupStatusFailed:  {TopupStatusSucceeded, TopupStatusRefundDue},
+}
+
+// CanTransitionTopup reports whether an attempt in from may move to to.
+// Staying in the same state is not a transition.
+func CanTransitionTopup(from, to TopupStatus) bool {
+	for _, v := range topupTransitions[from] {
+		if v == to {
+			return true
+		}
+	}
+	return false
+}
+
+// TopupTransitionError is a refused top-up transition. It matches
+// ErrIllegalTransition.
+type TopupTransitionError struct {
+	From, To TopupStatus
+}
+
+func (e *TopupTransitionError) Error() string {
+	return fmt.Sprintf("%v: top-up %s -> %s", ErrIllegalTransition, e.From, e.To)
+}
+
+func (e *TopupTransitionError) Is(target error) bool { return target == ErrIllegalTransition }
+
+// TransitionTopup checks one top-up transition: nil when it is legal,
+// otherwise a *TopupTransitionError.
+func TransitionTopup(from, to TopupStatus) error {
+	if CanTransitionTopup(from, to) {
+		return nil
+	}
+	return &TopupTransitionError{From: from, To: to}
+}
 
 // TopupCap is the number of $5 top-ups allowed per UTC calendar month ($20).
 const TopupCap = 4
 
 // ErrTopupCap is the monthly limit.
 var ErrTopupCap = errors.New("Monthly $20 top-up limit reached")
+
+// ErrTopupCapExceededLate is a late authoritative success for an attempt
+// that had already failed, arriving when its UTC month's cap is full. The
+// attempt is recorded as refund_due with the charge's id, nothing is
+// credited (the month never passes $20), and the charge must be refunded.
+// It is reported after the refund_due row is committed.
+var ErrTopupCapExceededLate = errors.New("top-up charged after the monthly $20 limit was reached; not credited, refund due")
 
 // ErrNoChargeRef is returned when a top-up would be marked paid without
 // the processor's id for the payment, from the caller or saved on the
@@ -64,7 +151,7 @@ type TopupAttempt struct {
 	UserID       int64
 	Token        string
 	Key          string // the processor idempotency key
-	Status       string
+	Status       TopupStatus
 	AmountCents  int64
 	CreditMicros int64
 	Created      time.Time
@@ -187,22 +274,28 @@ func (u *UserStore) NoteTopupCharge(ctx context.Context, token, chargeRef string
 // reserved. It reports whether credit was granted now.
 //
 // The processor confirming a payment is authoritative: money it took is
-// always credited, so an attempt already recorded as failed is corrected
-// (its "card failed" history line is replaced by the paid one).
+// never silently kept. A pending attempt holds its cap slot, so it is
+// always credited. An attempt already recorded as failed gave its slot
+// back, so the UTC month's cap is checked again under the write lock: with
+// a free slot it is corrected to succeeded and credited (its "card failed"
+// history line is replaced by the paid one); with the month full it
+// becomes refund_due, nothing is credited, and ErrTopupCapExceededLate is
+// returned once that is committed, so ops refund the charge.
+// succeeded and refund_due attempts are final: a replay changes nothing.
 //
 // An empty chargeRef never clears the attempt's saved charge_ref: the
 // saved one is used. With neither, nothing is changed and an error is
 // returned, so no attempt succeeds and no paid line is booked without the
 // processor's id (the ledger's ref is what makes a payment credit once).
 func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, description string, now time.Time) (bool, error) {
-	granted := false
+	granted, overCap := false, false
 	err := u.s.BillingTransaction(ctx, func(ctx context.Context) error {
 		a, err := u.Topup(ctx, token)
 		if err != nil {
 			return err
 		}
-		if a.Status != TopupPending && a.Status != TopupFailed {
-			return nil
+		if !CanTransitionTopup(a.Status, TopupStatusSucceeded) {
+			return nil // already final: a replay
 		}
 		if chargeRef == "" {
 			chargeRef = a.ChargeRef
@@ -210,18 +303,39 @@ func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, descript
 		if chargeRef == "" {
 			return ErrNoChargeRef
 		}
-		db := u.s.billingDB(ctx)
-		if _, err := db.ExecContext(ctx, `UPDATE topups SET status='succeeded', charge_ref=?, settled_at=?, reason='' WHERE user_id=? AND token=? AND status=?`,
-			chargeRef, ts(now), u.uid, token, a.Status); err != nil {
+		to := TopupStatusSucceeded
+		if a.Status == TopupStatusFailed {
+			count, err := u.MonthTopups(ctx, a.Created)
+			if err != nil {
+				return err
+			}
+			if count >= TopupCap {
+				to = TopupStatusRefundDue
+			}
+		}
+		if err := TransitionTopup(a.Status, to); err != nil {
 			return err
 		}
-		if a.Status == TopupFailed {
+		db := u.s.billingDB(ctx)
+		res, err := db.ExecContext(ctx, `UPDATE topups SET status=?, charge_ref=?, settled_at=?, reason='' WHERE user_id=? AND token=? AND status=?`,
+			to, chargeRef, ts(now), u.uid, token, a.Status)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return &TopupTransitionError{From: a.Status, To: to}
+		}
+		if a.Status == TopupStatusFailed {
 			if _, err := db.ExecContext(ctx, `DELETE FROM ledger WHERE user_id=? AND ref=?`, u.uid, a.Key+"-failed"); err != nil {
 				return err
 			}
 		}
+		if to == TopupStatusRefundDue {
+			overCap = true
+			return nil
+		}
 		// One processor payment can only ever credit once, whatever the key.
-		res, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO ledger (user_id,at,kind,description,amount_cents,status,ref) VALUES (?,?,?,?,?,?,?)",
+		res, err = db.ExecContext(ctx, "INSERT OR IGNORE INTO ledger (user_id,at,kind,description,amount_cents,status,ref) VALUES (?,?,?,?,?,?,?)",
 			u.uid, ts(a.Created), "topup", description, a.AmountCents, "paid", chargeRef)
 		if err != nil {
 			return err
@@ -236,7 +350,13 @@ func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, descript
 		_, err = db.ExecContext(ctx, "UPDATE subscriptions SET topup_micros=topup_micros+?, card_error='' WHERE user_id=?", a.CreditMicros, u.uid)
 		return err
 	})
-	return granted && err == nil, err
+	if err != nil {
+		return false, err
+	}
+	if overCap {
+		return false, ErrTopupCapExceededLate
+	}
+	return granted, nil
 }
 
 // FailTopup releases a pending attempt the processor did not charge, so
@@ -244,14 +364,16 @@ func (u *UserStore) SucceedTopup(ctx context.Context, token, chargeRef, descript
 // on the card and in the history. chargeRef is the processor's id for the
 // refused charge, when known: it is recorded unless the attempt already
 // has one (an empty chargeRef never clears it), so a later webhook for
-// that charge still finds the attempt by id.
+// that charge still finds the attempt by id. Any attempt that is not
+// pending is left as it is: a failure never undoes a success, a refund
+// due, or an earlier failure (an out-of-order or replayed webhook).
 func (u *UserStore) FailTopup(ctx context.Context, token, chargeRef, reason string, now time.Time) error {
 	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
 		a, err := u.Topup(ctx, token)
 		if err != nil {
 			return err
 		}
-		if a.Status != TopupPending {
+		if !CanTransitionTopup(a.Status, TopupStatusFailed) {
 			return nil
 		}
 		db := u.s.billingDB(ctx)
@@ -271,6 +393,64 @@ func (u *UserStore) FailTopup(ctx context.Context, token, chargeRef, reason stri
 			u.uid, ts(a.Created), "topup", "Top-up (card failed)", a.AmountCents, "failed", a.Key+"-failed")
 		return err
 	})
+}
+
+// RefundDueTopups lists every attempt whose charge must be refunded: money
+// the processor took after the attempt had failed and its month was full.
+func (s *Store) RefundDueTopups(ctx context.Context) ([]TopupAttempt, error) {
+	return queryTopups(ctx, s.billingDB(ctx), `SELECT `+topupCols+` FROM topups WHERE status='refund_due' ORDER BY created_at`)
+}
+
+// topupsAllowRefundDue reports whether the topups table's CHECK already
+// admits refund_due (a database created before it did needs rebuilding).
+func (s *Store) topupsAllowRefundDue() (bool, error) {
+	var sql string
+	if err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='topups'`).Scan(&sql); err != nil {
+		return false, err
+	}
+	return strings.Contains(sql, "'refund_due'"), nil
+}
+
+// migrateTopupStatuses rebuilds a topups table created before refund_due
+// existed, so its CHECK constraint admits the new state. SQLite cannot
+// alter a CHECK in place: the rows are copied, by column name, into a
+// table of the current shape inside one transaction, and the old table is
+// replaced. Nothing references topups, so foreign keys are unaffected.
+// Its indexes are recreated by migrateAdded.
+func (s *Store) migrateTopupStatuses() error {
+	ok, err := s.topupsAllowRefundDue()
+	if err != nil || ok {
+		return err
+	}
+	cols, err := s.columns(context.Background(), s.db, "main", "topups")
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmts := []string{`DROP TABLE IF EXISTS topups_rebuild`,
+		strings.Replace(topupSchema, "CREATE TABLE IF NOT EXISTS topups (", "CREATE TABLE topups_rebuild (", 1)}
+	for _, c := range topupColumns {
+		stmts = append(stmts, `ALTER TABLE topups_rebuild ADD COLUMN `+c[0]+` `+c[1])
+	}
+	quoted := make([]string, len(cols))
+	for i, c := range cols {
+		quoted[i] = `"` + c + `"`
+	}
+	list := strings.Join(quoted, ", ")
+	stmts = append(stmts,
+		`INSERT INTO topups_rebuild (`+list+`) SELECT `+list+` FROM topups`,
+		`DROP TABLE topups`,
+		`ALTER TABLE topups_rebuild RENAME TO topups`)
+	for _, q := range stmts {
+		if _, err := tx.Exec(q); err != nil {
+			return fmt.Errorf("rebuild topups: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // PendingTopups lists the learner's attempts made since then that are

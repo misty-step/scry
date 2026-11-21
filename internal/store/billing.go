@@ -3,16 +3,133 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
+
+// SubscriptionStatus is the state of a learner's plan. The machine is
+//
+//	(none)            -> trialing | active    OpenPlan (StartTrial)
+//	trialing|active|past_due -> active        an invoice was paid
+//	trialing|active|past_due -> past_due      an invoice failed
+//	trialing|active|past_due -> ended         the plan ended
+//	ended             -> active               OpenPlan with a NEW subscription_ref
+//
+// ended is terminal for its subscription_ref: no processor event moves it
+// again. Only an explicit OpenPlan, which opens a new subscription at the
+// processor, starts another plan.
+type SubscriptionStatus string
+
+const (
+	SubNone     SubscriptionStatus = "" // no plan row
+	SubTrialing SubscriptionStatus = "trialing"
+	SubActive   SubscriptionStatus = "active"
+	SubPastDue  SubscriptionStatus = "past_due"
+	SubEnded    SubscriptionStatus = "ended"
+)
+
+// SubscriptionStatuses lists every state a plan row can be in.
+var SubscriptionStatuses = []SubscriptionStatus{SubTrialing, SubActive, SubPastDue, SubEnded}
+
+// Live reports whether the plan is open at the processor (not ended).
+func (s SubscriptionStatus) Live() bool {
+	return s == SubTrialing || s == SubActive || s == SubPastDue
+}
+
+// SubscriptionEvent is what moves a plan: the processor's invoice and end
+// events (billing.InvoicePaid, InvoiceFailed, SubscriptionEnded, mapped by
+// the app) and the explicit opening of a plan.
+type SubscriptionEvent uint8
+
+const (
+	SubEventInvoicePaid SubscriptionEvent = iota
+	SubEventInvoiceFailed
+	SubEventEnded
+	SubEventOpenTrial // the first plan, as a trial
+	SubEventOpenPaid  // a plan charged at once (after an ended one)
+)
+
+func (e SubscriptionEvent) String() string {
+	switch e {
+	case SubEventInvoicePaid:
+		return "invoice_paid"
+	case SubEventInvoiceFailed:
+		return "invoice_failed"
+	case SubEventEnded:
+		return "subscription_ended"
+	case SubEventOpenTrial:
+		return "open_trial"
+	case SubEventOpenPaid:
+		return "open_paid"
+	}
+	return fmt.Sprintf("SubscriptionEvent(%d)", uint8(e))
+}
+
+// SubscriptionEvents lists every subscription event.
+var SubscriptionEvents = []SubscriptionEvent{SubEventInvoicePaid, SubEventInvoiceFailed, SubEventEnded, SubEventOpenTrial, SubEventOpenPaid}
+
+type subStep struct {
+	from SubscriptionStatus
+	ev   SubscriptionEvent
+}
+
+// subscriptionTransitions is the whole plan machine. A pair that is not
+// here is illegal. ended -> ended is the idempotent end of a plan already
+// over; it never leaves ended.
+var subscriptionTransitions = map[subStep]SubscriptionStatus{
+	{SubNone, SubEventOpenTrial}: SubTrialing,
+	{SubNone, SubEventOpenPaid}:  SubActive,
+	{SubEnded, SubEventOpenPaid}: SubActive,
+	{SubEnded, SubEventEnded}:    SubEnded,
+
+	{SubTrialing, SubEventInvoicePaid}:   SubActive,
+	{SubTrialing, SubEventInvoiceFailed}: SubPastDue,
+	{SubTrialing, SubEventEnded}:         SubEnded,
+	{SubActive, SubEventInvoicePaid}:     SubActive,
+	{SubActive, SubEventInvoiceFailed}:   SubPastDue,
+	{SubActive, SubEventEnded}:           SubEnded,
+	{SubPastDue, SubEventInvoicePaid}:    SubActive,
+	{SubPastDue, SubEventInvoiceFailed}:  SubPastDue,
+	{SubPastDue, SubEventEnded}:          SubEnded,
+}
+
+// SubscriptionTransitionError is a refused plan transition. It matches
+// ErrIllegalTransition.
+type SubscriptionTransitionError struct {
+	From  SubscriptionStatus
+	Event SubscriptionEvent
+}
+
+func (e *SubscriptionTransitionError) Error() string {
+	from := string(e.From)
+	if from == "" {
+		from = "none"
+	}
+	return fmt.Sprintf("%v: plan %s on %s", ErrIllegalTransition, from, e.Event)
+}
+
+func (e *SubscriptionTransitionError) Is(target error) bool { return target == ErrIllegalTransition }
+
+// TransitionSubscription is the state an event moves a plan to, or a
+// *SubscriptionTransitionError when the plan cannot take it (an invoice
+// for a plan that has ended, opening a plan over a live one).
+func TransitionSubscription(from SubscriptionStatus, ev SubscriptionEvent) (SubscriptionStatus, error) {
+	if to, ok := subscriptionTransitions[subStep{from, ev}]; ok {
+		return to, nil
+	}
+	return from, &SubscriptionTransitionError{From: from, Event: ev}
+}
+
+// ErrNegativeCost is metered usage with a negative price.
+var ErrNegativeCost = errors.New("usage cost is negative")
 
 // Subscription is a learner's plan and allowance.
 type Subscription struct {
 	UserID          int64
-	CustomerRef     string // the processor's customer
-	SubscriptionRef string // the processor's subscription
-	PaymentRef      string // the processor's saved card
-	Status          string // trialing, active, past_due, ended
+	CustomerRef     string             // the processor's customer
+	SubscriptionRef string             // the processor's subscription
+	PaymentRef      string             // the processor's saved card
+	Status          SubscriptionStatus // trialing, active, past_due, ended
 	TrialEnd        time.Time
 	PeriodStart     time.Time
 	PeriodEnd       time.Time
@@ -133,8 +250,14 @@ type Usage struct {
 }
 
 // Spend records metered usage and draws it from the allowance first, then
-// from top-up credit.
+// from top-up credit. The draw is clamped: the allowance never goes past
+// its size and top-up credit never below zero, even when the real cost of
+// a call is more than what was left (an unpriced model charged at the top
+// rate, a long recording). The usage row keeps the full cost.
 func (u *UserStore) Spend(ctx context.Context, use Usage, now time.Time) error {
+	if use.CostMicros < 0 {
+		return ErrNegativeCost
+	}
 	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
 		if _, err := u.s.billingDB(ctx).ExecContext(ctx, `
 		INSERT INTO usage (user_id, at, kind, model, input_tokens, output_tokens, seconds, cost_micros) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -143,8 +266,8 @@ func (u *UserStore) Spend(ctx context.Context, use Usage, now time.Time) error {
 		}
 		if _, err := u.s.billingDB(ctx).ExecContext(ctx, `
 		UPDATE subscriptions SET
-		  topup_micros = topup_micros - MAX(0, ?1 - MAX(0, allowance_micros - period_used_micros)),
-		  period_used_micros = MIN(allowance_micros, period_used_micros + ?1)
+		  topup_micros = MAX(0, topup_micros - MAX(0, ?1 - MAX(0, allowance_micros - period_used_micros))),
+		  period_used_micros = MAX(0, MIN(allowance_micros, period_used_micros + ?1))
 		WHERE user_id = ?2`, use.CostMicros, u.uid); err != nil {
 			return err
 		}
@@ -174,20 +297,35 @@ func (u *UserStore) ChangeSubscription(ctx context.Context, change func(*Subscri
 	return sub, err
 }
 
-// OpenPlan only creates a missing plan or replaces an ended one. Credits
-// are copied from the current row, never from a pre-provider stale snapshot.
+// OpenPlan only creates a missing plan or replaces an ended one with a new
+// subscription (TransitionSubscription: none -> trialing|active, ended ->
+// active). Credits are copied from the current row, never from a
+// pre-provider stale snapshot.
 func (u *UserStore) OpenPlan(ctx context.Context, next Subscription) error {
 	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
 		current, err := u.Subscription(ctx)
 		if err != nil && !errors.Is(err, ErrNotFound) {
 			return err
 		}
+		from := SubNone
 		if err == nil {
-			if current.Status != "ended" {
-				return nil
+			from = current.Status
+		}
+		ev := SubEventOpenPaid
+		if next.Status == SubTrialing {
+			ev = SubEventOpenTrial
+		}
+		to, terr := TransitionSubscription(from, ev)
+		if terr != nil {
+			return nil // already on a live plan: nothing to open
+		}
+		if err == nil {
+			if next.SubscriptionRef != "" && next.SubscriptionRef == current.SubscriptionRef {
+				return nil // an ended subscription is never reopened in place
 			}
 			next.TopupMicros = current.TopupMicros
 		}
+		next.Status = to
 		return u.SaveSubscription(ctx, next)
 	})
 }

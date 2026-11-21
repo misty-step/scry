@@ -52,10 +52,10 @@ func (a *App) Study(ctx context.Context, u store.User) (*store.StudySession, err
 		return nil, err
 	}
 	if s != nil {
-		if s.Current() != nil || s.PendingReviewID != 0 {
+		if s.Current() != nil || s.Phase() != store.PhaseAsking {
 			return s, nil
 		}
-		if err := us.EndSession(ctx, s.ID, a.now()); err != nil {
+		if err := us.EndSession(ctx, s.ID, a.now()); err != nil && !errors.Is(err, store.ErrIllegalTransition) {
 			return nil, err
 		}
 	}
@@ -89,13 +89,24 @@ func (a *App) Study(ctx context.Context, u store.User) (*store.StudySession, err
 // word for word; every other answer goes to the model, which returns a
 // verdict and a one-line reason. If the model cannot be reached the
 // answer is not judged at all.
+//
+// Answering is a session transition (see store.StudySession): a scored
+// answer is taken only in PhaseAsking for the current item, a practice
+// attempt only in PhaseRetryingExact for the exact text being retried.
+// The store checks the same guard again inside the write transaction that
+// records the review, so a double submit, a second tab or an answer racing
+// the end of the session is ErrStale and never reschedules an item twice.
 func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, via string) (store.Review, error) {
 	us := a.Store.For(u.ID)
 	s, err := us.ActiveSession(ctx)
 	if err != nil {
 		return store.Review{}, err
 	}
-	if s == nil || s.PendingReviewID != 0 {
+	if s == nil {
+		return store.Review{}, ErrStale
+	}
+	phase := s.Phase()
+	if phase != store.PhaseAsking && phase != store.PhaseRetryingExact {
 		return store.Review{}, ErrStale
 	}
 	cur := s.Current()
@@ -103,6 +114,23 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		return store.Review{}, ErrStale
 	}
 	item := cur.Item
+	practice := phase == store.PhaseRetryingExact
+	if practice {
+		// A retry is practice at an exact text. If the item has since been
+		// removed or edited so it is no longer exact, there is nothing to
+		// practise word for word: the retry is dropped (never judged by the
+		// model as "practice") and the learner moves on.
+		if it, err := us.Item(ctx, item.ID); err != nil || !it.Exact {
+			if err != nil && !errors.Is(err, store.ErrNotFound) {
+				return store.Review{}, err
+			}
+			if err := us.Advance(ctx, s.Observed(), 0); err != nil && !errors.Is(err, store.ErrIllegalTransition) {
+				return store.Review{}, err
+			}
+			a.endIfDone(ctx, us)
+			return store.Review{}, ErrStale
+		}
+	}
 	answer = strings.Join(strings.Fields(answer), " ")
 	if len(answer) > 2000 {
 		end := 2000
@@ -117,7 +145,7 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 	now := a.now()
 	// The graded question and expected answer are kept with the verdict, so
 	// "Why?" explains this judgment even if the item is edited afterwards.
-	r := store.Review{ItemID: item.ID, SessionID: s.ID, At: now, Answer: answer, Via: via, Practice: s.RetryItemID == item.ID,
+	r := store.Review{ItemID: item.ID, SessionID: s.ID, At: now, Answer: answer, Via: via, Practice: practice,
 		GradedPrompt: item.Prompt, GradedExpected: item.Answer}
 	var detail Detail
 	hold := true
@@ -136,12 +164,7 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		if err != nil {
 			return store.Review{}, err
 		}
-		jctx, cancel := context.WithTimeout(ctx, 25*time.Second)
-		j, use, err := a.Model.Judge(jctx, ai.JudgeInput{Question: item.Prompt, Expected: item.Answer, Answer: answer})
-		cancel()
-		if use.Model != "" {
-			a.settle(u.ID, reservation, "judge", use, 0)
-		}
+		j, use, err := a.judge(ctx, u.ID, item.ID, reservation, ai.JudgeInput{Question: item.Prompt, Expected: item.Answer, Answer: answer})
 		if err != nil || !j.Verdict.Valid() || strings.TrimSpace(j.Reason) == "" {
 			if err == nil {
 				err = errors.New("judgment had no verdict or no reason")
@@ -155,24 +178,98 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 	}
 	raw, _ := json.Marshal(detail)
 	r.Detail = string(raw)
-	next := srs.Next(item.Sched, r.Verdict, now)
+	next := item.Sched
+	if !practice {
+		next, err = srs.NextChecked(item.Sched, r.Verdict, now)
+		if errors.Is(err, srs.ErrInvalidState) {
+			// The stored schedule is outside the model's bounds. Say so
+			// loudly, and reschedule from a repaired state rather than
+			// refusing the learner's answer.
+			a.Log.ErrorContext(ctx, "item schedule out of bounds; repaired", "err", err, "user", u.ID, "item", item.ID)
+			a.Alert.Notify(ctx, "An item's schedule was out of bounds", err.Error())
+			next, err = srs.Next(item.Sched, r.Verdict, now), nil
+		}
+		if err != nil {
+			return store.Review{}, err
+		}
+	}
 	id, err := us.RecordReview(ctx, r, next, hold)
+	if errors.Is(err, store.ErrIllegalTransition) {
+		return store.Review{}, ErrStale
+	}
 	if err != nil {
 		return store.Review{}, err
 	}
 	r.ID = id
 	if !hold {
 		// Nothing is waiting on screen; if that was the last item, the session is over.
-		if s, err := us.ActiveSession(ctx); err == nil && s != nil && s.Current() == nil {
-			_ = us.EndSession(ctx, s.ID, a.now())
-		}
+		a.endIfDone(ctx, us)
 	}
 	return r, nil
+}
+
+// judge calls the model on a reserved budget and decides the reservation
+// exactly once on every path, as runDraft does (G2, see NOTES.md):
+//   - the model reported usage (a judgment, or a refusal it billed or
+//     reported at zero cost): settled at that cost;
+//   - the model was called and failed with no usage, or panicked: the
+//     outcome is unknown (the request may have been sent and billed, for
+//     example when the response is lost after the request went out), so
+//     the hold is kept, never forgiven, until an operator reconciles it or
+//     the TTL sweep or the startup sweep releases it. A retry therefore
+//     cannot spend unmetered;
+//   - a panic before the model is called: released.
+func (a *App) judge(ctx context.Context, userID, itemID int64, reservation string, in ai.JudgeInput) (ai.Judgment, ai.Usage, error) {
+	called := false
+	defer func() {
+		if r := recover(); r != nil {
+			if called {
+				a.holdUnknown(ctx, userID, itemID, reservation, "panic during the judge call")
+			} else {
+				a.settle(userID, reservation, "judge", ai.Usage{}, 0)
+			}
+			panic(r)
+		}
+	}()
+	jctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	called = true
+	j, use, err := a.Model.Judge(jctx, in)
+	if err != nil && use.Model == "" {
+		a.holdUnknown(ctx, userID, itemID, reservation, "judge error with no usage")
+		return j, use, err
+	}
+	a.settle(userID, reservation, "judge", use, 0)
+	return j, use, err
+}
+
+func (a *App) holdUnknown(ctx context.Context, userID, itemID int64, reservation, why string) {
+	a.Log.WarnContext(ctx, "judge provider outcome unknown; reservation held", "why", why, "user", userID, "item", itemID, "reservation", reservation)
+}
+
+// endIfDone ends the open session once nothing is left to answer and no
+// judgment is on screen. A session another request ended first is fine.
+func (a *App) endIfDone(ctx context.Context, us *store.UserStore) {
+	s, err := us.ActiveSession(ctx)
+	if err != nil || s == nil || s.Phase() != store.PhaseAsking || s.Current() != nil {
+		return
+	}
+	if err := us.EndSession(ctx, s.ID, a.now()); err != nil && !errors.Is(err, store.ErrIllegalTransition) {
+		a.Log.ErrorContext(ctx, "ending a finished session failed", "err", err, "session", s.ID)
+	}
 }
 
 // Next moves on from the judgment on screen. With again set, an exact
 // text is put back up for another attempt; the retry is practice and
 // does not change when the item is next due.
+//
+// From PhasePendingReview it advances (or, with again on an exact text,
+// retries). From PhaseRetryingExact, without again, it skips the retry;
+// again while already retrying changes nothing. In PhaseAsking there is
+// nothing on screen to move on from (a repeated Enter, a second tab): it
+// changes nothing, except that a session with nothing left is ended. A
+// move the store refuses because another request got there first is the
+// same as no move.
 func (a *App) Next(ctx context.Context, u store.User, again bool) error {
 	us := a.Store.For(u.ID)
 	s, err := us.ActiveSession(ctx)
@@ -180,22 +277,38 @@ func (a *App) Next(ctx context.Context, u store.User, again bool) error {
 		return err
 	}
 	var retry int64
-	if again && s.PendingReviewID != 0 {
-		if r, err := us.Review(ctx, s.PendingReviewID); err == nil {
-			if it, err := us.Item(ctx, r.ItemID); err == nil && it.Exact {
-				retry = it.ID
+	switch s.Phase() {
+	case store.PhasePendingReview:
+		if again {
+			if r, err := us.Review(ctx, s.PendingReviewID); err == nil {
+				// Only a word-for-word judgment offers "Again" (the item may
+				// have been edited to exact after a model judged it).
+				if it, err := us.Item(ctx, r.ItemID); err == nil && it.Exact && r.Judge == "exact" {
+					retry = it.ID
+				}
 			}
 		}
+	case store.PhaseRetryingExact:
+		if again {
+			return nil
+		}
+	default:
+		a.endIfDone(ctx, us)
+		return nil
 	}
-	if err := us.Advance(ctx, s.ID, retry); err != nil {
+	// The store moves the session on only if it is still as read here, so a
+	// delayed Next can never dismiss a judgment another tab put on screen
+	// since; that refusal is the same as no move.
+	if err := us.Advance(ctx, s.Observed(), retry); err != nil {
+		if errors.Is(err, store.ErrIllegalTransition) {
+			return nil
+		}
 		return err
 	}
 	if retry == 0 {
-		if s, err = us.ActiveSession(ctx); err == nil && s != nil && s.Current() == nil {
-			return us.EndSession(ctx, s.ID, a.now())
-		}
+		a.endIfDone(ctx, us)
 	}
-	return err
+	return nil
 }
 
 // Summary is the one line a finished session leaves behind.

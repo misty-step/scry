@@ -250,31 +250,19 @@ type stripeIntent struct {
 	} `json:"last_payment_error"`
 }
 
-// declinedSentence is said for a refused charge the processor gave no
-// sentence for.
-const declinedSentence = "Your card was declined."
+// declinedSentence is DeclinedSentence, kept for the adapter's tests.
+const declinedSentence = DeclinedSentence
 
-// result maps a PaymentIntent's status to what became of the charge.
-// Only succeeded is paid, and only canceled and requires_payment_method
-// are final refusals. Every other status (processing, requires_capture,
-// requires_action, requires_confirmation, or one this adapter does not
-// know) is not final: the charge is pending, keeps its intent id, and is
-// settled later by lookup or webhook, never declined early.
+// result maps a PaymentIntent's status to what became of the charge, by
+// the billing state machine (ClassifyPaymentIntent): only succeeded is
+// paid, and only canceled and requires_payment_method are final refusals.
+// Every other status (processing, requires_capture, requires_action,
+// requires_confirmation, or one this adapter does not know) is not final:
+// the charge is pending, keeps its intent id, and is settled later by
+// lookup or webhook, never declined early.
 func (pi stripeIntent) result() ChargeResult {
-	switch pi.Status {
-	case "succeeded":
-		return ChargeResult{Status: ChargeSucceeded, Ref: pi.ID}
-	case "requires_payment_method":
-		reason := pi.LastPaymentError.Message
-		if reason == "" {
-			reason = declinedSentence
-		}
-		return ChargeResult{Status: ChargeFailed, Ref: pi.ID, Reason: reason}
-	case "canceled":
-		// Nothing was taken; there is a card fault to show only if Stripe named one.
-		return ChargeResult{Status: ChargeFailed, Ref: pi.ID, Reason: pi.LastPaymentError.Message}
-	}
-	return ChargeResult{Status: ChargePending, Ref: pi.ID}
+	st, reason := ClassifyPaymentIntent(PaymentIntentStatus(pi.Status), pi.LastPaymentError.Message)
+	return ChargeResult{Status: st, Ref: pi.ID, Reason: reason}
 }
 
 func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amountCents int64, description, key string) (string, error) {
@@ -295,23 +283,13 @@ func (s *Stripe) Charge(ctx context.Context, customerRef, paymentRef string, amo
 	if err != nil {
 		return "", err
 	}
-	switch res := pi.result(); res.Status {
-	case ChargeSucceeded:
-		return pi.ID, nil
-	case ChargePending:
-		// Accepted but not finished (processing, requires_capture,
-		// requires_action, requires_confirmation): neither paid nor declined
-		// yet. The id is returned so the attempt can be settled later.
-		return pi.ID, &PendingError{Ref: pi.ID}
-	default:
-		if res.Reason == "" {
-			// canceled with no processor reason: nothing was taken and the
-			// card is not at fault. Released like a lookup that finds it
-			// canceled, never reported as a decline.
-			return pi.ID, &CanceledError{Ref: pi.ID}
-		}
-		return pi.ID, &DeclineError{Reason: res.Reason, Ref: pi.ID}
-	}
+	// Paid is nil; a refusal naming a card fault is a *DeclineError; a
+	// cancellation with none is a *CanceledError (nothing was taken, the
+	// card is not at fault: released like a lookup that finds it canceled);
+	// an intent accepted but not finished (processing, requires_capture,
+	// requires_action, requires_confirmation) is a *PendingError. The id is
+	// always returned so the attempt can be settled later.
+	return pi.ID, ChargeOutcome(PaymentIntentStatus(pi.Status), pi.ID, pi.LastPaymentError.Message)
 }
 
 // findPages bounds how far FindCharge lists. A list that is still
@@ -408,6 +386,30 @@ func (s *Stripe) verify(payload []byte, header string, now time.Time) error {
 	return errors.New("webhook signature does not match")
 }
 
+// intentEventStatus is the PaymentIntent status each top-up webhook reports.
+var intentEventStatus = map[string]PaymentIntentStatus{
+	"payment_intent.succeeded":      PISucceeded,
+	"payment_intent.payment_failed": PIRequiresPaymentMethod,
+	"payment_intent.canceled":       PICanceled,
+}
+
+// stripeLine is one invoice line; a subscription line names the period it bills.
+type stripeLine struct {
+	Period struct {
+		Start int64 `json:"start"`
+		End   int64 `json:"end"`
+	} `json:"period"`
+}
+
+// invoicePeriod is the period an invoice bills, from its first line, or
+// zero times when it has no lines (the app cannot order such an invoice).
+func invoicePeriod(lines []stripeLine) (time.Time, time.Time) {
+	if len(lines) == 0 {
+		return time.Time{}, time.Time{}
+	}
+	return time.Unix(lines[0].Period.Start, 0).UTC(), time.Unix(lines[0].Period.End, 0).UTC()
+}
+
 func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature string, now time.Time) ([]Event, error) {
 	if err := s.verify(payload, signature, now); err != nil {
 		return nil, err
@@ -431,12 +433,7 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 				AmountDue     int64  `json:"amount_due"`
 				PaymentIntent string `json:"payment_intent"`
 				Lines         struct {
-					Data []struct {
-						Period struct {
-							Start int64 `json:"start"`
-							End   int64 `json:"end"`
-						} `json:"period"`
-					} `json:"data"`
+					Data []stripeLine `json:"data"`
 				} `json:"lines"`
 			} `json:"object"`
 		} `json:"data"`
@@ -455,16 +452,16 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 			return nil, nil
 		}
 		out.Kind, out.SubscriptionRef, out.AmountCents = InvoicePaid, o.Subscription, o.AmountPaid
-		if len(o.Lines.Data) > 0 {
-			out.PeriodStart = time.Unix(o.Lines.Data[0].Period.Start, 0).UTC()
-			out.PeriodEnd = time.Unix(o.Lines.Data[0].Period.End, 0).UTC()
-		}
+		out.PeriodStart, out.PeriodEnd = invoicePeriod(o.Lines.Data)
 	case "invoice.payment_failed":
 		if o.Subscription == "" {
 			return nil, nil
 		}
 		out.Kind, out.SubscriptionRef, out.AmountCents = InvoiceFailed, o.Subscription, o.AmountDue
-		out.Reason = "Your card was declined."
+		// The period the failed invoice was for, so the app can tell a stale
+		// failure (for a period already settled) from the open invoice.
+		out.PeriodStart, out.PeriodEnd = invoicePeriod(o.Lines.Data)
+		out.Reason = DeclinedSentence
 		if o.PaymentIntent != "" {
 			var pi struct {
 				LastPaymentError struct {
@@ -491,17 +488,14 @@ func (s *Stripe) ParseWebhook(ctx context.Context, payload []byte, signature str
 			return nil, nil
 		}
 		out.ChargeRef, out.ChargeKey, out.CustomerRef = o.ID, key, o.Customer
-		switch ev.Type {
-		case "payment_intent.succeeded":
-			out.Kind = TopupPaid
-		case "payment_intent.payment_failed":
-			out.Kind, out.Reason = TopupFailed, o.LastPaymentError.Message
-			if out.Reason == "" {
-				out.Reason = "Your card was declined."
-			}
-		default: // canceled: nothing was taken; a card fault only if Stripe named one
-			out.Kind, out.Reason = TopupFailed, o.LastPaymentError.Message
-		}
+		// Each event type is the PaymentIntent status it reports, and goes
+		// through the same state machine as a lookup: succeeded is paid; a
+		// payment failure (back to requires_payment_method) is a decline,
+		// with DeclinedSentence when Stripe gave none; a cancellation took
+		// nothing and names a card fault only if Stripe named one.
+		st := intentEventStatus[ev.Type]
+		out.Kind, _ = TopupEventFor(st)
+		_, out.Reason = ClassifyPaymentIntent(st, o.LastPaymentError.Message)
 	default:
 		return nil, nil
 	}

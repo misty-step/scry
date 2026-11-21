@@ -80,6 +80,36 @@ func (a *App) Profile(ctx context.Context, u store.User) (ai.Learner, error) {
 
 func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string, reservation string) {
 	us := a.Store.For(u.ID)
+	// The reservation is decided exactly once on every path, including a
+	// panic (the deferred decision runs as the panic unwinds, before
+	// Learn's recover marks the draft failed):
+	//   - before the model is called (profile failure, panic): released;
+	//   - the model reported usage: settled at that cost;
+	//   - the model was called and its outcome is unknown (an error or a
+	//     panic with no usage): held, never forgiven, for an operator to
+	//     reconcile against the provider (G2, see NOTES.md).
+	decided, called := false, false
+	settle := func(use ai.Usage) {
+		if decided {
+			return
+		}
+		decided = true
+		a.settle(u.ID, reservation, "draft", use, 0)
+	}
+	hold := func(why string) {
+		if decided {
+			return
+		}
+		decided = true
+		a.Log.WarnContext(ctx, "draft provider outcome unknown; reservation held", "why", why, "user", u.ID, "draft", id, "reservation", reservation)
+	}
+	defer func() {
+		if called {
+			hold("interrupted during the model call")
+		} else {
+			settle(ai.Usage{})
+		}
+	}()
 	d := store.Draft{ID: id, Query: query, Kind: "topic", Title: query, Status: "drafting"}
 	fail := func(err error) {
 		a.Log.ErrorContext(ctx, "draft failed", "err", err, "user", u.ID, "draft", id)
@@ -89,7 +119,7 @@ func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string
 	}
 	profile, err := a.Profile(ctx, u)
 	if err != nil {
-		a.settle(u.ID, reservation, "draft", ai.Usage{}, 0)
+		settle(ai.Usage{})
 		fail(err)
 		return
 	}
@@ -116,9 +146,12 @@ func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string
 			return nil
 		},
 	}
+	called = true
 	res, use, err := a.Model.Draft(ctx, ai.DraftInput{Query: query, Learner: profile}, sink)
 	if use.Model != "" {
-		a.settle(u.ID, reservation, "draft", use, 0)
+		settle(use)
+	} else {
+		hold("model error with no usage")
 	}
 	if err != nil {
 		fail(err)
@@ -252,6 +285,12 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 	if err != nil {
 		return "", err
 	}
+	// Speech is priced by the recording's length, so its cost is known
+	// before the provider answers. The reservation is always settled at
+	// that cost, also when the provider fails or the call panics: the
+	// outcome is uncertain, so the cost is never forgiven, and the
+	// reservation is never left held.
+	defer a.settle(u.ID, reservation, "speech", ai.Usage{Model: a.Speech.Name()}, audio.Seconds)
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	text, err := a.Speech.Transcribe(ctx, audio)
@@ -260,6 +299,5 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 		a.Alert.Notify(ctx, "Spoken answers cannot be heard", err.Error())
 		return "", ErrSpeechUnavailable
 	}
-	a.settle(u.ID, reservation, "speech", ai.Usage{Model: a.Speech.Name()}, audio.Seconds)
 	return strings.Join(strings.Fields(text), " "), nil
 }

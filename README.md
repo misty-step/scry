@@ -224,8 +224,13 @@ Conservative reservations include framing margin and the highest configured
 rates; actual usage settlement refunds unused budget. Automatic model retries
 and fallback are disabled. Review the price table before changing model pricing.
 
-Unknown outcomes retain durable reservations. Reconcile them against provider
-usage before releasing holds; do not blindly delete reservations after a crash.
+Unknown outcomes retain durable reservations, so a retry cannot spend unmetered.
+A hold is held until it is settled (cost spent, once) or released (no cost), and
+is swept otherwise: at boot (`FailStaleReservations`; nothing is in flight) and
+by the hourly housekeeping once it is older than `app.ReservationTTL` (1 hour,
+from `reservations.created_at`). A sweep never charges, and a late settle of a
+swept hold is a no-op. `Reserve` checks access (trialing, active, past_due
+within grace) and budget in one atomic statement; an amount ≤ 0 is refused.
 The reservation table is part of private backups and selective recovery.
 Older snapshots need whole restore/migration before selective recovery.
 
@@ -348,6 +353,9 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | D11 navigation/study keys and Tab/Enter elsewhere | TestReviewBrowserSmoke; TestD11_KeyHints |
 | D9 right-to-right and right-to-missed lifetime | TestD9_NewestRightReasonLifetime |
 | Slice 12: orphaned allowance reservations released at boot (all users; empty table; Reserve/Settle unchanged) | internal/store.TestFailStaleReservationsReleasesOrphansAcrossUsers; internal/store.TestFailStaleReservationsEmptyTable; internal/store.TestReserveSettleUnchangedBySweep |
+| Slice 13: reservation state machine (table; rapid on a real SQLite file: reserve/settle/replay/TTL sweep/crash+restart/period reset/top-up/status) | internal/store.TestReservationTransitionTable; internal/store.TestRapidReservationStateMachine |
+| Slice 13: Reserve refuses ended and grace-expired plans atomically (TOCTOU), non-positive amounts; TTL sweep; created_at migration | internal/store.TestReserveGuardFollowsHasAccess; internal/store.TestReserveRefusedWhenAccessEndsAfterPlanRead; internal/store.TestReserveRacingPlanEnd; internal/store.TestReserveRejectsNonPositiveAmount; internal/store.TestSweepExpiredReservations; internal/store.TestReservationsCreatedAtMigration; internal/app.TestAppReserveFollowsAccess; internal/app.TestSweepReservationsReleasesExpiredHolds |
+| Slice 13: Stripe adapter on the PaymentIntent state machine; failed invoices carry their period, stale failures ignored | internal/billing.TestStripeIntentMappingMatchesGolden; internal/billing.TestStripeFailedInvoiceCarriesItsPeriod; internal/app.TestStripeStaleInvoiceFailureIsIgnored |
 | Slice 12: Clerk key set and identity cached within TTL, key rotation refresh, failures never cached, token always verified, bounded, race-safe | internal/auth.TestClerkCachesKeySetAndIdentityWithinTTL; internal/auth.TestClerkKeyRotationRefreshesKeySet; internal/auth.TestClerkNeverCachesFailures; internal/auth.TestClerkAlwaysVerifiesTokenEvenWhenCached; internal/auth.TestClerkIdentityCacheIsBounded; internal/auth.TestClerkCacheConcurrent; internal/auth.TestClerkStructLiteralUsesCachedSDKClients |
 | Slice 12: Clerk request logs carry the user id | TestClerkRequestLogsCarryUserID |
 | Slice 12: mode-matched Stripe keys and webhooks; SCRY_STRIPE_MODE / SCRY_JUDGE_MODE fail loud | internal/billing.TestStripeModeMatchedKeys; internal/billing.TestStripeWebhookLivemodeMatchesAdapter; cmd/scry.TestStripeModeSelection; cmd/scry.TestJudgeModeSelection |

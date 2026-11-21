@@ -138,8 +138,7 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 		default:
 			j.Kind = "close"
 		}
-		j.Explainable = j.Kind != "exact" && pendingReview.Judge != "exact" &&
-			(pendingReview.Verdict == srs.Close || pendingReview.Verdict == srs.Missed)
+		j.Explainable = j.Kind != "exact" && pendingReview.Explainable()
 		data["Judged"] = j
 		cur = shown
 	}
