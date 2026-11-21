@@ -186,7 +186,7 @@ func (r *Runner) runDrafting(ctx context.Context) map[string]any {
 		for _, m := range models {
 			accs[m], recs[m] = &statAcc{}, map[string]DraftingRecord{}
 		}
-		matrix(len(cases), models, func(i int, m string) {
+		matrixK(len(cases), r.cfg.CaseParallel, models, func(i int, m string) {
 			c := cases[i]
 			rec := r.draftOnce(ctx, m, c)
 			r.write("drafting", rec)

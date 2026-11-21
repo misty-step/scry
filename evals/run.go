@@ -60,6 +60,13 @@ type Config struct {
 	STTProbeMaxUSD float64
 	// SkipAccount skips the before/after account usage cross-check.
 	SkipAccount bool
+	// Append continues a run in OutDir: raw logs are appended, the summary,
+	// blind sets and key are merged, and the spend cap covers the earlier
+	// invocations' spend too.
+	Append bool
+	// CaseParallel runs this many cases at once (all models of each);
+	// default 1. Only drafting uses it.
+	CaseParallel int
 }
 
 // Runner runs the bench.
@@ -76,6 +83,47 @@ type Runner struct {
 	blind    []BlindSet
 	key      BlindKey
 	summary  map[string]any
+	prior    *priorRun
+}
+
+// priorRun is what an earlier invocation in the same OutDir left.
+type priorRun struct {
+	Summary map[string]any
+	Blind   []BlindSet
+	Key     BlindKey
+	Spend   BudgetState
+}
+
+func loadPrior(dir string) (*priorRun, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "eval-summary.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	p := &priorRun{}
+	if err := json.Unmarshal(b, &p.Summary); err != nil {
+		return nil, fmt.Errorf("earlier summary unreadable: %w", err)
+	}
+	var sp struct{ Spend BudgetState }
+	if err := json.Unmarshal(b, &sp); err != nil {
+		return nil, err
+	}
+	p.Spend = sp.Spend
+	var blind struct{ Sets []BlindSet }
+	if b, err := os.ReadFile(filepath.Join(dir, "blind-samples.json")); err == nil {
+		if err := json.Unmarshal(b, &blind); err != nil {
+			return nil, err
+		}
+	}
+	p.Blind = blind.Sets
+	if b, err := os.ReadFile(filepath.Join(dir, "blind-key.json")); err == nil {
+		if err := json.Unmarshal(b, &p.Key); err != nil {
+			return nil, err
+		}
+	}
+	return p, nil
 }
 
 const defaultBase = "https://openrouter.ai"
@@ -114,9 +162,26 @@ func NewRunner(cfg Config) (*Runner, error) {
 	if err := os.MkdirAll(cfg.OutDir, 0o755); err != nil {
 		return nil, err
 	}
-	return &Runner{cfg: cfg, data: data, budget: &Budget{Max: cfg.MaxSpend}, files: map[string]*os.File{}, observed: map[string]float64{},
+	if cfg.CaseParallel < 1 {
+		cfg.CaseParallel = 1
+	}
+	r := &Runner{cfg: cfg, data: data, budget: &Budget{Max: cfg.MaxSpend}, files: map[string]*os.File{}, observed: map[string]float64{},
 		key:     BlindKey{Seed: cfg.Seed, Note: "Sealed provenance for blind-samples.json: surface/case -> blind label -> model slug. Do not open before rating.", Sets: map[string]map[string]string{}},
-		summary: map[string]any{}}, nil
+		summary: map[string]any{}}
+	if cfg.Append {
+		if r.prior, err = loadPrior(cfg.OutDir); err != nil {
+			return nil, err
+		}
+		if r.prior != nil {
+			if seed, _ := r.prior.Summary["blind_seed"].(string); seed != cfg.Seed {
+				return nil, fmt.Errorf("--append: earlier run used blind seed %q, not %q", seed, cfg.Seed)
+			}
+			// The cap covers the earlier invocations too.
+			ps := r.prior.Spend
+			r.budget.spent, r.budget.exact, r.budget.calls, r.budget.unknown, r.budget.refused = ps.ChargedUSD, ps.ExactUSD, ps.Calls, ps.UnknownCostCalls, ps.RefusedForBudget
+		}
+	}
+	return r, nil
 }
 
 func (r *Runner) models(key string) []string {
@@ -159,7 +224,11 @@ func (r *Runner) write(surface string, rec any) {
 	defer r.mu.Unlock()
 	f := r.files[surface]
 	if f == nil {
-		f, err = os.Create(filepath.Join(r.cfg.OutDir, surface+"-raw.jsonl"))
+		flags := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+		if r.cfg.Append {
+			flags = os.O_CREATE | os.O_WRONLY | os.O_APPEND
+		}
+		f, err = os.OpenFile(filepath.Join(r.cfg.OutDir, surface+"-raw.jsonl"), flags, 0o644)
 		if err != nil {
 			fmt.Fprintf(r.cfg.Log, "cannot create raw log: %v\n", err)
 			return
@@ -172,12 +241,17 @@ func (r *Runner) write(surface string, rec any) {
 // matrix runs fn for every case and model: cases in order, the models of
 // one case concurrently, so a spend stop leaves every model with the same
 // cases and latencies are not inflated by our own queueing.
-func matrix(n int, models []string, fn func(i int, model string)) {
-	for i := 0; i < n; i++ {
+func matrix(n int, models []string, fn func(i int, model string)) { matrixK(n, 1, models, fn) }
+
+// matrixK is matrix with k cases in flight at once.
+func matrixK(n, k int, models []string, fn func(i int, model string)) {
+	for i := 0; i < n; i += k {
 		var wg sync.WaitGroup
-		for _, m := range models {
-			wg.Add(1)
-			go func() { defer wg.Done(); fn(i, m) }()
+		for c := i; c < min(i+k, n); c++ {
+			for _, m := range models {
+				wg.Add(1)
+				go func() { defer wg.Done(); fn(c, m) }()
+			}
 		}
 		wg.Wait()
 	}
@@ -313,19 +387,82 @@ func (r *Runner) finish(started time.Time, before, after *float64) error {
 			verified[m] = r.cat.Verify(m)
 		}
 	}
-	account := map[string]any{"note": "OpenRouter GET /api/v1/key lifetime usage before and after this run; the delta independently cross-checks the summed usage.cost (it can include other traffic on the same key and can lag by seconds)."}
+	account := map[string]any{"note": "OpenRouter GET /api/v1/key lifetime usage before and after this run (with --append: before the first invocation); the delta independently cross-checks the summed usage.cost (it can include other traffic on the same key, and calls that failed without reporting a cost, and can lag by seconds)."}
+	commands := []string{"go run ./evals/cmd/scry-eval " + strings.Join(r.cfg.Args, " ")}
+	surfaces := append([]string(nil), r.cfg.Surfaces...)
+	notes := r.notes
+	results := r.summary
+	if p := r.prior; p != nil {
+		if pa, ok := p.Summary["account_cross_check"].(map[string]any); ok {
+			if b, ok := pa["usage_before_usd"].(float64); ok {
+				before = &b
+			}
+		}
+		if pc, ok := p.Summary["commands"].([]any); ok {
+			var prev []string
+			for _, c := range pc {
+				prev = append(prev, fmt.Sprint(c))
+			}
+			commands = append(prev, commands...)
+		}
+		merged := map[string]any{}
+		if pr, ok := p.Summary["results"].(map[string]any); ok {
+			for k, v := range pr {
+				merged[k] = v
+			}
+		}
+		for k, v := range results {
+			merged[k] = v // a re-run surface replaces its earlier result
+		}
+		results = merged
+		var all []string
+		if ps, ok := p.Summary["surfaces"].([]any); ok {
+			for _, s := range ps {
+				all = append(all, fmt.Sprint(s))
+			}
+		}
+		for _, s := range surfaces {
+			if !oneOf(s, all...) {
+				all = append(all, s)
+			}
+		}
+		surfaces = all
+		if pn, ok := p.Summary["notes"].([]any); ok {
+			for _, n := range pn {
+				notes = append(notes, fmt.Sprint(n))
+			}
+		}
+		var keep []BlindSet
+		for _, b := range p.Blind {
+			if !oneOf(b.Surface, r.cfg.Surfaces...) {
+				keep = append(keep, b)
+			}
+		}
+		r.blind = append(keep, r.blind...)
+		for k, v := range p.Key.Sets {
+			if _, ok := r.key.Sets[k]; !ok && !oneOf(strings.SplitN(k, "/", 2)[0], r.cfg.Surfaces...) {
+				r.key.Sets[k] = v
+			}
+		}
+	}
 	if before != nil && after != nil {
 		account["usage_before_usd"], account["usage_after_usd"], account["delta_usd"] = *before, *after, *after-*before
 	}
-	sort.Strings(r.notes)
+	sort.Strings(notes)
+	sort.SliceStable(r.blind, func(i, j int) bool {
+		if r.blind[i].Surface != r.blind[j].Surface {
+			return r.blind[i].Surface > r.blind[j].Surface // explainer before drafting
+		}
+		return r.blind[i].CaseID < r.blind[j].CaseID
+	})
 	summary := map[string]any{
 		"generated_at":        time.Now().UTC().Format(time.RFC3339),
 		"started_at":          started.Format(time.RFC3339),
 		"git_sha":             sha,
 		"git_dirty_tracked":   dirty,
 		"go_version":          runtime.Version(),
-		"command":             "go run ./evals/cmd/scry-eval " + strings.Join(r.cfg.Args, " "),
-		"surfaces":            r.cfg.Surfaces,
+		"commands":            commands,
+		"surfaces":            surfaces,
 		"limit":               r.cfg.Limit,
 		"blind_seed":          r.cfg.Seed,
 		"total_spend_usd":     state.ExactUSD,
@@ -335,8 +472,8 @@ func (r *Runner) finish(started time.Time, before, after *float64) error {
 			"source": "live GET " + r.cfg.Base + "/api/v1/models, ?output_modalities=decisions and ?output_modalities=transcription at run start",
 			"models": verified,
 		},
-		"notes":              r.notes,
-		"results":            r.summary,
+		"notes":              notes,
+		"results":            results,
 		"metric_definitions": metricDefinitions,
 	}
 	if err := writeJSON(filepath.Join(r.cfg.OutDir, "eval-summary.json"), summary, r.cfg.Key); err != nil {

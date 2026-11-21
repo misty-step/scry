@@ -629,3 +629,57 @@ func TestNewRunnerNeedsKey(t *testing.T) {
 		t.Fatal("unknown surface accepted")
 	}
 }
+
+func TestAppendMergesAndCapsCumulatively(t *testing.T) {
+	const key = "sk-or-v1-offline-test-key-append"
+	f := &fakeRouter{key: key, calls: map[string]int{}}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	out := t.TempDir()
+	cfg := func(surface string, maxSpend float64, appendRun bool) Config {
+		return Config{Surfaces: []string{surface}, OutDir: out, MaxSpend: maxSpend, Limit: 2, Key: key, Base: srv.URL, Log: io.Discard, SkipAccount: true, Append: appendRun,
+			Models: map[string][]string{"grading": {"t/judge"}, "explainer": {"t/writer"}}}
+	}
+	run := func(c Config) {
+		t.Helper()
+		r, err := NewRunner(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run(cfg("grading", 1, false))        // spends 2 x 0.00001
+	run(cfg("explainer", 0.00002, true)) // cap already reached by run 1: both refused
+	s := readSummary(t, out)
+	if got := path(s, "spend", "refused_for_budget"); got != 2.0 {
+		t.Fatalf("refused = %v; the cap must count the earlier spend", got)
+	}
+	if path(s, "results", "grading") == nil || path(s, "results", "explainer", "models", 0, "skipped_for_budget") != 2.0 {
+		t.Fatalf("results not merged: %v", s["results"])
+	}
+	run(cfg("explainer", 1, true)) // re-run replaces the explainer result
+	s = readSummary(t, out)
+	if got := path(s, "results", "explainer", "models", 0, "ok"); got != 2.0 {
+		t.Errorf("explainer ok = %v", got)
+	}
+	if got := len(s["commands"].([]any)); got != 3 {
+		t.Errorf("commands = %d", got)
+	}
+	if got := path(s, "spend", "exact_usage_cost_usd").(float64); math.Abs(got-(2*0.00001+2*0.0003)) > 1e-12 {
+		t.Errorf("cumulative spend = %v", got)
+	}
+	raw, _ := os.ReadFile(filepath.Join(out, "explainer-raw.jsonl"))
+	if n := bytes.Count(raw, []byte("\n")); n != 4 {
+		t.Errorf("explainer raw lines = %d, want 4 (2 skipped + 2 ok, appended)", n)
+	}
+	var blind struct{ Sets []BlindSet }
+	b, _ := os.ReadFile(filepath.Join(out, "blind-samples.json"))
+	if json.Unmarshal(b, &blind) != nil || len(blind.Sets) != 2 {
+		t.Errorf("blind sets after re-run = %d, want 2 (replaced, not duplicated)", len(blind.Sets))
+	}
+	if _, err := NewRunner(Config{Surfaces: []string{"grading"}, OutDir: out, MaxSpend: 1, Key: key, Append: true, Seed: "other"}); err == nil {
+		t.Error("appending with a different blind seed must fail")
+	}
+}

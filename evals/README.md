@@ -17,6 +17,9 @@ make eval                                         # all 4 surfaces, cap $1.35, -
 make eval EVAL_ARGS="--surface grading --limit 3" # a cheap subset (3 cases per model)
 go run ./evals/cmd/scry-eval --surface explainer,speech --limit 2 --max-spend 0.10 --out /tmp/eval
 go run ./evals/cmd/scry-eval --surface drafting --models drafting=google/gemini-4-hydrogen --limit 1
+# one run in two invocations under one cap (how the PR evidence run was made):
+go run ./evals/cmd/scry-eval --surface grading,explainer,speech --out evals/results/latest --max-spend 1.30
+go run ./evals/cmd/scry-eval --surface drafting --out evals/results/latest --max-spend 1.30 --append --case-parallel 2
 ```
 
 | Flag | Meaning |
@@ -28,6 +31,8 @@ go run ./evals/cmd/scry-eval --surface drafting --models drafting=google/gemini-
 | `--models key=a,b` | override one model list (keys: `grading`, `explainer`, `drafting`, `drafting-optional`, `speech-chat`, `speech-stt`, `speech-stt-probe`, `speech-audio-grade`); an empty list (`key=`) skips that list |
 | `--evidence dir` | also write flat copies with collector-friendly names (`*.jsonl` → `*.jsonl.txt`) |
 | `--seed` | blind-label shuffle seed (default `scry-eval-v1`) |
+| `--append` | continue a run in `--out`: raw logs are appended, the summary, blind sets and key are merged (a re-run surface replaces its earlier result), and the earlier invocations' spend counts against `--max-spend` |
+| `--case-parallel k` | drafting cases in flight at once (default 1), to keep wall-clock down |
 
 Outputs (in `--out`): `eval-summary.json` (every metric, total spend, git SHA,
 catalog verification, notes), `grading-raw.jsonl`, `explainer-raw.jsonl`,
