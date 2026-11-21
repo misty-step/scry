@@ -51,9 +51,10 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 | SCRY_TEST_CHARGE_DELAY | Test mode only: hold each fake top-up charge (e.g. 4s) |
 | OPENROUTER_API_KEY | Live: the one AI key. When set it carries all four AI capabilities (Jev grading, Claude drafting, the “Why?” explainer, speech) and no ANTHROPIC_API_KEY or OPENAI_API_KEY is needed or read. A JWT-shaped value stops the boot. |
 | TYPESAFE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY | Live, optional direct fallbacks used only when OPENROUTER_API_KEY is unset: Jev on Typesafe, drafting and explanations on Anthropic, speech on OpenAI. Each missing one is named at boot; a JWT-shaped one stops the boot. |
-| SCRY_DRAFT_MODEL | Live: drafting model. Default anthropic/claude-sonnet-5.5 on OpenRouter (must be a vendor/model slug there), claude-opus-5-5 on Anthropic |
-| SCRY_EXPLAIN_MODEL | Live: model for on-demand “Why?” explanations. Default anthropic/claude-sonnet-5.5 on OpenRouter (vendor/model slug), claude-opus-5-5 with low effort on Anthropic |
-| SCRY_SPEECH_MODEL | Live: transcription model. Default google/gemini-2.5-flash on OpenRouter (vendor/model slug; audio sent as input_audio), gpt-4o-mini-transcribe on OpenAI |
+| SCRY_JUDGE_MODEL | Live: Decisions model Jev grades with. Default typesafe/jev-1.14 on OpenRouter (POST /api/alpha/decisions; must be a vendor/model slug there, or the boot stops), jev-latest on Typesafe |
+| SCRY_DRAFT_MODEL | Live: drafting model. Default openai/gpt-6.2-sol on OpenRouter (must be a vendor/model slug there), claude-opus-5-5 on Anthropic |
+| SCRY_EXPLAIN_MODEL | Live: model for on-demand “Why?” explanations. Default openai/gpt-6-luna on OpenRouter (vendor/model slug), claude-opus-5-5 with low effort on Anthropic |
+| SCRY_SPEECH_MODEL | Live: transcription model. Default microsoft/mai-transcribe-2 on OpenRouter (vendor/model slug). Dedicated speech-to-text slugs (`speech.UsesTranscriptionsRoute`: \*transcribe\*, \*whisper\*, deepgram/\*, \*-stt\*) are uploaded as multipart `file` + `model` to POST /api/v1/audio/transcriptions; any other slug (an audio-input chat model such as google/gemini-3.1-flash-lite) gets the recording as input_audio on /api/v1/chat/completions. gpt-4o-mini-transcribe on OpenAI |
 | LOG_LEVEL | debug enables successful health-check request logs |
 | BACKUP_DIR | Empty disables automatic snapshots; image uses /backups |
 | BACKUP_INTERVAL | 6h when backups enabled |
@@ -68,8 +69,12 @@ Interfaces isolate auth, billing, model, speech, and alerts. Test adapters use
 local bcrypt auth, fake cards, scripted judgments, simulated speech, and log-only
 alerts. **No keys are needed or used.** Inactive provider adapters are included:
 Clerk (CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY), and the four AI capabilities on OPENROUTER_API_KEY
-alone: Jev grading, Claude drafting and explanations (OpenRouter chat completions), and speech
-(OpenRouter input_audio). Only without OPENROUTER_API_KEY do they fall back to direct keys: Jev on
+alone: Jev grading (typesafe/jev-1.14 on OpenRouter Decisions), drafting (openai/gpt-6.2-sol) and
+explanations (openai/gpt-6-luna) on OpenRouter chat completions, and speech (microsoft/mai-transcribe-2
+on OpenRouter's /api/v1/audio/transcriptions, or input_audio on chat completions for a chat-audio
+SCRY_SPEECH_MODEL). /healthz reports each surface's configured model under `models`
+(`grading`, `explainer`, `drafting`, `speech`) and the speech route under `speech_route`, next to
+every key it already had. Only without OPENROUTER_API_KEY do they fall back to direct keys: Jev on
 TYPESAFE_API_KEY, Anthropic drafting and explanations on ANTHROPIC_API_KEY, OpenAI speech on
 OPENAI_API_KEY. Model overrides: SCRY_JUDGE_MODEL, SCRY_DRAFT_MODEL, SCRY_EXPLAIN_MODEL,
 SCRY_SPEECH_MODEL. Stripe (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY,
@@ -274,7 +279,7 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: connected ideas; each item belongs to an idea | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea |
 | Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
 | Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
-| Rule: no free tier, 7-day trial, card up front | TestRule_NoFreeTier_SevenDayTrialWithACardUpFront |
+| Rule: no free tier, 7-day no-card trial with a capped allowance | TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance; TestRule_CardAddedDuringTheTrialKeepsItsEnd; TestRule_NoCardTrialNeverChargesATopup; internal/app.TestSlice36_NoCardTrialExpiresAtPeriodEnd; internal/app.TestSlice36_ConcurrentReservationsCannotPassTheCapOrTheEnd; internal/app.TestSlice36_UpgradeFromTheNoCardTrial |
 | Rule: small base, capped cost allowance, top-ups | TestRule_Prices_SmallBaseCappedAllowanceAndTopUpsBeyondIt |
 | Rule: Phaedrus first with no special powers | TestRule_PhaedrusIsTheFirstCustomerWithNoSpecialPowers |
 | Rule: outages noticed/fixed without prompting | TestRule_Reliability_HealthzStructuredLogsAndAlertsWithoutBeingAsked |
@@ -287,8 +292,14 @@ Additional regression tests cover snapshot/per-user recovery, conflicting restor
 Provider cost is now reserved atomically before calls; insufficient unreserved
 budget stops work even if a small positive balance remains. Requests are bounded
 (judge: 8,192 input bytes / 1,024 output tokens; draft: 32,000 / 16,000).
-Conservative reservations include framing margin and the highest configured
-rates; actual usage settlement refunds unused budget. Automatic model retries
+Reservations include framing margin and are priced by the configured model
+(`app.BudgetMicros`, the `rates` table in internal/app/plan.go): about $0.002 a
+judgment on typesafe/jev-1.14, $0.226 a draft on openai/gpt-6.2-sol, under
+$0.001 an explanation on openai/gpt-6-luna, and $0.006 for the longest (120 s)
+recording; any model without a price entry still reserves at the $8/$40 per
+million ceiling ($0.115 / $0.904 / $0.061). Actual usage settlement refunds unused
+budget; a recording is metered at the larger of its per-second price and the
+provider's reported usage.cost. Automatic model retries
 and fallback are disabled. Review the price table before changing model pricing.
 
 Unknown outcomes retain durable reservations, so a retry cannot spend unmetered.
@@ -296,8 +307,29 @@ A hold is held until it is settled (cost spent, once) or released (no cost), and
 is swept otherwise: at boot (`FailStaleReservations`; nothing is in flight) and
 by the hourly housekeeping once it is older than `app.ReservationTTL` (1 hour,
 from `reservations.created_at`). A sweep never charges, and a late settle of a
-swept hold is a no-op. `Reserve` checks access (trialing, active, past_due
-within grace) and budget in one atomic statement; an amount ≤ 0 is refused.
+swept hold is a no-op. `Reserve` checks access (active, trialing, past_due
+within grace; a no-card trial only before its `period_end`) and budget in one
+atomic statement; an amount ≤ 0 is refused.
+
+### The 7-day no-card trial (slice 36)
+
+Every new account (local `POST /signup`, a first Clerk sign-in, or an older
+account with no plan row on its next visit) starts a no-card trial and lands
+on the starter shelf, with no card step: a `trialing` row with
+`customer_ref = ''`, `subscription_ref = trial-nocard-<user id>`, `period_end =
+trial_end = now + 7 days` and `allowance_micros = Cfg.TrialMicros` ($0.50).
+Nothing about it reaches the card processor: no top-up (`ErrTopupNeedsCard`),
+no cancel or card update call, no renewal, and a processor event naming it is
+ignored. Its access ends at `period_end`, in `App.HasAccess` and atomically in
+the `store.ReserveAt` statement, before or after `Plan`/housekeeping moves it to
+`ended`. Adding a card on `/signup/card` or `/billing/card` with at least an
+hour of the trial left keeps the same trial end (Stripe `trial_end`), charges
+nothing that day, raises the trial allowance to `Cfg.CardTrialMicros` ($1, what
+was spent stays spent) and unlocks top-ups; the first $5 charge is on the trial
+end date. With under an hour left, or after it ended, adding a card starts the
+paid plan at once, charged today, with the full monthly allowance: there is no
+second free trial. The chrome shows a quiet `Trial · N days left · Upgrade`
+line linking to `/signup/card`.
 The reservation table is part of private backups and selective recovery.
 Older snapshots need whole restore/migration before selective recovery.
 
