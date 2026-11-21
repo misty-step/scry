@@ -94,8 +94,8 @@ func TestSanitizeClientURI(t *testing.T) {
 		"https://b.js.stripe.com/v3/fingerprinted/js/x.js":                           "https://*.js.stripe.com",
 		"https://alice-smith.js.stripe.com/x":                                        "https://*.js.stripe.com",
 		"https://a.b.protect.clerk.com/p":                                            "https://*.protect.clerk.com",
-		"https://csp-probe.invalid/probe.png?token=verify-probe-secret#frag":         "https://csp-probe.invalid/probe.png",
-		"https://csp-probe.invalid/private/notes.png":                                "https://csp-probe.invalid",
+		"https://csp-probe.invalid/probe.png?token=verify-probe-secret#frag":         externalURI,
+		"https://csp-probe.invalid/private/notes.png":                                externalURI,
 
 		// Everything else is external: no host, no path.
 		"https://js.stripe.com:8443/v3/":                         externalURI,
@@ -319,6 +319,17 @@ func TestSanitizeClientCodes(t *testing.T) {
 	ev, _ = sanitizeClientReport(clientReport{Kind: "js_error", SourceFile: "https://x.example/a.js", Line: 3, Column: 9}, testPolicy)
 	if ev.line != 0 || ev.column != 0 || ev.summary("b") != "client js_error route=/other code=UnknownError source=external build=b" {
 		t.Errorf("external source keeps position: %q", ev.summary("b"))
+	}
+	ev, _ = sanitizeClientReport(clientReport{Kind: "js_error", SourceFile: "https://js.stripe.com/v3/x.js", Line: 3, Column: 9}, testPolicy)
+	if ev.summary("b") != "client js_error route=/other code=UnknownError source=https://js.stripe.com:3:9 build=b" {
+		t.Errorf("allowlisted origin loses position: %q", ev.summary("b"))
+	}
+	// A CSP keyword is neither a first-party asset nor an allowlisted origin.
+	for _, src := range []string{"inline", "eval", "blob:https://scry.example/uuid", "data:text/javascript,x"} {
+		ev, _ = sanitizeClientReport(clientReport{Kind: "js_error", SourceFile: src, Line: 3, Column: 9}, testPolicy)
+		if ev.line != 0 || ev.column != 0 {
+			t.Errorf("keyword source %q keeps position: %q", src, ev.summary("b"))
+		}
 	}
 }
 

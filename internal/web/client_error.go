@@ -314,7 +314,7 @@ func sanitizeClientReport(r clientReport, p uriPolicy) (clientEvent, bool) {
 	case "js_error", "unhandled_rejection":
 		e.code = errorClass(r.ErrorClass, kind)
 		e.source, e.extension = p.uri(r.SourceFile)
-		if e.source != "" && e.source != externalURI {
+		if identifiedSource(e.source) {
 			if r.Line > 0 && r.Line < 1e7 {
 				e.line = r.Line
 			}
@@ -324,6 +324,13 @@ func sanitizeClientReport(r clientReport, p uriPolicy) (clientEvent, bool) {
 		}
 	}
 	return e, true
+}
+
+// identifiedSource is true for a first-party asset path or an allowlisted
+// https origin (or wildcard): the only sources whose line and column are
+// kept. A CSP keyword, "extension" or externalURI never carries a position.
+func identifiedSource(source string) bool {
+	return strings.HasPrefix(source, "/") || strings.HasPrefix(source, "https://")
 }
 
 // reportDirectives are the standard directive names a report may name. Any
@@ -465,12 +472,6 @@ var (
 	hostLabels           = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$`)
 )
 
-// The synthetic image scripts/verify-live.mjs --simulate-violation loads.
-const (
-	probeHost = "csp-probe.invalid"
-	probePath = "/probe.png"
-)
-
 // uri maps a reported URI onto a closed set of values: "" for none, a CSP
 // keyword, "extension" (and true) for a browser extension, a first-party
 // asset path such as /static/stripe.js, an allowlisted integration origin
@@ -556,14 +557,8 @@ func (p uriPolicy) integration(u *url.URL) string {
 		return externalURI
 	}
 	host := strings.ToLower(u.Hostname())
-	switch {
-	case integrationHosts[host], p.clerk != "" && host == p.clerk:
+	if integrationHosts[host] || (p.clerk != "" && host == p.clerk) {
 		return "https://" + host
-	case host == probeHost:
-		if u.Path == probePath {
-			return "https://" + probeHost + probePath
-		}
-		return "https://" + probeHost
 	}
 	for _, suffix := range integrationWildcards {
 		if prefix, ok := strings.CutSuffix(host, suffix); ok && prefix != "" && hostLabels.MatchString(prefix) {

@@ -424,9 +424,9 @@ func TestSlice30ClientErrorForwardsNoCallerData(t *testing.T) {
 		{"integration errors are fixed codes", cspRigHost, "application/json",
 			`{"kind":"integration_error","route":"/signup/card","code":"alice","message":"my notes say bob@example.com 4242424242424242"}`,
 			"client integration_error route=/signup/card code=integration_unknown build=abc1234"},
-		{"the verifier's probe keeps only its fixed path", cspRigHost, "application/json",
-			`{"kind":"csp_violation","route":"/","violatedDirective":"img-src","blockedURI":"https://csp-probe.invalid/alice/notes.png"}`,
-			"client csp_violation route=/ directive=img-src blocked=https://csp-probe.invalid build=abc1234"},
+		{"the verifier's probe host is not allowlisted", cspRigHost, "application/json",
+			`{"kind":"csp_violation","route":"/library","violatedDirective":"img-src","blockedURI":"https://csp-probe.invalid/alice/notes.png"}`,
+			"client csp_violation route=/library directive=img-src blocked=external build=abc1234"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			before := len(r.captured())
