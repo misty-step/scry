@@ -1,6 +1,6 @@
 PORT ?= 8080
 
-.PHONY: run test build vet verify-formal docker clean
+.PHONY: run test build vet verify-formal eval docker clean
 
 # Start Scry on PORT in test mode, with seeded demo data. No keys needed.
 run:
@@ -24,6 +24,17 @@ vet:
 # VERIFY_APALACHE=1 adds bounded Apalache model checking (slow).
 verify-formal:
 	./scripts/verify-formal.sh
+
+# Live 4-surface micro-eval bench on OpenRouter (grading, explainer, speech,
+# drafting). Spends real money from OPENROUTER_API_KEY, uses
+# EVAL_MAX_SPEND for pre-dispatch admission; see evals/README.md. Examples:
+#   make eval
+#   make eval EVAL_ARGS="--surface grading --limit 3"
+EVAL_OUT ?= evals/results/latest
+EVAL_MAX_SPEND ?= 1.35
+EVAL_ARGS ?= --surface all
+eval:
+	go run ./evals/cmd/scry-eval --out $(EVAL_OUT) --max-spend $(EVAL_MAX_SPEND) $(EVAL_ARGS)
 
 docker:
 	docker build --build-arg BUILD_SHA=$(BUILD_SHA) -t scry .
