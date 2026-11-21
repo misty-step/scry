@@ -162,8 +162,8 @@ per-address limit acts as a global one.
 It asserts /healthz, the signed-out /signup/card 303 and its policy (Stripe and
 Clerk origins as /healthz reports them), then zero CSP violations, console
 errors, page errors and failed requests on /, /signin, /signup and, signed in,
-/signup/card and /billing/card, where it waits for the Stripe card iframe and
-checks it is visible and at least 150×20. Public pages and the signed-out
+/signup/card and /billing/card, where it checks the Stripe card iframe is
+visible and at least 150×20 and the Element signals ready. Public pages and the signed-out
 redirect are checked in a cookie-free browser context; the signed-in pages in
 a separate one holding `--session-cookie` or the `--local-signup` session.
 When the account already has a plan, so /signup/card redirects to /study or

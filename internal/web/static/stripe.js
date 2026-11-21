@@ -47,7 +47,11 @@
   // ready (blocked by policy or network), say so rather than leave a blank.
   var ready = false;
   var timer = setTimeout(function () { if (!ready) fail("stripe_ready_timeout"); }, 15000);
-  card.on("ready", function () { ready = true; clearTimeout(timer); });
+  card.on("ready", function () {
+    ready = true;
+    clearTimeout(timer);
+    if (!broken) mount.dataset.stripeReady = "true";
+  });
   try {
     card.on("loaderror", function () {
       clearTimeout(timer);

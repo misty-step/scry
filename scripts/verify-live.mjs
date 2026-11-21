@@ -13,7 +13,7 @@
 // each in its own separate context) it checks /signup/card, or /billing/card
 // when the account already has a plan and /signup/card redirects to /study
 // or /billing. When Stripe Elements is on the card page it waits for the
-// js.stripe.com iframe and checks it is visible and sized. Prints one JSON
+// js.stripe.com iframe and checks it is visible, sized and ready. Prints one JSON
 // summary on stdout; exits 0 only when every check passes.
 //
 // Flags (env in brackets):
@@ -282,13 +282,17 @@ async function visit(context, base, p, opt, { expectStatus, card, screenshot, mo
     const err = r.failure()?.errorText || "failed";
     // Benign: a navigation the page itself cancels (a redirect, a replaced
     // load), or a request a third-party frame (Stripe's) cancels on its own.
-    // A request Scry's policy blocks fails with ERR_BLOCKED_BY_CSP instead.
+    // If a policy block is surfaced as ERR_BLOCKED_BY_CSP, it is not
+    // ignored; Chromium can also report the block only through CSP events.
     let foreignFrame = false;
     try {
       const f = r.frame();
-      foreignFrame = f !== page.mainFrame() && new URL(f.url()).origin !== origin;
+      const frameURL = new URL(f.url());
+      foreignFrame = f !== page.mainFrame() &&
+        (frameURL.protocol === "https:" || frameURL.protocol === "http:") &&
+        frameURL.origin !== origin;
     } catch { /* not tied to a frame */ }
-    if (err.includes("ERR_ABORTED") && (r.isNavigationRequest() || foreignFrame)) {
+    if (err === "net::ERR_ABORTED" && (r.isNavigationRequest() || foreignFrame)) {
       rec.ignoredRequests.push({ url: clean(r.url()), type: r.resourceType(), error: err, reason: foreignFrame ? "cancelled by a third-party frame" : "cancelled navigation" });
       return;
     }
@@ -328,6 +332,13 @@ async function visit(context, base, p, opt, { expectStatus, card, screenshot, mo
       } catch (err) {
         check(label + ": Stripe iframe attached and visible", false, String(err.message || err).split("\n")[0]);
       }
+      await page.waitForFunction(() => {
+        const field = document.querySelector("#card-element");
+        const error = document.querySelector("#card-error");
+        return field?.dataset.stripeReady === "true" || !!error?.textContent.trim();
+      }, null, { timeout: Math.max(opt.timeout, 16000) }).catch(() => {});
+      check(label + ": Stripe card Element signals ready",
+        (await page.locator('#card-element[data-stripe-ready="true"]').count()) > 0);
       const shown = (await page.locator("#card-error").textContent().catch(() => "")) || "";
       check(label + ": no card-field error shown", shown.trim() === "", shown.trim());
     }
