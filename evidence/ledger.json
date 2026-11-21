@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "repository": "misty-step/scry",
+  "entries": [
+    {
+      "requirementId": "NOTES.md#slice-30.csp-accumulate",
+      "description": "CSP accumulated per directive (dedup, fixed order); Clerk no longer clobbers Stripe frame-src",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/csp-headers-before-after.txt",
+          "mediaType": "text/plain"
+        },
+        {
+          "localPath": "~/chief-evidence/media/desktop-2-before-policy-broken.png",
+          "mediaType": "image/png"
+        },
+        {
+          "localPath": "~/chief-evidence/media/desktop-1-after-card-field.png",
+          "mediaType": "image/png"
+        },
+        {
+          "localPath": "~/chief-evidence/media/verify-live-before.json",
+          "mediaType": "application/json"
+        }
+      ]
+    },
+    {
+      "requirementId": "NOTES.md#slice-30.clerk-worker-src",
+      "description": "Clerk set includes worker-src 'self' blob:",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/csp-headers-before-after.txt",
+          "mediaType": "text/plain"
+        }
+      ]
+    },
+    {
+      "requirementId": "NOTES.md#slice-30.stripe-wildcard",
+      "description": "https://*.js.stripe.com beside https://js.stripe.com in script-src and frame-src",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/csp-headers-before-after.txt",
+          "mediaType": "text/plain"
+        },
+        {
+          "localPath": "~/chief-evidence/media/verify-live-stripe.json",
+          "mediaType": "application/json"
+        }
+      ]
+    },
+    {
+      "requirementId": "NOTES.md#slice-30.card-16-24",
+      "description": "Stripe card Element 16px text on 24px line (frame 24px tall)",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/walkthrough-log.txt",
+          "mediaType": "text/plain"
+        },
+        {
+          "localPath": "~/chief-evidence/media/mobile-1-after-card-field.png",
+          "mediaType": "image/png"
+        },
+        {
+          "localPath": "~/chief-evidence/media/verify-live-stripe.json",
+          "mediaType": "application/json"
+        }
+      ]
+    },
+    {
+      "requirementId": "NOTES.md#slice-30.card-unavailable",
+      "description": "Card step shows the exact unavailable message, refuses to post, reports integration_error",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/desktop-3-stripe-blocked-message.png",
+          "mediaType": "image/png"
+        },
+        {
+          "localPath": "~/chief-evidence/media/mobile-3-stripe-blocked-message.png",
+          "mediaType": "image/png"
+        },
+        {
+          "localPath": "~/chief-evidence/media/walkthrough-desktop.webm",
+          "mediaType": "video/webm"
+        },
+        {
+          "localPath": "~/chief-evidence/media/walkthrough-mobile.webm",
+          "mediaType": "video/webm"
+        }
+      ]
+    },
+    {
+      "requirementId": "NOTES.md#slice-30.client-error-sanitize",
+      "description": "/api/client-error: error once per distinct message per 10 min, warn for repeats/extensions; closed allowlists for route/directive/URI; line/column only for first-party asset or allowlisted origin",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/sentry-capture.txt",
+          "mediaType": "text/plain"
+        },
+        {
+          "localPath": "~/chief-evidence/media/verify-live-stripe.json",
+          "mediaType": "application/json"
+        }
+      ]
+    },
+    {
+      "requirementId": "NOTES.md#slice-30.sentry-level-error",
+      "description": "Operator-log Sentry events sent at level error via CaptureEvent",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/sentry-capture.txt",
+          "mediaType": "text/plain"
+        }
+      ]
+    },
+    {
+      "requirementId": "NOTES.md#slice-30.per-address-limit",
+      "description": "Per-address limit on the connection address (20/min, then 429)",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/sentry-capture.txt",
+          "mediaType": "text/plain"
+        }
+      ]
+    },
+    {
+      "requirementId": "NOTES.md#slice-30.verifier-err-aborted",
+      "description": "verify-live.mjs ignores ERR_ABORTED only for cancelled navigations and third-party-frame cancellations",
+      "source": "NOTES.md :: Slice 30: Stripe card CSP, client telemetry, live-route verifier",
+      "intentCommit": "537822592430",
+      "verifiedSha": "834b6e91ea103ebee88eca206585fa62ad610f12",
+      "verifiedAt": "2026-11-21T18:11:07Z",
+      "criticVerdict": "PENDING",
+      "evidence": [
+        {
+          "localPath": "~/chief-evidence/media/verify-live-stripe.json",
+          "mediaType": "application/json"
+        },
+        {
+          "localPath": "~/chief-evidence/media/verify-live-before.json",
+          "mediaType": "application/json"
+        }
+      ]
+    }
+  ]
+}
