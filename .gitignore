@@ -7,3 +7,5 @@
 .env
 _apalache-out/
 /evals/results/
+/scripts/node_modules/
+node_modules/

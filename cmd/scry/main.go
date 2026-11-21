@@ -489,7 +489,8 @@ func serve(log *slog.Logger) error {
 
 	srv := web.New(a, log)
 	srv.DemoHint = seeded
-	srv.Secure = strings.HasPrefix(env("SCRY_BASE_URL", ""), "https://")
+	srv.BaseURL = env("SCRY_BASE_URL", "")
+	srv.Secure = strings.HasPrefix(srv.BaseURL, "https://")
 	httpSrv := &http.Server{
 		Addr:              ":" + env("PORT", "8080"),
 		Handler:           srv,

@@ -1,5 +1,103 @@
 // Scry's progressive enhancement. Every page works without this file;
 // with it, the keyboard does more and the study session never reloads.
+
+// Client telemetry: a blocked resource, a script error or an unhandled
+// rejection is reported to /api/client-error so it reaches the operator
+// instead of failing silently. Reports carry fixed codes and error class
+// names, never message text, query strings, fragments or page content; they
+// are de-duplicated and capped per page load. The server maps every field
+// onto its own closed allowlists again before logging.
+(function () {
+  "use strict";
+  var endpoint = "/api/client-error", max = 5, sent = 0, seen = {};
+  var keywords = { "inline": 1, "eval": 1, "wasm-eval": 1, "self": 1, "trusted-types-policy": 1, "trusted-types-sink": 1 };
+
+  // clean keeps scheme, host and path: never userinfo, query or fragment.
+  function clean(uri) {
+    if (!uri) return "";
+    uri = String(uri);
+    if (keywords[uri]) return uri;
+    try {
+      var u = new URL(uri, location.href);
+      if (u.protocol === "http:" || u.protocol === "https:" || u.protocol === "ws:" || u.protocol === "wss:") {
+        return u.protocol + "//" + u.host + u.pathname;
+      }
+      return u.protocol.replace(":", "");
+    } catch (err) {
+      return uri.split(/[?#]/)[0].slice(0, 200);
+    }
+  }
+
+  // errorClass is the error's standard class name (error.name, or the
+  // prefix of a browser's "Uncaught TypeError: ..." line), or fallback.
+  // The message itself is never sent.
+  var classes = /^(TypeError|ReferenceError|SyntaxError|RangeError|URIError|SecurityError|NetworkError|AbortError|DOMException|Error)$/;
+  function errorClass(v, line, fallback) {
+    var name = "";
+    try { if (v && typeof v === "object" && typeof v.name === "string") name = v.name; } catch (err) { /* opaque */ }
+    if (!classes.test(name)) {
+      var m = /^(?:Uncaught\s+)?([A-Za-z]+)(?::|$)/.exec(typeof line === "string" ? line : "");
+      name = m ? m[1] : "";
+    }
+    if (!classes.test(name)) {
+      try { if (typeof DOMException !== "undefined" && v instanceof DOMException) name = "DOMException"; } catch (err) { /* ignore */ }
+    }
+    return classes.test(name) ? name : fallback;
+  }
+
+  function send(report) {
+    report.route = location.pathname;
+    var key = JSON.stringify(report);
+    if (seen[key] || sent >= max) return;
+    seen[key] = 1;
+    sent++;
+    var body = JSON.stringify(report);
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(endpoint, new Blob([body], { type: "application/json" }))) return;
+    } catch (err) { /* fall through to fetch */ }
+    try {
+      fetch(endpoint, { method: "POST", body: body, keepalive: true, credentials: "same-origin",
+        headers: { "Content-Type": "application/json" } }).catch(function () {});
+    } catch (err) { /* nothing else to try */ }
+  }
+
+  var blocked = {}; // URIs the policy blocked: their load errors are not news
+
+  document.addEventListener("securitypolicyviolation", function (e) {
+    blocked[clean(e.blockedURI)] = 1;
+    send({
+      kind: "csp_violation", violatedDirective: e.violatedDirective || "", effectiveDirective: e.effectiveDirective || "",
+      blockedURI: clean(e.blockedURI), disposition: e.disposition || ""
+    });
+  });
+
+  window.addEventListener("error", function (e) {
+    var el = e.target;
+    if (el && el !== window && el.tagName) {
+      // A script, stylesheet or image that failed to load (capture phase).
+      // The violation event can arrive just after the load error, so wait a
+      // moment before deciding this is a separate failure.
+      var src = clean(el.src || el.href || "");
+      setTimeout(function () {
+        if (!blocked[src]) send({ kind: "resource_error", code: "resource_load_failed", sourceFile: src });
+      }, 100);
+      return;
+    }
+    // Cross-origin scripts we don't control report only "Script error.".
+    if (!e.filename && /^Script error\.?$/.test(e.message || "")) return;
+    if (/^(chrome|moz|safari-web)-extension:/.test(e.filename || "")) return;
+    send({ kind: "js_error", errorClass: errorClass(e.error, e.message, "UnknownError"), sourceFile: clean(e.filename),
+      line: e.lineno || 0, column: e.colno || 0 });
+  }, true);
+
+  window.addEventListener("unhandledrejection", function (e) {
+    send({ kind: "unhandled_rejection", errorClass: errorClass(e.reason, "", "UnhandledRejection") });
+  });
+
+  // For Scry's own scripts (stripe.js) to report an integration failure
+  // by fixed code.
+  window.scryReport = function (kind, code) { send({ kind: kind, code: String(code) }); };
+})();
 (function () {
   "use strict";
 
