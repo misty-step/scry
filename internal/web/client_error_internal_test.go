@@ -60,13 +60,15 @@ func TestSanitizeClientURI(t *testing.T) {
 		"https://js.stripe.com/v3/?x=1#y":     "https://js.stripe.com/v3/",
 		"https://u:p@Evil.Example:8443/a/b?c": "https://evil.example:8443/a/b",
 		"wss://ws.example/socket?token=abc":   "wss://ws.example/socket",
-		"https://x.example/reset/" + "abcdefghijklmnopqrstuvwxyz012345": "https://x.example/reset/:token",
-		"https://x.example/u/bob@example.com/42":                        "https://x.example/u/:email/:id",
-		"/static/app.js?v=2":                                            "/static/app.js",
-		"about:blank":                                                   "about",
-		"chrome-extension://abcdef/inject.js":                           "extension",
-		"javascript:alert(document.cookie)":                             "javascript",
-		"not a url %%%":                                                 "unparsed",
+		"https://x.example/reset/" + "abcdefghijklmnopqrstuvwxyz012345":     "https://x.example/reset/:token",
+		"https://x.example/u/bob@example.com/42":                            "https://x.example/u/:email/:id",
+		"https://x.example/u/bob%40example.com":                             "https://x.example/u/:email",
+		"https://clerk.example/npm/@clerk/clerk-js@5/dist/clerk.browser.js": "https://clerk.example/npm/@clerk/clerk-js@5/dist/clerk.browser.js",
+		"/static/app.js?v=2":                  "/static/app.js",
+		"about:blank":                         "about",
+		"chrome-extension://abcdef/inject.js": "extension",
+		"javascript:alert(document.cookie)":   "javascript",
+		"not a url %%%":                       "unparsed",
 	} {
 		if got, _ := sanitizeURI(in); got != want {
 			t.Errorf("sanitizeURI(%q) = %q, want %q", in, got, want)

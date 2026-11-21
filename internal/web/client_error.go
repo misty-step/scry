@@ -339,7 +339,7 @@ func sanitizePath(p string) string {
 	for i, seg := range segs {
 		switch {
 		case seg == "":
-		case strings.Contains(seg, "@"):
+		case emailSegment(seg):
 			segs[i] = ":email"
 		case digits.MatchString(seg):
 			segs[i] = ":id"
@@ -357,6 +357,15 @@ func sanitizePath(p string) string {
 		out = "/" + out
 	}
 	return out
+}
+
+// emailSegment is a path segment holding an email address, plain or
+// percent-encoded. Scoped package paths such as @clerk/clerk-js@5 are kept.
+func emailSegment(seg string) bool {
+	if dec, err := url.PathUnescape(seg); err == nil {
+		seg = dec
+	}
+	return emailInText.MatchString(seg)
 }
 
 // tokenLike is a long run of token characters with digits in it (a hash,
@@ -384,7 +393,7 @@ func cleanSegment(seg string) string {
 		if b.Len() >= 64 {
 			break
 		}
-		if r < 0x80 && (unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("-_.~%+=,:", r)) {
+		if r < 0x80 && (unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("-_.~%+=,:@", r)) {
 			b.WriteRune(r)
 		} else {
 			b.WriteByte('_')
