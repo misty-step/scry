@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"scry/internal/safeerr"
@@ -62,8 +64,9 @@ func (f Fake) Transcribe(_ context.Context, a Audio) (string, error) {
 	return strings.Join(words[:n], " "), nil
 }
 
-// OpenAI is the real adapter: the OpenAI audio transcription API. The key
-// comes from the environment (OPENAI_API_KEY).
+// OpenAI is the optional direct adapter: the OpenAI audio transcription
+// API. The key comes from the environment (OPENAI_API_KEY) and is used only
+// when OPENROUTER_API_KEY is unset (see NewTranscriber).
 type OpenAI struct {
 	APIKey  string
 	Model   string // defaults to gpt-4o-mini-transcribe
@@ -75,16 +78,18 @@ func (o OpenAI) Name() string { return "openai" }
 
 func (o OpenAI) Transcribe(ctx context.Context, a Audio) (result string, retErr error) {
 	defer func() { retErr = safeerr.Redact(retErr, o.APIKey) }()
+	if err := ValidateAPIKey("OPENAI_API_KEY", o.APIKey); err != nil {
+		return "", err
+	}
+	if len(a.Data) == 0 {
+		return "", nil // nothing recorded is nothing heard, not an error
+	}
 	base, model := o.BaseURL, o.Model
 	if base == "" {
 		base = "https://api.openai.com"
 	}
 	if model == "" {
 		model = "gpt-4o-mini-transcribe"
-	}
-	client := o.HTTP
-	if client == nil {
-		client = &http.Client{Timeout: 20 * time.Second}
 	}
 	ext := "webm"
 	switch {
@@ -113,11 +118,11 @@ func (o OpenAI) Transcribe(ctx context.Context, a Audio) (result string, retErr 
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/audio/transcriptions", &body)
 	if err != nil {
-		return "", err
+		return "", errors.New("invalid speech endpoint")
 	}
 	req.Header.Set("Authorization", "Bearer "+o.APIKey)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := client.Do(req)
+	resp, err := noRedirect(o.HTTP).Do(req)
 	if err != nil {
 		return "", fmt.Errorf("speech provider unreachable: %w", err)
 	}
@@ -128,11 +133,34 @@ func (o OpenAI) Transcribe(ctx context.Context, a Audio) (result string, retErr 
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxSpeechResponse)).Decode(&out); err != nil {
 		return "", fmt.Errorf("speech provider: status %d", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("speech provider: status %d %s", resp.StatusCode, out.Error.Message)
+		return "", fmt.Errorf("speech provider: status %d %s", resp.StatusCode, bounded(out.Error.Message))
 	}
 	return strings.TrimSpace(out.Text), nil
+}
+
+// maxSpeechResponse bounds what is read from a speech provider.
+const maxSpeechResponse = 1 << 20
+
+// noRedirect copies the given client (or a 20-second default) and stops
+// it following redirects, so a key is never replayed to another origin.
+func noRedirect(c *http.Client) *http.Client {
+	client := http.Client{Timeout: 20 * time.Second}
+	if c != nil {
+		client = *c
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &client
+}
+
+// bounded keeps a provider's error message to one short line.
+func bounded(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 200 {
+		s = string(r[:200]) + "…"
+	}
+	return s
 }

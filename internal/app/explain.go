@@ -90,7 +90,11 @@ func (a *App) Explain(ctx context.Context, u store.User, reviewID int64) (Explan
 	ectx, cancel := context.WithTimeout(ctx, timeout)
 	text, use, err := a.Explainer.Explain(ectx, ai.ExplainInput{Question: r.GradedPrompt, Expected: r.GradedExpected, Answer: r.Answer, Verdict: r.Verdict})
 	cancel()
-	// Metered with judging, which it belongs to; an unused reservation is released.
+	// Metered with judging, which it belongs to; an unused reservation is
+	// released. Unlike drafting and judging (G2), a failed explanation with
+	// no usage reported (use.Model empty, see the adapters) releases its
+	// small, bounded reservation rather than holding it: the learner sees
+	// the fallback and TestExplain_FallsBackToTheCriterionSentence pins it.
 	a.settle(u.ID, reservation, "judge", use, 0)
 	text = ai.ClampExplanation(text)
 	if err != nil || strings.TrimSpace(text) == "" {

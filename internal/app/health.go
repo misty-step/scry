@@ -1,6 +1,9 @@
 package app
 
 import (
+	"reflect"
+	"strings"
+
 	"scry/internal/ai"
 	"scry/internal/auth"
 	"scry/internal/billing"
@@ -14,9 +17,9 @@ type Readiness struct {
 	BuildSHA    string
 	Mode        string // live or test
 	Grading     bool   // the real Jev grader judges answers
-	Drafting    bool   // real Claude drafts study material
-	Explainer   bool   // real Claude writes explanations
-	Speech      bool   // real OpenAI transcribes spoken answers
+	Drafting    bool   // real Claude drafts study material (via OpenRouter or Anthropic)
+	Explainer   bool   // real Claude writes explanations (via OpenRouter or Anthropic)
+	Speech      bool   // a real transcriber hears spoken answers (OpenRouter or OpenAI)
 	BillingMode string // stripe-live, stripe-test or test
 	AuthMode    string // clerk-live, clerk-test or local
 	// Providers is the exact active adapter for each capability.
@@ -55,9 +58,13 @@ func (a *App) Readiness() Readiness {
 	}
 
 	r.Providers["speech"] = label(a.Speech)
-	switch a.Speech.(type) {
-	case speech.OpenAI, *speech.OpenAI:
+	switch s := a.Speech.(type) {
+	case speech.OpenRouter, speech.OpenAI:
 		r.Speech = true
+	case *speech.OpenRouter:
+		r.Speech = s != nil
+	case *speech.OpenAI:
+		r.Speech = s != nil
 	}
 
 	r.BillingMode = "test"
@@ -78,8 +85,23 @@ func (a *App) Readiness() Readiness {
 	if !a.Cfg.TestMode && r.BillingMode == "stripe-test" {
 		r.Warnings = append(r.Warnings, "billing: live mode is using Stripe test-mode keys (SCRY_STRIPE_MODE=test); no real card is charged")
 	}
+	if !a.Cfg.TestMode && r.AuthMode == "clerk-test" {
+		r.Warnings = append(r.Warnings, "auth: live mode is signing learners in with a Clerk development instance (clerk-test keys); accounts are not the production user pool")
+	}
 	if a.Cfg.TestMode && r.Grading {
-		r.Warnings = append(r.Warnings, "grading: test mode is calling the real Jev grader (SCRY_JUDGE_MODE=live); judgments cost real money")
+		r.Warnings = append(r.Warnings, "grading: test mode is calling the real Jev grader (SCRY_JUDGE_MODE=live or SCRY_AI_MODE=live); judgments cost real money")
+	}
+	if a.Cfg.TestMode && (r.Drafting || r.Explainer || r.Speech) {
+		var real []string
+		for _, c := range []struct {
+			on   bool
+			name string
+		}{{r.Drafting, "drafting"}, {r.Explainer, "explainer"}, {r.Speech, "speech"}} {
+			if c.on {
+				real = append(real, c.name+" ("+r.Providers[c.name]+")")
+			}
+		}
+		r.Warnings = append(r.Warnings, "ai: test mode is calling real AI providers (SCRY_AI_MODE=live) for "+strings.Join(real, ", ")+"; calls cost real money")
 	}
 	return r
 }
@@ -87,6 +109,9 @@ func (a *App) Readiness() Readiness {
 func label(v any) string {
 	if v == nil {
 		return "none"
+	}
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return "none" // a typed nil adapter is not wired, and calling it would panic
 	}
 	if n, ok := v.(interface{ Name() string }); ok {
 		return n.Name()
