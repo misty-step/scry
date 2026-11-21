@@ -739,3 +739,62 @@ func TestSlice20_ClerkKeysInTestMode(t *testing.T) {
 		}
 	})
 }
+
+// Slice 36: on OPENROUTER_API_KEY alone the four AI surfaces default to the
+// Slice #29 bench winners, /healthz reports each configured model and the
+// speech route next to every key it already had, and each SCRY_*_MODEL
+// overrides its surface cleanly (a non-slug judge model stops the boot).
+func TestSlice36_DefaultModelsAndOverridesInHealthz(t *testing.T) {
+	base := []map[string]string{liveKeys, liveNoAI, stripeTestKeys, clerkTestKeys,
+		{"OPENROUTER_API_KEY": slice20Keys["OPENROUTER_ONLY"], "SCRY_STRIPE_MODE": "test"}}
+	for _, tc := range []struct {
+		name      string
+		env       map[string]string
+		models    map[string]string
+		route     string
+		bootError string
+	}{
+		{"defaults", nil, map[string]string{"grading": "typesafe/jev-1.14", "explainer": "openai/gpt-6-luna", "drafting": "openai/gpt-6.2-sol", "speech": "microsoft/mai-transcribe-2"}, "audio/transcriptions", ""},
+		{"overrides", map[string]string{"SCRY_JUDGE_MODEL": "openai/gpt-6-luna-decisions", "SCRY_EXPLAIN_MODEL": "anthropic/claude-haiku-5.5",
+			"SCRY_DRAFT_MODEL": "google/gemini-4-hydrogen", "SCRY_SPEECH_MODEL": "google/gemini-3.1-flash-lite"},
+			map[string]string{"grading": "openai/gpt-6-luna-decisions", "explainer": "anthropic/claude-haiku-5.5", "drafting": "google/gemini-4-hydrogen", "speech": "google/gemini-3.1-flash-lite"}, "chat/completions", ""},
+		{"stt override", map[string]string{"SCRY_SPEECH_MODEL": "openai/whisper-large-v3-turbo"},
+			map[string]string{"grading": "typesafe/jev-1.14", "speech": "openai/whisper-large-v3-turbo"}, "audio/transcriptions", ""},
+		{"judge model must be a slug", map[string]string{"SCRY_JUDGE_MODEL": "jev-latest"}, nil, "", "SCRY_JUDGE_MODEL=\"jev-latest\" is not an OpenRouter model slug"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			modeEnv(t, "live", append(base, tc.env)...)
+			if tc.bootError != "" {
+				failBoot(t, tc.bootError)
+				return
+			}
+			a, err := tryBuild(t)
+			if err != nil {
+				t.Fatal(err)
+			}
+			status, raw, h := getHealthz(t, a)
+			if status != 200 {
+				t.Fatalf("healthz %d %s", status, raw)
+			}
+			for _, k := range []string{"status", "build_sha", "mode", "auth_mode", "billing_mode", "database", "db", "grading", "drafting", "explainer", "speech", "providers", "warnings", "models", "speech_route"} {
+				if _, ok := h[k]; !ok {
+					t.Fatalf("/healthz lost key %q: %s", k, raw)
+				}
+			}
+			if h["grading"] != true || h["drafting"] != true || h["explainer"] != true || h["speech"] != true || h["speech_route"] != tc.route {
+				t.Fatalf("healthz %s", raw)
+			}
+			m, _ := h["models"].(map[string]any)
+			for k, want := range tc.models {
+				if m[k] != want {
+					t.Fatalf("models[%s] = %v, want %s: %s", k, m[k], want, raw)
+				}
+			}
+			p, _ := h["providers"].(map[string]any)
+			if p["grading"] != "jev-openrouter" || p["drafting"] != "openrouter" || p["explainer"] != "openrouter" || p["speech"] != "openrouter" {
+				t.Fatalf("providers %v", p)
+			}
+			assertNoSecrets(t, raw)
+		})
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"reflect"
 	"scry/internal/safeerr"
 	"strings"
 	"time"
@@ -41,6 +42,9 @@ type Fake struct {
 }
 
 func (f Fake) Name() string { return "test" }
+
+// ModelName is the test adapter's model label.
+func (f Fake) ModelName() string { return "test-speech" }
 
 func (f Fake) Transcribe(_ context.Context, a Audio) (string, error) {
 	if s, ok := strings.CutPrefix(string(a.Data), "say:"); ok {
@@ -75,6 +79,48 @@ type OpenAI struct {
 }
 
 func (o OpenAI) Name() string { return "openai" }
+
+// ModelName is the model this adapter calls.
+func (o OpenAI) ModelName() string {
+	if m := strings.TrimSpace(o.Model); m != "" {
+		return m
+	}
+	return "gpt-4o-mini-transcribe"
+}
+
+// ModelOf names the model a transcriber calls, or "" when none is wired.
+func ModelOf(t Transcriber) string {
+	if t == nil {
+		return ""
+	}
+	if rv := reflect.ValueOf(t); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return ""
+	}
+	if m, ok := t.(interface{ ModelName() string }); ok {
+		return m.ModelName()
+	}
+	return "unknown"
+}
+
+// RouteOf names the provider route a transcriber sends recordings on:
+// RouteTranscriptions or RouteChat on OpenRouter, "audio/transcriptions"
+// for the direct OpenAI adapter, "test" for the fake, "" when none is wired.
+func RouteOf(t Transcriber) string {
+	if ModelOf(t) == "" {
+		return ""
+	}
+	switch v := t.(type) {
+	case OpenRouter:
+		return v.Route()
+	case *OpenRouter:
+		return v.Route()
+	case OpenAI, *OpenAI:
+		return RouteTranscriptions
+	case Fake, *Fake:
+		return "test"
+	}
+	return "unknown"
+}
 
 func (o OpenAI) Transcribe(ctx context.Context, a Audio) (result string, retErr error) {
 	defer func() { retErr = safeerr.Redact(retErr, o.APIKey) }()

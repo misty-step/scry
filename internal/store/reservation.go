@@ -13,8 +13,9 @@ import (
 var ErrBudget = errors.New("insufficient unreserved allowance")
 
 // ErrReservationNoAccess is a reservation refused because the plan gives
-// no access at the moment of the insert: it has ended, or it is past_due
-// and its grace has run out. The check is part of the same atomic
+// no access at the moment of the insert: it has ended, it is past_due
+// and its grace has run out, or it is a no-card trial at or past its
+// period_end. The check is part of the same atomic
 // statement as the insert, so a plan that ends between the app's Plan()
 // read and Reserve can never take a new hold.
 var ErrReservationNoAccess = errors.New("plan gives no access: reservation refused")
@@ -175,10 +176,13 @@ func graceCutoff(now time.Time, grace time.Duration) int64 {
 }
 
 // reserveAccess is the access predicate of the Reserve statement, the same
-// as app.HasAccess: trialing and active plans, and past_due plans whose
-// grace has not run out. cutoff is the SQL parameter holding graceCutoff.
-func reserveAccess(cutoff string) string {
-	return `(status IN ('trialing','active') OR (status='past_due' AND past_due_since>0 AND past_due_since>=` + cutoff + `))`
+// as app.HasAccess: active plans, trialing plans (a no-card trial, with
+// customer_ref ”, only while now < period_end), and past_due plans whose
+// grace has not run out. cutoff is the SQL parameter holding graceCutoff;
+// nowSec the one holding now in whole Unix seconds (period_end is stored
+// in whole seconds, so now < period_end is period_end > floor(now)).
+func reserveAccess(cutoff, nowSec string) string {
+	return `(status='active' OR (status='trialing' AND (customer_ref<>'' OR period_end>` + nowSec + `)) OR (status='past_due' AND past_due_since>0 AND past_due_since>=` + cutoff + `))`
 }
 
 // Reserve holds amount micro-dollars of the learner's allowance (and then
@@ -191,7 +195,8 @@ func (u *UserStore) Reserve(ctx context.Context, id string, amount int64) error 
 
 // ReserveAt holds amount micro-dollars for work about to start, as of now.
 // One atomic INSERT .. SELECT both checks that the plan gives access at
-// now (trialing, active, or past_due within grace) and that the unreserved
+// now (active, trialing, or past_due within grace; a no-card trial only
+// before its period_end) and that the unreserved
 // allowance plus top-up credit covers amount, so neither can change
 // between the check and the hold. The hold records now as its created_at
 // for the TTL sweep. It returns ErrInvalidReservationAmount for an amount
@@ -204,10 +209,10 @@ func (u *UserStore) ReserveAt(ctx context.Context, id string, amount int64, now 
 	}
 	db := u.s.billingDB(ctx)
 	res, err := db.ExecContext(ctx, `INSERT INTO reservations(id,user_id,amount,created_at)
- SELECT ?1,user_id,?2,?3 FROM subscriptions WHERE user_id=?4 AND `+reserveAccess("?5")+` AND
+ SELECT ?1,user_id,?2,?3 FROM subscriptions WHERE user_id=?4 AND `+reserveAccess("?5", "?6")+` AND
  allowance_micros-period_used_micros+topup_micros-
  COALESCE((SELECT SUM(amount) FROM reservations WHERE user_id=?4),0)>=?2`,
-		id, amount, ts(now), u.uid, graceCutoff(now, grace))
+		id, amount, ts(now), u.uid, graceCutoff(now, grace), now.Unix())
 	if err != nil {
 		return err
 	}
@@ -221,8 +226,8 @@ func (u *UserStore) ReserveAt(ctx context.Context, id string, amount int64, now 
 	// Refused. Which reason is only for the caller's message: the refusal
 	// itself was decided atomically above.
 	var access bool
-	err = db.QueryRowContext(ctx, `SELECT `+reserveAccess("?2")+` FROM subscriptions WHERE user_id=?1`,
-		u.uid, graceCutoff(now, grace)).Scan(&access)
+	err = db.QueryRowContext(ctx, `SELECT `+reserveAccess("?2", "?3")+` FROM subscriptions WHERE user_id=?1`,
+		u.uid, graceCutoff(now, grace), now.Unix()).Scan(&access)
 	if err == nil && !access {
 		return ErrReservationNoAccess
 	}

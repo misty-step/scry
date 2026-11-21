@@ -29,7 +29,7 @@ func (a *App) Learn(ctx context.Context, u store.User, query string) (int64, err
 		return 0, err
 	}
 	us := a.Store.For(u.ID)
-	reservation, err := a.reserve(ctx, u.ID, ai.DraftBudgetMicros)
+	reservation, err := a.reserve(ctx, u.ID, a.DraftBudget())
 	if errors.Is(err, ErrAllowance) {
 		return us.CreateDraft(ctx, query, "allowance", a.now())
 	}
@@ -281,7 +281,7 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 	if err != nil {
 		return "", err
 	}
-	reservation, err := a.reserve(ctx, u.ID, 6000)
+	reservation, err := a.reserve(ctx, u.ID, a.SpeechBudget())
 	if err != nil {
 		return "", err
 	}
@@ -290,10 +290,16 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 	// that cost, also when the provider fails or the call panics: the
 	// outcome is uncertain, so the cost is never forgiven, and the
 	// reservation is never left held.
-	defer a.settle(u.ID, reservation, "speech", ai.Usage{Model: a.Speech.Name()}, audio.Seconds)
+	use := ai.Usage{Model: speech.ModelOf(a.Speech)}
+	defer func() { a.settle(u.ID, reservation, "speech", use, audio.Seconds) }()
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	text, err := a.Speech.Transcribe(ctx, audio)
+	var text string
+	if m, ok := a.Speech.(speech.Metered); ok {
+		text, use.CostMicros, err = m.TranscribeMetered(ctx, audio)
+	} else {
+		text, err = a.Speech.Transcribe(ctx, audio)
+	}
 	if err != nil {
 		a.Log.ErrorContext(ctx, "speech failed", "err", err, "user", u.ID)
 		a.Alert.Notify(ctx, "Spoken answers cannot be heard", err.Error())

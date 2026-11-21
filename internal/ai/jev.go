@@ -40,6 +40,15 @@ const minJevConfidence = 0.5
 const minJevProbability = 0.8
 const minJevMargin = 0.2
 
+// The Decisions models Jev asks for when SCRY_JUDGE_MODEL is unset. On
+// OpenRouter it is typesafe/jev-1.14, the Slice #29 bench winner (88%
+// three-way accuracy, 0% false positives, 159 ms p50); the direct Typesafe
+// route keeps its own alias.
+const (
+	DefaultOpenRouterJudgeModel = "typesafe/jev-1.14"
+	DefaultTypesafeJudgeModel   = "jev-latest"
+)
+
 type Jev struct {
 	Model      string // optional Decisions model override; no model-specific parsing
 	APIKey     string
@@ -50,14 +59,23 @@ type Jev struct {
 }
 
 func (j *Jev) Name() string { return "jev" }
+
+// RequestedModel is the Decisions model this grader asks for: the
+// SCRY_JUDGE_MODEL override when set, otherwise the route's default.
+func (j *Jev) RequestedModel() string {
+	if m := strings.TrimSpace(j.Model); m != "" {
+		return m
+	}
+	if j.OpenRouter {
+		return DefaultOpenRouterJudgeModel
+	}
+	return DefaultTypesafeJudgeModel
+}
 func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage, retErr error) {
 	start := time.Now()
-	requested, base, path := "jev-latest", "https://api.typesafe.ai", "/v1/systemone"
+	requested, base, path := j.RequestedModel(), "https://api.typesafe.ai", "/v1/systemone"
 	if j.OpenRouter {
-		requested, base, path = "openai/gpt-6-luna-decisions", "https://openrouter.ai", "/api/alpha/decisions"
-	}
-	if j.Model != "" {
-		requested = j.Model
+		base, path = "https://openrouter.ai", "/api/alpha/decisions"
 	}
 	resolved, costSource := "unavailable", "unknown"
 	defer func() {

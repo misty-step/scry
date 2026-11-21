@@ -235,13 +235,21 @@ func (b *browser) mustGet(path string) string {
 
 const goodCard = "4242 4242 4242 4242"
 
-// signUp creates an account and starts its trial with a working card.
-func (b *browser) signUp(email string) {
+// signUpNoCard creates an account, which starts its no-card trial and
+// lands on the starter shelf with no card step.
+func (b *browser) signUpNoCard(email string) {
 	b.t.Helper()
 	b.get("/signup")
-	if status, _ := b.post("/signup", "email", email, "password", "correct horse"); status != 200 || b.path != "/signup/card" {
+	if status, _ := b.post("/signup", "email", email, "password", "correct horse"); status != 200 || b.path != "/shelf" {
 		b.t.Fatalf("sign-up for %s: status %d at %s", email, status, b.path)
 	}
+}
+
+// signUp creates an account and adds a working card to its trial, so it
+// can top up and is charged when the trial ends.
+func (b *browser) signUp(email string) {
+	b.t.Helper()
+	b.signUpNoCard(email)
 	if status, body := b.post("/signup/card", "number", goodCard, "expiry", "12/30", "cvc", "123"); status != 200 || b.path != "/shelf" {
 		b.t.Fatalf("card step: status %d at %s\n%s", status, b.path, body)
 	}

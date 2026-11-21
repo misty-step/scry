@@ -1,8 +1,8 @@
 {{define "main"}}
 <section class="column">
-  <p class="meta">Step 1 of 2 · account</p>
+  <p class="meta">{{.TrialDays}}-day trial · no card needed</p>
   <h1 class="display">Sign up</h1>
-  <p class="lede">Create your account with email and password.</p>
+  <p class="lede">Create your account with email and password, and start studying straight away.</p>
   <form method="post" action="/signup" class="form" novalidate data-tz-form>
     <input type="hidden" name="tz" value="">
     <div class="field{{if eq .Field "email"}} has-error{{end}}">
@@ -15,8 +15,8 @@
       <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="8" required {{if eq .Field "password"}}aria-invalid="true" aria-describedby="password-error"{{end}}>
       {{if eq .Field "password"}}<p class="field-error" id="password-error" role="alert">{{.Error}}</p>{{else}}<p class="meta hint">At least 8 characters.</p>{{end}}
     </div>
-    <button class="btn btn-accent wide">Continue</button>
+    <button class="btn btn-accent wide">Start the {{.TrialDays}}-day trial</button>
   </form>
-  <p class="meta">Next: a card for the {{.TrialDays}}-day trial. <a class="link" href="/signin">Already have an account? Sign in</a></p>
+  <p class="meta">No card up front: add one any time during the {{.TrialDays}} days to keep Scry after them. <a class="link" href="/signin">Already have an account? Sign in</a></p>
 </section>
 {{end}}

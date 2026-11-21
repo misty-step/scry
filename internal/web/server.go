@@ -277,7 +277,8 @@ func (s *Server) load(w http.ResponseWriter, r *http.Request) (*rc, bool) {
 			if err == nil {
 				u, e := s.App.Store.UserBySubject(r.Context(), subject)
 				if errors.Is(e, store.ErrNotFound) {
-					u, e = s.App.Store.CreateUser(r.Context(), email, subject, "UTC", s.App.Now())
+					// A first Clerk sign-in: the account starts its no-card trial.
+					u, e = s.App.CreateUser(r.Context(), email, subject, "UTC")
 				}
 				if e == nil {
 					c.user = u
@@ -358,9 +359,9 @@ func (s *Server) authed(h handler) http.Handler {
 	})
 }
 
-// member serves learners with a live plan. There is no free tier: with
-// no plan the learner is sent to the card step, and with an ended plan
-// to Billing.
+// member serves learners with a live plan. There is no free tier: every
+// account has the no-card trial (Plan starts it if it is missing), and
+// with an ended plan or trial the learner is sent to Billing.
 func (s *Server) member(h handler) http.Handler {
 	return s.authed(func(w http.ResponseWriter, r *http.Request, c *rc) error {
 		sub, err := s.App.Plan(r.Context(), c.user.ID)
@@ -399,6 +400,9 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, c *rc, status in
 		if n, err := c.us.InboxCount(r.Context()); err == nil {
 			data["InboxCount"] = n
 		}
+		if sub, err := c.us.Subscription(r.Context()); err == nil && sub.NoCard() {
+			data["Trial"] = s.trialChip(sub)
+		}
 	}
 	if _, ok := data["Title"]; !ok {
 		data["Title"] = ""
@@ -412,6 +416,15 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, c *rc, status in
 	w.WriteHeader(status)
 	_, err := w.Write([]byte(buf.String()))
 	return err
+}
+
+// trialChip is the chrome's quiet line for a no-card trial: how much is
+// left and the one step that keeps Scry after it.
+func (s *Server) trialChip(sub store.Subscription) map[string]string {
+	if s.App.HasAccess(sub) {
+		return map[string]string{"Label": "Trial · " + trialLeft(sub.PeriodEnd.Sub(s.App.Now())), "Action": "Upgrade"}
+	}
+	return map[string]string{"Label": "Trial ended", "Action": "Add a card"}
 }
 
 func (s *Server) errorPage(w http.ResponseWriter, r *http.Request, status int) {
@@ -439,8 +452,9 @@ func (s *Server) errorPage(w http.ResponseWriter, r *http.Request, status int) {
 
 // healthz is the readiness report scry-lib.sh and scry-watch poll. It keeps
 // "status" and "database" ("ok"/"ok" on 200, "unhealthy"/"failing" on 503)
-// and adds what is wired: build, mode and each adapter's label. It never
-// includes a key, secret, DSN or token.
+// and adds what is wired: build, mode, each adapter's label, the model
+// each AI capability calls and the speech route. It never includes a key,
+// secret, DSN or token.
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	rd := s.App.Readiness()
 	body := map[string]any{
@@ -448,7 +462,7 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 		"build_sha": rd.BuildSHA, "mode": rd.Mode,
 		"grading": rd.Grading, "drafting": rd.Drafting, "explainer": rd.Explainer, "speech": rd.Speech,
 		"billing_mode": rd.BillingMode, "auth_mode": rd.AuthMode,
-		"providers": rd.Providers, "warnings": rd.Warnings,
+		"providers": rd.Providers, "models": rd.Models, "speech_route": rd.SpeechRoute, "warnings": rd.Warnings,
 	}
 	if err := s.App.Health(r.Context()); err != nil {
 		s.Log.ErrorContext(r.Context(), "health check failed", "err", err)

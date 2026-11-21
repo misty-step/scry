@@ -41,24 +41,17 @@ func TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute(t *testing.T) {
 	// Sign up with email and password.
 	has(t, b.mustGet("/signup"), `name="email"`, `name="password"`)
 	pages++
-	_, card := b.post("/signup", "email", "newcomer@example.com", "password", "correct horse")
+	_, shelf := b.post("/signup", "email", "newcomer@example.com", "password", "correct horse")
 	pages++
-	if b.path != "/signup/card" {
-		t.Fatalf("after sign-up the newcomer is at %s, want the card step", b.path)
-	}
-
-	// Start the trial: the card step says the terms in plain words.
-	trialEnd := w.now().AddDate(0, 0, 7).Format("January 2")
-	has(t, card, "7-day trial. You won't be charged until "+trialEnd+". Cancel any time before then in Billing.")
-	_, shelf := b.post("/signup/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
-	pages++
+	// The 7-day trial starts at once, with no card: straight to the shelf.
 	if b.path != "/shelf" {
-		t.Fatalf("after the card step the newcomer is at %s, want the starter shelf", b.path)
+		t.Fatalf("after sign-up the newcomer is at %s, want the starter shelf", b.path)
 	}
-	has(t, shelf, "Start with something worth knowing.")
+	has(t, shelf, "Start with something worth knowing.", "Trial · 7 days left", `href="/signup/card"`)
 	sub, err := w.lib("newcomer@example.com").Subscription(ctx)
-	if err != nil || sub.Status != "trialing" || !sub.TrialEnd.Equal(w.now().AddDate(0, 0, 7)) {
-		t.Fatalf("trial not started: %+v %v", sub, err)
+	if err != nil || !sub.NoCardTrial() || !sub.TrialEnd.Equal(w.now().AddDate(0, 0, 7)) || !sub.PeriodEnd.Equal(sub.TrialEnd) ||
+		sub.AllowanceMicros != w.app.Cfg.TrialMicros || sub.CardLast4 != "" {
+		t.Fatalf("no-card trial not started: %+v %v", sub, err)
 	}
 
 	// Pick a set and be studying.
@@ -71,10 +64,10 @@ func TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute(t *testing.T) {
 	}
 	has(t, study, "NATO alphabet: A", "enter to check · space to start/stop speaking (empty answer)")
 
-	// "Within a minute": six pages and four forms, no email to confirm,
-	// nothing to configure.
-	if pages > 6 {
-		t.Errorf("it took %d pages to reach the first question; want at most 6", pages)
+	// "Within a minute": five pages and three forms, no card, no email to
+	// confirm, nothing to configure.
+	if pages > 5 {
+		t.Errorf("it took %d pages to reach the first question; want at most 5", pages)
 	}
 }
 
@@ -119,8 +112,10 @@ func TestStory_Newcomer_CardDeclinedShowsTheProcessorsReason(t *testing.T) {
 		}
 		has(t, body, `role="alert">`+reason)
 	}
-	if _, err := w.lib("newcomer@example.com").Subscription(ctx); err != store.ErrNotFound {
-		t.Fatalf("a declined card must not start a trial (err %v)", err)
+	// A declined card changes nothing: the no-card trial goes on, with no
+	// customer at the processor.
+	if sub, err := w.lib("newcomer@example.com").Subscription(ctx); err != nil || !sub.NoCardTrial() || sub.CardLast4 != "" {
+		t.Fatalf("a declined card must leave the no-card trial as it was: %+v %v", sub, err)
 	}
 }
 

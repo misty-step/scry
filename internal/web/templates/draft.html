@@ -19,7 +19,8 @@
 
   {{if eq .Draft.Status "allowance"}}
     <p class="empty">Not enough allowance left for a draft. Scry can't draft this yet.</p>
-    <p>It resets on {{date .Reset}}. <a class="link" href="/billing">Top up or check your allowance in Billing</a></p>
+    {{if .NoCard}}<p>The trial's allowance is used up. <a class="link" href="/signup/card">Add a card to keep going</a></p>
+    {{else}}<p>It resets on {{date .Reset}}. <a class="link" href="/billing">Top up or check your allowance in Billing</a></p>{{end}}
   {{else if eq .Draft.Status "empty"}}
     <p class="empty">Nothing useful found.</p>
     <p>{{.Draft.Note}}</p>

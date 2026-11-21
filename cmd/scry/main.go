@@ -309,7 +309,9 @@ func build(log *slog.Logger) (*app.App, error) {
 			if kerr := safeerr.CheckAPIKey(name, key); kerr != nil {
 				return nil, fmt.Errorf("SCRY_JUDGE_MODE=live: %w", kerr)
 			}
-			judge.Model = env("SCRY_JUDGE_MODEL", "")
+			if judge.Model, err = judgeModel(router); err != nil {
+				return nil, fmt.Errorf("SCRY_JUDGE_MODE=live: %w", err)
+			}
 			a.Model = ai.Split{JudgeProvider: judge, DraftProvider: model}
 			log.Warn("test mode is grading with the real Jev grader (SCRY_JUDGE_MODE=live)", "grader", a.Model.Name())
 		}
@@ -336,7 +338,9 @@ func build(log *slog.Logger) (*app.App, error) {
 	}
 	rd := a.Readiness()
 	log.Info("adapters", "mode", mode, "build_sha", rd.BuildSHA, "auth", rd.AuthMode, "billing", rd.BillingMode, "model", a.Model.Name(),
-		"grading", rd.Providers["grading"], "drafting", rd.Providers["drafting"], "explainer", a.Explainer.Name(), "speech", a.Speech.Name())
+		"grading", rd.Providers["grading"], "drafting", rd.Providers["drafting"], "explainer", a.Explainer.Name(), "speech", a.Speech.Name(),
+		"grading_model", rd.Models["grading"], "drafting_model", rd.Models["drafting"], "explainer_model", rd.Models["explainer"],
+		"speech_model", rd.Models["speech"], "speech_route", rd.SpeechRoute)
 	ok = true
 	return a, nil
 }
@@ -367,8 +371,8 @@ func realAI(log *slog.Logger) (judge *ai.Jev, claude *ai.Claude, ear speech.Tran
 	var err error
 	if judge, err = ai.NewJev(typesafe, router, log); err != nil {
 		missing = append(missing, "OPENROUTER_API_KEY or TYPESAFE_API_KEY")
-	} else {
-		judge.Model = env("SCRY_JUDGE_MODEL", "")
+	} else if judge.Model, err = judgeModel(router); err != nil {
+		invalid = append(invalid, err.Error())
 	}
 	if router == "" && anthropic == "" {
 		missing = append(missing, "OPENROUTER_API_KEY or ANTHROPIC_API_KEY")
@@ -383,6 +387,19 @@ func realAI(log *slog.Logger) (judge *ai.Jev, claude *ai.Claude, ear speech.Tran
 		}
 	}
 	return judge, claude, ear, missing, invalid
+}
+
+// judgeModel reads SCRY_JUDGE_MODEL, the Decisions model override ("" keeps
+// the route's default, typesafe/jev-1.14 on OpenRouter). On OpenRouter it
+// must be a vendor/model slug, as SCRY_DRAFT_MODEL, SCRY_EXPLAIN_MODEL and
+// SCRY_SPEECH_MODEL must, so a direct-route alias left in the environment
+// fails the boot instead of every judgment.
+func judgeModel(router string) (string, error) {
+	m := env("SCRY_JUDGE_MODEL", "")
+	if m != "" && router != "" && !safeerr.IsRouterSlug(m) {
+		return "", fmt.Errorf("SCRY_JUDGE_MODEL=%q is not an OpenRouter model slug (vendor/model) and OPENROUTER_API_KEY is set", m)
+	}
+	return m, nil
 }
 
 // bootProblems is one loud boot error naming every missing variable and

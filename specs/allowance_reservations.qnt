@@ -68,6 +68,20 @@
 //   properties of the cap-at-reservation policy only. The Go rapid test
 //   (internal/store/reservation_rapid_test.go) checks the rest after every step.
 //
+// Slice 36: the no-card trial. Every account starts trialing with no
+// processor customer (customer_ref '', `nocard`), a capped allowance
+// (NOCARD_ALLOWANCE, Cfg.TrialMicros $0.50) and a period_end TRIAL_TICKS
+// away (7 days). It has access only while now < period_end, and the
+// Reserve guard checks that in the same atomic statement
+// (store.reserveAccess), whether or not the row has been moved to ended
+// yet (TrialExpire: Plan / EndExpiredNoCardTrials). No processor event
+// names it (InvoicePaid / InvoiceFailed / SubscriptionEnded need a
+// customer; applyEvent ignores a no-card row), and it can never be topped
+// up (topupEligible: ErrTopupNeedsCard). Adding a card inside the window
+// (AddCard: store.AddCardToTrial) keeps period_end and what was spent and
+// raises the allowance to CARD_TRIAL_ALLOWANCE; after it, only
+// Resubscribe (OpenPlan, charged today) opens a plan again.
+//
 // Time is abstract ticks (one tick = one housekeeping window); GRACE and TTL
 // are counted in ticks. Amounts are micros, scaled down.
 //
@@ -82,7 +96,9 @@ module allowance_reservations {
   type RID = str
   pure val RIDS: Set[RID] = Set("r1", "r2", "r3")
   pure val ALLOWANCE = 10        // Cfg.AllowanceMicros (3_000_000 scaled)
-  pure val TRIAL_ALLOWANCE = 6   // Cfg.TrialMicros (1_000_000 scaled; < ALLOWANCE)
+  pure val TRIAL_ALLOWANCE = 6   // Cfg.CardTrialMicros (1_000_000 scaled; < ALLOWANCE): a trial with a card
+  pure val NOCARD_ALLOWANCE = 3  // Cfg.TrialMicros (500_000 scaled): the no-card trial's hard cap
+  pure val TRIAL_TICKS = 3       // Cfg.TrialDays: the no-card trial's period_end, in ticks
   pure val TOPUP_CREDIT = 4      // Cfg.TopupMicros
   pure val GRACE = 2             // Cfg.GraceDays, in ticks
   pure val TTL = 2               // proposed reservation TTL, in ticks
@@ -100,6 +116,8 @@ module allowance_reservations {
   var allowance: int             // allowance_micros
   var used: int                  // period_used_micros
   var topup: int                 // topup_micros (never expires)
+  var nocard: bool               // customer_ref = '': no processor customer behind the plan
+  var period_end: int            // period_end (only the no-card trial's is modelled)
   // process
   var up: bool                   // process running
   var epoch: int                 // boot counter
@@ -119,13 +137,20 @@ module allowance_reservations {
   var credited: int              // all top-up credit ever granted
   var written_off: int           // fix: overage not charged to the learner
   var dropped: int               // cost of settles that found no row (lost usage)
+  var nocard_spent: int          // slice 36: everything debited while there was no card
   var opened_without_access: bool // a reservation was opened while HasAccess was false
   var last_action: str
 
   // ---------------------------------------------------------------- derived
   def has_access: bool =
-    status == "trialing" or status == "active" or
+    status == "active" or
+    (status == "trialing" and (not(nocard) or now < period_end)) or
     (status == "past_due" and now - past_due_since <= GRACE)
+
+  // slice 36 enabling conditions
+  def topup_ok: bool = up and has_access and not(nocard)
+  def add_card_ok: bool = up and status == "trialing" and nocard and now < period_end
+  def trial_expire_ok: bool = status == "trialing" and nocard and now >= period_end
 
   def reserved_total: int =
     RIDS.fold(0, (acc, r) => if (held(r)) acc + res_amount.get(r) else acc)
@@ -150,6 +175,7 @@ module allowance_reservations {
   // ------------------------------------------------------------------- frames
   action keep_sub = all {
     status' = status, now' = now, past_due_since' = past_due_since, allowance' = allowance,
+    nocard' = nocard, period_end' = period_end,
   }
   action keep_bal = all { used' = used, topup' = topup }
   action keep_proc = all { up' = up, epoch' = epoch }
@@ -159,18 +185,23 @@ module allowance_reservations {
   }
   action keep_acct = all {
     debited' = debited, settle_deletes' = settle_deletes, wiped' = wiped, credited' = credited,
-    written_off' = written_off, dropped' = dropped,
+    written_off' = written_off, dropped' = dropped, nocard_spent' = nocard_spent,
   }
   action keep_hist = all { opened_without_access' = opened_without_access }
 
   // --------------------------------------------------------------------- init
-  action init = all {
+  // A plan as it opens: the no-card trial every account starts with (slice
+  // 36), or (init_card) a trial with a card on file, as accounts from
+  // before slice 36 and the rapid machines' card worlds start.
+  action init_plan(nc: bool): bool = all {
     status' = "trialing",
     now' = 0,
     past_due_since' = 0,
-    allowance' = TRIAL_ALLOWANCE,
+    allowance' = if (nc) NOCARD_ALLOWANCE else TRIAL_ALLOWANCE,
     used' = 0,
     topup' = 0,
+    nocard' = nc,
+    period_end' = TRIAL_TICKS,
     up' = true,
     epoch' = 0,
     res_state' = RIDS.mapBy(r => "free"),
@@ -183,8 +214,15 @@ module allowance_reservations {
     credited' = 0,
     written_off' = 0,
     dropped' = 0,
+    nocard_spent' = 0,
     opened_without_access' = false,
     last_action' = "Init",
+  }
+  action init_nocard = init_plan(true)
+  action init_card = init_plan(false)
+  action init = {
+    nondet nc = Set(true, false).oneOf()
+    init_plan(nc)
   }
 
   // ------------------------------------------------------------------ Reserve
@@ -218,6 +256,7 @@ module allowance_reservations {
     topup' = topup - imax(0, cost - imax(0, allowance - used)),
     debited' = debited.set(r, cost),
     written_off' = written_off,
+    nocard_spent' = if (nocard) nocard_spent + cost else nocard_spent,
   }
 
   // fix: debit at most the reservation and at most what is available;
@@ -230,6 +269,7 @@ module allowance_reservations {
       topup' = topup - (d - from_allowance),
       debited' = debited.set(r, d),
       written_off' = written_off + (cost - d),
+      nocard_spent' = if (nocard) nocard_spent + d else nocard_spent,
     }
   }
 
@@ -242,7 +282,7 @@ module allowance_reservations {
     res_state.get(r) != "held",
     dropped' = dropped + cost,
     debited' = debited, settle_deletes' = settle_deletes, wiped' = wiped, credited' = credited,
-    written_off' = written_off,
+    written_off' = written_off, nocard_spent' = nocard_spent,
     keep_sub, keep_bal, keep_proc, keep_res, keep_hist,
     last_action' = "SettleNoop",
   }
@@ -259,7 +299,7 @@ module allowance_reservations {
       owner_can_settle(r),
       delete_row(r),
       if (cost == 0)
-        all { keep_bal, debited' = debited, written_off' = written_off }
+        all { keep_bal, debited' = debited, written_off' = written_off, nocard_spent' = nocard_spent }
       else
         SpendLegacy(r, cost),
       wiped' = wiped, credited' = credited, dropped' = dropped,
@@ -315,53 +355,56 @@ module allowance_reservations {
   }
 
   // -------------------------------------------------------------------- TopUp
-  // TopUp: topupEligible requires HasAccess (both legacy and fix).
+  // TopUp: topupEligible requires HasAccess (both legacy and fix) and,
+  // since slice 36, a card on file: a no-card trial is never charged.
   action TopUp: bool = all {
-    up, has_access,
+    topup_ok,
     topup' = topup + TOPUP_CREDIT,
     credited' = credited + TOPUP_CREDIT,
     used' = used,
     debited' = debited, settle_deletes' = settle_deletes, wiped' = wiped,
-    written_off' = written_off, dropped' = dropped,
+    written_off' = written_off, dropped' = dropped, nocard_spent' = nocard_spent,
     keep_sub, keep_proc, keep_res, keep_hist,
     last_action' = "TopUp",
   }
 
   // ------------------------------------------------------ subscription status
   // InvoicePaid = monthly period reset: active, used = 0, allowance reset.
+  // Processor events need a processor subscription: never on a no-card plan.
   action InvoicePaid: bool = all {
-    status != "ended",
+    status != "ended", not(nocard),
     status' = "active",
     past_due_since' = 0,
     allowance' = ALLOWANCE,
     used' = 0,
     wiped' = wiped + used,
-    now' = now, topup' = topup,
+    now' = now, topup' = topup, nocard' = nocard, period_end' = period_end,
     debited' = debited, settle_deletes' = settle_deletes, credited' = credited,
-    written_off' = written_off, dropped' = dropped,
+    written_off' = written_off, dropped' = dropped, nocard_spent' = nocard_spent,
     keep_proc, keep_res, keep_hist,
     last_action' = "InvoicePaid",
   }
 
   // InvoiceFailed -> past_due; PastDueSince only set the first time.
   action InvoiceFailed: bool = all {
-    status != "ended",
+    status != "ended", not(nocard),
     status' = "past_due",
     past_due_since' = if (status == "past_due") past_due_since else now,
-    now' = now, allowance' = allowance,
+    now' = now, allowance' = allowance, nocard' = nocard, period_end' = period_end,
     keep_bal, keep_proc, keep_res, keep_acct, keep_hist,
     last_action' = "InvoiceFailed",
   }
 
   action SubscriptionEnded: bool = all {
-    status != "ended",
+    status != "ended", not(nocard),
     status' = "ended",
-    now' = now, past_due_since' = past_due_since, allowance' = allowance,
+    now' = now, past_due_since' = past_due_since, allowance' = allowance, nocard' = nocard, period_end' = period_end,
     keep_bal, keep_proc, keep_res, keep_acct, keep_hist,
     last_action' = "SubscriptionEnded",
   }
 
-  // OpenPlan replaces an ended plan; top-up credit is carried over.
+  // OpenPlan replaces an ended plan (card-backed or an ended no-card
+  // trial) with a paid one, charged today; top-up credit is carried over.
   action Resubscribe: bool = all {
     status == "ended",
     status' = "active",
@@ -369,17 +412,41 @@ module allowance_reservations {
     allowance' = ALLOWANCE,
     used' = 0,
     wiped' = wiped + used,
-    now' = now, topup' = topup,
+    now' = now, topup' = topup, nocard' = false, period_end' = period_end,
     debited' = debited, settle_deletes' = settle_deletes, credited' = credited,
-    written_off' = written_off, dropped' = dropped,
+    written_off' = written_off, dropped' = dropped, nocard_spent' = nocard_spent,
     keep_proc, keep_res, keep_hist,
     last_action' = "Resubscribe",
+  }
+
+  // ------------------------------------------------- slice 36: the no-card trial
+  // AddCard (store.AddCardToTrial): a card behind a live no-card trial. Same
+  // period_end, same spend; the allowance rises to the card trial's.
+  action AddCard: bool = all {
+    add_card_ok,
+    nocard' = false,
+    allowance' = imax(allowance, TRIAL_ALLOWANCE),
+    status' = status, now' = now, past_due_since' = past_due_since, period_end' = period_end,
+    keep_bal, keep_proc, keep_res, keep_acct, keep_hist,
+    last_action' = "AddCard",
+  }
+
+  // TrialExpire (Plan / EndExpiredNoCardTrials): the no-card trial at its
+  // period_end moves to ended. Access ended at period_end whether or not
+  // this has run yet.
+  action TrialExpire: bool = all {
+    trial_expire_ok,
+    status' = "ended",
+    now' = now, past_due_since' = past_due_since, allowance' = allowance, nocard' = nocard, period_end' = period_end,
+    keep_bal, keep_proc, keep_res, keep_acct, keep_hist,
+    last_action' = "TrialExpire",
   }
 
   // -------------------------------------------------------------------- time
   action tick = all {
     now' = now + 1,
     status' = status, past_due_since' = past_due_since, allowance' = allowance,
+    nocard' = nocard, period_end' = period_end,
     keep_bal, keep_proc, keep_res, keep_acct, keep_hist,
     last_action' = "AdvanceTime",
   }
@@ -442,6 +509,8 @@ module allowance_reservations {
       InvoiceFailed,
       SubscriptionEnded,
       Resubscribe,
+      AddCard,
+      TrialExpire,
       AdvanceTimeLegacy,
       Crash,
       RestartLegacy,
@@ -463,6 +532,8 @@ module allowance_reservations {
       InvoiceFailed,
       SubscriptionEnded,
       Resubscribe,
+      AddCard,
+      TrialExpire,
       AdvanceTime,
       Crash,
       Restart,
@@ -515,7 +586,29 @@ module allowance_reservations {
       res_epoch.get(r) == epoch,
     })
 
+  // slice 36: a plan with no card is never charged or credited: no top-up,
+  // no processor event; and it is only ever a trial or an ended one.
+  val inv_nocard_never_charged: bool =
+    nocard implies and { credited == 0, topup == 0, status.in(Set("trialing", "ended")) }
+
+  // slice 36: the no-card trial's spend is capped, however requests
+  // interleave: what was ever debited without a card, plus what is held,
+  // never passes NOCARD_ALLOWANCE.
+  val inv_nocard_spend_capped: bool = and {
+    nocard_spent <= NOCARD_ALLOWANCE,
+    nocard implies (nocard_spent + reserved_total <= NOCARD_ALLOWANCE and allowance == NOCARD_ALLOWANCE),
+  }
+
+  // slice 36: from period_end on, a no-card trial gives no access, whether
+  // or not TrialExpire has moved it to ended (so Reserve is refused:
+  // inv_grace_expiry_blocks_new_reservations covers every hold opened).
+  val inv_nocard_expiry: bool =
+    (nocard and now >= period_end) implies not(has_access)
+
   val inv_all: bool = and {
+    inv_nocard_never_charged,
+    inv_nocard_spend_capped,
+    inv_nocard_expiry,
     inv_non_negative_balances,
     inv_reserved_within_available,
     inv_no_leaked_reservations_after_recovery,
@@ -534,13 +627,15 @@ module allowance_reservations {
   pure val STATES = Set("free", "held", "orphan", "settled", "released", "swept", "expired")
   pure val ACTIONS = Set("Init", "Reserve", "Settle", "SettleNoop", "Release", "Abandon", "ExpireTTL",
                          "TopUp", "InvoicePaid", "InvoiceFailed", "SubscriptionEnded", "Resubscribe",
+                         "AddCard", "TrialExpire",
                          "AdvanceTime", "Crash", "Restart")
 
   val inv_types: bool = and {
     status.in(STATUSES),
     now.in(Int), past_due_since.in(Int),
-    allowance.in(Set(TRIAL_ALLOWANCE, ALLOWANCE)),
+    allowance.in(Set(NOCARD_ALLOWANCE, TRIAL_ALLOWANCE, ALLOWANCE)),
     used.in(Int), topup.in(Int),
+    nocard.in(Bool), period_end.in(Int), nocard_spent.in(Int),
     up.in(Bool), epoch.in(Int),
     res_state.in(setOfMaps(RIDS, STATES)),
     res_amount.in(setOfMaps(RIDS, 0.to(4))),
@@ -561,12 +656,16 @@ module allowance_reservations {
     RIDS.forall(r => held(r) implies res_epoch.get(r) <= epoch),
     RIDS.forall(r => res_state.get(r) == "free" implies res_amount.get(r) == 0),
     RIDS.forall(r => debited.get(r) >= 0),
+    // slice 36: while there is no card, everything spent is still `used`
+    // (no reset happened) and the trial's end is fixed
+    nocard implies (nocard_spent == used and period_end == TRIAL_TICKS),
+    nocard_spent >= 0,
   }
 
   // ------------------------------------------------------------------- tests
   // concurrent requests interleave; each Reserve is atomic; the last is refused
   run budgetCapTest =
-    init
+    init_card
       .then(InvoicePaid)                       // allowance 10
       .then(Reserve("r1", 4))
       .then(Reserve("r2", 4))
@@ -576,7 +675,7 @@ module allowance_reservations {
       .expect(available == 0 and reserved_total == 10 and inv_all)
 
   run partialAndZeroSettleTest =
-    init
+    init_card
       .then(InvoicePaid)
       .then(Reserve("r1", 4))
       .then(Reserve("r2", 3))
@@ -586,7 +685,7 @@ module allowance_reservations {
       .expect(used == 2 and reserved_total == 0 and available == 8 and inv_all)
 
   run doubleSettleTest =
-    init
+    init_card
       .then(InvoicePaid)
       .then(Reserve("r1", 4))
       .then(Settle("r1", 3))
@@ -596,7 +695,7 @@ module allowance_reservations {
       .expect(not(owner_can_settle("r1")))     // cannot release a settled row
 
   run overCostSettleTest =
-    init
+    init_card
       .then(InvoicePaid)
       .then(Reserve("r1", 2))
       .then(Reserve("r2", 4))
@@ -604,7 +703,7 @@ module allowance_reservations {
       .expect(used == 2 and written_off == 4 and reserved_total == 4 and inv_all)
 
   run crashSweepTest =
-    init
+    init_card
       .then(InvoicePaid)
       .then(Reserve("r1", 4))
       .then(Reserve("r2", 3))
@@ -617,7 +716,7 @@ module allowance_reservations {
       .expect(used == 0 and inv_all)
 
   run ttlExpiryTest =
-    init
+    init_card
       .then(InvoicePaid)
       .then(Reserve("r1", 4))
       .then(Abandon("r1"))                     // leaky path: never settled
@@ -630,7 +729,7 @@ module allowance_reservations {
       .then(AdvanceTime)
 
   run graceExpiryTest =
-    init
+    init_card
       .then(InvoicePaid)
       .then(InvoiceFailed)                     // past_due since 0
       .then(AdvanceTime)
@@ -647,7 +746,7 @@ module allowance_reservations {
       .expect(inv_all)
 
   run periodResetTest =
-    init
+    init_card
       .then(Reserve("r1", 4))                  // trial allowance 6
       .then(Settle("r1", 4))
       .then(TopUp)
@@ -658,7 +757,7 @@ module allowance_reservations {
 
   // ---- legacy bugs
   run legacyNegativeTopupTest =
-    init
+    init_card
       .then(ReserveLegacy("r1", 1))
       .then(ReserveLegacy("r2", 1))
       .then(SettleLegacy("r1", 6))             // cost 6 against a 1-micro hold
@@ -667,7 +766,7 @@ module allowance_reservations {
       .expect(topup == -6 and not(inv_non_negative_balances) and not(inv_debit_within_reservation))
 
   run legacyCrashLeakTest =
-    init
+    init_card
       .then(ReserveLegacy("r1", 4))
       .then(Crash)
       .then(RestartLegacy)
@@ -679,7 +778,7 @@ module allowance_reservations {
       .expect(held("r1") and not(inv_no_stale_reservations))
 
   run legacyLeakyPathTest =
-    init
+    init_card
       .then(ReserveLegacy("r1", 4))
       .then(Abandon("r1"))                     // judge failed with no model
       .then(AdvanceTimeLegacy)
@@ -688,7 +787,7 @@ module allowance_reservations {
       .expect(held("r1") and available == 2 and not(inv_no_stale_reservations))
 
   run legacyReserveAfterGraceTest =
-    init
+    init_card
       .then(InvoiceFailed)
       .then(AdvanceTimeLegacy)
       .then(AdvanceTimeLegacy)
@@ -701,9 +800,67 @@ module allowance_reservations {
 
   // legacy Settle is idempotent too (DELETE..RowsAffected), but loses the cost
   run legacyDoubleSettleTest =
-    init
+    init_card
       .then(ReserveLegacy("r1", 2))
       .then(SettleLegacy("r1", 2))
       .then(SettleLegacy("r1", 2))
       .expect(used == 2 and settle_deletes == 1 and dropped == 2 and inv_idempotent_settle)
+
+  // ---- slice 36: the no-card trial
+  run nocardTrialCapAndExpiryTest =
+    init_nocard
+      .expect(nocard and allowance == NOCARD_ALLOWANCE and has_access)
+      .expect(not(topup_ok))                   // no top-up without a card
+      .then(Reserve("r1", 2))
+      .expect(not(reserve_ok("r2", 2)))        // the cap: 1 left
+      .then(Settle("r1", 2))
+      .expect(used == 2 and nocard_spent == 2 and available == 1 and inv_all)
+      .then(AdvanceTime)
+      .then(AdvanceTime)
+      .expect(has_access and reserve_ok("r2", 1))   // now 2 < period_end 3
+      .then(AdvanceTime)                       // now 3 == period_end
+      .expect(status == "trialing" and not(has_access))
+      .expect(not(reserve_ok("r2", 1)))        // refused before TrialExpire ran
+      .expect(not(add_card_ok))                // too late to keep the trial
+      .then(TrialExpire)
+      .expect(status == "ended" and not(has_access) and inv_all)
+      .then(Resubscribe)                       // a card now: paid, charged today
+      .expect(status == "active" and not(nocard) and allowance == ALLOWANCE and used == 0 and inv_all)
+      .then(TopUp)
+      .expect(topup == TOPUP_CREDIT and inv_all)
+
+  run nocardAddCardKeepsTheTrialTest =
+    init_nocard
+      .then(Reserve("r1", 3))
+      .then(Settle("r1", 3))                   // the whole no-card cap spent
+      .expect(available == 0 and not(reserve_ok("r2", 1)))
+      .then(AdvanceTime)
+      .then(AddCard)
+      .expect(not(nocard) and status == "trialing" and period_end == TRIAL_TICKS
+              and used == 3 and allowance == TRIAL_ALLOWANCE and available == 3 and inv_all)
+      .then(TopUp)                             // a card on file: top-ups work
+      .then(AdvanceTime)
+      .then(AdvanceTime)
+      .expect(has_access)                      // a card trial is not cut off at period_end
+      .then(InvoicePaid)                       // the first charge at the trial's end
+      .expect(status == "active" and allowance == ALLOWANCE and used == 0 and inv_all)
+
+  // No processor event, and no top-up, ever applies to a no-card plan.
+  run nocardNoInvoiceTest = init_nocard.then(InvoicePaid).fail()
+  run nocardNoInvoiceFailureTest = init_nocard.then(InvoiceFailed).fail()
+  run nocardNoProcessorEndTest = init_nocard.then(SubscriptionEnded).fail()
+  run nocardNoTopupTest = init_nocard.then(TopUp).fail()
+  run nocardNoCardAfterEndTest =
+    init_nocard.then(AdvanceTime).then(AdvanceTime).then(AdvanceTime).then(AddCard).fail()
+
+  // legacy: a store that checks only the budget lets a no-card trial take
+  // a hold after its period_end (the bug the atomic guard rules out).
+  run legacyReserveAfterTrialEndTest =
+    init_nocard
+      .then(AdvanceTimeLegacy)
+      .then(AdvanceTimeLegacy)
+      .then(AdvanceTimeLegacy)
+      .expect(not(has_access))
+      .then(ReserveLegacy("r1", 1))
+      .expect(not(inv_grace_expiry_blocks_new_reservations))
 }

@@ -40,7 +40,14 @@
 //   * webhook deliveries are drawn from the set of every event the processor
 //     ever emitted, never consumed: that is duplicate AND out-of-order
 //     delivery, before or after the synchronous reply or a reconciliation;
-//   * "canceled with a Stripe-named reason" is folded into "rpm" (decline).
+//   * "canceled with a Stripe-named reason" is folded into "rpm" (decline);
+//   * slice 36: the no-card trial every account starts with is a trialing
+//     row with subscription ref 0: no processor subscription (customer_ref
+//     ''), so no invoice or end event can name it (event refs are 1..2),
+//     and ReserveTopup refuses it ("needs_card", app.ErrTopupNeedsCard)
+//     before any attempt or charge. AddCard (store.AddCardToTrial) puts
+//     processor subscription 1 behind it; TrialExpire ends it at its
+//     period_end; Reopen after that opens a paid plan, charged today.
 
 module billing_topup {
 
@@ -220,6 +227,7 @@ module billing_topup {
   // the write lock). Returns the new db and the reported result.
   pure def reserve(d: Db, t: int): (Db, str) =
     if (not(hasAccess(d.sub))) (d, "plan_ended")
+    else if (d.sub.ref == 0) (d, "needs_card")   // a no-card trial: nothing to charge
     else if (capCount(d, d.month) >= TOPUP_CAP) (d, "cap")
     else ({ ...d, att: d.att.set(t, { status: "pending", month: d.month, ref: 0, awaiting: true, reply: "none" }) },
           "reserved")
@@ -424,6 +432,29 @@ module billing_topup {
            "trial_started"),
   }
 
+  // Slice 36: sign-up starts the no-card trial: trialing with no processor
+  // subscription (ref 0). Nothing is sent to the processor.
+  action StartNoCardTrial = all {
+    db.sub.status == "none",
+    commit({ ...db, sub: { ...noSub, status: "trialing", ref: 0 } }, proc, "nocard_trial_started"),
+  }
+
+  // Slice 36: a card added inside the no-card trial (app.addCardToTrial):
+  // processor subscription 1, still trialing until the same end.
+  action AddCard = all {
+    db.sub.status == "trialing", db.sub.ref == 0,
+    commit({ ...db, sub: { ...db.sub, ref: 1 } },
+           { ...proc, subs: proc.subs.set(1, { open: true, paid: 0, ended: false }) },
+           "card_added"),
+  }
+
+  // Slice 36: the no-card trial reached its period_end (Plan /
+  // EndExpiredNoCardTrials): ended, with no processor involved.
+  action TrialExpire = all {
+    db.sub.status == "trialing", db.sub.ref == 0,
+    commit({ ...db, sub: { ...db.sub, status: "ended" } }, proc, "trial_expired"),
+  }
+
   // app.StartTrial for an ended plan (OpenPlan replaces only an ended row):
   // a NEW subscription ref, charged at once, active, period 0 of that ref.
   action Reopen = all {
@@ -547,6 +578,9 @@ module billing_topup {
 
   action stepWith(fixed: bool): bool = any {
     StartTrial,
+    StartNoCardTrial,
+    AddCard,
+    TrialExpire,
     Reopen,
     // A resubmitted token is settleExisting -> reconcile (= Reconcile) or a no-op.
     nondet t = oneOf(TOKENS) Reserve(t),
@@ -651,7 +685,18 @@ module billing_topup {
   pure def pastDueIsCurrent(d: Db): bool =
     d.sub.status == "past_due" implies d.sub.pastDueFor > d.sub.period
 
+  // Slice 36: while the plan has no processor subscription (ref 0: none or
+  // the no-card trial, live or ended), no top-up attempt exists, no charge
+  // was ever sent, and no credit was ever granted.
+  pure def noCardNeverCharged(d: Db, p: Proc): bool =
+    d.sub.ref == 0 implies and {
+      TOKENS.forall(t => st(d, t) == "none" and p.pi.get(t) == "unsent"),
+      d.credited == 0,
+      REFS.forall(r => not(p.subs.get(r).open)),
+    }
+
   pure def allOf(d: Db, p: Proc, g: Ghost): bool = and {
+    noCardNeverCharged(d, p),
     noDoubleCredit(d),
     monthlyCap(d),
     terminalMonotonic(d, g),
@@ -676,6 +721,7 @@ module billing_topup {
   val inv_failed_line_consistent: bool = failedLineConsistent(db)
   val inv_period_monotonic: bool = periodMonotonic(db, ghost)
   val inv_past_due_is_current: bool = pastDueIsCurrent(db)
+  val inv_nocard_never_charged: bool = noCardNeverCharged(db, proc)
   val inv_all: bool = allOf(db, proc, ghost)
 
   // ---------------------------------------------------------------- test helpers
@@ -967,7 +1013,8 @@ module billing_topup {
     TOKENS.forall(t => p.sent.piSucc.get(t) implies p.pi.get(t) == "succeeded"),
     // subscription refs
     d.sub.status == "none" implies (d.sub.ref == 0 and REFS.forall(r => not(g.endedRefs.get(r)))),
-    d.sub.status != "none" implies REFS.contains(d.sub.ref),
+    d.sub.status != "none" implies (REFS.contains(d.sub.ref) or d.sub.ref == 0),
+    (d.sub.ref == 0 and d.sub.status != "none") implies d.sub.status.in(Set("trialing", "ended")),
     REFS.forall(r => g.endedRefs.get(r) implies r <= d.sub.ref),
     d.month <= MAX_MONTH,
   }
@@ -975,6 +1022,41 @@ module billing_topup {
   pure def indOf(d: Db, p: Proc, g: Ghost): bool = allOf(d, p, g) and lemmas(d, p, g)
 
   val ind_inv: bool = indOf(db, proc, ghost)
+
+  // ---- slice 36: the no-card trial
+  run nocardTopupRefusedTest =
+    init
+      .then(StartNoCardTrial)
+      .then(Reserve(1))
+      .expect(lastResult == "needs_card" and status(1) == "none" and proc.pi.get(1) == "unsent" and inv_all)
+      .then(ChargeCall(1, "succeeded"))
+      .fail()
+
+  run nocardAddCardThenTopupTest =
+    init
+      .then(StartNoCardTrial)
+      .then(AddCard)
+      .expect(db.sub.status == "trialing" and db.sub.ref == 1)
+      .then(payOne(1, true))
+      .expect(status(1) == "succeeded" and db.credited == TOPUP_CREDIT and inv_all)
+
+  run nocardExpiryThenReopenTest =
+    init
+      .then(StartNoCardTrial)
+      .then(TrialExpire)
+      .expect(db.sub.status == "ended" and db.sub.ref == 0)
+      .then(Reserve(1))
+      .expect(lastResult == "plan_ended" and inv_all)
+      .then(Reopen)
+      .expect(db.sub.status == "active" and db.sub.ref == 1 and inv_all)
+      .then(payOne(2, true))
+      .expect(status(2) == "succeeded" and inv_all)
+
+  run nocardEventsNeverApplyTest =
+    init
+      .then(StartNoCardTrial)
+      .then(ProcInvoice(1, true))
+      .fail()
 
   // An arbitrary state over the typing ranges that satisfies ind_inv.
   action init_ind = {

@@ -6,7 +6,7 @@
     <a class="btn btn-accent" href="/signup">Start the {{.TrialDays}}-day trial</a>
     <a class="link" href="/signin">Sign in</a>
   </p>
-  <p class="meta">{{money .Price}} a month after the trial · card up front · cancel any time</p>
+  <p class="meta">{{.TrialDays}} days free · no card needed · then {{money .Price}} a month if you keep it</p>
 </section>
 <section class="plain-list" aria-label="How Scry works">
   <div class="plain-row"><h2 class="title">Five minutes, then done.</h2><p>Open Scry, answer what's due by typing or speaking, and close it. It decides what you need to see today so you don't have to.</p></div>

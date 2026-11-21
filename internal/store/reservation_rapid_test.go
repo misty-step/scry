@@ -74,7 +74,8 @@ func TestReservationTransitionTable(t *testing.T) {
 
 const (
 	rAllowance = 1000 // a month's allowance (scaled micros)
-	rTrial     = 600  // the trial's allowance
+	rTrial     = 600  // the trial's allowance once a card is on file
+	rNoCard    = 300  // the no-card trial's cap (slice 36)
 	rTopup     = 400  // one top-up's credit
 	rGrace     = 6 * time.Hour
 	rTTL       = time.Hour
@@ -103,7 +104,10 @@ type reservationMachine struct {
 	allowance    int64
 	used         int64
 	topup        int64
-	usages       int // usage rows
+	usages       int       // usage rows
+	noCard       bool      // slice 36: no processor customer (a no-card trial, live or ended)
+	periodEnd    time.Time // the no-card trial's end, in whole seconds
+	noCardSpent  int64     // ghost: spent while there was no card
 
 	held   map[string]resHold
 	states map[string]ReservationState // every id ever issued
@@ -114,8 +118,10 @@ type reservationMachine struct {
 
 func (m *reservationMachine) hasAccess() bool {
 	switch m.status {
-	case SubTrialing, SubActive:
+	case SubActive:
 		return true
+	case SubTrialing:
+		return !m.noCard || m.now.Before(m.periodEnd)
 	case SubPastDue:
 		return !m.pastDueSince.IsZero() && m.now.Sub(m.pastDueSince) <= rGrace
 	}
@@ -264,8 +270,12 @@ func (m *reservationMachine) Settle(t *rapid.T) {
 	m.move(t, id, settleEvent(cost))
 	if cost > 0 {
 		left := max(0, m.allowance-m.used)
+		before := m.used
 		m.topup = max(0, m.topup-max(0, cost-left))
 		m.used = max(0, min(m.allowance, m.used+cost))
+		if m.noCard {
+			m.noCardSpent += m.used - before
+		}
 		m.usages++
 	}
 }
@@ -362,6 +372,9 @@ func (m *reservationMachine) PeriodReset(t *rapid.T) {
 	if m.status == SubEnded {
 		t.Skip("an ended plan is not invoiced")
 	}
+	if m.noCard {
+		t.Skip("a no-card trial has no processor subscription to invoice")
+	}
 	if _, err := m.us.ChangeSubscription(m.ctx, func(s *Subscription) {
 		s.Status, s.PastDueSince, s.CardError = SubActive, time.Time{}, ""
 		s.AllowanceMicros, s.UsedMicros = rAllowance, 0
@@ -376,6 +389,9 @@ func (m *reservationMachine) TopupCredit(t *rapid.T) {
 	if !m.hasAccess() {
 		t.Skip("no access: top-up refused")
 	}
+	if m.noCard {
+		t.Skip("no card on file: top-up refused")
+	}
 	if _, err := m.us.ChangeSubscription(m.ctx, func(s *Subscription) { s.TopupMicros += rTopup }); err != nil {
 		t.Fatal(err)
 	}
@@ -386,13 +402,15 @@ func (m *reservationMachine) TopupCredit(t *rapid.T) {
 // the end of the plan, or, once ended, a new plan under a new ref.
 func (m *reservationMachine) StatusChange(t *rapid.T) {
 	switch to := rapid.SampledFrom([]SubscriptionStatus{SubPastDue, SubEnded, SubActive}).Draw(t, "status"); {
+	case m.noCard && m.status != SubEnded:
+		t.Skip("no processor event names a no-card trial")
 	case m.status == SubEnded && to == SubActive:
 		m.refs++
 		if err := m.us.OpenPlan(m.ctx, Subscription{SubscriptionRef: fmt.Sprintf("sub_%d", m.refs), CustomerRef: "cus_r",
 			Status: SubActive, AllowanceMicros: rAllowance}); err != nil {
 			t.Fatal(err)
 		}
-		m.status, m.pastDueSince, m.allowance, m.used = SubActive, time.Time{}, rAllowance, 0
+		m.status, m.pastDueSince, m.allowance, m.used, m.noCard = SubActive, time.Time{}, rAllowance, 0, false
 	case m.status == SubEnded || to == SubActive:
 		t.Skip("no such move")
 	case to == SubPastDue:
@@ -413,6 +431,64 @@ func (m *reservationMachine) StatusChange(t *rapid.T) {
 		if _, err := m.us.ChangeSubscription(m.ctx, func(s *Subscription) { s.Status = SubEnded }); err != nil {
 			t.Fatal(err)
 		}
+		m.status = SubEnded
+	}
+}
+
+// ------------------------------------------------- slice 36: no-card trial
+
+// TrialEndClock jumps to within a couple of seconds of the no-card
+// trial's period_end, either side, so the expiry boundary is crossed in
+// both directions at sub-second offsets.
+func (m *reservationMachine) TrialEndClock(t *rapid.T) {
+	if m.periodEnd.IsZero() {
+		t.Skip("no trial end")
+	}
+	at := m.periodEnd.Add(time.Duration(rapid.Int64Range(-int64(2*time.Second), int64(2*time.Second)).Draw(t, "offset")))
+	if at.Before(m.now) {
+		t.Skip("time does not go back")
+	}
+	m.now = at
+}
+
+// AddCard puts a card behind the no-card trial: allowed only while it is
+// trialing before period_end; it keeps the end and what was spent.
+func (m *reservationMachine) AddCard(t *rapid.T) {
+	m.refs++
+	next := Subscription{CustomerRef: "cus_r", SubscriptionRef: fmt.Sprintf("sub_%d", m.refs), PaymentRef: "pm_r", CardBrand: "Visa", CardLast4: "4242"}
+	got, err := m.us.AddCardToTrial(m.ctx, next, rTrial, m.now)
+	if !(m.noCard && m.status == SubTrialing && m.now.Before(m.periodEnd)) {
+		if !errors.Is(err, ErrNotNoCardTrial) {
+			t.Fatalf("card added to %s (no card %v, now %v, end %v): %v", m.status, m.noCard, m.now, m.periodEnd, err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("add card: %v", err)
+	}
+	m.noCard, m.allowance = false, max(m.allowance, rTrial)
+	if got.Status != SubTrialing || got.UsedMicros != m.used || !got.PeriodEnd.Equal(m.periodEnd) || got.CustomerRef != "cus_r" {
+		t.Fatalf("card added: %+v", got)
+	}
+}
+
+// ExpireTrial is Plan's (or housekeeping's) end of a no-card trial: it
+// ends exactly the no-card trials at or past period_end.
+func (m *reservationMachine) ExpireTrial(t *rapid.T) {
+	want := m.noCard && m.status == SubTrialing && !m.now.Before(m.periodEnd)
+	var ended bool
+	var err error
+	if rapid.Bool().Draw(t, "sweep") {
+		var n int64
+		n, err = m.st.EndExpiredNoCardTrials(m.ctx, m.now)
+		ended = n == 1
+	} else {
+		ended, err = m.us.EndExpiredNoCardTrial(m.ctx, m.now)
+	}
+	if err != nil || ended != want {
+		t.Fatalf("end expired trial = %v, %v; want %v", ended, err, want)
+	}
+	if want {
 		m.status = SubEnded
 	}
 }
@@ -450,6 +526,27 @@ func (m *reservationMachine) Check(t *rapid.T) {
 	}
 	if reserved != m.reserved() {
 		t.Fatalf("reserved %d, model %d", reserved, m.reserved())
+	}
+	// slice 36: inv_nocard_never_charged and inv_nocard_spend_capped.
+	if sub.NoCard() != m.noCard {
+		t.Fatalf("customer_ref %q, model no card %v", sub.CustomerRef, m.noCard)
+	}
+	if m.noCard {
+		if sub.TopupMicros != 0 || sub.AllowanceMicros != rNoCard || (sub.Status != SubTrialing && sub.Status != SubEnded) {
+			t.Fatalf("no-card plan %+v", sub)
+		}
+		if sub.UsedMicros+reserved > rNoCard {
+			t.Fatalf("no-card trial: used %d + held %d over the cap %d", sub.UsedMicros, reserved, rNoCard)
+		}
+	}
+	if m.noCardSpent > rNoCard {
+		t.Fatalf("%d spent without a card, over the cap %d", m.noCardSpent, rNoCard)
+	}
+	// inv_nocard_expiry: from period_end on, the store refuses a hold.
+	if m.noCard && !m.now.Before(m.periodEnd) {
+		if err := m.us.ReserveAt(m.ctx, "probe-after-end", 1, m.now, rGrace); !errors.Is(err, ErrReservationNoAccess) {
+			t.Fatalf("hold after the no-card trial's end (now %v, end %v): %v", m.now, m.periodEnd, err)
+		}
 	}
 	if n := m.usageRows(t); n != m.usages {
 		t.Fatalf("%d usage rows, model %d (a settle spent twice or not at all)", n, m.usages)
@@ -495,11 +592,25 @@ func TestRapidReservationStateMachine(t *testing.T) {
 		}
 		m.uid, m.us = u.ID, st.For(u.ID)
 		m.refs++
-		if err := m.us.OpenPlan(ctx, Subscription{SubscriptionRef: "sub_1", CustomerRef: "cus_r", Status: SubTrialing,
-			AllowanceMicros: rTrial, PeriodStart: m.now, PeriodEnd: m.now.AddDate(0, 0, 7)}); err != nil {
-			t.Fatal(err)
+		if rapid.Bool().Draw(t, "nocard") {
+			// slice 36: the no-card trial every account starts with; a short
+			// one, so the clock reaches its end.
+			end := m.now.Add(time.Duration(rapid.Int64Range(int64(time.Second), int64(6*time.Hour)).Draw(t, "trial_len")))
+			opened, err := m.us.OpenNoCardTrial(ctx, m.now, end, rNoCard, "trial started")
+			if err != nil || !opened {
+				t.Fatal(opened, err)
+			}
+			if again, err := m.us.OpenNoCardTrial(ctx, m.now, end, rNoCard, "trial started"); err != nil || again {
+				t.Fatalf("a second no-card trial opened: %v %v", again, err)
+			}
+			m.status, m.allowance, m.noCard, m.periodEnd = SubTrialing, rNoCard, true, time.Unix(end.Unix(), 0).UTC()
+		} else {
+			if err := m.us.OpenPlan(ctx, Subscription{SubscriptionRef: "sub_1", CustomerRef: "cus_r", Status: SubTrialing,
+				AllowanceMicros: rTrial, PeriodStart: m.now, PeriodEnd: m.now.AddDate(0, 0, 7)}); err != nil {
+				t.Fatal(err)
+			}
+			m.status, m.allowance = SubTrialing, rTrial
 		}
-		m.status, m.allowance = SubTrialing, rTrial
 		m.Check(t)
 		t.Repeat(rapid.StateMachineActions(m))
 	})

@@ -62,6 +62,8 @@ func TestSubscriptionTransitionTable(t *testing.T) {
 		{SubTrialing, SubEventInvoicePaid}:   SubActive,
 		{SubTrialing, SubEventInvoiceFailed}: SubPastDue,
 		{SubTrialing, SubEventEnded}:         SubEnded,
+		{SubTrialing, SubEventAddCard}:       SubTrialing, // a card added to a no-card trial
+		{SubTrialing, SubEventTrialExpired}:  SubEnded,    // a no-card trial ran out
 		{SubActive, SubEventInvoicePaid}:     SubActive,
 		{SubActive, SubEventInvoiceFailed}:   SubPastDue,
 		{SubActive, SubEventEnded}:           SubEnded,

@@ -455,7 +455,7 @@ func (r *Runner) runSpeech(ctx context.Context) map[string]any {
 	for _, rec := range base {
 		byClip[rec.ClipID] = rec
 	}
-	const todayModel = "openai/gpt-6-luna-decisions (production default via ai.Jev Model \"\")"
+	todayModel := ai.DefaultOpenRouterJudgeModel + " (production default via ai.Jev Model \"\")"
 	matrix(len(clips), []string{todayModel}, func(i int, m string) {
 		clip := clips[i]
 		tr, ok := byClip[clip.ID]

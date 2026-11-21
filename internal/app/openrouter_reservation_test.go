@@ -45,6 +45,11 @@ const routerUsage = `data: {"model":"anthropic/claude-sonnet-5.5","choices":[],"
 // the draft's reservation stays held instead of being settled at $0 and
 // handing the learner back the full allowance for an unmetered retry.
 // The same stream with a usage chunk settles at exactly the reported cost.
+// draftHold is the worst case of one draft on the default OpenRouter
+// drafting model, openai/gpt-6.2-sol at $2/$10 per million tokens:
+// (32,000 + 1,024) input and 16,000 output tokens.
+const draftHold = (32000+1024)*2 + 16000*10
+
 func TestG2_OpenRouterDraftTruncatedWithoutUsageKeepsReservation(t *testing.T) {
 	partial := routerChunk(`{"kind":"topic","title":"Physics"}`+"\n") +
 		routerChunk(`{"idea":{"title":"Force","summary":"Push","items":[{"q":"Unit of force?","a":"Newton"}]}}`+"\n") +
@@ -55,9 +60,9 @@ func TestG2_OpenRouterDraftTruncatedWithoutUsageKeepsReservation(t *testing.T) {
 		used       int64 // micros spent
 		status     string
 	}{
-		{"truncated, no usage, no DONE", partial, ai.DraftBudgetMicros, 0, "failed"},
-		{"stream error, no usage", partial + `data: {"error":{"code":502,"message":"upstream"}}` + "\n\n", ai.DraftBudgetMicros, 0, "failed"},
-		{"finish_reason error, no usage", partial + `data: {"choices":[{"delta":{},"finish_reason":"error"}]}` + "\n\n" + "data: [DONE]\n\n", ai.DraftBudgetMicros, 0, "failed"},
+		{"truncated, no usage, no DONE", partial, draftHold, 0, "failed"},
+		{"stream error, no usage", partial + `data: {"error":{"code":502,"message":"upstream"}}` + "\n\n", draftHold, 0, "failed"},
+		{"finish_reason error, no usage", partial + `data: {"choices":[{"delta":{},"finish_reason":"error"}]}` + "\n\n" + "data: [DONE]\n\n", draftHold, 0, "failed"},
 		{"usage reported, then truncated", partial + routerUsage, 0, 12300, "failed"},
 		{"complete with usage", routerChunk(`{"kind":"topic","title":"Physics"}`+"\n"+`{"idea":{"title":"Force","summary":"Push","items":[{"q":"Unit of force?","a":"Newton"}]}}`+"\n") + routerUsage + "data: [DONE]\n\n", 0, 12300, "ready"},
 	} {
