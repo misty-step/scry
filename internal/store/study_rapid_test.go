@@ -56,20 +56,23 @@ func TestSessionTransitionTable(t *testing.T) {
 
 // sessionModel is the reference model of one learner's study state.
 type sessionModel struct {
-	ctx   context.Context
-	st    *Store
-	us    *UserStore
-	now   time.Time
-	ideas int64
+	ctx context.Context
+	st  *Store
+	us  *UserStore
+	now time.Time
 
 	items   []int64
 	exact   map[int64]bool
 	deleted map[int64]bool
 	reps    map[int64]int
+	ideaOf  map[int64]int64 // each item is in an idea of its own
+	trashed map[int64]bool  // ideas in Trash
+	viaIdea map[int64]bool  // items removed with their idea (restored with it)
 
 	open     int64           // the open session, or 0
 	ended    []int64         // sessions that are over
 	entries  map[int64]bool  // items of the open session
+	order    []int64         // the open session's items, in order
 	answered map[int64]int64 // item -> its scored review in the open session
 	pending  int64           // the review on screen
 	pendItem int64           // its item
@@ -87,6 +90,26 @@ func (m *sessionModel) phase() SessionPhase {
 		return PhaseRetryingExact
 	}
 	return PhaseAsking
+}
+
+// current is the item the open session is asking for: the retried item,
+// else the first of its items, in order, still in the library and not yet
+// answered (StudySession.Current, specs/study_session.qnt currentOf).
+func (m *sessionModel) current() int64 {
+	if m.retry != 0 {
+		return m.retry
+	}
+	for _, id := range m.order {
+		if _, answered := m.answered[id]; !answered && !m.deleted[id] {
+			return id
+		}
+	}
+	return 0
+}
+
+// observed is the session state a caller that is up to date would pass to Advance.
+func (m *sessionModel) observed() SessionObserved {
+	return SessionObserved{SessionID: m.open, PendingReviewID: m.pending, RetryItemID: m.retry}
 }
 
 func (m *sessionModel) tick() time.Time { m.now = m.now.Add(time.Minute); return m.now }
@@ -129,7 +152,7 @@ func (m *sessionModel) Start(t *rapid.T) {
 		m.ended = append(m.ended, m.open)
 	}
 	m.open, m.pending, m.pendItem, m.retry = id, 0, 0, 0
-	m.entries, m.answered = map[int64]bool{}, map[int64]int64{}
+	m.entries, m.answered, m.order = map[int64]bool{}, map[int64]int64{}, ids
 	for _, it := range ids {
 		m.entries[it] = true
 	}
@@ -156,7 +179,7 @@ func (m *sessionModel) AnswerScored(t *rapid.T) {
 		t.Skip("no session yet")
 	}
 	_, answered := m.answered[item]
-	legal := m.open != 0 && m.phase() == PhaseAsking && m.entries[item] && !answered && !m.deleted[item]
+	legal := m.open != 0 && m.phase() == PhaseAsking && m.entries[item] && !answered && !m.deleted[item] && m.current() == item
 	id, err := m.record(t, session, item, false, hold)
 	m.expect(t, fmt.Sprintf("scored answer to %d (hold %v) in %s", item, hold, m.phase()), err, legal)
 	if legal {
@@ -198,11 +221,37 @@ func (m *sessionModel) Advance(t *rapid.T) {
 	if retry != 0 {
 		legal = m.phase() == PhasePendingReview && m.pendItem == retry && m.pendWord && m.exact[retry] && !m.deleted[retry]
 	}
-	err := m.us.Advance(m.ctx, m.open, retry)
+	err := m.us.Advance(m.ctx, m.observed(), retry)
 	m.expect(t, fmt.Sprintf("advance (retry %d) in %s", retry, m.phase()), err, legal)
 	if legal {
 		m.pending, m.pendItem, m.pendWord, m.retry = 0, 0, false, retry
 	}
+}
+
+// StaleAdvance moves the open session on from a state it is no longer in:
+// a judgment or retry another tab has since replaced or cleared. It must
+// be refused and change nothing (specs/study_session.qnt, commitNextWith).
+func (m *sessionModel) StaleAdvance(t *rapid.T) {
+	if m.open == 0 {
+		t.Skip("no open session")
+	}
+	seen := m.observed()
+	switch rapid.IntRange(0, 2).Draw(t, "stale") {
+	case 0:
+		seen.PendingReviewID = m.pending + rapid.Int64Range(1, 3).Draw(t, "delta")
+	case 1:
+		seen.PendingReviewID = 0
+		if m.pending == 0 {
+			seen.PendingReviewID = rapid.Int64Range(1, 50).Draw(t, "earlier")
+		}
+	case 2:
+		seen.RetryItemID = m.retry + rapid.SampledFrom(m.items).Draw(t, "other")
+	}
+	var retry int64
+	if m.pendItem != 0 && rapid.Bool().Draw(t, "again") {
+		retry = m.pendItem
+	}
+	m.expect(t, fmt.Sprintf("stale advance %+v (retry %d) in %s", seen, retry, m.phase()), m.us.Advance(m.ctx, seen, retry), false)
 }
 
 func (m *sessionModel) End(t *rapid.T) {
@@ -223,8 +272,8 @@ func (m *sessionModel) MutateEnded(t *rapid.T) {
 	item := m.item(t)
 	_, err := m.record(t, old, item, rapid.Bool().Draw(t, "practice"), true)
 	m.expect(t, "answer in an ended session", err, false)
-	m.expect(t, "advance an ended session", m.us.Advance(m.ctx, old, 0), false)
-	m.expect(t, "retry in an ended session", m.us.Advance(m.ctx, old, item), false)
+	m.expect(t, "advance an ended session", m.us.Advance(m.ctx, SessionObserved{SessionID: old}, 0), false)
+	m.expect(t, "retry in an ended session", m.us.Advance(m.ctx, SessionObserved{SessionID: old}, item), false)
 	m.expect(t, "end an ended session", m.us.EndSession(m.ctx, old, m.tick()), false)
 }
 
@@ -250,6 +299,39 @@ func (m *sessionModel) Remove(t *rapid.T) {
 	m.deleted[item] = true
 }
 
+// TrashIdea moves an item's idea to Trash, taking the item with it unless
+// it was already removed on its own.
+func (m *sessionModel) TrashIdea(t *rapid.T) {
+	item := m.item(t)
+	idea := m.ideaOf[item]
+	if m.trashed[idea] {
+		t.Skip("in Trash")
+	}
+	if err := m.us.RemoveIdea(m.ctx, idea, m.tick()); err != nil {
+		t.Fatal(err)
+	}
+	m.trashed[idea] = true
+	if !m.deleted[item] {
+		m.deleted[item], m.viaIdea[item] = true, true
+	}
+}
+
+// RestoreIdea brings an idea back from Trash, with the items it took.
+func (m *sessionModel) RestoreIdea(t *rapid.T) {
+	item := m.item(t)
+	idea := m.ideaOf[item]
+	if !m.trashed[idea] {
+		t.Skip("not in Trash")
+	}
+	if err := m.us.RestoreIdea(m.ctx, idea); err != nil {
+		t.Fatal(err)
+	}
+	m.trashed[idea] = false
+	if m.viaIdea[item] {
+		m.deleted[item], m.viaIdea[item] = false, false
+	}
+}
+
 func (m *sessionModel) Check(t *rapid.T) {
 	s, err := m.us.ActiveSession(m.ctx)
 	if err != nil {
@@ -265,6 +347,13 @@ func (m *sessionModel) Check(t *rapid.T) {
 		}
 		if s.PendingReviewID != 0 && s.RetryItemID != 0 {
 			t.Fatal("a judgment on screen and a retry at once")
+		}
+		var cur int64
+		if e := s.Current(); e != nil {
+			cur = e.Item.ID
+		}
+		if cur != m.current() {
+			t.Fatalf("current item %d, model %d", cur, m.current())
 		}
 		for _, e := range s.Entries {
 			want, ok := m.answered[e.Item.ID]
@@ -289,7 +378,8 @@ func (m *sessionModel) Check(t *rapid.T) {
 }
 
 // TestRapidSessionMachine drives the real SQLite store with arbitrary,
-// often illegal, session events and checks it accepts exactly what the
+// often illegal, session events (including stale moves and ideas moved to
+// Trash and back mid-session) and checks it accepts exactly what the
 // transition table and its guards allow, against a reference model.
 func TestRapidSessionMachine(t *testing.T) {
 	dir := rapidDir(t)
@@ -306,20 +396,20 @@ func TestRapidSessionMachine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		m := &sessionModel{ctx: ctx, st: st, us: st.For(u.ID), now: now,
-			exact: map[int64]bool{}, deleted: map[int64]bool{}, reps: map[int64]int{}}
-		idea, err := m.us.CreateIdea(ctx, 0, "Idea", "", "", now)
-		if err != nil {
-			t.Fatal(err)
-		}
+		m := &sessionModel{ctx: ctx, st: st, us: st.For(u.ID), now: now, exact: map[int64]bool{}, deleted: map[int64]bool{},
+			reps: map[int64]int{}, ideaOf: map[int64]int64{}, trashed: map[int64]bool{}, viaIdea: map[int64]bool{}}
 		count := rapid.IntRange(1, 4).Draw(t, "items")
 		for i := 0; i < count; i++ {
+			idea, err := m.us.CreateIdea(ctx, 0, fmt.Sprintf("Idea %d", i), "", "", now)
+			if err != nil {
+				t.Fatal(err)
+			}
 			ex := rapid.Bool().Draw(t, "exact")
 			id, err := m.us.AddItem(ctx, NewItem{IdeaID: idea, Prompt: "q", Answer: "a", Exact: ex}, now)
 			if err != nil {
 				t.Fatal(err)
 			}
-			m.items, m.exact[id] = append(m.items, id), ex
+			m.items, m.exact[id], m.ideaOf[id] = append(m.items, id), ex, idea
 		}
 		t.Repeat(rapid.StateMachineActions(m))
 	})

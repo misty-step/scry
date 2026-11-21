@@ -409,8 +409,9 @@ func answerEvent(r Review, hold bool) SessionEvent {
 
 // guardAnswer checks, under the write lock, that the session can take
 // the review: the table allows the event in the session's phase, and the
-// event's guard holds. A scored answer must be for an item of the session
-// that is still in the library and not yet answered; a practice attempt
+// event's guard holds. A scored answer must be for the session's current
+// item: the first of its items, in order, that is still in the library and
+// not yet answered (specs/study_session.qnt, commitWith); a practice attempt
 // must be for the item the session is retrying, still an exact text, and
 // is always held on screen. A failure is a *TransitionError, so a double
 // submit, a second tab or an answer racing the session's end can never
@@ -442,15 +443,25 @@ func (u *UserStore) guardAnswer(ctx context.Context, tx *sql.Tx, r Review, hold 
 		}
 		return err
 	}
-	var n int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM session_items si JOIN items t ON t.id = si.item_id AND t.user_id = si.user_id
-		WHERE si.session_id = ? AND si.user_id = ? AND si.item_id = ? AND si.review_id = 0 AND t.deleted_at = 0`,
-		r.SessionID, u.uid, r.ItemID).Scan(&n); err != nil {
+	// The scored item must still be the session's current item: the first
+	// entry, by position, that is in the library and not yet answered. This
+	// is StudySession.Current() (the entries session() loads, in PhaseAsking
+	// where there is no retry), read again under the write lock. An item
+	// that was current when its answer went to the judge may not be any
+	// more: an earlier item can come back (its idea restored from Trash)
+	// while the judge is out, and then the answer is stale.
+	var current int64
+	err = tx.QueryRowContext(ctx, `
+		SELECT si.item_id FROM session_items si JOIN items t ON t.id = si.item_id AND t.user_id = si.user_id
+		JOIN ideas i ON i.id = t.idea_id AND i.user_id = t.user_id
+		WHERE si.session_id = ? AND si.user_id = ? AND si.review_id = 0 AND t.deleted_at = 0
+		ORDER BY si.position LIMIT 1`,
+		r.SessionID, u.uid).Scan(&current)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if n == 0 {
-		return refuse("the item is not waiting for an answer in this session")
+	if current != r.ItemID {
+		return refuse("the item is not the current item of this session")
 	}
 	return nil
 }
@@ -511,30 +522,51 @@ func (u *UserStore) RecordReview(ctx context.Context, r Review, next srs.State, 
 	return id, err
 }
 
+// SessionObserved is the state of a session a caller read before deciding
+// to move it on: which session, and the judgment on screen or the retry it
+// saw. Advance takes it as the expected state of the session.
+type SessionObserved struct {
+	SessionID       int64
+	PendingReviewID int64 // the judgment on screen, or 0
+	RetryItemID     int64 // the exact text being retried, or 0
+}
+
+// Observed is what a caller has seen of this session, for Advance.
+func (s *StudySession) Observed() SessionObserved {
+	return SessionObserved{SessionID: s.ID, PendingReviewID: s.PendingReviewID, RetryItemID: s.RetryItemID}
+}
+
 // Advance clears the judgment on screen. retryItemID, when not zero, puts
 // that item back up for another attempt.
 //
 // It is a session transition checked under the write lock: clearing a
 // judgment (EventAdvance) needs one on screen, or a retry to skip; a
 // retry (EventRetry) needs the judgment on screen to be a word-for-word
-// judgment of retryItemID, still an exact text in the library. Anything else, and any event on an
-// ended session, is a *TransitionError and changes nothing.
-func (u *UserStore) Advance(ctx context.Context, sessionID, retryItemID int64) error {
+// judgment of retryItemID, still an exact text in the library. The session
+// must also still be as the caller observed it: the same judgment on screen
+// and the same retry (specs/study_session.qnt, commitNextWith). A delayed
+// move from a second tab that read an earlier judgment can therefore never
+// dismiss a newer one. Anything else, and any event on an ended session, is
+// a *TransitionError and changes nothing.
+func (u *UserStore) Advance(ctx context.Context, from SessionObserved, retryItemID int64) error {
 	return u.tx(ctx, func(tx *sql.Tx) error {
 		ev := EventAdvance
 		if retryItemID != 0 {
 			ev = EventRetry
 		}
-		row, err := u.lockedSession(ctx, tx, sessionID)
+		row, err := u.lockedSession(ctx, tx, from.SessionID)
 		if errors.Is(err, ErrNotFound) {
 			return &TransitionError{From: PhaseEnded, Event: ev, Reason: "no such session"}
 		}
 		if err != nil {
 			return err
 		}
-		from := row.phase()
-		if _, err := Transition(from, ev); err != nil {
+		phase := row.phase()
+		if _, err := Transition(phase, ev); err != nil {
 			return err
+		}
+		if row.pending != from.PendingReviewID || row.retry != from.RetryItemID {
+			return &TransitionError{From: phase, Event: ev, Reason: "the session moved on since it was read"}
 		}
 		if ev == EventRetry {
 			var exact int
@@ -542,7 +574,7 @@ func (u *UserStore) Advance(ctx context.Context, sessionID, retryItemID int64) e
 				SELECT t.exact FROM reviews r JOIN items t ON t.id = r.item_id AND t.user_id = r.user_id
 				WHERE r.id = ? AND r.user_id = ? AND r.item_id = ? AND r.judge = 'exact' AND t.deleted_at = 0`, row.pending, u.uid, retryItemID).Scan(&exact)
 			if errors.Is(err, sql.ErrNoRows) || (err == nil && exact != 1) {
-				return &TransitionError{From: from, Event: ev, Reason: "only an exact text judged word for word on screen can be tried again"}
+				return &TransitionError{From: phase, Event: ev, Reason: "only an exact text judged word for word on screen can be tried again"}
 			}
 			if err != nil {
 				return err
@@ -550,7 +582,7 @@ func (u *UserStore) Advance(ctx context.Context, sessionID, retryItemID int64) e
 		}
 		_, err = tx.ExecContext(ctx, `
 			UPDATE study_sessions SET pending_review_id = 0, retry_item_id = ? WHERE id = ? AND user_id = ? AND ended_at = 0`,
-			retryItemID, sessionID, u.uid)
+			retryItemID, from.SessionID, u.uid)
 		return err
 	})
 }

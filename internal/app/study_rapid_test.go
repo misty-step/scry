@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -24,11 +25,15 @@ import (
 )
 
 // scriptedModel judges with whatever verdict the test chose last. fail
-// makes it fail before using anything (no usage, no model name).
+// makes it fail with no usage (no model name): an unknown outcome. With
+// failUse set as well, the failure reports that usage instead (a refusal
+// the provider metered). panics makes the call panic with no usage.
 type scriptedModel struct {
 	mu      sync.Mutex
 	verdict srs.Verdict
 	fail    bool
+	failUse *ai.Usage
+	panics  bool
 	calls   int
 	// gate, when set, is waited on by every Judge call before it answers.
 	gate    chan struct{}
@@ -40,7 +45,7 @@ func (m *scriptedModel) Name() string { return "scripted" }
 func (m *scriptedModel) Judge(ctx context.Context, in ai.JudgeInput) (ai.Judgment, ai.Usage, error) {
 	m.mu.Lock()
 	m.calls++
-	v, fail, gate, arrived := m.verdict, m.fail, m.gate, m.arrived
+	v, fail, failUse, panics, gate, arrived := m.verdict, m.fail, m.failUse, m.panics, m.gate, m.arrived
 	m.mu.Unlock()
 	if arrived != nil {
 		arrived <- struct{}{}
@@ -51,8 +56,15 @@ func (m *scriptedModel) Judge(ctx context.Context, in ai.JudgeInput) (ai.Judgmen
 		case <-ctx.Done():
 		}
 	}
+	if panics {
+		panic("the judge panicked mid-call")
+	}
 	if fail {
-		return ai.Judgment{}, ai.Usage{}, errors.New("the model is down")
+		var use ai.Usage
+		if failUse != nil {
+			use = *failUse
+		}
+		return ai.Judgment{}, use, errors.New("the model is down")
 	}
 	return ai.Judgment{Verdict: v, Reason: "scripted reason for " + string(v)},
 		ai.Usage{Model: "test-judge", InputTokens: 10, OutputTokens: 5}, nil
@@ -123,14 +135,16 @@ func newStudyWorld(t fataler, path string) *studyWorld {
 	return w
 }
 
+// addItems adds one item per flag (exact or not), each in an idea of its
+// own, so an item can be moved to Trash and back with its idea alone.
 func (w *studyWorld) addItems(t fataler, exact ...bool) []int64 {
 	t.Helper()
-	idea, err := w.us.CreateIdea(w.ctx, 0, "Idea", "", "", w.now())
-	if err != nil {
-		t.Fatal(err)
-	}
 	var ids []int64
 	for i, ex := range exact {
+		idea, err := w.us.CreateIdea(w.ctx, 0, fmt.Sprintf("Idea %d", i), "", "", w.now())
+		if err != nil {
+			t.Fatal(err)
+		}
 		id, err := w.us.AddItem(w.ctx, store.NewItem{IdeaID: idea, Prompt: fmt.Sprintf("question %d", i),
 			Answer: fmt.Sprintf("answer number %d", i), Exact: ex}, w.now())
 		if err != nil {
@@ -188,6 +202,16 @@ func (w *studyWorld) schedule(t fataler, id int64) srs.State {
 	return s
 }
 
+// ideaOf is the idea an item belongs to.
+func (w *studyWorld) ideaOf(t fataler, item int64) int64 {
+	t.Helper()
+	var idea int64
+	if err := w.st.DB().QueryRow(`SELECT idea_id FROM items WHERE id = ?`, item).Scan(&idea); err != nil {
+		t.Fatal(err)
+	}
+	return idea
+}
+
 func (w *studyWorld) count(t fataler, q string, args ...any) int {
 	t.Helper()
 	var n int
@@ -207,6 +231,8 @@ type studyMachine struct {
 	exact   map[int64]bool
 	text    map[int64][2]string // the item's current prompt and answer
 	removed map[int64]bool
+	trashed map[int64]bool      // ideas in Trash
+	viaIdea map[int64]bool      // items removed with their idea (restored with it)
 	sched   map[int64]srs.State // last observed schedule
 	reviews map[int64]reviewRow // every review as first written
 	graded  map[int64][2]string // the prompt and answer the review was judged against
@@ -394,6 +420,66 @@ func (m *studyMachine) Remove(t *rapid.T) {
 	m.removed[id] = true
 }
 
+// TrashIdea moves an item's idea to Trash mid-session (taking the item
+// with it unless it was already removed), and RestoreIdea brings it back:
+// an earlier item coming back becomes the current item again.
+func (m *studyMachine) TrashIdea(t *rapid.T) {
+	id := rapid.SampledFrom(m.items).Draw(t, "item")
+	idea := m.w.ideaOf(t, id)
+	if m.trashed[idea] || (!m.removed[id] && len(m.removed)+1 >= len(m.items)) {
+		t.Skip("in Trash, or keep at least one item")
+	}
+	// Trash is later than any earlier removal: RestoreIdea brings back only
+	// what was removed at the moment the idea was, so an item removed on its
+	// own in the same second would come back with it.
+	m.w.advance(time.Minute)
+	if err := m.w.us.RemoveIdea(m.w.ctx, idea, m.w.now()); err != nil {
+		t.Fatal(err)
+	}
+	m.trashed[idea] = true
+	if !m.removed[id] {
+		m.removed[id], m.viaIdea[id] = true, true
+	}
+}
+
+func (m *studyMachine) RestoreIdea(t *rapid.T) {
+	id := rapid.SampledFrom(m.items).Draw(t, "item")
+	idea := m.w.ideaOf(t, id)
+	if !m.trashed[idea] {
+		t.Skip("not in Trash")
+	}
+	if err := m.w.us.RestoreIdea(m.w.ctx, idea); err != nil {
+		t.Fatal(err)
+	}
+	delete(m.trashed, idea)
+	if m.viaIdea[id] {
+		delete(m.removed, id)
+		delete(m.viaIdea, id)
+	}
+}
+
+// StaleAdvance is a delayed Next from a tab that read the session before
+// it last moved: it must be refused and change nothing, so it can never
+// dismiss a judgment or retry put on screen since.
+func (m *studyMachine) StaleAdvance(t *rapid.T) {
+	s := m.session(t)
+	if s == nil {
+		t.Skip("no session")
+	}
+	seen := s.Observed()
+	if rapid.Bool().Draw(t, "pending") {
+		seen.PendingReviewID += rapid.Int64Range(1, 3).Draw(t, "delta")
+	} else {
+		seen.RetryItemID += rapid.SampledFrom(m.items).Draw(t, "other")
+	}
+	if err := m.w.us.Advance(m.w.ctx, seen, 0); !errors.Is(err, store.ErrIllegalTransition) {
+		t.Fatalf("stale advance %+v of %+v: %v", seen, s.Observed(), err)
+	}
+	if after := m.session(t); after == nil || after.Observed() != s.Observed() {
+		t.Fatal("a stale advance moved the session")
+	}
+}
+
 // Explain asks "Why?" about the judgment on screen or any earlier review.
 func (m *studyMachine) Explain(t *rapid.T) {
 	if len(m.reviews) == 0 {
@@ -440,7 +526,7 @@ func (m *studyMachine) EndSession(t *rapid.T) {
 	if err := m.w.us.EndSession(m.w.ctx, s.ID, m.w.now()); !errors.Is(err, store.ErrIllegalTransition) {
 		t.Fatalf("ending an ended session: %v", err)
 	}
-	if err := m.w.us.Advance(m.w.ctx, s.ID, 0); !errors.Is(err, store.ErrIllegalTransition) {
+	if err := m.w.us.Advance(m.w.ctx, s.Observed(), 0); !errors.Is(err, store.ErrIllegalTransition) {
 		t.Fatalf("advancing an ended session: %v", err)
 	}
 }
@@ -524,7 +610,8 @@ func sortedIDs(ids []int64) []int64 {
 // and app: phase consistency, FSRS bounds and monotonicity, practice never
 // moving the schedule or replacing the scored review, "Why?" explaining
 // the graded snapshot without writing anything, and stale or out-of-phase
-// submissions being refused.
+// submissions (and delayed moves on) being refused, with items moved to
+// Trash and back mid-session.
 func TestRapidStudyStateMachine(t *testing.T) {
 	dir := rapidDir(t)
 	var n atomic.Int64
@@ -537,6 +624,7 @@ func TestRapidStudyStateMachine(t *testing.T) {
 			exact = append(exact, rapid.Bool().Draw(t, "exact"))
 		}
 		m := &studyMachine{w: w, exact: map[int64]bool{}, text: map[int64][2]string{}, removed: map[int64]bool{},
+			trashed: map[int64]bool{}, viaIdea: map[int64]bool{},
 			sched: map[int64]srs.State{}, reviews: map[int64]reviewRow{}, graded: map[int64][2]string{}}
 		m.items = w.addItems(t, exact...)
 		for i, id := range m.items {
@@ -598,30 +686,252 @@ func TestStudyDoubleSubmitSchedulesOnce(t *testing.T) {
 	}
 }
 
-// TestStudyJudgeFailureReleasesReservation: a judge that fails before
-// using anything leaves no reservation behind. Before, the reservation
-// was only settled when the call reported a model, so each such failure
-// held the judge's budget forever and shrank the learner's allowance.
+// TestStudyJudgeFailureReleasesReservation: a failed judgment decides
+// its reservation by what is known of the provider's outcome (G2, as
+// runDraft does). A failure that reports usage (a refusal the provider
+// metered, or reported at zero cost) is settled at that cost, so nothing
+// stays held. A failure or panic with no usage is an unknown outcome: the
+// call may have been billed, so the hold is kept and a retry on a one-judge
+// budget is refused rather than spent unmetered. Before, the reservation
+// was settled at zero on every failure, deleting the hold.
 func TestStudyJudgeFailureReleasesReservation(t *testing.T) {
-	w := newStudyWorld(t, filepath.Join(t.TempDir(), "leak.db"))
+	cost := func(n int64) *int64 { return &n }
+	for _, tc := range []struct {
+		name     string
+		use      *ai.Usage // reported with the failure; nil: none
+		panics   bool
+		held     bool  // the hold is kept: the outcome is unknown
+		spent    int64 // what the failure was metered at
+		retryErr error // a retry on a one-judge budget
+	}{
+		{name: "refused at no cost", use: &ai.Usage{Model: "test-judge", CostMicros: cost(0)}},
+		{name: "refused and metered", use: &ai.Usage{Model: "test-judge", CostMicros: cost(700)}, spent: 700},
+		{name: "unknown outcome", held: true, retryErr: app.ErrAllowance},
+		{name: "panic mid-call", panics: true, held: true, retryErr: app.ErrAllowance},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newStudyWorld(t, filepath.Join(t.TempDir(), "judge.db"))
+			defer w.st.Close()
+			items := w.addItems(t, false)
+			w.oneJudgeBudget(t, tc.spent) // after what the failure is metered at, one judgment is left
+			if _, err := w.app.Study(w.ctx, w.user); err != nil {
+				t.Fatal(err)
+			}
+			w.model.mu.Lock()
+			w.model.fail, w.model.failUse, w.model.panics = true, tc.use, tc.panics
+			w.model.mu.Unlock()
+			err := func() (err error) {
+				defer func() {
+					if r := recover(); r != nil {
+						err = fmt.Errorf("panic: %v", r)
+					}
+				}()
+				_, err = w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed")
+				return err
+			}()
+			if (tc.panics && (err == nil || errors.Is(err, app.ErrJudgeUnavailable))) || (!tc.panics && !errors.Is(err, app.ErrJudgeUnavailable)) {
+				t.Fatalf("Answer with the judge failing: %v", err)
+			}
+			want := int64(0)
+			if tc.held {
+				want = ai.JudgeBudgetMicros
+			}
+			if reserved, err := w.us.ReservedMicros(w.ctx); err != nil || reserved != want {
+				t.Fatalf("%d micros reserved after the failure, want %d (%v)", reserved, want, err)
+			}
+			if sub, _ := w.us.Subscription(w.ctx); sub.UsedMicros != tc.spent {
+				t.Fatalf("the failure was metered at %d, want %d", sub.UsedMicros, tc.spent)
+			}
+			w.model.mu.Lock()
+			w.model.fail, w.model.failUse, w.model.panics = false, nil, false
+			calls := w.model.calls
+			w.model.mu.Unlock()
+			_, err = w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed")
+			if tc.retryErr != nil {
+				if !errors.Is(err, tc.retryErr) || w.model.calls != calls {
+					t.Fatalf("retry after an unknown outcome: %v, judged again %v; want %v with no call", err, w.model.calls != calls, tc.retryErr)
+				}
+			} else if err != nil || w.model.calls != calls+1 {
+				t.Fatalf("retry after a settled failure: %v", err)
+			}
+			if s := w.schedule(t, items[0]); (tc.retryErr != nil) != (s.Reps == 0) {
+				t.Fatalf("reps = %d", s.Reps)
+			}
+		})
+	}
+}
+
+// oneJudgeBudget leaves the learner exactly one judgment's reservation,
+// plus extra micros.
+func (w *studyWorld) oneJudgeBudget(t fataler, extra int64) {
+	t.Helper()
+	sub, err := w.us.Subscription(w.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub.AllowanceMicros, sub.UsedMicros, sub.TopupMicros = ai.JudgeBudgetMicros+extra, 0, 0
+	if err := w.us.SaveSubscription(w.ctx, sub); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// lostResponse is a transport that sends the request (it reads the whole
+// body, as a real connection would) and then loses the response.
+type lostResponse struct{ sent atomic.Int64 }
+
+func (l *lostResponse) RoundTrip(req *http.Request) (*http.Response, error) {
+	if _, err := io.Copy(io.Discard, req.Body); err != nil {
+		return nil, err
+	}
+	req.Body.Close()
+	l.sent.Add(1)
+	return nil, io.ErrUnexpectedEOF
+}
+
+// TestG2_UnknownJudgeOutcomeRetainsHold is the Cold Critic's probe on the
+// production judge: the real Jev adapter sends the request and the
+// response is lost (unexpected EOF), so it returns no usage. The provider
+// may have done (and billed) the work, so the reservation is kept, and a
+// retry on a one-judge budget is refused instead of being sent unmetered.
+// Only the TTL sweep releases the hold. Before, the hold was settled at
+// zero and deleted, and the retry was sent.
+func TestG2_UnknownJudgeOutcomeRetainsHold(t *testing.T) {
+	w := newStudyWorld(t, filepath.Join(t.TempDir(), "g2.db"))
 	defer w.st.Close()
+	transport := &lostResponse{}
+	w.app.Model = ai.Split{JudgeProvider: &ai.Jev{APIKey: "local-secret", BaseURL: "http://jev.test",
+		HTTP: &http.Client{Transport: transport}, Log: w.app.Log}, DraftProvider: w.model}
 	items := w.addItems(t, false)
+	w.oneJudgeBudget(t, 0)
 	if _, err := w.app.Study(w.ctx, w.user); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed"); !errors.Is(err, app.ErrJudgeUnavailable) {
+		t.Fatalf("Answer with the response lost: %v", err)
+	}
+	if transport.sent.Load() != 1 {
+		t.Fatalf("%d requests sent, want 1", transport.sent.Load())
+	}
+	if reserved, err := w.us.ReservedMicros(w.ctx); err != nil || reserved != ai.JudgeBudgetMicros {
+		t.Fatalf("%d micros reserved after an unknown outcome, want the hold of %d kept (%v)", reserved, ai.JudgeBudgetMicros, err)
+	}
+	if _, err := w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed"); !errors.Is(err, app.ErrAllowance) {
+		t.Fatalf("retry on a one-judge budget with the hold kept: %v, want ErrAllowance", err)
+	}
+	if transport.sent.Load() != 1 {
+		t.Fatal("the retry was sent to the provider unmetered")
+	}
+	if n := w.count(t, `SELECT COUNT(*) FROM reviews`); n != 0 || w.schedule(t, items[0]).Reps != 0 {
+		t.Fatal("an unjudged answer was recorded")
+	}
+	// The hold is released by the TTL sweep, never by the failed request.
+	if n, err := w.st.SweepExpiredReservations(w.ctx, w.now().Add(time.Hour)); err != nil || n != 1 {
+		t.Fatalf("sweep released %d holds (%v), want 1", n, err)
+	}
+	if reserved, _ := w.us.ReservedMicros(w.ctx); reserved != 0 {
+		t.Fatalf("%d micros reserved after the sweep", reserved)
+	}
+}
+
+// TestStudyAnswerMustStillTargetCurrentItem is the Cold Critic's repro: a
+// two-item session; item 1's idea goes to Trash (item 2 is now current);
+// item 2 is answered and the judge is in flight; item 1's idea is restored
+// (item 1 is current again); then the judge returns. The answer is for an
+// item that is no longer current, so it is ErrStale and nothing is
+// recorded (specs/study_session.qnt, commitWith: currentOf(...) == i).
+// Before, item 2 was recorded and rescheduled out of order.
+func TestStudyAnswerMustStillTargetCurrentItem(t *testing.T) {
+	w := newStudyWorld(t, filepath.Join(t.TempDir(), "current.db"))
+	defer w.st.Close()
+	items := w.addItems(t, false, false)
+	if _, err := w.app.Study(w.ctx, w.user); err != nil {
+		t.Fatal(err)
+	}
+	idea1 := w.ideaOf(t, items[0])
+	if err := w.us.RemoveIdea(w.ctx, idea1, w.now()); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := w.us.ActiveSession(w.ctx); s == nil || s.Current() == nil || s.Current().Item.ID != items[1] {
+		t.Fatal("item 2 is not current with item 1's idea in Trash")
+	}
+	gate, arrived := make(chan struct{}), make(chan struct{}, 1)
 	w.model.mu.Lock()
-	w.model.fail = true
+	w.model.verdict, w.model.gate, w.model.arrived = srs.Close, gate, arrived
 	w.model.mu.Unlock()
-	for i := 0; i < 3; i++ {
-		if _, err := w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed"); !errors.Is(err, app.ErrJudgeUnavailable) {
-			t.Fatalf("Answer with the judge down: %v", err)
-		}
+	errs := make(chan error, 1)
+	go func() {
+		_, err := w.app.Answer(w.ctx, w.user, items[1], "an answer", "typed")
+		errs <- err
+	}()
+	<-arrived // item 2 is being judged
+	if err := w.us.RestoreIdea(w.ctx, idea1); err != nil {
+		t.Fatal(err)
 	}
-	if reserved, err := w.us.ReservedMicros(w.ctx); err != nil || reserved != 0 {
-		t.Fatalf("%d micros still reserved after failed judgments (%v)", reserved, err)
+	if s, _ := w.us.ActiveSession(w.ctx); s == nil || s.Current() == nil || s.Current().Item.ID != items[0] {
+		t.Fatal("item 1 is not current again after its idea was restored")
 	}
-	if s := w.schedule(t, items[0]); s.Reps != 0 {
-		t.Fatal("an unjudged answer moved the schedule")
+	close(gate)
+	if err := <-errs; !errors.Is(err, app.ErrStale) {
+		t.Fatalf("an answer for an item no longer current: %v, want ErrStale", err)
+	}
+	if n := w.count(t, `SELECT COUNT(*) FROM reviews WHERE item_id = ?`, items[1]); n != 0 {
+		t.Fatalf("%d reviews recorded for item 2", n)
+	}
+	if s := w.schedule(t, items[1]); s.Reps != 0 {
+		t.Fatalf("item 2 reps = %d, want 0", s.Reps)
+	}
+	s, _ := w.us.ActiveSession(w.ctx)
+	if s == nil || s.Phase() != store.PhaseAsking || s.Current().Item.ID != items[0] {
+		t.Fatal("the session no longer asks for item 1")
+	}
+}
+
+// TestStudyStaleAdvanceMustNotDismissAnotherReview is the Cold Critic's
+// interleaving: tab 1 reads the session with review 1 on screen and is
+// delayed before it advances; tab 2 advances and answers item 2, putting
+// review 2 on screen; tab 1's delayed Advance (for review 1) must be
+// refused and leave review 2 on screen (specs/study_session.qnt,
+// commitNextWith: se.pending == tb.pending). Before, it cleared review 2.
+func TestStudyStaleAdvanceMustNotDismissAnotherReview(t *testing.T) {
+	w := newStudyWorld(t, filepath.Join(t.TempDir(), "advance.db"))
+	defer w.st.Close()
+	items := w.addItems(t, false, false)
+	if _, err := w.app.Study(w.ctx, w.user); err != nil {
+		t.Fatal(err)
+	}
+	w.model.set(srs.Close) // held on screen
+	r1, err := w.app.Answer(w.ctx, w.user, items[0], "an answer", "typed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab1, _ := w.us.ActiveSession(w.ctx)
+	if tab1.Phase() != store.PhasePendingReview || tab1.PendingReviewID != r1.ID {
+		t.Fatalf("review 1 is not on screen: %s", tab1.Phase())
+	}
+	// Tab 2 moves on and answers item 2.
+	if err := w.app.Next(w.ctx, w.user, false); err != nil {
+		t.Fatal(err)
+	}
+	r2, err := w.app.Answer(w.ctx, w.user, items[1], "an answer", "typed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Tab 1's delayed move on, for the review it saw.
+	err = w.us.Advance(w.ctx, tab1.Observed(), 0)
+	var te *store.TransitionError
+	if !errors.Is(err, store.ErrIllegalTransition) || !errors.As(err, &te) {
+		t.Fatalf("a delayed Advance for review %d with review %d on screen: %v", r1.ID, r2.ID, err)
+	}
+	s, _ := w.us.ActiveSession(w.ctx)
+	if s == nil || s.Phase() != store.PhasePendingReview || s.PendingReviewID != r2.ID {
+		t.Fatalf("review 2 was dismissed by tab 1's delayed Advance: %+v", s)
+	}
+	// Seen afresh, the same move is taken.
+	if err := w.app.Next(w.ctx, w.user, false); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := w.us.ActiveSession(w.ctx); s != nil && s.PendingReviewID != 0 {
+		t.Fatal("an up-to-date Next did not move on")
 	}
 }
 

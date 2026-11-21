@@ -124,7 +124,7 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 			if err != nil && !errors.Is(err, store.ErrNotFound) {
 				return store.Review{}, err
 			}
-			if err := us.Advance(ctx, s.ID, 0); err != nil && !errors.Is(err, store.ErrIllegalTransition) {
+			if err := us.Advance(ctx, s.Observed(), 0); err != nil && !errors.Is(err, store.ErrIllegalTransition) {
 				return store.Review{}, err
 			}
 			a.endIfDone(ctx, us)
@@ -164,13 +164,7 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		if err != nil {
 			return store.Review{}, err
 		}
-		jctx, cancel := context.WithTimeout(ctx, 25*time.Second)
-		j, use, err := a.Model.Judge(jctx, ai.JudgeInput{Question: item.Prompt, Expected: item.Answer, Answer: answer})
-		cancel()
-		// Always settled: what the call used is metered, and a call that
-		// failed before using anything releases its reservation instead of
-		// holding the allowance forever.
-		a.settle(u.ID, reservation, "judge", use, 0)
+		j, use, err := a.judge(ctx, u.ID, item.ID, reservation, ai.JudgeInput{Question: item.Prompt, Expected: item.Answer, Answer: answer})
 		if err != nil || !j.Verdict.Valid() || strings.TrimSpace(j.Reason) == "" {
 			if err == nil {
 				err = errors.New("judgment had no verdict or no reason")
@@ -212,6 +206,45 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		a.endIfDone(ctx, us)
 	}
 	return r, nil
+}
+
+// judge calls the model on a reserved budget and decides the reservation
+// exactly once on every path, as runDraft does (G2, see NOTES.md):
+//   - the model reported usage (a judgment, or a refusal it billed or
+//     reported at zero cost): settled at that cost;
+//   - the model was called and failed with no usage, or panicked: the
+//     outcome is unknown (the request may have been sent and billed, for
+//     example when the response is lost after the request went out), so
+//     the hold is kept, never forgiven, until an operator reconciles it or
+//     the TTL sweep or the startup sweep releases it. A retry therefore
+//     cannot spend unmetered;
+//   - a panic before the model is called: released.
+func (a *App) judge(ctx context.Context, userID, itemID int64, reservation string, in ai.JudgeInput) (ai.Judgment, ai.Usage, error) {
+	called := false
+	defer func() {
+		if r := recover(); r != nil {
+			if called {
+				a.holdUnknown(ctx, userID, itemID, reservation, "panic during the judge call")
+			} else {
+				a.settle(userID, reservation, "judge", ai.Usage{}, 0)
+			}
+			panic(r)
+		}
+	}()
+	jctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+	called = true
+	j, use, err := a.Model.Judge(jctx, in)
+	if err != nil && use.Model == "" {
+		a.holdUnknown(ctx, userID, itemID, reservation, "judge error with no usage")
+		return j, use, err
+	}
+	a.settle(userID, reservation, "judge", use, 0)
+	return j, use, err
+}
+
+func (a *App) holdUnknown(ctx context.Context, userID, itemID int64, reservation, why string) {
+	a.Log.WarnContext(ctx, "judge provider outcome unknown; reservation held", "why", why, "user", userID, "item", itemID, "reservation", reservation)
 }
 
 // endIfDone ends the open session once nothing is left to answer and no
@@ -263,7 +296,10 @@ func (a *App) Next(ctx context.Context, u store.User, again bool) error {
 		a.endIfDone(ctx, us)
 		return nil
 	}
-	if err := us.Advance(ctx, s.ID, retry); err != nil {
+	// The store moves the session on only if it is still as read here, so a
+	// delayed Next can never dismiss a judgment another tab put on screen
+	// since; that refusal is the same as no move.
+	if err := us.Advance(ctx, s.Observed(), retry); err != nil {
 		if errors.Is(err, store.ErrIllegalTransition) {
 			return nil
 		}
