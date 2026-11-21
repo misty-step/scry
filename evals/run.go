@@ -91,6 +91,10 @@ type Runner struct {
 	// this invocation; only those replace an earlier invocation's
 	// results and blind artifacts under --append.
 	produced map[string]bool
+	// dispatched is surface -> model -> true for every model that made at
+	// least one call in this invocation (the same models whose summary row
+	// replaces an earlier one under --append, since their calls > 0).
+	dispatched map[string]map[string]bool
 }
 
 // priorRun is what an earlier invocation in the same OutDir left.
@@ -172,7 +176,7 @@ func NewRunner(cfg Config) (*Runner, error) {
 	if cfg.CaseParallel < 1 {
 		cfg.CaseParallel = 1
 	}
-	r := &Runner{cfg: cfg, data: data, budget: &Budget{Max: cfg.MaxSpend}, files: map[string]*os.File{}, observed: map[string]float64{}, produced: map[string]bool{},
+	r := &Runner{cfg: cfg, data: data, budget: &Budget{Max: cfg.MaxSpend}, files: map[string]*os.File{}, observed: map[string]float64{}, produced: map[string]bool{}, dispatched: map[string]map[string]bool{},
 		key:     BlindKey{Seed: cfg.Seed, Note: "Sealed provenance for blind-samples.json: surface/case -> blind label -> model slug. Do not open before rating.", Sets: map[string]map[string]string{}},
 		summary: map[string]any{}}
 	if cfg.Append {
@@ -360,7 +364,7 @@ func (r *Runner) Run(ctx context.Context) error {
 			r.note("run interrupted before surface %s; it was not run", s)
 			continue
 		}
-		r.logf("== surface %s (budget so far: $%.6f of $%.2f)", s, r.budget.State().ChargedUSD, r.cfg.MaxSpend)
+		r.logf("== surface %s (budget so far: $%.6f of $%.6f)", s, r.budget.State().ChargedUSD, r.cfg.MaxSpend)
 		switch s {
 		case "grading":
 			r.summary["grading"] = r.runGrading(ctx)
@@ -385,11 +389,19 @@ func (r *Runner) Run(ctx context.Context) error {
 		time.Sleep(5 * time.Second) // let the account counter catch up
 		after = accountUsage(context.Background(), r.cfg.Base, r.cfg.Key)
 	}
+	// Every call has settled by now. The admission breaker reserves
+	// estimates, so a call that settles above its reservation can push the
+	// realized spend past the cap; record it and fail the run.
+	var capErr error
+	if st := r.budget.State(); st.CapExceeded {
+		capErr = fmt.Errorf("%w: exact usage.cost $%.6f > cap $%.6f (overshoot $%.6f); --max-spend is a client-side pre-dispatch breaker, and no call was dispatched after the overshoot settled", ErrSpendCapExceeded, st.ExactUSD, st.MaxUSD, st.OvershootUSD)
+		r.note("realized spend exceeded the cap: exact usage.cost $%.6f > max_spend $%.6f by $%.6f (a call settled above its pre-dispatch reservation, or --append under a cap below the earlier invocations' spend); summary and raw logs are complete for what ran, and the command exits non-zero", st.ExactUSD, st.MaxUSD, st.OvershootUSD)
+	}
 	ferr := r.finish(started, before, after)
 	if outErr != nil {
-		return fmt.Errorf("raw log recording failed: %w", outErr)
+		outErr = fmt.Errorf("raw log recording failed: %w", outErr)
 	}
-	return ferr
+	return errors.Join(outErr, capErr, ferr)
 }
 
 // ErrInterrupted is returned for calls not dispatched after an interrupt.
@@ -407,8 +419,13 @@ func (r *Runner) reserve(ctx context.Context, surface, model string, audioSecond
 	}
 	t, err := r.budget.Reserve(r.estimate(surface, model, audioSeconds))
 	if err == nil {
+		top := topSurface(surface)
 		r.mu.Lock()
-		r.produced[topSurface(surface)] = true
+		r.produced[top] = true
+		if r.dispatched[top] == nil {
+			r.dispatched[top] = map[string]bool{}
+		}
+		r.dispatched[top][model] = true
 		r.mu.Unlock()
 	}
 	return t, err
@@ -507,7 +524,9 @@ func (r *Runner) finish(started time.Time, before, after *float64) error {
 				notes = append(notes, fmt.Sprint(n))
 			}
 		}
-		r.blind, r.key.Sets = mergeBlind(r.cfg.Seed, p.Blind, p.Key.Sets, r.blind, r.key.Sets, r.produced)
+		var dropped []string
+		r.blind, r.key.Sets, dropped = mergeBlind(r.cfg.Seed, p.Blind, p.Key.Sets, r.blind, r.key.Sets, r.produced, r.dispatched)
+		notes = append(notes, dropped...)
 	}
 	if before != nil && after != nil {
 		account["usage_before_usd"], account["usage_after_usd"], account["delta_usd"] = *before, *after, *after-*before
@@ -686,12 +705,21 @@ func mergeRows(pv, cv any) ([]any, []string) {
 
 // mergeBlind folds this invocation's blind sets and key into an earlier
 // one's (--append). Sets for surfaces that dispatched nothing here are kept
-// verbatim, with their key entries. For a surface that ran, a case present
-// in both is re-laid out over the union of models: this invocation's
-// output for a model wins unless it was skipped or not run, in which case
-// the earlier output stands. Labels are re-derived with BlindAssign over
-// the union, so the key stays the only provenance.
-func mergeBlind(seed string, pSets []BlindSet, pKey map[string]map[string]string, cSets []BlindSet, cKey map[string]map[string]string, produced map[string]bool) ([]BlindSet, map[string]map[string]string) {
+// verbatim, with their key entries. For a surface that ran, the blind
+// outputs follow the same rule as the summary rows (mergeRows), so the two
+// never mix invocations for one model:
+//
+//   - a model that dispatched at least one call here (rerun[surface]) has
+//     its summary row replaced, so every earlier blind output of that model
+//     on that surface is dropped and only this invocation's outputs (ok,
+//     error or skipped) stand, including on cases not re-run here;
+//   - any other model keeps its earlier outputs; a current output fills in
+//     only where the model had none before.
+//
+// A case whose model set changed is re-laid out with BuildBlind over its
+// remaining models, so the key stays the only provenance; a case left with
+// no model is dropped. notes describes every earlier output dropped.
+func mergeBlind(seed string, pSets []BlindSet, pKey map[string]map[string]string, cSets []BlindSet, cKey map[string]map[string]string, produced map[string]bool, rerun map[string]map[string]bool) ([]BlindSet, map[string]map[string]string, []string) {
 	id := func(b BlindSet) string { return b.Surface + "/" + b.CaseID }
 	cur := map[string]BlindSet{}
 	for _, b := range cSets {
@@ -700,13 +728,14 @@ func mergeBlind(seed string, pSets []BlindSet, pKey map[string]map[string]string
 	var sets []BlindSet
 	key := map[string]map[string]string{}
 	used := map[string]bool{}
+	droppedBy := map[string]int{} // surface\x00model -> earlier outputs dropped on cases not re-run
 	for _, ps := range pSets {
 		k := id(ps)
 		cs, has := cur[k]
 		if !produced[ps.Surface] {
 			used[k] = true // an unrun surface never replaces earlier artifacts
 		}
-		if !has || !produced[ps.Surface] || pKey[k] == nil {
+		if !produced[ps.Surface] || pKey[k] == nil {
 			if has && produced[ps.Surface] { // earlier set without a key: cannot de-anonymize, replace
 				continue
 			}
@@ -719,25 +748,50 @@ func mergeBlind(seed string, pSets []BlindSet, pKey map[string]map[string]string
 		used[k] = true
 		outs := map[string]BlindOutput{}
 		var models []string
+		changed := has
 		for _, o := range ps.Outputs {
-			if m := pKey[k][o.ModelLabel]; m != "" {
-				outs[m] = o
-				models = append(models, m)
-			}
-		}
-		for _, o := range cs.Outputs {
-			m := cKey[k][o.ModelLabel]
+			m := pKey[k][o.ModelLabel]
 			if m == "" {
 				continue
 			}
-			if _, had := outs[m]; !had {
-				models = append(models, m)
+			if rerun[ps.Surface][m] {
+				changed = true
+				if !has {
+					droppedBy[ps.Surface+"\x00"+m]++
+				}
+				continue // replaced by this invocation, like its summary row
 			}
-			if prev, had := outs[m]; !had || blindRan(o.Status) || !blindRan(prev.Status) {
+			outs[m] = o
+			models = append(models, m)
+		}
+		if has {
+			for _, o := range cs.Outputs {
+				m := cKey[k][o.ModelLabel]
+				if m == "" {
+					continue
+				}
+				if _, had := outs[m]; had && !rerun[cs.Surface][m] {
+					continue // not re-run here: the earlier output stands
+				}
+				if _, had := outs[m]; !had {
+					models = append(models, m)
+				}
 				outs[m] = o
 			}
 		}
-		set, assign := BuildBlind(seed, cs.Surface, cs.CaseID, cs.Context, models, outs)
+		if !changed {
+			sets = append(sets, ps)
+			key[k] = pKey[k]
+			continue
+		}
+		if len(models) == 0 {
+			continue
+		}
+		ctx := ps.Context
+		if has {
+			ctx = cs.Context
+		}
+		set, assign := BuildBlind(seed, ps.Surface, ps.CaseID, ctx, models, outs)
 		sets = append(sets, set)
 		key[k] = assign
 	}
@@ -751,7 +805,13 @@ func mergeBlind(seed string, pSets []BlindSet, pKey map[string]map[string]string
 			key[k] = cKey[k]
 		}
 	}
-	return sets, key
+	var notes []string
+	for sm, n := range droppedBy {
+		surface, model, _ := strings.Cut(sm, "\x00")
+		notes = append(notes, fmt.Sprintf("--append: %s model %s was re-run on fewer cases than before; its %d earlier blind output(s) on cases not re-run were dropped so blind-samples.json matches its replaced summary row", surface, model, n))
+	}
+	sort.Strings(notes)
+	return sets, key, notes
 }
 
 // blindRan reports whether a blind output came from a dispatched call.

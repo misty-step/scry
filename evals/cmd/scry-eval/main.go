@@ -28,7 +28,7 @@ func run(args []string, stderr io.Writer) error {
 	surface := fs.String("surface", "all", "all, or a comma list of: "+strings.Join(evals.Surfaces, ", "))
 	out := fs.String("out", "", "output directory (default evals/results/<UTC timestamp>)")
 	evidence := fs.String("evidence", "", "optional flat directory for collector-friendly copies (.jsonl -> .jsonl.txt)")
-	maxSpend := fs.Float64("max-spend", 1.35, "hard spend cap in USD for this run, from exact usage.cost")
+	maxSpend := fs.Float64("max-spend", 1.35, "spend cap in USD (with --append: cumulative over the run). A client-side pre-dispatch admission breaker, not an OpenRouter billing lock: each call reserves an estimate and is refused if settled spend + reservations + estimate would pass the cap. A provider can still settle a call above its estimate; if the exact usage.cost ends above the cap, the summary and raw logs are still written (cap_exceeded, overshoot_usd) and the command exits non-zero")
 	lim := fs.Int("limit", 0, "cases (clips) per surface; 0 means all")
 	seed := fs.String("seed", "scry-eval-v1", "blind-label shuffle seed")
 	appendRun := fs.Bool("append", false, "continue a run in --out: append raw logs, merge the summary and blind sets, and count the earlier spend against --max-spend")

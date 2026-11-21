@@ -117,7 +117,14 @@ func Percentile(xs []float64, p float64) float64 {
 // ErrBudget is returned when a call would take spend past the cap.
 var ErrBudget = errors.New("spend cap reached: call not dispatched")
 
-// Budget is the live spend circuit-breaker. Every call reserves a
+// ErrSpendCapExceeded is returned from Run when the realized, settled
+// usage.cost ended above the cap. The breaker only admits calls against
+// estimates, so a provider that settles a call above its reservation can
+// still overshoot; that is reported, never silent.
+var ErrSpendCapExceeded = errors.New("realized spend exceeded --max-spend")
+
+// Budget is the live spend circuit-breaker: a client-side admission check
+// before dispatch, not a provider-side billing lock. Every call reserves a
 // worst-case-ish estimate before it is dispatched, and is refused when
 // spent + in-flight reservations + estimate would pass Max. Settling
 // replaces the reservation with the provider's exact usage.cost; a call
@@ -182,10 +189,19 @@ type BudgetState struct {
 	UnknownCostCalls   int     `json:"unknown_cost_calls"`
 	RefusedForBudget   int     `json:"refused_for_budget"`
 	ReservedInFlightUS float64 `json:"reserved_in_flight_usd"`
+	// CapExceeded is set when the realized exact usage.cost settled above
+	// MaxUSD (a call cost more than its reservation); OvershootUSD is by
+	// how much. The admission breaker refuses every call after that.
+	CapExceeded  bool    `json:"cap_exceeded"`
+	OvershootUSD float64 `json:"overshoot_usd"`
 }
 
 func (b *Budget) State() BudgetState {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return BudgetState{MaxUSD: b.Max, ExactUSD: b.exact, ChargedUSD: b.spent, Calls: b.calls, UnknownCostCalls: b.unknown, RefusedForBudget: b.refused, ReservedInFlightUS: b.reserved}
+	st := BudgetState{MaxUSD: b.Max, ExactUSD: b.exact, ChargedUSD: b.spent, Calls: b.calls, UnknownCostCalls: b.unknown, RefusedForBudget: b.refused, ReservedInFlightUS: b.reserved}
+	if b.exact > b.Max {
+		st.CapExceeded, st.OvershootUSD = true, b.exact-b.Max
+	}
+	return st
 }

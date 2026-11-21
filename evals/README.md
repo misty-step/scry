@@ -26,12 +26,12 @@ go run ./evals/cmd/scry-eval --surface drafting --out evals/results/latest --max
 | - | - |
 | `--surface` | `all` (grading, explainer, speech, drafting, in that order: cheapest first) or a comma list |
 | `--out` | output directory (default `evals/results/<UTC timestamp>`; `evals/results/` is gitignored) |
-| `--max-spend` | hard cap in USD for this run (default 1.35), enforced before every call |
+| `--max-spend` | spend cap in USD (default 1.35; with `--append`, cumulative over the run). A client-side pre-dispatch admission breaker, not a server-side OpenRouter billing lock; exits non-zero if the realized settled cost overshoots it (see [Spend guard](#spend-guard)) |
 | `--limit n` | first *n* cases (clips) per surface; drafting cases are interleaved note/topic/book first, so `--limit 3` covers all three kinds |
 | `--models key=a,b` | override one model list (keys: `grading`, `explainer`, `drafting`, `drafting-optional`, `speech-chat`, `speech-stt`, `speech-stt-probe`, `speech-audio-grade`); an empty list (`key=`) skips that list |
 | `--evidence dir` | also write flat copies with collector-friendly names (`*.jsonl` → `*.jsonl.txt`) |
 | `--seed` | blind-label shuffle seed (default `scry-eval-v1`) |
-| `--append` | continue a run in `--out`: raw logs are appended, the summary, blind sets and key are merged, and the earlier invocations' spend counts against `--max-spend`. A surface that dispatched no call this time (interrupted, or every call refused for budget) keeps its earlier result, blind sets and key verbatim. A surface that ran merges per model: a model that made calls replaces its earlier row (`rows_from_earlier_invocations` lists the rows kept, `earlier_dataset` the earlier case count), and a case in both invocations is re-laid out blind over the union of models, so adding one model to an earlier run extends its comparison instead of replacing it |
+| `--append` | continue a run in `--out`: raw logs are appended, the summary, blind sets and key are merged, and the earlier invocations' spend counts against `--max-spend`. A surface that dispatched no call this time (interrupted, or every call refused for budget) keeps its earlier result, blind sets and key verbatim. A surface that ran merges per model: a model that made calls replaces its earlier row (`rows_from_earlier_invocations` lists the rows kept, `earlier_dataset` the earlier case count), and a case in both invocations is re-laid out blind over the union of models, so adding one model to an earlier run extends its comparison instead of replacing it. Blind outputs follow the same rule as the rows: a model re-run here loses every earlier blind output on that surface (cases it was not re-run on are dropped for it, with a note), so `eval-summary.json` and `blind-samples.json` never mix two invocations of one model |
 | `--case-parallel k` | drafting cases in flight at once (default 1), to keep wall-clock down |
 
 Outputs (in `--out`): `eval-summary.json` (every metric, total spend, git SHA,
@@ -44,7 +44,8 @@ full 4-surface run against a local stand-in for OpenRouter).
 
 ## Spend guard
 
-`--max-spend` is a circuit-breaker, not a forecast. Before each call the runner
+`--max-spend` is a client-side pre-dispatch admission breaker, not a forecast
+and not a server-side OpenRouter billing lock. Before each call the runner
 reserves an estimate: catalog price × typical tokens until the model has a real
 cost, then 2× the highest exact cost that model has had so far. It refuses the
 call if spent + in-flight reservations + estimate would pass the cap. After the
@@ -58,6 +59,18 @@ with all models of one case in parallel, so a stop leaves every model with the
 same cases. The summary also records OpenRouter's account usage (`GET
 /api/v1/key`) before and after the run, which checks the summed costs
 independently.
+
+Because admission is checked against estimates, a provider that settles a call
+above its reservation can still push the realized spend past the cap (for
+example: a $0.0005 reservation under a $0.001 cap that settles at $0.002). The
+breaker then refuses every further call, and at the end of the run, if the
+exact `usage.cost` total is above `--max-spend`, the summary and raw logs are
+still written, `spend.cap_exceeded` is `true`, `spend.overshoot_usd` says by
+how much, a note explains it, and the command exits non-zero with
+`realized spend exceeded --max-spend`. It never exits 0 on a realized
+overshoot. The same applies to `--append` under a cap lower than what the
+earlier invocations already spent: every call is refused and the run exits
+non-zero.
 
 If a raw log (`<surface>-raw.jsonl`) cannot be opened, encoded or written, or
 fails to close, the first such error is kept: no further paid call is

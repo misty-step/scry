@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -969,5 +970,199 @@ func TestAppendPreservesBlindForUnrunSurfaces(t *testing.T) {
 	raw, _ := os.ReadFile(filepath.Join(out, "blind-samples.json"))
 	if bytes.Contains(raw, []byte("t/writer")) {
 		t.Error("merged blind samples leak a model slug")
+	}
+}
+
+// Cold Critic (PR #497): the breaker admits calls against estimates, so a
+// provider settling above the reservation can overshoot the cap. A $0.0005
+// reservation under a $0.001 cap settles at $0.002: the run must record the
+// overshoot, dispatch nothing after it, still write the summary and raw
+// log, and return ErrSpendCapExceeded so the CLI exits non-zero.
+func TestRealizedOvershootFailsRun(t *testing.T) {
+	const key = "sk-or-v1-offline-test-key-overshoot"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/models", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"data":[]}`) })
+	var mu sync.Mutex
+	var calls int
+	mux.HandleFunc("/api/alpha/decisions", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		fmt.Fprint(w, `{"model":"t/judge","answers":{"judgment":{"type":"choice","choice":"correct","confidence":0.9,"probabilities":{"correct":0.9,"almost correct":0.05,"incorrect":0.05,"none_of_these":0}}},"usage":{"input_tokens":1,"output_tokens":0,"cost":0.002}}`)
+	})
+	mux.HandleFunc("/api/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		fmt.Fprint(w, `{"model":"t/writer","choices":[{"message":{"content":"x"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"cost":0.0001}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	out := t.TempDir()
+	r, err := NewRunner(Config{Surfaces: []string{"grading", "explainer"}, OutDir: out, MaxSpend: 0.001, Limit: 3, Key: key, Base: srv.URL, Log: io.Discard, SkipAccount: true,
+		Models: map[string][]string{"grading": {"t/judge"}, "explainer": {"t/writer"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first call's reservation is the $0.0005 grading floor (no catalog price).
+	if est := r.estimate("grading", "t/judge", 0); est != 0.0005 {
+		t.Fatalf("first reservation = %v, want 0.0005", est)
+	}
+	err = r.Run(context.Background())
+	if !errors.Is(err, ErrSpendCapExceeded) {
+		t.Fatalf("Run error = %v, want ErrSpendCapExceeded", err)
+	}
+	if calls != 1 {
+		t.Errorf("dispatched %d calls, want 1 (none after the overshoot settled)", calls)
+	}
+	s := readSummary(t, out)
+	if got := path(s, "spend", "cap_exceeded"); got != true {
+		t.Errorf("cap_exceeded = %v", got)
+	}
+	if got := path(s, "spend", "overshoot_usd").(float64); math.Abs(got-0.001) > 1e-12 || got <= 0 {
+		t.Errorf("overshoot_usd = %v, want 0.001", got)
+	}
+	if got := path(s, "spend", "exact_usage_cost_usd").(float64); math.Abs(got-0.002) > 1e-12 {
+		t.Errorf("exact spend = %v", got)
+	}
+	if got := path(s, "spend", "refused_for_budget"); got != 5.0 { // 2 grading + 3 explainer
+		t.Errorf("refused = %v, want 5", got)
+	}
+	if notes := fmt.Sprint(s["notes"]); !strings.Contains(notes, "realized spend exceeded the cap") {
+		t.Errorf("notes = %s", notes)
+	}
+	raw, err := os.ReadFile(filepath.Join(out, "grading-raw.jsonl"))
+	if err != nil || bytes.Count(raw, []byte("\n")) != 3 || bytes.Count(raw, []byte(`"predicted":"skipped"`)) != 2 || !bytes.Contains(raw, []byte(`"cost_usd":0.002`)) {
+		t.Errorf("grading raw log: %v lines=%d\n%s", err, bytes.Count(raw, []byte("\n")), raw)
+	}
+	if bytes.Contains(raw, []byte(key)) {
+		t.Error("key leaked into raw log")
+	}
+
+	// Under the cap, the same contract returns nil and reports no overshoot.
+	b := &Budget{Max: 0.001}
+	tk, _ := b.Reserve(0.0005)
+	c := 0.0009
+	tk.Settle(&c)
+	if st := b.State(); st.CapExceeded || st.OvershootUSD != 0 {
+		t.Errorf("under-cap state = %+v", st)
+	}
+}
+
+// Cold Critic (PR #497): --append re-running a model on fewer cases than
+// before must not leave that model's earlier blind outputs beside its new
+// summary row. Run 1: t/writer and t/writer2 on 2 cases. Run 2 (--append):
+// t/writer alone on 1 case. t/writer's row now covers 1 case, so its blind
+// outputs must too; t/writer2 was not re-run and keeps both.
+func TestAppendSameModelFewerCasesBlindMatchesSummary(t *testing.T) {
+	const key = "sk-or-v1-offline-test-key-samemodel"
+	f := &fakeRouter{key: key, calls: map[string]int{}}
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	out := t.TempDir()
+	run := func(limit int, models []string, appendRun bool) {
+		t.Helper()
+		r, err := NewRunner(Config{Surfaces: []string{"explainer"}, OutDir: out, MaxSpend: 1, Limit: limit, Key: key, Base: srv.URL, Log: io.Discard, SkipAccount: true, Append: appendRun,
+			Models: map[string][]string{"explainer": models}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// blindScope is model -> case IDs with a blind output from a dispatched call.
+	blindScope := func() map[string][]string {
+		t.Helper()
+		var b struct{ Sets []BlindSet }
+		var k BlindKey
+		raw, _ := os.ReadFile(filepath.Join(out, "blind-samples.json"))
+		if err := json.Unmarshal(raw, &b); err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(raw, []byte("t/writer")) {
+			t.Error("blind samples leak a model slug")
+		}
+		raw, _ = os.ReadFile(filepath.Join(out, "blind-key.json"))
+		if err := json.Unmarshal(raw, &k); err != nil {
+			t.Fatal(err)
+		}
+		scope := map[string][]string{}
+		for _, s := range b.Sets {
+			assign := k.Sets[s.Surface+"/"+s.CaseID]
+			if len(assign) != len(s.Outputs) {
+				t.Errorf("%s: %d outputs but %d key entries", s.CaseID, len(s.Outputs), len(assign))
+			}
+			for _, o := range s.Outputs {
+				m := assign[o.ModelLabel]
+				if m == "" {
+					t.Errorf("%s %s has no key entry", s.CaseID, o.ModelLabel)
+				}
+				if blindRan(o.Status) {
+					scope[m] = append(scope[m], s.CaseID)
+				}
+			}
+		}
+		return scope
+	}
+	// summaryScope is model -> dispatched calls in its summary row.
+	summaryScope := func() map[string]float64 {
+		t.Helper()
+		calls := map[string]float64{}
+		for _, row := range path(readSummary(t, out), "results", "explainer", "models").([]any) {
+			calls[path(row, "model").(string)] = path(row, "calls").(float64)
+		}
+		return calls
+	}
+
+	run(2, []string{"t/writer", "t/writer2"}, false)
+	if got := fmt.Sprint(blindScope()); got != "map[t/writer:[e01 e02] t/writer2:[e01 e02]]" {
+		t.Fatalf("baseline blind scope = %s", got)
+	}
+
+	run(1, []string{"t/writer"}, true)
+	scope, rows := blindScope(), summaryScope()
+	if got := fmt.Sprint(scope); got != "map[t/writer:[e01] t/writer2:[e01 e02]]" {
+		t.Errorf("blind scope after same-model --append = %s, want t/writer on e01 only", got)
+	}
+	for m, calls := range rows {
+		if float64(len(scope[m])) != calls {
+			t.Errorf("%s: summary row has %v calls but %d blind outputs %v", m, calls, len(scope[m]), scope[m])
+		}
+	}
+	if rows["t/writer"] != 1 || rows["t/writer2"] != 2 {
+		t.Errorf("summary rows = %v", rows)
+	}
+	s := readSummary(t, out)
+	if got := fmt.Sprint(path(s, "results", "explainer", "rows_from_earlier_invocations")); got != "[t/writer2]" {
+		t.Errorf("rows_from_earlier_invocations = %s", got)
+	}
+	if notes := fmt.Sprint(s["notes"]); !strings.Contains(notes, "explainer model t/writer was re-run on fewer cases than before; its 1 earlier blind output(s)") {
+		t.Errorf("drop note missing: %s", notes)
+	}
+	// e02 now holds t/writer2 alone, re-laid out over its remaining model.
+	var k BlindKey
+	raw, _ := os.ReadFile(filepath.Join(out, "blind-key.json"))
+	_ = json.Unmarshal(raw, &k)
+	if !jsonEqual(k.Sets["explainer/e02"], BlindAssign("scry-eval-v1", "explainer", "e02", []string{"t/writer2"})) {
+		t.Errorf("e02 key = %v", k.Sets["explainer/e02"])
+	}
+
+	// Re-running both models on 1 case drops e02 entirely: no model is
+	// left on it, so only e01 remains in the blind file.
+	run(1, []string{"t/writer", "t/writer2"}, true)
+	scope, rows = blindScope(), summaryScope()
+	if got := fmt.Sprint(scope); got != "map[t/writer:[e01] t/writer2:[e01]]" {
+		t.Errorf("blind scope after re-running both on 1 case = %s", got)
+	}
+	for m, calls := range rows {
+		if float64(len(scope[m])) != calls {
+			t.Errorf("%s: summary row has %v calls but %d blind outputs", m, calls, len(scope[m]))
+		}
+	}
+	var b struct{ Sets []BlindSet }
+	raw, _ = os.ReadFile(filepath.Join(out, "blind-samples.json"))
+	if json.Unmarshal(raw, &b) != nil || len(b.Sets) != 1 || b.Sets[0].CaseID != "e01" {
+		t.Errorf("blind sets = %+v, want e01 only", b.Sets)
 	}
 }
