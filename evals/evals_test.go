@@ -1255,6 +1255,20 @@ func TestAppendRejectsMissingOrIncompletePriorBlindKey(t *testing.T) {
 			}
 			t.Cleanup(func() { os.WriteFile(samplesPath, samples, 0o644) })
 		}, "blind-samples.json is malformed"},
+		{"samples symlink target missing", func(t *testing.T) {
+			backup := samplesPath + ".backup"
+			if err := os.Rename(samplesPath, backup); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := os.Rename(backup, samplesPath); err != nil {
+					t.Error(err)
+				}
+			})
+			if err := os.Symlink(samplesPath+".missing", samplesPath); err != nil {
+				t.Skipf("cannot create a symlink: %v", err)
+			}
+		}, "blind-samples.json is unreadable"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

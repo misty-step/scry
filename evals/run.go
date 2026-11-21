@@ -148,7 +148,11 @@ func checkPriorBlindKey(dir string) error {
 	samples := filepath.Join(dir, "blind-samples.json")
 	b, err := os.ReadFile(samples)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		// A dangling symlink is an existing but unreadable artifact, not
+		// an output directory that has no prior blind samples.
+		if _, statErr := os.Lstat(samples); errors.Is(statErr, os.ErrNotExist) {
+			return nil
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("--append: earlier blind-samples.json is unreadable (%v); fix it, or use a fresh --out directory; nothing was dispatched", err)
