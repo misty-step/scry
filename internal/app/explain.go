@@ -19,6 +19,8 @@ var ErrNotExplainable = errors.New("only close and missed model-judged answers c
 type Explanation struct {
 	Text     string
 	Fallback bool // the explainer was unavailable; Text is the fixed criterion sentence
+	// OutOfAllowance is a Fallback because too little allowance was left.
+	OutOfAllowance bool
 }
 
 // explainCache keeps recent explanations so a second click costs nothing.
@@ -81,6 +83,7 @@ func (a *App) Explain(ctx context.Context, u store.User, reviewID int64) (Explan
 		if !errors.Is(err, ErrAllowance) && !errors.Is(err, ErrPlanEnded) {
 			a.Log.ErrorContext(ctx, "explanation reservation failed", "err", err, "user", u.ID)
 		}
+		fallback.OutOfAllowance = errors.Is(err, ErrAllowance)
 		return fallback, nil
 	}
 	timeout := a.Cfg.ExplainTimeout

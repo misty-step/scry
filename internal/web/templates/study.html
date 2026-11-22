@@ -5,6 +5,7 @@
           {{if not .Judged.Explanation}}<button class="btn explain-btn" data-explain aria-controls="explanation">Why?<span class="sr"> Explain what differed</span></button>{{end}}
           <p class="explanation" id="explanation" data-explanation aria-live="polite"{{if not .Judged.Explanation}} hidden{{end}}>{{.Judged.Explanation}}</p>
           <p class="meta explain-note" data-explain-note{{if not .ExplainFallback}} hidden{{end}}>A fuller explanation isn't available right now.</p>
+          <p class="meta explain-note" data-explain-allowance{{if not .ExplainAllowance}} hidden{{end}}>There isn't enough of the trial's allowance left to explain this. <a class="link" href="/signup/card">Add a card to keep going</a></p>
         </form>
 {{end}}{{end}}
 {{define "main"}}

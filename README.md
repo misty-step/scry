@@ -49,7 +49,7 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 | SCRY_TEST_EXPLAIN | Test mode only: fail or slow exercises the explanation fallback |
 | SCRY_TEST_CLOCK | Test mode only: start the app clock at an RFC 3339 instant (zone kept) |
 | SCRY_TEST_CHARGE_DELAY | Test mode only: hold each fake top-up charge (e.g. 4s) |
-| OPENROUTER_API_KEY | Live: the one AI key. When set it carries all four AI capabilities (Jev grading, Claude drafting, the “Why?” explainer, speech) and no ANTHROPIC_API_KEY or OPENAI_API_KEY is needed or read. A JWT-shaped value stops the boot. |
+| OPENROUTER_API_KEY | Live: the one AI key. When set it carries all four AI capabilities (grading, drafting, the “Why?” explainer, speech) and no ANTHROPIC_API_KEY or OPENAI_API_KEY is needed or read. A JWT-shaped value stops the boot. |
 | TYPESAFE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY | Live, optional direct fallbacks used only when OPENROUTER_API_KEY is unset: Jev on Typesafe, drafting and explanations on Anthropic, speech on OpenAI. Each missing one is named at boot; a JWT-shaped one stops the boot. |
 | SCRY_JUDGE_MODEL | Live: Decisions model Jev grades with. Default typesafe/jev-1.14 on OpenRouter (POST /api/alpha/decisions; must be a vendor/model slug there, or the boot stops), jev-latest on Typesafe |
 | SCRY_DRAFT_MODEL | Live: drafting model. Default openai/gpt-6.2-sol on OpenRouter (must be a vendor/model slug there), claude-opus-5-5 on Anthropic |
@@ -110,7 +110,7 @@ GET /healthz verifies database writes and returns 200 or 503. It keeps
 (503) for scry-lib.sh and scry-watch, and adds readiness: `build_sha` (set with
 `-ldflags "-X main.buildSHA=<sha>"`, else the Go VCS stamp, else `dev`; `make build`
 and `make docker` set it), `mode`, `db`, `grading`/`drafting`/`explainer`/`speech`
-(true only when the real Jev, Claude and OpenAI adapters are wired), `billing_mode`
+(true only when the real adapters are wired), `billing_mode`
 (stripe-live, stripe-test, test), `auth_mode` (clerk-live, clerk-test, local),
 `providers` (the exact adapter label for each) and `warnings` (deliberate unusual
 wirings such as the Stripe staged cutover). It never contains a key, secret, DSN
@@ -281,6 +281,7 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
 | Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
 | Rule: no free tier, 7-day no-card trial with a capped allowance | TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance; TestRule_CardAddedDuringTheTrialKeepsItsEnd; TestRule_NoCardTrialNeverChargesATopup; internal/app.TestSlice36_NoCardTrialExpiresAtPeriodEnd; internal/app.TestSlice36_ConcurrentReservationsCannotPassTheCapOrTheEnd; internal/app.TestSlice36_UpgradeFromTheNoCardTrial; TestSlice36_StaleCardStepConfirmsBeforeChargingAndADeclineKeepsTheTrial; TestSlice36_CardStepWithoutTermsIsNeverCharged; internal/app.TestSlice36_StaleTrialTermsNeverChargeSilently; internal/app.TestSlice36_DeclineInTheLastHourKeepsTheTrial; internal/app.TestSlice36_ConfirmedUpgradeInTheLastHour; internal/app.TestSlice36_SpeechHoldsKeepTheTrialInsideItsCap; internal/app.TestSlice36_OverageNeverStarvesAConcurrentHoldAndStopsTheTrial |
+| Trial copy matches what a card does now: both card steps, Billing in the trial's last hour, Clerk sign-up, and "Why?" or a draft the trial's allowance cannot cover | internal/web.TestSlice36Reconcile_* (ClerkSignUpSaysNoCardNeeded, BothCardStepsSayTheSameTerms, BillingInTheLastHourSaysACardChargesToday, OutOfAllowanceSaysWhereToAddACard) |
 | A confirmed card step subscribes and charges at most once: concurrent requests (across a minute boundary, or two processes), a lost reply, a forgotten idempotency key, a decline, and an existing database | internal/app.TestSlice36_ConcurrentUpgradesAcrossMinuteBoundary; internal/app.TestSlice36_ConcurrentUpgradesInTwoProcessesShareOneKey; internal/app.TestSlice36_ManySimultaneousUpgradesChargeOnce; internal/app.TestSlice36_LostPaidResponseReconcilesWithoutDoubleCharge; internal/app.TestSlice36_LostTrialCardResponseReconciles; internal/app.TestSlice36_LostTrialCardFoundAfterTheTrial; internal/app.TestSlice36_PlanAndClaimCommitTogether; internal/app.TestSlice36_DeclinedUpgradeClearsPendingAndPreservesTrial; internal/app.TestSlice36_RefusedAttemptsNeverStickTheLearner; internal/app.TestSlice36_IndefiniteAnswersKeepTheKey; internal/app.TestSlice36_FailingRepeatIsLookedUp; internal/app.TestSlice36_RetryAfterTheKeyIsForgottenLooksUpInsteadOfCharging; internal/app.TestSlice36_OnePendingAttemptPerLearner; internal/app.TestSlice36_ExistingDBMigratesCleanly; internal/billing.TestSlice36_StripeFindSubscription; internal/billing.TestSlice36_NothingDone; TestSlice36_SecondUpgradeWhileOneIsInFlightIsACalmConflict; TestSlice36_RestartOfALapsedPlanNeverOverwritesThePaidOne |
 | Rule: small base, capped cost allowance, top-ups | TestRule_Prices_SmallBaseCappedAllowanceAndTopUpsBeyondIt |
 | Rule: Phaedrus first with no special powers | TestRule_PhaedrusIsTheFirstCustomerWithNoSpecialPowers |

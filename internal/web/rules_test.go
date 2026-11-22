@@ -160,7 +160,7 @@ func TestRule_CardAddedDuringTheTrialKeepsItsEnd(t *testing.T) {
 	// Billing's own card form does the same for a second learner.
 	c := w.browser()
 	c.signUpNoCard("billing-card@example.com")
-	has(t, c.mustGet("/billing/card"), "Add a card", "Nothing is charged today. Your trial still ends on")
+	has(t, c.mustGet("/billing/card"), "Add a card", "Nothing is charged today: your trial still ends on")
 	_, page = c.post("/billing/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
 	has(t, page, "Your card is on file. Your trial continues")
 	if s, _ := w.lib("billing-card@example.com").Subscription(ctx); s.Status != store.SubTrialing || s.NoCard() {

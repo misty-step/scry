@@ -343,7 +343,7 @@
   function initExplain() {
     var form = $("[data-explain-form]");
     if (!form) return;
-    var button = $("[data-explain]", form), out = $("[data-explanation]", form), note = $("[data-explain-note]", form);
+    var button = $("[data-explain]", form), out = $("[data-explanation]", form), note = $("[data-explain-note]", form), spent = $("[data-explain-allowance]", form);
     if (!button) return;
     var busy = false;
     form.addEventListener("submit", function (e) {
@@ -352,10 +352,11 @@
       busy = true;
       button.setAttribute("aria-busy", "true");
       button.textContent = "explaining";
-      var show = function (text, fallback) {
+      var show = function (text, fallback, allowance) {
         out.textContent = text;
         out.hidden = false;
-        if (note) note.hidden = !fallback;
+        if (note) note.hidden = !fallback || !!allowance;
+        if (spent) spent.hidden = !allowance;
         button.remove();
         var next = $("[data-next]");
         if (next) next.focus();
@@ -365,7 +366,7 @@
         method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
         headers: { "X-Requested-With": "fetch", "Accept": "application/json" }
       }).then(function (res) { return res.json().then(function (j) {
-        if (res.ok && j.text) show(j.text, !!j.fallback);
+        if (res.ok && j.text) show(j.text, !!j.fallback, !!j.allowance);
         else show(why ? why.textContent : (j.error || ""), true);
       }); }).catch(function () { show(why ? why.textContent : "", true); });
     });

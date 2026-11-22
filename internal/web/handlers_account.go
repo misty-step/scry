@@ -40,7 +40,7 @@ func (s *Server) clerkForm(w http.ResponseWriter, r *http.Request, c *rc, provid
 		}
 	}
 	return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{
-		"Title": title, "Lede": lede, "Bare": true, "Configured": provider.Configured(), "SignUp": signup,
+		"Title": title, "Lede": lede, "Bare": true, "Configured": provider.Configured(), "SignUp": signup, "TrialDays": s.App.Cfg.TrialDays,
 	})
 }
 
@@ -307,7 +307,10 @@ type billingView struct {
 	GraceEnd   string
 	CanTopUp   bool
 	NoCard     bool // a no-card trial, live or ended: the next step is adding a card
-	Ledger     []store.LedgerEntry
+	// ChargedToday is a live no-card trial with too little left to keep:
+	// adding a card now starts the plan and charges today (app.CardTerms).
+	ChargedToday bool
+	Ledger       []store.LedgerEntry
 }
 
 // trialLeft says how much of a trial is left, in whole days.
@@ -352,6 +355,11 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 		v.Plan = fmt.Sprintf("You're on the %d-day trial, with no card on file. It ends on ", cfg.TrialDays) + date(end) +
 			" (" + trialLeft(end.Sub(s.App.Now())) + "), and nothing is charged. Add a card any time to keep Scry after it: " + price +
 			" a month, first charged when the trial ends."
+		if s.App.CardTerms(sub) == app.TermsImmediate {
+			v.ChargedToday = true
+			v.Plan = fmt.Sprintf("You're on the %d-day trial, with no card on file. It ends within the hour, on ", cfg.TrialDays) + date(end) +
+				". Nothing is charged unless you add a card; adding one now starts Scry at once: " + price + " a month, charged today."
+		}
 	case sub.Status == "ended":
 		v.State = "ended"
 		v.Plan = "Your plan ended on " + date(end) + ". Your library and history are kept. Start again to keep studying: " + price + " a month, charged today."
@@ -379,7 +387,7 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 		p := v.Percent
 		switch {
 		case p >= 100:
-			v.Allowance = "You've used all of the trial's " + trialCap + " allowance, so judging, speaking and drafting are paused. Add a card to keep going."
+			v.Allowance = "You've used all of the trial's " + trialCap + " allowance, so judging, speaking, explanations and drafting are paused. Add a card to keep going."
 		case p >= 80:
 			v.Allowance = "You've used " + fmt.Sprint(p) + "% of the trial's " + trialCap + " allowance, so you're near its limit."
 		default:
@@ -423,7 +431,7 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 		remaining = max(int64(0), remaining-amount)
 	}
 	draft := s.App.DraftBudget()
-	if remaining < draft {
+	if remaining < draft && !(sub.NoCardTrial() && v.Percent >= 100) { // all paused: nothing smaller fits
 		v.Allowance += " Not enough allowance left for a draft. Smaller operations may still fit."
 	}
 	usage := "charged"
@@ -431,7 +439,7 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 		usage = "counted"
 	}
 	reserve := "Your remaining allowance can reserve " + plural(int(remaining/draft), "draft", "drafts") +
-		" at the worst-case cost. Each draft needs about " + money((draft+5000)/10000) + " available before it starts; only actual usage is " + usage + ". Judging and speech share this allowance. In-flight work reduces what is available."
+		" at the worst-case cost. Each draft needs about " + money((draft+5000)/10000) + " available before it starts; only actual usage is " + usage + ". Judging, speaking, explanations and drafting share this allowance. In-flight work reduces what is available."
 	if sub.NoCardTrial() {
 		v.Covers = "The trial includes " + trialCap + " of model time for judging, speaking, explanations and drafting, and nothing is charged. " + reserve +
 			" After the trial, " + price + " a month covers running Scry and a monthly allowance of " + money(cfg.AllowanceMicros/10000) +
@@ -488,7 +496,7 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 		"resumed":     "Your plan continues.",
 		"started":     "Welcome back. Your plan is active again.",
 		"subscribed":  "Your card is on file and your plan is active.",
-		"card_added":  "Your card is on file. Your trial continues, and the first charge is on the date above.",
+		"card_added":  "Your card is on file. Your trial continues, and the first charge is on the date below.",
 		"needs_card":  "Top-ups need a card on file. Add a card first.",
 	}[r.URL.Query().Get("ok")]
 	if settled > 0 {

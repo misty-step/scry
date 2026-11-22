@@ -1,5 +1,6 @@
 {{define "main"}}
 <section class="column">
+{{if and .SignUp .Configured}}<p class="meta">{{.TrialDays}}-day trial · no card needed</p>{{end}}
 <h1 class="display" id="auth-heading">{{.Title}}</h1>
 <p class="lede" id="auth-lede"{{if not .Configured}} role="status"{{end}}>{{.Lede}}</p>
 {{if .Configured}}

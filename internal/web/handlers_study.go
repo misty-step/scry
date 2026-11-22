@@ -290,8 +290,10 @@ func (s *Server) studyExplain(w http.ResponseWriter, r *http.Request, c *rc) err
 		}
 		return nil
 	}
+	// A no-card trial out of allowance says so and where to add a card.
+	noCardSpent := ex.OutOfAllowance && c.sub.NoCard()
 	if wantsJSON {
-		writeJSON(w, http.StatusOK, map[string]any{"text": ex.Text, "fallback": ex.Fallback})
+		writeJSON(w, http.StatusOK, map[string]any{"text": ex.Text, "fallback": ex.Fallback, "allowance": noCardSpent})
 		return nil
 	}
 	sess, err := c.us.ActiveSession(r.Context())
@@ -305,7 +307,8 @@ func (s *Server) studyExplain(w http.ResponseWriter, r *http.Request, c *rc) err
 	if j, ok := data["Judged"].(judgedView); ok && j.ReviewID == id {
 		j.Explanation = ex.Text
 		data["Judged"] = j
-		data["ExplainFallback"] = ex.Fallback
+		data["ExplainFallback"] = ex.Fallback && !noCardSpent
+		data["ExplainAllowance"] = noCardSpent
 	}
 	return s.render(w, r, c, http.StatusOK, "study.html", data)
 }
