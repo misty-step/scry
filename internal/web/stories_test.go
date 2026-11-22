@@ -47,7 +47,7 @@ func TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute(t *testing.T) {
 	if b.path != "/shelf" {
 		t.Fatalf("after sign-up the newcomer is at %s, want the starter shelf", b.path)
 	}
-	has(t, shelf, "Start with something worth knowing.", "Trial · 7 days left", `href="/signup/card"`)
+	has(t, shelf, "Pick a deck and start recalling in seconds.", "Trial · 7 days left", `href="/signup/card"`)
 	sub, err := w.lib("newcomer@example.com").Subscription(ctx)
 	if err != nil || !sub.NoCardTrial() || !sub.TrialEnd.Equal(w.now().AddDate(0, 0, 7)) || !sub.PeriodEnd.Equal(sub.TrialEnd) ||
 		sub.AllowanceMicros != w.app.Cfg.TrialMicros || sub.CardLast4 != "" {
@@ -131,24 +131,31 @@ func TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts(t *tes
 	if b.path != "/shelf" {
 		t.Fatalf("an empty library should show the shelf, got %s", b.path)
 	}
-	b.get("/study")
-	if b.path != "/shelf" {
-		t.Fatalf("studying with an empty library should show the shelf, got %s", b.path)
+	// Study with an empty library says so on Study itself, with the two
+	// ways forward; it never bounces to another page without a word.
+	_, empty := b.get("/study")
+	if b.path != "/study" {
+		t.Fatalf("studying with an empty library should stay on /study, got %s", b.path)
 	}
+	has(t, empty, "data-study-empty", "No cards to study yet.", "Your library is empty.",
+		`href="/shelf" data-cta="starter"`, "Pick a starter set", `href="/learn" data-cta="create"`, "Create cards with AI")
 	shelf := b.mustGet("/shelf")
 	tiles := strings.Count(shelf, `<li class="tile`)
 	if tiles < 28 || tiles > 32 {
 		t.Errorf("the shelf shows %d sets, want about 30", tiles)
 	}
-	for _, title := range []string{"Kitchen numbers", "The NATO alphabet", "The Creeds", "Mental models", "Words worth owning",
+	for _, title := range []string{"Kitchen numbers", "NATO phonetic alphabet", "The Creeds", "Mental models", "Words worth owning",
 		"Core ideas in physics", "Core ideas in philosophy", "Core ideas in economics", "Turning points in world history"} {
 		has(t, shelf, title)
 	}
-	hasNot(t, shelf, "Start studying") // nothing added yet
+	// Nothing added yet: the "Start studying" bar is there but hidden.
+	has(t, shelf, `data-shelf-bar hidden>`)
+	hasNot(t, shelf, `class="tile is-added"`)
 
 	// One tap adds a set; the main action becomes "Start studying".
 	_, shelf = b.post("/shelf/add", "slug", "kitchen-numbers")
-	has(t, shelf, "Added", "Start studying")
+	has(t, shelf, `<li class="tile is-added" id="kitchen-numbers"`, "Added", `data-shelf-bar>`, "1 set added · 22 cards", "Start studying")
+	hasNot(t, shelf, `data-shelf-bar hidden>`)
 	items, due, err := w.lib("new@example.com").Counts(ctx, w.now().Add(time.Minute))
 	set, _ := starter.Get("kitchen-numbers")
 	if err != nil || items != set.Count() || due != items {
@@ -353,10 +360,23 @@ func TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap(t *testing.T) {
 	if status != http.StatusForbidden {
 		t.Errorf("suggest-only token adding directly: status %d, want 403", status)
 	}
-	// ...but a token the learner marked "may add" puts material straight in.
-	b.get("/settings")
-	_, page = b.post("/settings/tokens", "name", "research agent", "can_add", "1")
-	adder := regexp.MustCompile(`scry_[A-Za-z0-9_-]{20,}`).FindString(page)
+	// ...and Settings no longer offers "may add": a token made there goes
+	// through the inbox even when the old checkbox value is posted.
+	settings := b.mustGet("/settings")
+	has(t, settings, `<h2 class="title">API Tokens</h2>`, "Programmatic access to your account.", "Token name")
+	hasNot(t, settings, "can_add", "May add straight to my library", ">Agents<")
+	_, page = b.post("/settings/tokens", "name", "research script", "can_add", "1")
+	posted := regexp.MustCompile(`scry_[A-Za-z0-9_-]{20,}`).FindString(page)
+	if status, _ = api("POST", "/api/v1/items", posted, payload); posted == "" || status != http.StatusForbidden {
+		t.Errorf("a token made in Settings added directly: status %d, want 403", status)
+	}
+	// A token that may add, made before the option was removed, keeps
+	// working: it puts material straight in.
+	adder, err := w.app.CreateAgentToken(ctx, w.user("owner@example.com").ID, "research agent", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	has(t, b.mustGet("/settings"), "adds to library", "suggests to inbox")
 	n0, _, _ := lib.Counts(ctx, w.now())
 	status, out = api("POST", "/api/v1/items", adder, `{"source": "Chat, Nov 16", "items": [{"question": "What is 75% hydration?", "answer": "75 g water per 100 g flour", "idea": "Bread"}]}`)
 	if n1, _, _ := lib.Counts(ctx, w.now()); status != http.StatusCreated || n1 != n0+1 {
@@ -424,7 +444,7 @@ func TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinu
 	}
 	// ...set on the answer line, and checked like any typed answer.
 	body = b.answer(first, first.Answer, "via", "spoken")
-	has(t, body, `<span class="tag tag-right">correct</span>`)
+	has(t, body, `data-verdict="right"`, `<span data-verdict-label>Correct</span>`)
 	hist, _ := lib.History(ctx, first.ID)
 	if len(hist) != 1 || hist[0].Via != "spoken" || hist[0].Verdict != srs.Right {
 		t.Fatalf("spoken answer recorded as %+v", hist)
@@ -445,7 +465,7 @@ func TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinu
 	if b.path != "/study/done" {
 		t.Fatalf("after the last answer the learner is at %s", b.path)
 	}
-	has(t, end, "Done.", fmt.Sprintf("%d reviewed, 2 to revisit tomorrow.", total), "Learn something new")
+	has(t, end, "Done.", fmt.Sprintf("%d reviewed, 2 to revisit tomorrow.", total), "Create new cards")
 
 	// What was missed comes back tomorrow; what was right does not.
 	_, dueTomorrow, _ := lib.Counts(ctx, app.EndOfDay(w.user("learner@example.com"), w.now().Add(24*time.Hour)))
@@ -475,14 +495,15 @@ func TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason(t 
 	// reference is right when the model says so...
 	w.model.script = []ai.Judgment{{Verdict: srs.Right, Reason: "Yes: the first code word, with the common spelling."}}
 	body = b.answer(first, "alpha, the first one")
-	has(t, body, `<span class="tag tag-right">correct</span>`, "Yes: the first code word, with the common spelling.")
+	has(t, body, `data-verdict="right"`, `<span data-verdict-label>Correct</span>`, "Yes: the first code word, with the common spelling.")
+	body = b.next()
 
 	// ...and an answer that is letter for letter the reference is missed
 	// when the model says so. No string comparison short-circuits it.
 	second, _ := b.current(body)
 	w.model.script = []ai.Judgment{{Verdict: srs.Missed, Reason: "The model has the final word in this test."}}
 	body = b.answer(second, second.Answer)
-	has(t, body, `<span class="tag tag-missed">incorrect</span>`, "The model has the final word in this test.")
+	has(t, body, `data-verdict="missed"`, `<span data-verdict-label>Incorrect</span>`, "The model has the final word in this test.")
 	body = b.next()
 
 	// "Close" comes with its one-line why and an on-demand "Why?" (no
@@ -490,7 +511,7 @@ func TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason(t 
 	third, _ := b.current(body)
 	w.model.script = []ai.Judgment{{Verdict: srs.Close, Reason: "Right word, but it is spelled Charlie."}}
 	body = b.answer(third, "Charly")
-	has(t, body, `<span class="tag tag-close">almost correct</span>`, "Charly", "Right word, but it is spelled Charlie.", "data-explain", "Why?")
+	has(t, body, `data-verdict="close"`, `<span data-verdict-label>Almost Correct</span>`, "Charly", "Right word, but it is spelled Charlie.", "data-explain", "Ask Why?")
 	hasNot(t, body, "<mark>")
 	b.next()
 
@@ -545,7 +566,7 @@ func TestStory_NeverGradeMyself_WhenTheModelIsDownNothingIsGuessed(t *testing.T)
 		t.Errorf("a judgment with no reason was accepted (status %d, %d reviews)", code, len(hist))
 	}
 	// Once the model is back the same answer is judged.
-	has(t, b.answer(first, first.Answer), `tag-right`)
+	has(t, b.answer(first, first.Answer), `data-verdict="right"`)
 }
 
 // Story: Texts I mark exact are judged word for word.
@@ -575,8 +596,8 @@ func TestStory_TextsIMarkExactAreJudgedWordForWord(t *testing.T) {
 		`<del class="x-wrong"><span class="sr">you wrote: </span>Lord</del>`,
 		`<span class="x-fix"><span class="sr">the text has: </span>Father</span>`,
 		"One word missing, one swapped.",
-		`<span class="tag tag-missed">incorrect</span>`,
-		">Again</button>", ">Next</button>")
+		`data-verdict="missed"`, `<span data-verdict-label>Incorrect</span>`,
+		">Again</button>", "data-next>")
 	// No model was involved: this is the one exception.
 	if n := w.model.judgeCalls(); n != 0 {
 		t.Fatalf("an exact text was sent to the model (%d calls)", n)
@@ -595,7 +616,7 @@ func TestStory_TextsIMarkExactAreJudgedWordForWord(t *testing.T) {
 		t.Fatal("Again did not bring the line back")
 	}
 	body = b.answer(again, "i believe in one god the father almighty")
-	has(t, body, "Word for word.", `<span class="tag tag-right">correct</span>`)
+	has(t, body, "Word for word.", `data-verdict="right"`, `<span data-verdict-label>Correct</span>`, "Practice attempt: the schedule did not move.")
 	// The retry is practice: the schedule set by the first attempt stands.
 	if got := mustItem(t, lib, line1.ID).Sched.Due; !got.Equal(dueAfterFirst) {
 		t.Errorf("practice moved the due date: %v -> %v", dueAfterFirst, got)

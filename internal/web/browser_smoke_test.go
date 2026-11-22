@@ -10,7 +10,7 @@ import (
 
 func TestReviewBrowserSmoke(t *testing.T) {
 	if os.Getenv("SCRY_BROWSER_SMOKE") != "1" {
-		t.Skip("set SCRY_BROWSER_SMOKE=1 and install puppeteer-core")
+		t.Skip("set SCRY_BROWSER_SMOKE=1 (needs Chrome and: npm ci in scripts/)")
 	}
 	w := newWorld(t)
 	explainer := &ai.FakeExplainer{}

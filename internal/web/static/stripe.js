@@ -26,8 +26,14 @@
     report(code);
   }
 
+  // The processing state (app.js) starts on submit; every path that keeps
+  // the learner on this page gives the form back as it was.
+  function giveBack() {
+    if (window.scryBusy) window.scryBusy.stop(form);
+  }
+
   form.addEventListener("submit", function (e) {
-    if (broken) { e.preventDefault(); if (error) error.textContent = unavailable; }
+    if (broken) { e.preventDefault(); if (error) error.textContent = unavailable; giveBack(); }
   });
 
   if (!window.Stripe) { fail("stripe_script_missing"); return; }
@@ -60,10 +66,12 @@
     e.preventDefault();
     var button = form.querySelector("button");
     button.disabled = true;
+    if (window.scryBusy) window.scryBusy.start(form);
     stripe.createPaymentMethod({ type: "card", card: card }).then(function (res) {
       if (res.error) {
         error.textContent = res.error.message; // the reason the processor gives
         button.disabled = false;
+        giveBack();
         return;
       }
       hidden.value = res.paymentMethod.id;
@@ -71,6 +79,7 @@
     }, function () {
       error.textContent = "Couldn't reach the card processor. Check your connection and try again.";
       button.disabled = false;
+      giveBack();
       report("stripe_payment_method_failed");
     });
   });

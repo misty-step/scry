@@ -2,6 +2,7 @@
   "slug": "great-books",
   "title": "Great books and their ideas",
   "description": "Who wrote the books people keep returning to, and the main idea of each.",
+  "icon": "book",
   "ideas": [
     {
       "title": "Epics and journeys",

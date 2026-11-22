@@ -288,7 +288,7 @@ func TestRule_Prices_SmallBaseCappedAllowanceAndTopUpsBeyondIt(t *testing.T) {
 	first, _ := b.current(body)
 
 	// Each judged answer draws on the allowance.
-	b.answer(first, first.Answer)
+	b.answerNext(first, first.Answer)
 	sub, _ := lib.Subscription(ctx)
 	if sub.UsedMicros <= 0 || sub.AllowanceMicros != cfg.AllowanceMicros {
 		t.Fatalf("judging was not metered: %+v", sub)
@@ -320,7 +320,7 @@ func TestRule_Prices_SmallBaseCappedAllowanceAndTopUpsBeyondIt(t *testing.T) {
 
 	// ...until a top-up, which is spent only after the allowance.
 	b.post("/billing/topup")
-	has(t, b.answer(second, second.Answer), "tag-right")
+	has(t, b.answer(second, second.Answer), `data-verdict="right"`)
 	sub, _ = lib.Subscription(ctx)
 	if sub.TopupMicros >= cfg.TopupMicros || sub.UsedMicros != cfg.AllowanceMicros {
 		t.Errorf("the answer was not drawn from top-up credit: %+v", sub)
@@ -567,7 +567,7 @@ func TestRule_DataDurability_SnapshotsAndPerLearnerRecovery(t *testing.T) {
 	if n, _, _ := a.Counts(ctx, w.now()); n != 0 {
 		t.Fatalf("remove left %d items", n)
 	}
-	has(t, alice.mustGet("/settings"), "Recently removed", "The NATO alphabet", "26 items")
+	has(t, alice.mustGet("/settings"), "Recently removed", "NATO phonetic alphabet", "26 items")
 	alice.post(fmt.Sprintf("/settings/restore/%d", ideas[0].ID))
 	if n, _, _ := a.Counts(ctx, w.now()); n != 26 {
 		t.Errorf("restore brought back %d items, want 26", n)
@@ -631,5 +631,5 @@ func TestRule_SeededDemoData(t *testing.T) {
 	}
 	has(t, b.mustGet("/inbox"), "7 suggestions", "from reading agent · The Federalist Papers")
 	has(t, b.mustGet("/billing"), "You've used 62% of this month's allowance. It resets on", "Top-up", "7-day trial started")
-	has(t, b.mustGet("/library"), "The NATO alphabet", "Mental models", "The Creeds")
+	has(t, b.mustGet("/library"), "NATO phonetic alphabet", "Mental models", "The Creeds")
 }

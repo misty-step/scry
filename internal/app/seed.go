@@ -167,7 +167,7 @@ func (a *App) SeedDemo(ctx context.Context) error {
 			Prompt: "In baker's percentages, what does 75% hydration mean?", Answer: "75 grams of water for every 100 grams of flour"},
 		{Agent: "conversation agent", Source: "Chat about sourdough, " + now.AddDate(0, 0, -2).Format("Jan 2"), IdeaTitle: "Ratios worth knowing",
 			Prompt: "What is the 1:2:3 sourdough ratio, by weight?", Answer: "1 part starter, 2 parts water, 3 parts flour"},
-		{Agent: "conversation agent", Source: "Chat about a hiring decision, " + now.AddDate(0, 0, -1).Format("Jan 2"), IdeaTitle: "First principles and inversion",
+		{Agent: "conversation agent", Source: "Chat about a hiring decision, " + now.AddDate(0, 0, -1).Format("Jan 2"), IdeaTitle: "Reasoning from the ground up",
 			Prompt: "Before a hiring decision, what does inversion ask you to list first?", Answer: "The ways the hire could fail, so you can avoid them"},
 	} {
 		if _, err := us.AddSuggestion(ctx, s, now.AddDate(0, 0, -1)); err != nil {

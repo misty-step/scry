@@ -1,13 +1,14 @@
 {
   "slug": "nato-alphabet",
-  "title": "The NATO alphabet",
+  "title": "NATO phonetic alphabet",
   "description": "Spell anything aloud, over any line, without being misheard.",
+  "icon": "radio",
   "ideas": [
     {
-      "title": "Alfa to India",
+      "title": "Letters A–I",
       "summary": "The first nine code words of the spelling alphabet.",
       "links": [
-        "Juliett to Romeo"
+        "Letters J–R"
       ],
       "items": [
         {
@@ -49,11 +50,11 @@
       ]
     },
     {
-      "title": "Juliett to Romeo",
+      "title": "Letters J–R",
       "summary": "The middle nine code words.",
       "links": [
-        "Alfa to India",
-        "Sierra to Zulu"
+        "Letters A–I",
+        "Letters S–Z"
       ],
       "items": [
         {
@@ -95,10 +96,10 @@
       ]
     },
     {
-      "title": "Sierra to Zulu",
+      "title": "Letters S–Z",
       "summary": "The last eight code words.",
       "links": [
-        "Juliett to Romeo"
+        "Letters J–R"
       ],
       "items": [
         {

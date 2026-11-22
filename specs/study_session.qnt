@@ -15,7 +15,9 @@
  * Phases of a session (derived exactly as the web layer derives them):
  *   NoSession      no session has been started
  *   Ended          ended_at != 0
- *   PendingReview  pending_review_id != 0           (a judgment waiting for Enter)
+ *   PendingReview  pending_review_id != 0           (the post-answer review: every
+ *                                                   judged answer, right ones included,
+ *                                                   waits here for "Next card")
  *   RetryingExact  retry_item_id != 0               (an exact text tried again, practice)
  *   Asking         otherwise                        (Current() is the next unanswered entry)
  *
@@ -32,6 +34,14 @@
  *   - CommitNext re-validates (session open, pending unchanged, retry target exact).
  *   - EditItem that clears `exact` cancels a retry of that item.
  *   - Ending a session (also via StartSession) clears pending/retry.
+ *
+ * Slice 41 (post-answer review): CommitAnswer always holds. A model-judged Right used to
+ * move straight on (and end the session after the last item); now every scored or
+ * practice answer leaves its review pending, and only Next (CommitNext) advances or ends
+ * the session. "Edit card" in the review is EditItem keeping `exact`: it changes the
+ * item's text only, never the pending review, the graded snapshot or FSRS
+ * (inv_answer_held, inv_edit_keeps_schedule, reviewInlineEditTest). "Ask Why?" explains
+ * any model-judged review, Right included.
  *
  * Abstractions: 2 items (1 is a line of an exact text, 2 is model-judged), 2 sessions,
  * 4 reviews, 2 tabs, 3 days (0..2). Prompt/expected texts are small version numbers. FSRS
@@ -275,7 +285,6 @@ module study_session {
                      and (se.retry == i) == tb.practice
                      and (not(tb.practice) or items.get(i).exact)
     val id = nextReview
-    val hold = tb.exact or v != "right"
     val rev = { exists: true, item: i, session: s, answer: tb.answer, verdict: v,
                 judge: if (tb.exact) "exact" else "model", practice: tb.practice,
                 gprompt: tb.prompt, gexpected: tb.expected, late: not(openOf(se)) }
@@ -285,12 +294,9 @@ module study_session {
     // UPDATE session_items SET review_id = id ... AND review_id = 0  (scored only)
     val nEntries =
       if (not(tb.practice) and entries.get((s, i)) == 0) entries.set((s, i), id) else entries
-    val ss1 = sessions.set(s, se.with("pending", if (hold) id else 0).with("retry", 0))
-    // HEAD re-reads ActiveSession (maybe another session) and ends it if Current()==nil.
-    val target = if (legacy) activeOf(ss1) else s
-    val tse = ss1.get(target)
-    val ss2 = if (not(hold) and target != 0 and openOf(tse) and currentOf(target, tse, nEntries, items) == 0)
-                ss1.set(target, endSess(tse)) else ss1
+    // Every answer is held: the review of this answer is pending until Next. Answering
+    // never advances the session and never ends it, not even on the last item.
+    val ss2 = sessions.set(s, se.with("pending", id).with("retry", 0))
     all {
       not(tb.exact) or v != "close",       // exact.Diff: right or missed only
       nextReview <= MAX_REVIEW,
@@ -391,10 +397,11 @@ module study_session {
            reviews, nextReview, tabs, reviewSnap, explained, "RestoreItem", "ok"),
   }
 
-  // App.Explain: read-only; only model-judged Close/Missed; uses the review's snapshot.
+  // App.Explain ("Ask Why?"): read-only; any model-judged review (Right, Close or
+  // Missed), never an exact text; uses the review's snapshot.
   action explain(r: int): bool = {
     val rv = reviews.get(r)
-    val ok = rv.judge == "model" and (rv.verdict == "close" or rv.verdict == "missed")
+    val ok = rv.judge == "model"
     all {
       rv.exists,
       update(now, items, fsrs, sessions, entries, nextSession, reviews, nextReview, tabs, reviewSnap,
@@ -564,7 +571,7 @@ module study_session {
       RIDS.forall(r => explained.review == r implies {
         val rv = reviewSnap.get(r)
         all {
-          rv.exists, rv.judge == "model", rv.verdict == "close" or rv.verdict == "missed",
+          rv.exists, rv.judge == "model", VERDICTS.contains(rv.verdict),
           explained.prompt == rv.gprompt, explained.expected == rv.gexpected,
           explained.answer == rv.answer, explained.verdict == rv.verdict,
         }
@@ -573,11 +580,24 @@ module study_session {
     lastAction == "Explain" implies fsrs == prevFsrs,
   }
 
+  // The post-answer review: an answer that was recorded is on screen. The review just
+  // written is the pending review of an open session, so the session cannot have moved
+  // on to the next item or ended by itself.
+  val inv_answer_held: bool =
+    ((lastAction == "CommitScored" or lastAction == "CommitPractice") and lastResult == "ok") implies
+      SIDS.exists(s => openOf(sessions.get(s)) and sessions.get(s).pending == nextReview - 1)
+
+  // "Edit card" changes an item's text only: no schedule moves on an edit. (That no
+  // review row changes is the first clause of inv_explain_immutable.)
+  val inv_edit_keeps_schedule: bool = lastAction == "EditItem" implies fsrs == prevFsrs
+
   val inv_all: bool = all {
     inv_session_phase_consistency,
     inv_fsrs_bounds_and_monotonicity,
     inv_practice_does_not_mutate_fsrs,
     inv_explain_immutable,
+    inv_answer_held,
+    inv_edit_keeps_schedule,
   }
 
   // ------------------------------------------------------------------ scenarios
@@ -592,7 +612,7 @@ module study_session {
       .expect(phase == "Asking" and current == 1)
       .then(beginAnswer(1, 1, 1))
       .expect(tabs.get(1).mode == "answer" and phase == "Asking")
-      .then(commitAnswer(false, 1, "missed"))   // exact texts always hold
+      .then(commitAnswer(false, 1, "missed"))   // every answer holds
       .expect(phase == "PendingReview" and sessions.get(1).pending == 1
               and fsrs.get(1).reps == 1 and fsrs.get(1).due == 1 and fsrs.get(1).lapses == 0)
       .then(pressEnter(false, false))
@@ -660,15 +680,43 @@ module study_session {
       .then(start(false))
       .then(answer(false, 1, 1, 1, "missed"))
       .then(pressEnter(false, false))
-      .then(answer(false, 1, 2, 1, "right"))   // model Right does not hold, last item
-      .expect(phase == "Ended" and sessions.get(1).pending == 0
+      .then(answer(false, 1, 2, 1, "right"))   // model Right holds too, even on the last item
+      .expect(phase == "PendingReview" and sessions.get(1).pending == 2 and active == 1
               and fsrs.get(1).reps == 1 and fsrs.get(1).due == 1 and fsrs.get(2).reps == 1 and fsrs.get(2).due == 3
               and inv_all)
+      .then(pressEnter(false, false))          // only Next ends the session
+      .expect(phase == "Ended" and sessions.get(1).pending == 0 and inv_all)
       .then(tick)
       .then(start(false))                      // item 1 is due again on day 1
       .expect(phase == "Asking" and active == 2 and current == 1 and entry(2, 2) == NOT_MEMBER)
       .then(answer(false, 1, 1, 1, "missed"))  // lapse after the first review
       .expect(fsrs.get(1).lapses == 1 and fsrs.get(1).reps == 2 and fsrs.get(1).due == 2 and inv_all)
+
+  // Slice 41: a Right answer stops on its review; "Edit card" there rewords the item
+  // and changes nothing else; "Ask Why?" explains the Right answer as it was graded;
+  // Next then moves on.
+  run reviewInlineEditTest =
+    init
+      .then(start(false))
+      .then(answer(false, 1, 1, 1, "right"))
+      .then(pressEnter(false, false))
+      .then(answer(false, 1, 2, 2, "right"))   // model-judged Right
+      .expect(phase == "PendingReview" and sessions.get(1).pending == 2 and active == 1 and inv_all)
+      .then(editItem(false, 2, 1, 1, false))   // Edit card: new question and answer, exact kept
+      .expect(all {
+        phase == "PendingReview", sessions.get(1).pending == 2, active == 1,
+        items.get(2).prompt == 1, items.get(2).expected == 1, not(items.get(2).exact),
+        reviews.get(2) == reviewSnap.get(2), reviews.get(2).gprompt == 0, reviews.get(2).gexpected == 0,
+        fsrs == prevFsrs, entry(1, 2) == 2, inv_all,
+      })
+      .then(explain(2))                        // Ask Why? on a Right answer
+      .expect(all {
+        explained.ok, explained.verdict == "right",
+        explained.prompt == 0, explained.expected == 0,   // the graded text, not the edit
+        fsrs == prevFsrs, phase == "PendingReview", inv_all,
+      })
+      .then(pressEnter(false, false))
+      .expect(phase == "Ended" and items.get(2).prompt == 1 and inv_all)
 
   // Legacy bug 1a: double submit / two tabs on the same current item.
   run legacyDoubleSubmitTest =

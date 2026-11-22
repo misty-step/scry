@@ -1,27 +1,29 @@
 {{define "main"}}
 <section class="shelf-head">
-  <div>
-    <h1 class="display">Start with something worth knowing.</h1>
-    <p class="meta">{{len .Tiles}} starter sets{{if not .HasItems}} · add one or more to begin{{end}}</p>
-  </div>
-  {{if .HasItems}}<a class="btn btn-accent" href="/study">Start studying</a>{{end}}
+  <h1 class="display">Pick a deck and start recalling in seconds.</h1>
+  <p class="meta">{{len .Tiles}} starter sets{{if not .HasItems}} · add one or more to begin{{end}}</p>
 </section>
-<ul class="shelf" aria-label="Starter sets">
+<ul class="shelf" aria-label="Starter sets" data-shelf>
   {{range .Tiles}}
-  <li class="tile{{if .Added}} is-added{{end}}" id="{{.Set.Slug}}">
-    <h2 class="title">{{.Set.Title}}</h2>
-    <p class="meta">{{plural .Count "item" "items"}}</p>
+  <li class="tile{{if .Added}} is-added{{end}}" id="{{.Set.Slug}}" data-tile data-cards="{{.Count}}">
+    <h2 class="title tile-title">{{icon .Set.Icon}}<span>{{.Set.Title}}</span></h2>
+    <p class="meta tile-count">{{icon "cards"}}<span class="num">{{.Count}}</span> cards</p>
     <p class="tile-desc">{{.Set.Description}}</p>
     {{if .Added}}
-      <p class="tile-tag meta">Added</p>
+      <p class="tile-tag meta" data-added>{{icon "check"}}Added</p>
     {{else}}
       <form method="post" action="/shelf/add" data-add>
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
         <input type="hidden" name="slug" value="{{.Set.Slug}}">
-        <button class="tile-add meta" aria-label="Add {{.Set.Title}}">+ Add</button>
+        <button class="tile-add" aria-label="Add {{.Set.Title}}">{{icon "plus"}}<span data-add-label>Add</span></button>
       </form>
     {{end}}
   </li>
   {{end}}
 </ul>
+<template data-added-template><p class="tile-tag meta" data-added>{{icon "check"}}Added</p></template>
+<div class="shelf-bar" data-shelf-bar{{if not .HasItems}} hidden{{end}}>
+  <p class="meta" role="status" data-shelf-summary>{{if .HasItems}}{{.Summary}}{{end}}</p>
+  <a class="btn btn-accent" href="/study">Start studying{{icon "arrow"}}</a>
+</div>
 {{end}}

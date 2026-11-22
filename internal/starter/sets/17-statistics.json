@@ -2,6 +2,7 @@
   "slug": "statistics",
   "title": "Core ideas in statistics",
   "description": "Read data honestly: averages, spread, chance, sampling and what evidence can show.",
+  "icon": "bars",
   "ideas": [
     {
       "title": "Center and spread",

@@ -135,7 +135,8 @@ body {
   overflow-x: hidden;
 }
 
-h1, h2, h3, p, ul, ol, figure, fieldset, pre { margin: 0; padding: 0; }
+h1, h2, h3, p, ul, ol, dl, dt, dd, figure, fieldset, pre { margin: 0; padding: 0; }
+[hidden] { display: none !important; }
 ul, ol { list-style: none; }
 fieldset { border: 0; min-width: 0; }
 a { color: inherit; }
@@ -171,6 +172,20 @@ main.frame { flex: 1; padding-top: var(--section); padding-bottom: var(--section
 .lede { font-size: var(--reading); max-width: var(--measure); }
 p { max-width: var(--measure); }
 
+/* ---- Icons -------------------------------------------------------------
+   One family of inline line icons (DESIGN.md, Icons): stroked with the
+   text color beside them, never filled, always next to their word. */
+
+.icon { width: 18px; height: 18px; flex: none; vertical-align: -0.2em; }
+
+/* Every destination says what it is for in one plain line. */
+.purpose { color: var(--ink-body); font-size: var(--body); max-width: var(--measure); }
+.page-head { display: grid; gap: var(--s1); margin-bottom: var(--s4); }
+.page-title { display: flex; align-items: center; gap: var(--s2); }
+.page-title .icon { width: 20px; height: 20px; color: var(--ink-muted); }
+.page-kicker { display: flex; align-items: center; gap: 6px; }
+.page-kicker .icon { width: 16px; height: 16px; }
+
 /* ---- Top bar and wordmark ---------------------------------------------- */
 
 .top {
@@ -194,9 +209,10 @@ p { max-width: var(--measure); }
 .nav { display: flex; flex-wrap: wrap; gap: 0 var(--s4); }
 .nav a {
   font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); text-decoration: none;
-  min-height: var(--touch); display: inline-flex; align-items: center; gap: var(--s1);
+  min-height: var(--touch); display: inline-flex; align-items: center; gap: 6px;
   transition: color var(--fast) var(--ease);
 }
+.nav .icon { width: 16px; height: 16px; }
 .nav a:hover, .nav a[aria-current] { color: var(--ink); }
 .nav a[aria-current] { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; }
 .nav .count { color: var(--accent); }
@@ -214,9 +230,12 @@ p { max-width: var(--measure); }
   font: 500 var(--body)/1 var(--text); text-decoration: none; cursor: pointer;
   transition: background-color var(--fast) var(--ease), border-color var(--fast) var(--ease), opacity var(--fast) var(--ease);
 }
-.btn:hover { background: var(--sunken); }
+.btn:hover { background: var(--sunken); border-color: var(--ink); }
+.btn:active { transform: translateY(1px); }
 .btn-accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); transition: none; }
-.btn-accent:hover { background: var(--accent); text-decoration: underline; }
+.btn-accent:hover { background: var(--accent); border-color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.btn[aria-busy="true"] { cursor: progress; }
+.btn:disabled:active, .btn[aria-disabled="true"]:active { transform: none; }
 .btn:disabled, .btn[aria-disabled="true"] { color: var(--ink-muted); border-color: var(--line); background: transparent; cursor: default; }
 .btn.wide { width: 100%; }
 
@@ -279,8 +298,8 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 
 /* ---- Starter shelf ----------------------------------------------------- */
 
-.shelf-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--s4); margin-bottom: var(--s5); }
-.shelf-head .display { margin-bottom: var(--s2); }
+.shelf-head { display: grid; gap: var(--s2); margin-bottom: var(--s5); }
+.shelf-head .display { max-width: 22ch; }
 .shelf {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   border-top: 1px solid var(--line); border-left: 1px solid var(--line);
@@ -293,14 +312,43 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 }
 .tile:hover { background: var(--sunken); }
 .tile.is-added { outline: 1px solid var(--accent); outline-offset: -1px; }
+.tile-title { display: flex; align-items: flex-start; gap: var(--s2); }
+.tile-title .icon { width: 20px; height: 20px; margin-top: 5px; color: var(--ink-muted); }
+.tile:hover .tile-title .icon, .tile.is-added .tile-title .icon { color: var(--ink); }
+.tile-count { display: flex; align-items: center; gap: 6px; }
+.tile-count .icon { width: 16px; height: 16px; }
+.num { font-variant-numeric: tabular-nums; color: var(--ink); }
 .tile-desc { color: var(--ink-body); flex: 1; }
-.tile-tag { color: var(--accent); min-height: var(--touch); display: flex; align-items: center; }
+.tile-tag { color: var(--accent); min-height: var(--touch); display: flex; align-items: center; gap: 6px; }
+.tile-tag .icon { width: 16px; height: 16px; }
+/* Add is a bordered secondary control; the one filled accent on the shelf
+   is "Start studying". */
 .tile-add {
-  background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink);
-  min-height: var(--touch); min-width: var(--touch); text-align: left;
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  min-height: var(--touch); min-width: var(--touch); padding: 0 var(--s3) 0 12px;
+  background: transparent; color: var(--ink); cursor: pointer;
+  border: 1px solid var(--ink-ghost); border-radius: var(--radius-control);
+  font: 500 var(--meta)/1 var(--mono);
+  transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease), color var(--fast) var(--ease);
 }
-.tile-add:hover { color: var(--accent); }
-.tile-add:disabled { color: var(--ink-muted); cursor: default; }
+.tile-add .icon { width: 16px; height: 16px; }
+.tile-add:hover { border-color: var(--accent); color: var(--accent); background: var(--page); }
+.tile-add:active { transform: translateY(1px); }
+.tile-add:disabled { color: var(--ink-muted); border-color: var(--line); background: transparent; cursor: progress; transform: none; }
+/* After the first add: pinned to the bottom of the window, so adding a set
+   far down the shelf never needs a scroll to reach "Start studying". */
+.shelf-bar {
+  position: sticky; bottom: 0; z-index: 3;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s4);
+  margin-top: var(--s4); padding: var(--s3) var(--s4);
+  background: var(--page); border: 1px solid var(--ink-ghost); border-bottom: 0;
+  animation: arrive var(--slow) var(--ease) both;
+}
+.shelf-bar .meta { color: var(--ink); }
+
+/* Study with an empty library: its own screen with the two ways forward. */
+.empty-state { display: grid; gap: var(--s3); align-content: center; justify-items: start; min-height: 50vh; animation: arrive var(--slow) var(--ease) both; }
+.empty-state .actions { margin-top: var(--s3); gap: var(--s3); }
 
 /* ---- Study session ----------------------------------------------------- */
 
@@ -328,7 +376,10 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
   min-height: calc(100dvh - 2 * var(--section) - 2 * var(--s7));
 }
 .session-margin { display: flex; flex-direction: column; gap: var(--s1); align-self: center; padding-left: var(--s3); }
-.margin-idea { color: var(--ink-muted); }
+.margin-mode { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+.margin-mode .icon { width: 16px; height: 16px; }
+.margin-purpose { color: var(--ink-muted); margin-bottom: var(--s3); }
+.margin-idea { color: var(--ink-muted); overflow-wrap: anywhere; }
 .margin-count { color: var(--ink); }
 .session-flow { display: flex; flex-direction: column; justify-content: center; gap: var(--s5); min-width: 0; }
 
@@ -339,10 +390,13 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
   animation: recede var(--slow) var(--ease) both;
 }
 .answered-q { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.answered-why { grid-column: 1 / -1; color: var(--ink-body); max-width: var(--measure); }
 .scrollback .answered:nth-last-child(n+6) { display: none; }
 
 .current { display: grid; gap: var(--s3); }
+/* Saving an edit keeps the form where it is in the window by its own
+   measured correction (app.js); the browser's scroll anchoring would add a
+   second, partial one. */
+.judged { overflow-anchor: none; }
 .prompt { max-width: 26ch; overflow-wrap: anywhere; }
 .prompt-receded { font: 500 var(--title)/1.25 var(--text); color: var(--ink-muted); max-width: var(--measure); }
 .exact-label { color: var(--ink-muted); }
@@ -398,7 +452,47 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 .expected { color: var(--ink); font-size: var(--reading); }
 .expected .meta { margin-right: var(--s2); }
 .judged-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s4); }
-/* On-demand "Why?": a quiet control, then the explanation as body text. */
+/* Post-answer review: your answer beside the correct one, the verdict in
+   words, then this card's schedule, Edit card and Next card. */
+.compare {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3) var(--s5);
+  padding: var(--s3) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.compare-cell { display: grid; gap: var(--s1); align-content: start; min-width: 0; }
+.compare-answer { font: 500 var(--title)/1.25 var(--text); letter-spacing: -0.01em; color: var(--ink); overflow-wrap: anywhere; }
+.verdict-badge {
+  display: inline-flex; align-items: center; gap: 6px; align-self: center;
+  padding: 5px 10px 5px 8px; border: 1px solid currentColor; border-radius: var(--radius-control);
+  font: 500 var(--meta)/1.4 var(--mono); white-space: nowrap;
+}
+.verdict-badge .icon { width: 18px; height: 18px; }
+.verdict-right { color: var(--right); }
+.verdict-close { color: var(--ink); background: var(--close-fill); border-color: var(--ink-ghost); }
+.verdict-missed { color: var(--missed); }
+.telemetry {
+  display: flex; flex-wrap: wrap; gap: 0 var(--s5);
+  padding: var(--s1) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  font: 400 var(--meta)/1.4 var(--mono);
+}
+.fact { display: grid; gap: 2px; padding: var(--s2) 0; }
+.fact dt { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); }
+.fact dt .icon { width: 14px; height: 14px; }
+.fact dd { color: var(--ink); font-variant-numeric: tabular-nums; }
+.practice-note { color: var(--ink-muted); }
+/* Edit card and Next card share one row; the open edit form takes the row
+   and Next card moves under it. */
+.review-foot { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--s3) var(--s4); }
+.review-foot .judged-actions { margin-left: auto; }
+.edit-card { max-width: 560px; }
+.edit-card[open] { flex: 1 1 100%; }
+.edit-card summary { list-style: none; width: fit-content; font: 400 var(--meta)/1.4 var(--mono); }
+.edit-card summary::-webkit-details-marker { display: none; }
+.edit-card[open] summary { border-color: var(--ink); }
+.edit-form { margin-top: var(--s3); max-width: none; }
+.edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.edit-status { display: inline-flex; align-items: center; gap: 6px; color: var(--right); }
+.edit-status .icon { width: 16px; height: 16px; }
+/* On-demand "Ask Why?": a bordered control, then the explanation as body text. */
 .explain { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); max-width: var(--measure); }
 .explain-btn { font: 400 var(--meta)/1.4 var(--mono); }
 .explain-btn[aria-busy="true"] { color: var(--ink-muted); cursor: progress; }
@@ -496,6 +590,7 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
 /* ---- Inbox and drafts -------------------------------------------------- */
 
 .list-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); margin-bottom: var(--s4); }
+.list-purpose { order: 1; flex-basis: 100%; }
 .list-count { flex: 1; }
 .list-action { margin-left: auto; }
 .sug { position: relative; align-items: flex-start; gap: var(--s4); padding: var(--s3); outline-offset: -2px; }
@@ -528,6 +623,7 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
 /* ---- Learn something new ---------------------------------------------- */
 
 .learn { display: grid; align-content: center; min-height: 50vh; }
+.learn .page-head { margin-bottom: var(--s5); }
 .ask { display: grid; gap: var(--s3); }
 .ask-input {
   width: 100%; min-height: var(--s7); padding: var(--s2) 0;
@@ -558,6 +654,20 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
 .cancel[open] { display: grid; gap: var(--s3); }
 .cancel[open] p { color: var(--ink); }
 
+/* ---- Card and billing forms: processing --------------------------------
+   Shown the moment a card or top-up form is submitted, so there is never
+   an ambiguous pause: a spinner with plain words and a thin progress line.
+   The only two marks in Scry that loop; both are still under reduced
+   motion. */
+.busy { display: grid; gap: var(--s2); flex-basis: 100%; }
+.busy-line { display: flex; align-items: center; gap: var(--s2); color: var(--ink); max-width: none; }
+.busy-line .icon { width: 14px; height: 14px; color: var(--accent); animation: spin 800ms linear infinite; }
+.busy-track { position: relative; height: 2px; background: var(--line); overflow: hidden; }
+.busy-bar { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: var(--accent); animation: slide 1200ms var(--ease) infinite; }
+form.is-busy .field, form.is-busy .field-row, form.is-busy .hint { opacity: 0.55; pointer-events: none; transition: opacity var(--fast) var(--ease); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+
 /* ---- Settings and reading pages --------------------------------------- */
 
 .reading { max-width: 720px; display: grid; gap: var(--s3); }
@@ -578,7 +688,14 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
   .field-row { grid-template-columns: 1fr 1fr; }
 
   .session { grid-template-columns: 1fr; gap: var(--s3); min-height: calc(100dvh - 240px); padding-bottom: 96px; }
-  .session-margin { flex-direction: row; justify-content: space-between; padding: 0; align-self: start; }
+  .session-margin { flex-flow: row wrap; justify-content: space-between; gap: 2px var(--s3); padding: 0; align-self: start; }
+  .margin-purpose { flex: 1 0 calc(100% - 96px); margin-bottom: 0; }
+  .margin-idea { flex: 1 1 60%; min-width: 0; }
+  .compare { grid-template-columns: minmax(0, 1fr); }
+  .telemetry { gap: 0 var(--s4); }
+  .shelf-bar { padding: var(--s3); }
+  .shelf-bar .btn { flex: 1; }
+  .empty-state .actions .btn { flex: 1 1 100%; }
   .scrollback .answered:nth-last-child(n+3) { display: none; }
   .upcoming li:nth-child(n+2) { display: none; }
   .hints { display: none; }

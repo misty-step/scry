@@ -663,15 +663,23 @@ func TestExplain_GuardsAuthOwnershipCSRFAndKind(t *testing.T) {
 	if ex.Calls() != 0 {
 		t.Fatalf("refused requests reached the explainer %d times", ex.Calls())
 	}
-	// A right answer has nothing to explain on demand.
+	// A right answer can be explained too, if the learner wants to check
+	// why it holds; asking changes neither the grade nor the schedule.
 	b.next()
 	it, _ := b.current(b.mustGet("/study"))
 	w.model.script = []ai.Judgment{{Verdict: srs.Right, Reason: ai.CriterionSentence(srs.Right)}}
 	page := b.answer(it, it.Answer)
-	hasNot(t, page, "data-explain")
-	hist, _ := w.lib("owner@example.com").History(ctx, it.ID)
-	if status, _ := b.explain(hist[0].ID, true); status != http.StatusUnprocessableEntity {
-		t.Fatalf("right answer: %d", status)
+	has(t, page, "data-explain", "Ask Why?", `data-verdict="right"`)
+	lib := w.lib("owner@example.com")
+	hist, _ := lib.History(ctx, it.ID)
+	before := mustItem(t, lib, it.ID).Sched
+	status, out := b.explain(hist[0].ID, true)
+	if status != http.StatusOK || !strings.Contains(out, "Why it holds:") || ex.Calls() != 1 {
+		t.Fatalf("right answer: %d %s (%d explainer calls)", status, out, ex.Calls())
+	}
+	after, _ := lib.History(ctx, it.ID)
+	if len(after) != 1 || after[0] != hist[0] || mustItem(t, lib, it.ID).Sched != before {
+		t.Fatal("explaining a right answer changed its review or schedule")
 	}
 }
 

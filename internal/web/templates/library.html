@@ -1,5 +1,9 @@
 {{define "main"}}
 {{template "flash" .}}
+<header class="page-head">
+  <h1 class="title page-title">{{icon "library"}}Library</h1>
+  <p class="purpose">Every card you have, grouped by idea.</p>
+</header>
 <div class="library">
   <nav class="pane pane-outline" aria-label="Ideas">
     <form method="get" action="/library" class="search" role="search">
@@ -17,7 +21,7 @@
 
   <article class="pane pane-idea">
     {{if .Query}}
-      <h1 class="title">Results for “{{.Query}}”</h1>
+      <h2 class="title">Results for “{{.Query}}”</h2>
       <p class="meta">{{plural (len .Results) "item" "items"}}</p>
       {{if .Results}}
       <ul class="rows">
@@ -29,7 +33,7 @@
       <p class="meta"><a class="link quiet" href="/library">Clear search</a></p>
     {{else}}
       <p class="meta">{{.Idea.Number}}</p>
-      <h1 class="title idea-title">{{.Idea.Title}}</h1>
+      <h2 class="title idea-title">{{.Idea.Title}}</h2>
       {{if .Idea.Summary}}<p class="idea-summary">{{.Idea.Summary}}</p>{{end}}
 
       {{if .Related}}
@@ -42,7 +46,7 @@
       </section>
       {{end}}
 
-      <h2 class="section-label meta">Items</h2>
+      <h3 class="section-label meta">Items</h3>
       {{if .Items}}
       <ul class="rows">
         {{range .Items}}

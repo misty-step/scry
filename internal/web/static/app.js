@@ -151,12 +151,17 @@
     if ((e.key === "a" || e.key === "A") && again) {
       e.preventDefault(); again.click(); return;
     }
-    // Buttons and links retain their native Enter/Space activation.
-    var nativeControl = e.target.closest("button, a, input, select");
+    // Buttons, links and the Edit card toggle retain their native
+    // Enter/Space activation.
+    var nativeControl = e.target.closest("button, a, input, select, textarea, summary");
     if (e.key === "Enter" && !nativeControl && (next || answer)) {
       e.preventDefault();
       if (next) next.click(); else answer.requestSubmit();
       return;
+    }
+    // In the post-answer review, Space also moves on to the next card.
+    if (e.key === " " && !nativeControl && next) {
+      e.preventDefault(); next.click(); return;
     }
     if (e.key === " " && !nativeControl && $("[data-mic]")) {
       e.preventDefault(); $("[data-mic]").click(); return;
@@ -184,16 +189,91 @@
 
   // ---- Starter shelf: the adding state -----------------------------------
 
+  // Adding a set confirms in place: "+ Add" becomes "Adding…" and then
+  // the "Added" tag, and the "Start studying" bar appears, without a page
+  // load, so the window never jumps back to the top. If the request fails,
+  // the form posts the plain way.
   function initShelf() {
+    var bar = $("[data-shelf-bar]"), summary = $("[data-shelf-summary]"), tpl = $("[data-added-template]");
     $$("form[data-add]").forEach(function (form) {
-      form.addEventListener("submit", function () {
-        var b = $("button", form);
-        b.textContent = "Adding…";
-        // Disable after the submit has been dispatched.
-        setTimeout(function () { b.disabled = true; }, 0);
+      form.addEventListener("submit", function (e) {
+        var b = $("button", form), label = $("[data-add-label]", form) || b, tile = form.closest("[data-tile]");
+        if (b.disabled) { e.preventDefault(); return; }
+        label.textContent = "Adding…";
+        if (!window.fetch || !tpl || !tpl.content || !tile) {
+          // Disable after the submit has been dispatched.
+          setTimeout(function () { b.disabled = true; }, 0);
+          return;
+        }
+        e.preventDefault();
+        b.disabled = true;
+        b.setAttribute("aria-busy", "true");
+        fetch(form.action, {
+          method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
+          headers: { "Accept": "application/json" }
+        }).then(function (res) {
+          if (!res.ok) throw new Error("add failed");
+          return res.json();
+        }).then(function (j) {
+          var tag = tpl.content.firstElementChild.cloneNode(true);
+          tile.classList.add("is-added");
+          form.replaceWith(tag);
+          tag.tabIndex = -1;
+          tag.focus({ preventScroll: true });
+          if (summary) summary.textContent = j.summary || "";
+          if (bar) bar.hidden = false;
+        }).catch(function () { form.submit(); });
       });
     });
   }
+
+  // ---- Card and billing forms: the processing state ----------------------
+
+  // Submitting a card or a top-up shows at once that it is being confirmed:
+  // the button is disabled (no double submit), a spinner and plain words
+  // appear with a progress line. stripe.js ends it again if the processor
+  // refuses the card; a page brought back from the back cache starts clean.
+  function busyStart(form) {
+    var button = $("button:not([type=button])", form), box = $("[data-busy]", form);
+    form.classList.add("is-busy");
+    form.setAttribute("aria-busy", "true");
+    if (button) {
+      button.setAttribute("aria-busy", "true");
+      // Disable after the submit has been dispatched.
+      setTimeout(function () { if (form.classList.contains("is-busy")) button.disabled = true; }, 0);
+    }
+    if (box) {
+      var text = $("[data-busy-text]", box);
+      if (text && form.dataset.busyText) text.textContent = form.dataset.busyText;
+      box.hidden = false;
+    }
+    // If the page is still here long after (the request was stopped or
+    // never left), give the form back rather than leave it locked.
+    clearTimeout(form.busyTimer);
+    form.busyTimer = setTimeout(function () { busyStop(form); }, 30000);
+  }
+  function busyStop(form) {
+    var button = $("button:not([type=button])", form), box = $("[data-busy]", form);
+    clearTimeout(form.busyTimer);
+    form.classList.remove("is-busy");
+    form.removeAttribute("aria-busy");
+    if (button) { button.removeAttribute("aria-busy"); button.disabled = false; }
+    if (box) box.hidden = true;
+  }
+  window.scryBusy = { start: busyStart, stop: busyStop };
+
+  function initBusy() {
+    $$("form[data-busy-form]").forEach(function (form) {
+      form.addEventListener("submit", function (e) {
+        if (e.defaultPrevented) return;
+        if (form.classList.contains("is-busy")) { e.preventDefault(); return; }
+        busyStart(form);
+      });
+    });
+  }
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted) $$("form[data-busy-form].is-busy").forEach(busyStop);
+  });
 
   // ---- Study -------------------------------------------------------------
 
@@ -204,6 +284,7 @@
     var nextForm = $("[data-next-form]");
     if (nextForm) initNext(nextForm);
     initExplain();
+    initEdit();
     if (!form) return;
 
     var input = $("#answer", form);
@@ -371,6 +452,44 @@
     });
   }
 
+  // "Edit card" in the post-answer review: the question and correct answer
+  // are saved without leaving the review. What is on screen is updated in
+  // place and "Saved" is shown; the grade and schedule are never touched.
+  function initEdit() {
+    var form = $("[data-edit-form]");
+    if (!form || !window.fetch) return;
+    var status = $("[data-edit-status]", form), error = $("[data-edit-error]", form), save = $("[data-edit-save]", form);
+    var busy = false;
+    form.addEventListener("input", function () { status.hidden = true; });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (busy) return;
+      busy = true;
+      save.setAttribute("aria-busy", "true");
+      error.hidden = true;
+      status.hidden = true;
+      var done = function () { busy = false; save.removeAttribute("aria-busy"); };
+      var fail = function (text) { done(); error.textContent = text; error.hidden = false; };
+      fetch(form.action, {
+        method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
+        headers: { "Accept": "application/json" }
+      }).then(function (res) { return res.json().then(function (j) {
+        if (!res.ok || !j.saved) { fail(j.error || "Couldn't save that. Try again."); return; }
+        done();
+        // The text above the form may grow or shrink (a missed answer is set
+        // very large): keep the form where it was in the window.
+        var before = save.getBoundingClientRect().top;
+        $$("[data-canonical]").forEach(function (el) { el.textContent = j.answer; });
+        $$("[data-prompt]").forEach(function (el) { el.textContent = j.prompt; });
+        form.elements.prompt.value = j.prompt;
+        form.elements.answer.value = j.answer;
+        status.hidden = false;
+        var moved = save.getBoundingClientRect().top - before;
+        if (moved) window.scrollBy(0, moved);
+      }); }).catch(function () { fail("Couldn't reach Scry. Check your connection and try again."); });
+    });
+  }
+
   function initNext(form) {
     var again = $("[data-again]", form);
     var busy = false;
@@ -443,6 +562,7 @@
   function init() {
     initTZ();
     initShelf();
+    initBusy();
     initStudy();
     initRows();
     initDraft();

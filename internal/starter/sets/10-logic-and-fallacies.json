@@ -2,6 +2,7 @@
   "slug": "logic-and-fallacies",
   "title": "Logic and fallacies",
   "description": "Tell a valid argument from a bad one, and name the usual ways reasoning goes wrong.",
+  "icon": "branch",
   "ideas": [
     {
       "title": "Arguments and their parts",

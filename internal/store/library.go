@@ -201,6 +201,39 @@ func (u *UserStore) Item(ctx context.Context, id int64) (Item, error) {
 		WHERE t.id = ? AND t.user_id = ? AND t.deleted_at = 0`, id, u.uid))
 }
 
+// IdeaPlace is where an idea sits in the outline, for naming it without
+// its own title: the top-level idea above it (itself when it is top-level)
+// and, for an idea inside another, its 1-based place among its siblings.
+type IdeaPlace struct {
+	Title   string // the idea's own title
+	Topic   string // the top-level idea's title
+	Nested  bool   // the idea sits inside a top-level idea
+	Ordinal int    // 1-based place among the parent's ideas; 0 when top-level
+}
+
+// IdeaPlace reports where one of the learner's ideas sits.
+func (u *UserStore) IdeaPlace(ctx context.Context, ideaID int64) (IdeaPlace, error) {
+	var p IdeaPlace
+	var parent int64
+	var parentTitle string
+	err := u.s.db.QueryRowContext(ctx, `
+		SELECT i.title, COALESCE(i.parent_id, 0), COALESCE(p.title, ''),
+		       (SELECT COUNT(*) FROM ideas s WHERE s.user_id = i.user_id AND s.parent_id = i.parent_id AND s.deleted_at = 0
+		          AND (s.position < i.position OR (s.position = i.position AND s.id <= i.id)))
+		FROM ideas i LEFT JOIN ideas p ON p.id = i.parent_id AND p.user_id = i.user_id
+		WHERE i.id = ? AND i.user_id = ?`, ideaID, u.uid).Scan(&p.Title, &parent, &parentTitle, &p.Ordinal)
+	if err != nil {
+		return IdeaPlace{}, notFound(err)
+	}
+	p.Topic = p.Title
+	if parent != 0 {
+		p.Nested, p.Topic = true, parentTitle
+	} else {
+		p.Ordinal = 0
+	}
+	return p, nil
+}
+
 // Search finds items whose question, answer or idea holds every word of q.
 func (u *UserStore) Search(ctx context.Context, q string) ([]Item, error) {
 	words := strings.Fields(q)

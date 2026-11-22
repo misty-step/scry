@@ -49,15 +49,16 @@ type SessionEntry struct {
 // A session is an explicit state machine whose phase is derived from its
 // row (see Phase and the transition table below):
 //
-//	Asking        --AnswerHeld-->     PendingReview  (a judgment waits for Enter)
-//	Asking        --AnswerPassed-->   Asking         (right: straight on)
+//	Asking        --AnswerHeld-->     PendingReview  (the post-answer review)
 //	RetryingExact --AnswerPractice--> PendingReview  (an exact text tried again)
 //	PendingReview --Advance-->        Asking
 //	PendingReview --Retry-->          RetryingExact  (only for an exact text)
 //	RetryingExact --Advance-->        Asking         (the retry is skipped)
 //	Asking | PendingReview | RetryingExact --End--> Ended
 //
-// Ended is terminal: every event on an ended session is refused.
+// Every scored answer, whatever its verdict, is held in PendingReview (the
+// post-answer review) until the learner moves on: a session never advances
+// by itself. Ended is terminal: every event on an ended session is refused.
 type StudySession struct {
 	ID              int64
 	Started, Ended  time.Time
@@ -101,7 +102,9 @@ type SessionEvent uint8
 const (
 	// EventAnswerHeld is a scored answer whose judgment stays on screen.
 	EventAnswerHeld SessionEvent = iota
-	// EventAnswerPassed is a scored answer that moves straight on (right).
+	// EventAnswerPassed is a scored answer that would move straight on
+	// without a review. No phase accepts it: a right answer used to pass,
+	// and is now held like every other, so recording one is refused.
 	EventAnswerPassed
 	// EventAnswerPractice is an "Again" attempt at an exact text; it is
 	// held on screen and never moves the schedule.
@@ -141,7 +144,6 @@ type sessionStep struct {
 // that is not here is an illegal transition.
 var sessionTransitions = map[sessionStep]SessionPhase{
 	{PhaseAsking, EventAnswerHeld}:            PhasePendingReview,
-	{PhaseAsking, EventAnswerPassed}:          PhaseAsking,
 	{PhaseRetryingExact, EventAnswerPractice}: PhasePendingReview,
 	{PhasePendingReview, EventAdvance}:        PhaseAsking,
 	{PhasePendingReview, EventRetry}:          PhaseRetryingExact,
@@ -467,8 +469,9 @@ func (u *UserStore) guardAnswer(ctx context.Context, tx *sql.Tx, r Review, hold 
 }
 
 // RecordReview writes a judged answer to the history, reschedules the item
-// (unless it was practice), and marks the session entry answered. When
-// hold is set the judgment stays on screen until the learner moves on.
+// (unless it was practice), and marks the session entry answered. In a
+// session hold must be set: the judgment stays on screen, as the
+// post-answer review, until the learner moves on.
 //
 // A review in a session (SessionID set) is a session transition and is
 // checked against the session's phase inside the same write transaction
@@ -602,12 +605,33 @@ func (u *UserStore) EndSession(ctx context.Context, id int64, now time.Time) err
 	return nil
 }
 
-// Explainable reports whether a review may be explained on demand ("Why?"):
-// only a close or missed answer judged by the model. A right answer has
-// nothing to explain, and an exact text's word-by-word diff already says
-// what differed.
+// Explainable reports whether a review may be explained on demand ("Ask
+// Why?"): any answer the model judged, right, close or missed. An exact
+// text's word-by-word diff already says what differed.
 func (r Review) Explainable() bool {
-	return r.Judge != "exact" && (r.Verdict == srs.Close || r.Verdict == srs.Missed)
+	return r.Judge != "exact" && r.Verdict.Valid()
+}
+
+// ReviewCounts is the factual history of one item: how often it was
+// answered for a grade, with what verdicts, and how many practice attempts
+// ("Again") there were besides.
+type ReviewCounts struct {
+	Total, Right, Close, Missed int // scored reviews
+	Practice                    int // attempts that did not move the schedule
+}
+
+// ReviewCounts counts the learner's reviews of one item.
+func (u *UserStore) ReviewCounts(ctx context.Context, itemID int64) (ReviewCounts, error) {
+	var c ReviewCounts
+	err := u.s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(practice = 0), 0),
+		       COALESCE(SUM(practice = 0 AND verdict = 'right'), 0),
+		       COALESCE(SUM(practice = 0 AND verdict = 'close'), 0),
+		       COALESCE(SUM(practice = 0 AND verdict = 'missed'), 0),
+		       COALESCE(SUM(practice = 1), 0)
+		FROM reviews WHERE item_id = ? AND user_id = ?`, itemID, u.uid).
+		Scan(&c.Total, &c.Right, &c.Close, &c.Missed, &c.Practice)
+	return c, err
 }
 
 // RecentVerdicts counts the learner's recent verdicts, for shaping new

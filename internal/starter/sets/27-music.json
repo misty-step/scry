@@ -2,6 +2,7 @@
   "slug": "music",
   "title": "Core ideas in music",
   "description": "The building blocks of music: intervals, scales, keys, chords, rhythm and form.",
+  "icon": "note",
   "ideas": [
     {
       "title": "Intervals",

@@ -2,6 +2,7 @@
   "slug": "american-civics",
   "title": "American civics",
   "description": "How the United States government is built, and how the Constitution limits it.",
+  "icon": "flag",
   "ideas": [
     {
       "title": "The Constitution",

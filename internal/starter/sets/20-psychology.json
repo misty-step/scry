@@ -2,6 +2,7 @@
   "slug": "psychology",
   "title": "Core ideas in psychology",
   "description": "How people learn, remember, grow up and sway one another, and who found it out.",
+  "icon": "bulb",
   "ideas": [
     {
       "title": "Learning by association and consequence",

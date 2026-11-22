@@ -25,7 +25,7 @@ func (s *Server) settingsData(r *http.Request, c *rc) (map[string]any, error) {
 	}
 	return map[string]any{
 		"Title": "Settings", "Nav": "settings", "Tokens": tokens, "Removed": removed, "Origin": scheme + "://" + r.Host,
-		"Flash": map[string]string{"theme": "Appearance saved.", "about": "Saved. New material will be shaped to this.",
+		"Flash": map[string]string{"theme": "Appearance saved.", "about": "Study profile saved.",
 			"revoked": "That token no longer works.", "restored": "Restored to your library."}[r.URL.Query().Get("ok")],
 	}, nil
 }
@@ -65,7 +65,10 @@ func (s *Server) settingsAbout(w http.ResponseWriter, r *http.Request, c *rc) er
 
 func (s *Server) settingsToken(w http.ResponseWriter, r *http.Request, c *rc) error {
 	name := r.FormValue("name")
-	token, err := s.App.CreateAgentToken(r.Context(), c.user.ID, name, r.FormValue("can_add") == "1")
+	// A new token always suggests through the inbox. Settings no longer
+	// offers "may add straight to my library", and a posted can_add is
+	// ignored; tokens made earlier with it keep working until revoked.
+	token, err := s.App.CreateAgentToken(r.Context(), c.user.ID, name, false)
 	var fe *app.FieldError
 	if err != nil && !errors.As(err, &fe) {
 		return err

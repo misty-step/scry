@@ -122,7 +122,37 @@ func (s *Store) migrateAdded() error {
 			return err
 		}
 	}
-	_, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS topups_charge ON topups(charge_ref)`)
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS topups_charge ON topups(charge_ref)`); err != nil {
+		return err
+	}
+	return s.renameStarterIdeas()
+}
+
+// starterIdeaRenames are starter-set section titles that gave answers away
+// ("Alfa to India" names two of its own cards' answers) and the neutral
+// titles that replaced them. Libraries that added the set before the
+// rename are brought in line, so the outline and the links a later set
+// makes by title keep working.
+var starterIdeaRenames = []struct{ origin, old, title string }{
+	{"starter:nato-alphabet", "Alfa to India", "Letters A–I"},
+	{"starter:nato-alphabet", "Juliett to Romeo", "Letters J–R"},
+	{"starter:nato-alphabet", "Sierra to Zulu", "Letters S–Z"},
+	{"starter:mental-models", "First principles and inversion", "Reasoning from the ground up"},
+	{"starter:cognitive-biases", "Anchoring and framing", "Reference points and wording"},
+}
+
+// renameStarterIdeas applies starterIdeaRenames. It only touches ideas a
+// starter set created (by origin) that still carry the old title, so it is
+// idempotent and leaves a title the learner changed alone.
+func (s *Store) renameStarterIdeas() error {
+	for _, r := range starterIdeaRenames {
+		if _, err := s.db.Exec(`UPDATE ideas SET title = ? WHERE origin = ? AND parent_id IS NOT NULL AND title = ?`,
+			r.title, r.origin, r.old); err != nil {
+			return err
+		}
+	}
+	// The set's own title was reworded too.
+	_, err := s.db.Exec(`UPDATE ideas SET title = 'NATO phonetic alphabet' WHERE origin = 'starter:nato-alphabet' AND parent_id IS NULL AND title = 'The NATO alphabet'`)
 	return err
 }
 

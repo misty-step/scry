@@ -136,6 +136,7 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.Handle("GET /study/done", s.member(s.studyDone))
 	mux.Handle("POST /study/speech", s.member(s.studySpeech))
 	mux.Handle("POST /study/explain", s.member(s.studyExplain))
+	mux.Handle("POST /study/edit", s.member(s.studyEdit))
 
 	mux.Handle("GET /library", s.member(s.library))
 	mux.Handle("GET /library/ideas/{id}", s.member(s.library))

@@ -326,6 +326,11 @@ func (m *studyMachine) Answer(t *rapid.T) {
 	if r.Practice || got.Reps != sched.Reps+1 {
 		t.Fatalf("scored answer: practice=%v reps %d -> %d", r.Practice, sched.Reps, got.Reps)
 	}
+	// The post-answer review: every scored answer, right ones included, is
+	// held on screen. The session never advances or ends by itself.
+	if after == nil || after.Phase() != store.PhasePendingReview || after.PendingReviewID != r.ID {
+		t.Fatalf("a %s answer was not held for review", r.Verdict)
+	}
 	want, err := srs.NextChecked(sched, r.Verdict, m.w.now())
 	if err != nil || want.Reps != got.Reps || want.Lapses != got.Lapses || !want.Due.Truncate(time.Second).Equal(got.Due) {
 		t.Fatalf("schedule %+v, want %+v (%v)", got, want, err)
@@ -407,6 +412,59 @@ func (m *studyMachine) Edit(t *rapid.T) {
 		t.Fatal(err)
 	}
 	m.exact[id], m.text[id] = ex, [2]string{prompt, answer}
+}
+
+// EditInReview is "Edit card" in the post-answer review: the learner
+// rewords the card whose judgment is on screen. Only the card's text may
+// change. The judgment stays on screen, its review row and the graded
+// snapshot are untouched, the schedule does not move, and whether the card
+// is exact is kept. An empty question or answer is refused and changes
+// nothing.
+func (m *studyMachine) EditInReview(t *rapid.T) {
+	s := m.session(t)
+	if s == nil || s.Phase() != store.PhasePendingReview {
+		t.Skip("no review on screen")
+	}
+	pend, ok := m.reviews[s.PendingReviewID]
+	if !ok {
+		t.Skip("no review row")
+	}
+	id := pend.ItemID
+	if _, err := m.w.us.Item(m.w.ctx, id); err != nil {
+		t.Skip("the reviewed card is no longer in the library")
+	}
+	before, sched := m.w.reviews(t), m.w.schedule(t, id)
+	if rapid.Bool().Draw(t, "blank") {
+		_, err := m.w.app.EditCard(m.w.ctx, m.w.user, id, "  ", "kept")
+		var fe *app.FieldError
+		if !errors.As(err, &fe) {
+			t.Fatalf("EditCard with an empty question = %v, want a FieldError", err)
+		}
+		if it, err := m.w.us.Item(m.w.ctx, id); err != nil || (m.text[id] != [2]string{} && [2]string{it.Prompt, it.Answer} != m.text[id]) {
+			t.Fatalf("a refused edit changed the card: %+v (%v)", it, err)
+		}
+	} else {
+		m.edits++
+		prompt, answer := fmt.Sprintf("reviewed question %d", m.edits), fmt.Sprintf("reviewed answer %d", m.edits)
+		it, err := m.w.app.EditCard(m.w.ctx, m.w.user, id, " "+prompt+" ", answer)
+		if err != nil {
+			t.Fatalf("EditCard: %v", err)
+		}
+		if it.Prompt != prompt || it.Answer != answer || it.Exact != m.exact[id] {
+			t.Fatalf("EditCard saved %+v, want %q / %q (exact %v)", it, prompt, answer, m.exact[id])
+		}
+		m.text[id] = [2]string{prompt, answer}
+	}
+	after := m.session(t)
+	if after == nil || after.ID != s.ID || after.Phase() != store.PhasePendingReview || after.PendingReviewID != s.PendingReviewID {
+		t.Fatal("editing the card moved the session off its review")
+	}
+	if got := m.w.reviews(t); len(got) != len(before) || got[s.PendingReviewID] != before[s.PendingReviewID] {
+		t.Fatal("editing the card changed a recorded review")
+	}
+	if m.w.schedule(t, id) != sched {
+		t.Fatal("editing the card moved its schedule")
+	}
 }
 
 func (m *studyMachine) Remove(t *rapid.T) {
@@ -496,7 +554,8 @@ func (m *studyMachine) Explain(t *rapid.T) {
 	r := m.reviews[id]
 	before := m.w.schedule(t, r.ItemID)
 	ex, err := m.w.app.Explain(m.w.ctx, m.w.user, id)
-	explainable := r.Judge != "exact" && (r.Verdict == string(srs.Close) || r.Verdict == string(srs.Missed))
+	// "Ask Why?" is offered on every model-judged answer, right ones too.
+	explainable := r.Judge != "exact"
 	switch {
 	case !explainable:
 		if !errors.Is(err, app.ErrNotExplainable) {

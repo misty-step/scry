@@ -33,6 +33,7 @@ var funcs = template.FuncMap{
 	"lower":    strings.ToLower,
 	"yPct":     func(i, n int) string { return fmt.Sprintf("%.2f%%", (float64(i)+0.5)/float64(n)*100) },
 	"truncate": truncate,
+	"icon":     icon,
 	"dict": func(kv ...any) map[string]any {
 		m := map[string]any{}
 		for i := 0; i+1 < len(kv); i += 2 {

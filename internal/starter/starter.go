@@ -23,7 +23,9 @@ type Set struct {
 	Slug        string `json:"slug"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	Ideas       []Idea `json:"ideas"`
+	// Icon names the line icon shown on the set's tile; see Icons.
+	Icon  string `json:"icon"`
+	Ideas []Idea `json:"ideas"`
 }
 
 // Idea is one idea in a set, with its items or its exact text.
@@ -61,6 +63,46 @@ func (s Set) Count() int {
 	return n
 }
 
+// Icons are the subject icons a set may name. The web layer draws each.
+var Icons = []string{
+	"radio", "layers", "ruler", "globe", "eye", "orbit", "pulse", "quote", "banknote", "branch",
+	"hourglass", "atom", "leaf", "beaker", "mountain", "sigma", "bars", "chip", "trend", "bulb",
+	"column", "pen", "sprout", "flag", "book", "image", "note", "flame", "scroll", "bookmark",
+}
+
+// answerWords splits s into lowercase words, without leading articles.
+func answerWords(s string) []string {
+	w := wordRE.FindAllString(strings.ToLower(s), -1)
+	for len(w) > 0 && (w[0] == "the" || w[0] == "a" || w[0] == "an") {
+		w = w[1:]
+	}
+	return w
+}
+
+// TitleGivesAway reports whether a section title holds the whole of a short
+// answer (four words or fewer) as a run of its own words: "Alfa to India"
+// gives away "Alfa" and "India". The Study screen and the library outline
+// show these titles next to their cards, so a starter set may not have one.
+func TitleGivesAway(title, answer string) bool {
+	a, t := answerWords(answer), wordRE.FindAllString(strings.ToLower(title), -1)
+	if len(a) == 0 || len(a) > 4 {
+		return false
+	}
+	for i := 0; i+len(a) <= len(t); i++ {
+		match := true
+		for j := range a {
+			if t[i+j] != a[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
 // Link is a resolved reference to an idea in some set.
 type Link struct{ Slug, Title string }
 
@@ -77,6 +119,7 @@ var (
 	sets   []Set
 	bySlug map[string]Set
 	slugRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	wordRE = regexp.MustCompile(`[\p{L}\p{N}]+`)
 )
 
 func load() {
@@ -143,6 +186,13 @@ func Validate() []string {
 		if !oneLine(s.Description) || len([]rune(s.Description)) > 90 {
 			bad("%s: description must be one line of at most 90 characters (has %d)", where, len([]rune(s.Description)))
 		}
+		knownIcon := false
+		for _, name := range Icons {
+			knownIcon = knownIcon || name == s.Icon
+		}
+		if !knownIcon {
+			bad("%s: icon %q is not one of starter.Icons", where, s.Icon)
+		}
 		if len(s.Ideas) < 2 || len(s.Ideas) > 7 {
 			bad("%s: needs 2 to 7 ideas, has %d", where, len(s.Ideas))
 		}
@@ -177,6 +227,9 @@ func Validate() []string {
 				}
 				if !oneLine(it.A) || len([]rune(it.A)) > 140 {
 					bad("%s: answer must be one line of at most 140 characters: %q", iw, it.A)
+				}
+				if TitleGivesAway(i.Title, it.A) {
+					bad("%s: the title gives away the answer %q", iw, it.A)
 				}
 				if qSeen[strings.ToLower(it.Q)] {
 					bad("%s: duplicate question %q", iw, it.Q)
