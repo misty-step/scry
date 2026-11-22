@@ -197,12 +197,12 @@
     {
       "requirementId": "NOTES-slice41-existing-libraries-renamed",
       "requirement": "Starter ideas in existing libraries are renamed on open.",
-      "verifiedSha": null,
-      "verifiedAt": null,
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:39:54Z",
       "criticVerdict": "PENDING",
-      "localPath": null,
-      "mediaType": null,
-      "notes": "Not exercised on the running binary; covered by internal/store TestSlice41 tests only."
+      "localPath": "chief-evidence/media/existing-library-rename.txt",
+      "mediaType": "text/plain",
+      "notes": "A database made by the a9fe9d39 binary, opened twice by this one."
     },
     {
       "requirementId": "NOTES-slice41-live-providers",
