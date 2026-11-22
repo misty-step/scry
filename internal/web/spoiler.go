@@ -17,6 +17,11 @@ import (
 // card or to any card beside it. Hand-made and AI-drafted ideas go through
 // the same guard, so a title that holds an answer falls back to "Set 1" or
 // "Current set".
+//
+// The same holds for every cue on the screen (the prompt, the exact-text
+// label, the "coming up" list and the scrollback): none quotes the answer
+// still owed, however short it is. See quotesAnswer, cueWhile and
+// waitingPrompt below.
 
 // spoilerStop are words too common to count as giving anything away.
 var spoilerStop = map[string]bool{
@@ -116,13 +121,82 @@ func phrase(s string) string {
 	return strings.Join(strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }), " ")
 }
 
-// quotesAnswer reports whether text holds the whole answer, word for word.
-// The cue for a line of an exact text quotes the line before it, so the
-// "coming up" list would print the answer to the card on screen.
+// quotesAnswer reports whether text holds the whole answer, word for word,
+// whatever the answer's length: "Go" is quoted by "what follows “Go”" as
+// surely as a long line is. Whole words only ("Go" is not in "Gothic"), and
+// a leading article does not hide it ("The daffodils" is given away by
+// "Daffodils"). The cue for a line of an exact text quotes the line before
+// it, so the "coming up" list would print the answer to the card on screen.
 func quotesAnswer(text, answer string) bool {
 	a := phrase(answer)
-	if len([]rune(a)) < 3 {
-		return false
+	if a == "" {
+		// An answer with no letter or digit ("* * *") is matched as written.
+		raw := strings.ToLower(strings.TrimSpace(answer))
+		return raw != "" && strings.Contains(strings.ToLower(text), raw)
 	}
-	return strings.Contains(" "+phrase(text)+" ", " "+a+" ")
+	t := " " + phrase(text) + " "
+	if strings.Contains(t, " "+a+" ") {
+		return true
+	}
+	for _, article := range []string{"the ", "a ", "an "} {
+		if rest, ok := strings.CutPrefix(a, article); ok {
+			return strings.Contains(t, " "+rest+" ")
+		}
+	}
+	return false
+}
+
+// neutralExactTitle stands in for the title of an exact text wherever the
+// title itself would give the waiting answer away.
+const neutralExactTitle = "Exact text"
+
+// titleGivesAway reports whether the title of the exact text it belongs to
+// holds the whole of answer: a text called "Daffodils" whose first line is
+// "Daffodils". A title that only shares a word with a line ("Preamble to
+// the United States Constitution" and "We the People of the United
+// States…") is the cue the learner needs to know which text is asked for,
+// and stays.
+func titleGivesAway(it store.Item, answer string) bool {
+	return it.Exact && strings.TrimSpace(it.TextTitle) != "" && quotesAnswer(it.TextTitle, answer)
+}
+
+// cueWhile is the cue of it as it may be printed while answer is still
+// owed: in the "coming up" list and in the scrollback. A cue that quotes
+// the answer is held back (ok is false), unless it is only the text's own
+// title that gives it away: then the title is replaced by a neutral one.
+func cueWhile(it store.Item, answer string) (cue string, ok bool) {
+	if !quotesAnswer(it.Prompt, answer) {
+		return it.Prompt, true
+	}
+	if titleGivesAway(it, answer) {
+		if rest, found := strings.CutPrefix(it.Prompt, it.TextTitle+": "); found {
+			if cue = neutralExactTitle + ": " + rest; !quotesAnswer(cue, answer) {
+				return cue, true
+			}
+		}
+	}
+	return "", false
+}
+
+// waitingPrompt is the prompt of the card on screen while its answer is
+// owed. It is the card's own prompt, except for a line of an exact text
+// whose title gives the line away: there the title is replaced by a
+// neutral one ("Exact text: how does it begin?"), and a hand-written
+// prompt that still quotes the line gives way to the line's number. The
+// line quoted by a generated cue stays: it is the line before, as the text
+// has it.
+func waitingPrompt(it store.Item) string {
+	if !titleGivesAway(it, it.Answer) {
+		return it.Prompt
+	}
+	if rest, found := strings.CutPrefix(it.Prompt, it.TextTitle+": "); found {
+		return neutralExactTitle + ": " + rest
+	}
+	if !quotesAnswer(it.Prompt, it.Answer) {
+		return it.Prompt
+	}
+	if it.LineNo > 0 {
+		return fmt.Sprintf("Line %d of this exact text", it.LineNo)
+	}
+	return "A line of this exact text"
 }

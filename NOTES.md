@@ -1330,3 +1330,37 @@ Choices made where the brief, PRODUCT.md or DESIGN.md were silent or pulled two 
   and progress line are now the two named exceptions, still under reduced motion.
 - **The browser smoke moved from puppeteer to Playwright**, which the repo
   already depends on for verify-live, so it runs with `npm --prefix scripts ci`.
+- **Pass 2: what counts as a title giving a line away (exact texts).** The
+  brief said "per the spoiler check". The rail's check (any shared word) would
+  strip the title from shipped texts ("Preamble to the United States
+  Constitution" shares words with its first line; "Ozymandias" with line 10),
+  leaving "how does it begin?" with no text named, which cannot be answered.
+  So the exact-text label and prompt use the stricter-to-trigger rule: the
+  title is replaced by "Exact text" only when it holds the whole waiting line,
+  word for word (case, punctuation and a leading article aside). The rail
+  keeps its own any-shared-word rule. `TestSlice41_Spoiler_EveryStarterExactTextKeepsItsTitle`
+  pins that no starter text loses its title.
+- **Pass 2: the neutral cue.** A text named for its line is asked for as
+  "Exact text: how does it begin?" / "Exact text: what follows “…”" (the stored
+  cue with the title swapped), and labelled "Exact text · line 1". A
+  hand-written prompt on such a text that still quotes the line falls back to
+  "Line N of this exact text". The stored prompt is not changed; the review shows it.
+- **Pass 2: the cue of a repeated line is left alone.** The cue for a line is
+  the line before it. Where a text repeats a line, that cue is the same words
+  as the answer; it is still the text's own cue, so the waiting card shows it.
+- **Pass 2: short answers.** An answer of any length now holds back a cue that
+  quotes it as whole words, so a one-word answer such as "A" can hold back an
+  unrelated cue that happens to contain that word until it is answered. The
+  list then shows the cues after it; nothing is lost.
+- **Pass 2: the scrollback follows the same rule** as "coming up" while a card
+  waits (a row whose cue quotes the answer owed is held back or shown under
+  the neutral title). This matters after "Again", when the line's own row is
+  above the card.
+- **Pass 2: "Coming up" is Meta type in ink-muted** (13 px mono, 5.0:1 light,
+  7.2:1 dark). ink-ghost now colors hairlines and the dot grid only.
+- **Pass 2: a retry always confirms the card in the field.** Besides ignoring
+  a late answer for a superseded attempt, stripe.js no longer re-posts a
+  payment method left in the form by an earlier attempt whose post brought no
+  page back: after the form is given back, the next submit confirms the card
+  again. Otherwise a learner who changed the card after the timeout would post
+  the earlier one.

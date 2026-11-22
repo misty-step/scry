@@ -444,7 +444,9 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 .is-listening .answer-line { border-bottom-color: var(--accent); border-bottom-width: 3px; }
 
 .hints { text-align: right; max-width: none; }
-.upcoming { display: grid; gap: var(--s1); color: var(--ink-ghost); }
+/* Coming up: readable (ink-muted, 4.5:1 or better in both modes) and
+   secondary by its Meta size, never by ghost opacity. */
+.upcoming { display: grid; gap: var(--s1); font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); }
 .upcoming li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upcoming li:nth-child(n+4) { display: none; }
 

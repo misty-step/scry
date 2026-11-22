@@ -105,7 +105,7 @@
     {{else if .Item}}
     <div class="current asking" data-asking>
       {{if .ExactLabel}}<p class="meta exact-label">{{.ExactLabel}}{{if .Retry}} · again{{end}}</p>{{end}}
-      <h1 class="prompt display" id="prompt">{{.Item.Prompt}}</h1>
+      <h1 class="prompt display" id="prompt">{{.Prompt}}</h1>
       <form method="post" action="/study/answer" class="answer" data-answer-form autocomplete="off">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <input type="hidden" name="item_id" value="{{.Item.ID}}">

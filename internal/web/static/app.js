@@ -233,7 +233,23 @@
   // the button is disabled (no double submit), a spinner and plain words
   // appear with a progress line. stripe.js ends it again if the processor
   // refuses the card; a page brought back from the back cache starts clean.
+  //
+  // Each submission is one attempt, numbered on the form
+  // (form.dataset.submitAttempt). Starting the state and ending it (an
+  // error, the 30 second timeout, the back cache) both move the number on,
+  // so work still in flight for an earlier attempt (stripe.js waiting on
+  // the card processor) can tell it has been superseded and must not touch
+  // the form or submit it.
+  function busyAttempt(form) {
+    return Number(form.dataset.submitAttempt) || 0;
+  }
+  function busySupersede(form) {
+    var next = busyAttempt(form) + 1;
+    form.dataset.submitAttempt = String(next);
+    return next;
+  }
   function busyStart(form) {
+    busySupersede(form);
     var button = $("button:not([type=button])", form), box = $("[data-busy]", form);
     form.classList.add("is-busy");
     form.setAttribute("aria-busy", "true");
@@ -248,19 +264,21 @@
       box.hidden = false;
     }
     // If the page is still here long after (the request was stopped or
-    // never left), give the form back rather than leave it locked.
+    // never left), give the form back rather than leave it locked. That
+    // supersedes the attempt: whatever it was waiting for is ignored.
     clearTimeout(form.busyTimer);
     form.busyTimer = setTimeout(function () { busyStop(form); }, 30000);
   }
   function busyStop(form) {
     var button = $("button:not([type=button])", form), box = $("[data-busy]", form);
+    busySupersede(form);
     clearTimeout(form.busyTimer);
     form.classList.remove("is-busy");
     form.removeAttribute("aria-busy");
     if (button) { button.removeAttribute("aria-busy"); button.disabled = false; }
     if (box) box.hidden = true;
   }
-  window.scryBusy = { start: busyStart, stop: busyStop };
+  window.scryBusy = { start: busyStart, stop: busyStop, attempt: busyAttempt };
 
   function initBusy() {
     $$("form[data-busy-form]").forEach(function (form) {

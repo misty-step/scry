@@ -88,12 +88,137 @@ func TestSlice41_Spoiler_UpcomingCueThatQuotesTheAnswerIsHeldBack(t *testing.T) 
 		{"Apostles' Creed: what follows “I believe in God, the Father almighty,”", "I believe in God, the Father almighty,", true},
 		{"What does inversion ask you to list first?", "Inversion", true},
 		{"NATO alphabet: B", "Alfa", false},
-		{"NATO alphabet: B", "A", false}, // too short to be a quotation
+		{"NATO alphabet: B", "A", false},
 		{"The alphabetical order", "Alpha", false},
+		// Pass 2 (B1): an answer is quoted whatever its length.
+		{"Studio notes: what follows “Go”", "Go", true},
+		{"Studio notes: what follows “Go”", "go!", true},
+		{"Scale degrees: what follows “A”", "A", true},
+		{"Counting: what follows “7”", "7", true},
+		{"Gothic architecture: how does it begin?", "Go", false}, // whole words only
+		{"Studio notes: how does it begin?", "Go", false},
+		{"Daffodils: how does it begin?", "The daffodils", true}, // a leading article hides nothing
+		{"Daffodils: how does it begin?", "A", false},
+		{"A pause: what follows “* * *”", "* * *", true}, // no letter or digit: matched as written
+		{"A pause: how does it begin?", "* * *", false},
+		{"Anything at all", "", false},
 	} {
 		if got := quotesAnswer(c.text, c.answer); got != c.want {
 			t.Errorf("quotesAnswer(%q, %q) = %v, want %v", c.text, c.answer, got, c.want)
 		}
+	}
+}
+
+// Pass 2 (B1): a line of an exact text whose own title gives the line away
+// is asked for under a neutral title, in the label and in the prompt, and
+// the real title comes back with the review.
+func TestSlice41_Spoiler_ExactTitleThatGivesTheLineAwayIsNeutralWhileWaiting(t *testing.T) {
+	line := func(title string, n int, prev, answer string) store.Item {
+		return store.Item{Exact: true, TextTitle: title, LineNo: n, Prompt: store.ExactPrompt(title, n, prev), Answer: answer}
+	}
+	for _, c := range []struct {
+		name                      string
+		it                        store.Item
+		label, prompt, labelAfter string
+	}{
+		{"the title is the line", line("Daffodils", 1, "", "Daffodils"),
+			"Exact text · line 1", "Exact text: how does it begin?", "Exact text · Daffodils · line 1"},
+		{"the title holds the line", line("Go west, young man", 1, "", "Go west"),
+			"Exact text · line 1", "Exact text: how does it begin?", "Exact text · Go west, young man · line 1"},
+		{"a later line that is the title", line("Daffodils", 3, "And dances with the", "daffodils."),
+			"Exact text · line 3", "Exact text: what follows “And dances with the”", "Exact text · Daffodils · line 3"},
+		{"case, punctuation and a leading article do not hide it", line("DAFFODILS!", 1, "", "The daffodils"),
+			"Exact text · line 1", "Exact text: how does it begin?", "Exact text · DAFFODILS! · line 1"},
+		{"a short title that is the line", line("Go", 1, "", "Go"),
+			"Exact text · line 1", "Exact text: how does it begin?", "Exact text · Go · line 1"},
+		{"a title that only shares words with the line stays: it is the cue", line("Preamble to the United States Constitution", 1, "", "We the People of the United States,"),
+			"Exact text · Preamble to the United States Constitution · line 1", "Preamble to the United States Constitution: how does it begin?",
+			"Exact text · Preamble to the United States Constitution · line 1"},
+		{"a safe title stays", line("Studio notes", 1, "", "Go"),
+			"Exact text · Studio notes · line 1", "Studio notes: how does it begin?", "Exact text · Studio notes · line 1"},
+		{"a hand-written prompt that names the title gives way to the line number",
+			store.Item{Exact: true, TextTitle: "Daffodils, by Wordsworth", LineNo: 2, Prompt: "Second line of Daffodils?", Answer: "Daffodils"},
+			"Exact text · line 2", "Line 2 of this exact text", "Exact text · Daffodils, by Wordsworth · line 2"},
+		{"a hand-written prompt that does not name the title stays",
+			store.Item{Exact: true, TextTitle: "Oslo", Prompt: "Capital of Norway, spelled exactly", Answer: "Oslo"},
+			"Exact text", "Capital of Norway, spelled exactly", "Exact text · Oslo"},
+		{"a hand-written prompt naming the title, with no line number",
+			store.Item{Exact: true, TextTitle: "Oslo", Prompt: "Spell Oslo", Answer: "Oslo"},
+			"Exact text", "A line of this exact text", "Exact text · Oslo"},
+	} {
+		if got := exactLabel(c.it, false); got != c.label {
+			t.Errorf("%s: waiting label = %q, want %q", c.name, got, c.label)
+		}
+		if got := waitingPrompt(c.it); got != c.prompt {
+			t.Errorf("%s: waiting prompt = %q, want %q", c.name, got, c.prompt)
+		}
+		if got := exactLabel(c.it, true); got != c.labelAfter {
+			t.Errorf("%s: label in the review = %q, want %q", c.name, got, c.labelAfter)
+		}
+	}
+	// An ordinary card is never touched, whatever its idea is called.
+	plain := store.Item{Prompt: "Which flower did Wordsworth write of?", Answer: "Daffodils", TextTitle: "Daffodils"}
+	if exactLabel(plain, false) != "" || waitingPrompt(plain) != plain.Prompt {
+		t.Error("a card that is not a line of an exact text was changed")
+	}
+}
+
+// Pass 2 (B1): what the scrollback and the "coming up" list may print
+// while an answer is owed.
+func TestSlice41_Spoiler_CuesShownWhileAnAnswerIsOwed(t *testing.T) {
+	line := func(title string, n int, prev string) store.Item {
+		return store.Item{Exact: true, TextTitle: title, LineNo: n, Prompt: store.ExactPrompt(title, n, prev)}
+	}
+	for _, c := range []struct {
+		name   string
+		it     store.Item
+		answer string
+		cue    string
+		ok     bool
+	}{
+		{"the next line quotes a short answer: held back", line("Studio notes", 2, "Go"), "Go", "", false},
+		{"a later line does not: shown", line("Studio notes", 3, "Stay the course"), "Go", "Studio notes: what follows “Stay the course”", true},
+		{"the next line of a text named for its line: held back", line("Daffodils", 2, "Daffodils"), "Daffodils", "", false},
+		{"a later line of it: shown under a neutral title", line("Daffodils", 3, "I wandered lonely as a cloud"), "Daffodils",
+			"Exact text: what follows “I wandered lonely as a cloud”", true},
+		{"its first line, already answered: neutral title", line("Daffodils", 1, ""), "Daffodils", "Exact text: how does it begin?", true},
+		{"an ordinary cue that quotes the answer: held back", store.Item{Prompt: "What does inversion ask you to list first?"}, "Inversion", "", false},
+		{"an ordinary cue: shown", store.Item{Prompt: "NATO alphabet: B"}, "Alfa", "NATO alphabet: B", true},
+	} {
+		if cue, ok := cueWhile(c.it, c.answer); cue != c.cue || ok != c.ok {
+			t.Errorf("%s: cueWhile = %q, %v; want %q, %v", c.name, cue, ok, c.cue, c.ok)
+		}
+		if cue, ok := cueWhile(c.it, c.answer); ok && quotesAnswer(cue, c.answer) {
+			t.Errorf("%s: the cue %q quotes the answer %q", c.name, cue, c.answer)
+		}
+	}
+}
+
+// Pass 2 (B1): no starter text loses its title. The title is the cue that
+// says which text is asked for; none of them holds a whole line.
+func TestSlice41_Spoiler_EveryStarterExactTextKeepsItsTitle(t *testing.T) {
+	texts := 0
+	for _, set := range starter.All() {
+		for _, idea := range set.Ideas {
+			if idea.Exact == nil {
+				continue
+			}
+			texts++
+			prev := ""
+			for n, l := range idea.Exact.Lines {
+				it := store.Item{Exact: true, TextTitle: idea.Exact.Title, LineNo: n + 1, Prompt: store.ExactPrompt(idea.Exact.Title, n+1, prev), Answer: l}
+				if got := waitingPrompt(it); got != it.Prompt {
+					t.Errorf("%s line %d: the waiting prompt is %q, want %q", idea.Exact.Title, n+1, got, it.Prompt)
+				}
+				if got := exactLabel(it, false); !strings.Contains(got, idea.Exact.Title) {
+					t.Errorf("%s line %d: the waiting label %q lost the title", idea.Exact.Title, n+1, got)
+				}
+				prev = l
+			}
+		}
+	}
+	if texts == 0 {
+		t.Fatal("no starter exact texts were checked")
 	}
 }
 
@@ -242,6 +367,15 @@ func TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet(t *testing.T) {
 		if !strings.Contains(css, want) {
 			t.Errorf("app.css is missing %q", want)
 		}
+	}
+	// Pass 2 (B2): "coming up" is readable text, secondary by its size.
+	// Ghost opacity (20% / 22% ink, under 2:1) colors hairlines and the dot
+	// grid, never text.
+	if !strings.Contains(css, `.upcoming { display: grid; gap: var(--s1); font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); }`) {
+		t.Error("app.css: the upcoming items are not Meta type in ink-muted")
+	}
+	if m := regexp.MustCompile(`(?m)(^|[\s;{])color:\s*var\(--ink-ghost\)`).FindString(css); m != "" {
+		t.Errorf("app.css colors text with ink-ghost: %q", m)
 	}
 	// The only looping marks are the two processing ones, and reduced
 	// motion stills everything.

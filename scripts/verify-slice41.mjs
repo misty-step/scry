@@ -10,7 +10,11 @@
 // refuses a live one. For a fresh learner at desktop 1440x900 and phone
 // 390x844, each in light and dark, it asserts:
 //   1. no answer on the Study screen before it is given (NATO: no "Alpha",
-//      "Alfa" or "India" in the rail, header, title or page);
+//      "Alfa" or "India" in the rail, header, title or page; an exact text
+//      with a short line, "Go": the cue that quotes it is not in "Coming
+//      up"; an exact text named for its own first line, "Daffodils": the
+//      title is not in the rail, the exact-text label, the prompt, the page
+//      title or "Coming up" until the line has been given);
 //   2. a correct, an incorrect and an almost correct answer each stop on the
 //      post-answer review (no auto-skip): both answers, the verdict in
 //      words, Ask Why?, the stored schedule (next review, interval,
@@ -25,8 +29,11 @@
 //   8. Settings says "API Tokens" with no can_add checkbox; Inbox, Library,
 //      Billing and Settings each say what they are for;
 // and on every screen: 0 CSP violations, 0 console errors, 0 page errors,
-// 0 failed requests, 0 px of sideways scroll, text contrast >= 4.5:1 and,
-// on the phone, 44 px touch targets.
+// 0 failed requests, 0 px of sideways scroll, text contrast >= 4.5:1 (the
+// "Coming up" cues included, reported on their own) and, on the phone,
+// 44 px touch targets. It also runs verify-stripe-retry.mjs: a card
+// confirmation that arrives after the 30 second timeout for a superseded
+// attempt is ignored, and only the retry's payment method is posted.
 // With --evidence <dir> it also writes the screenshots and a recorded
 // walkthrough video (slice41-walkthrough.webm) there; the video needs
 // Playwright's ffmpeg (npx playwright-core install ffmpeg). Prints one JSON
@@ -36,6 +43,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright-core";
+import { stripeRetry } from "./verify-stripe-retry.mjs";
 
 const args = process.argv.slice(2);
 const opt = { url: process.env.SCRY_VERIFY_URL || "", evidence: "" };
@@ -48,7 +56,7 @@ if (!opt.url) { console.error("--url is required"); process.exit(2); }
 const base = opt.url.replace(/\/+$/, "");
 if (opt.evidence) fs.mkdirSync(opt.evidence, { recursive: true });
 
-const summary = { ok: false, url: base, startedAt: new Date().toISOString(), configs: [], checks: [], failures: [], minContrast: {}, screenshots: [] };
+const summary = { ok: false, url: base, startedAt: new Date().toISOString(), configs: [], checks: [], failures: [], minContrast: {}, upcomingContrast: {}, screenshots: [] };
 function check(name, ok, detail) {
   summary.checks.push(detail === undefined || ok ? { name, ok } : { name, ok, detail });
   if (!ok) summary.failures.push(detail === undefined ? name : name + ": " + (typeof detail === "string" ? detail : JSON.stringify(detail)));
@@ -90,9 +98,22 @@ function watch(page, problems) {
   page.on("response", r => { if (r.status() >= 400) problems.push("http " + r.status() + " " + r.request().method() + " " + new URL(r.url()).pathname); });
 }
 
-// audit checks one screen: sideways scroll, CSP, contrast, and touch targets on the phone.
-async function audit(page, c, label) {
+// settle waits for the page's fades and moves to finish, so a picture or a
+// measurement is of the settled screen and not of a frame in mid-fade. The
+// two looping processing marks never finish and are not waited for.
+async function settle(page) {
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().filter(a => { const t = a.effect && a.effect.getComputedTiming(); return !t || Number.isFinite(t.endTime); }).map(a => a.finished.catch(() => {}))),
+    new Promise(r => setTimeout(r, 3000)),
+  ]));
+}
+
+// audit checks one screen: sideways scroll, CSP, contrast, and touch targets
+// on the phone. With wantUpcoming the screen must show "Coming up" cues, and
+// their contrast is reported and checked by name.
+async function audit(page, c, label, wantUpcoming) {
   await page.evaluate(() => document.fonts.ready);
+  await settle(page);
   const a = await page.evaluate(mobile => {
     const parse = s => { const m = (s.match(/[\d.]+%?/g) || []).map((x, i) => x.endsWith("%") ? parseFloat(x) / 100 * (i < 3 ? 255 : 1) : parseFloat(x)); return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 }; };
     const over = (fg, bg) => ({ r: fg.r * fg.a + bg.r * (1 - fg.a), g: fg.g * fg.a + bg.g * (1 - fg.a), b: fg.b * fg.a + bg.b * (1 - fg.a), a: 1 });
@@ -104,9 +125,9 @@ async function audit(page, c, label) {
       for (const l of layers.reverse()) bg = over(l, bg);
       return bg;
     };
-    let min = 99; const low = [];
+    let min = 99, upcoming = 99, cues = 0; const low = [];
     for (const el of document.querySelectorAll("header.top *, main *, footer *")) {
-      if (!el.getClientRects().length || el.closest(".sr, .upcoming, [hidden], svg, .caret, template") || el.disabled) continue;
+      if (!el.getClientRects().length || el.closest(".sr, [hidden], svg, .caret, template") || el.disabled) continue;
       const own = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
       if (!own) continue;
       const st = getComputedStyle(el);
@@ -114,6 +135,7 @@ async function audit(page, c, label) {
       const bg = background(el), fg = over(parse(st.color), bg);
       const a = lum(fg), b = lum(bg), ratio = (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
       if (ratio < min) min = ratio;
+      if (el.closest(".upcoming")) { cues++; if (ratio < upcoming) upcoming = ratio; }
       if (ratio < 4.5) low.push((el.className || el.tagName) + " " + ratio.toFixed(2) + " “" + el.textContent.trim().slice(0, 30) + "”");
     }
     const small = [];
@@ -123,7 +145,7 @@ async function audit(page, c, label) {
         if (el.getClientRects().length && !el.closest("[hidden]") && r.height < 43.5) small.push((el.className || el.tagName) + " " + Math.round(r.height) + "px “" + el.textContent.trim().slice(0, 24) + "”");
       }
     }
-    return { overflow: document.documentElement.scrollWidth - innerWidth, csp: window.__csp || [], min, low: low.slice(0, 5), small: small.slice(0, 5),
+    return { overflow: document.documentElement.scrollWidth - innerWidth, csp: window.__csp || [], min, upcoming, cues, low: low.slice(0, 5), small: small.slice(0, 5),
       fonts: [...new Set([...document.querySelectorAll("body, h1, .meta, button, input")].map(e => getComputedStyle(e).fontFamily.split(",")[0].replace(/"/g, "").trim()))] };
   }, !!c.mobile);
   const at = c.name + " " + label;
@@ -133,10 +155,16 @@ async function audit(page, c, label) {
   check(at + ": Geist and Geist Mono only", a.fonts.every(f => f === "Geist" || f === "Geist Mono"), a.fonts);
   if (c.mobile) check(at + ": 44 px touch targets", a.small.length === 0, a.small);
   summary.minContrast[at] = Number(a.min.toFixed(2));
+  if (wantUpcoming || a.cues > 0) {
+    check(at + ": \"Coming up\" cues are visible text at >= 4.5:1 (" + (a.cues ? a.upcoming.toFixed(2) + ":1" : "none shown") + ")", a.cues > 0 && a.upcoming >= 4.5, { cues: a.cues, ratio: a.upcoming });
+    if (a.cues) summary.upcomingContrast[at] = Number(a.upcoming.toFixed(2));
+  }
 }
 
 async function shot(page, name, full) {
   if (!opt.evidence) return;
+  await page.evaluate(() => document.fonts.ready);
+  await settle(page);
   await page.waitForTimeout(350);
   const file = path.join(opt.evidence, name);
   await page.screenshot({ path: file, fullPage: !!full });
@@ -263,7 +291,7 @@ async function run(browser, c) {
     check(n + " (4) Study says what it is for", (await text(page, ".margin-purpose")) === "Recall what's due today" && new URL(page.url()).pathname === "/study");
     await page.waitForSelector("[data-answer-form]");
     await spoilerFree(page, c, "first card");
-    await audit(page, c, "Study, card waiting");
+    await audit(page, c, "Study, card waiting", true);
     if (n === "desktop-light") await shot(page, "04-study-active-spoilerfree.png");
 
     const answers = { right: "Alfa", missed: "Bananas", close: "Charly" };
@@ -391,6 +419,102 @@ async function run(browser, c) {
   }
 }
 
+// addText adds an exact text through the library's own form.
+async function addText(page, title, lines) {
+  await page.goto(base + "/library/texts/new", { waitUntil: "load" });
+  await page.fill("#title", title);
+  await page.fill("#text", lines.join("\n"));
+  await Promise.all([page.waitForNavigation({ waitUntil: "load" }), page.click("main form button")]);
+}
+// waiting reads everything a learner (or a screen reader, or the tab) is
+// given while the card on screen waits for its answer.
+const waiting = page => page.evaluate(() => {
+  const q = s => document.querySelector(s), t = s => (q(s)?.textContent || "").replace(/\s+/g, " ").trim();
+  return { asking: !!q("[data-answer-form]"), rail: q(".session-margin")?.innerText.replace(/\s+/g, " ").trim() || "", header: t("[data-study-header]"), label: t(".exact-label"), prompt: t("#prompt"),
+    title: document.title, upcoming: [...document.querySelectorAll(".upcoming li")].map(li => li.textContent.trim()), scrollback: [...document.querySelectorAll(".answered-q")].map(e => e.textContent.trim()),
+    main: q("main").innerText, top: q("header.top")?.innerText || "", html: document.documentElement.outerHTML };
+});
+
+// exactSpoilers checks the two exact-text cases of item 1, each with a fresh
+// learner: a short line ("Go") and a text named for its own first line.
+async function exactSpoilers(browser, c) {
+  const n = c.name;
+  // A short line: "Studio notes" is Go / Stay the course / Rest.
+  {
+    const problems = [];
+    const context = await newContext(browser, c);
+    const page = await context.newPage();
+    watch(page, problems);
+    const at = n + " (1) exact text with the short line \"Go\"";
+    try {
+      await signUp(page, n + "-go");
+      await addText(page, "Studio notes", ["Go", "Stay the course", "Rest"]);
+      await page.goto(base + "/study", { waitUntil: "load" });
+      await page.waitForSelector("[data-answer-form]");
+      const w = await waiting(page);
+      check(at + ": line 1 waits under its text's name", w.label === "Exact text · Studio notes · line 1" && w.prompt === "Studio notes: how does it begin?", { label: w.label, prompt: w.prompt });
+      check(at + ": \"Coming up\" holds back the cue that quotes \"Go\" before it is given", w.upcoming.length === 1 && w.upcoming[0] === "Studio notes: what follows “Stay the course”" && !w.upcoming.some(u => shows(u, "Go")), w.upcoming);
+      check(at + ": \"Go\" is nowhere on the page before it is given (page, rail, title)", !shows(w.main, "Go") && !shows(w.rail, "Go") && !shows(w.title, "Go") && !shows(w.top, "Go") && !/[“"]Go[”"]/.test(w.html), { main: w.main.replace(/\s+/g, " ") });
+      await audit(page, c, "Study, exact text waiting", true);
+      if (n === "desktop-light") await shot(page, "12-study-exact-short-answer-held-back.png");
+      await page.fill("#answer", "Go");
+      await page.keyboard.press("Enter");
+      await page.waitForSelector("[data-review]");
+      const after = await waiting(page);
+      check(at + ": once \"Go\" is given, the cue that quotes it is shown", after.upcoming[0] === "Studio notes: what follows “Go”" && after.upcoming.length === 2, after.upcoming);
+      await audit(page, c, "exact text review");
+    } catch (err) {
+      check(at + ": the walk completed", false, String(err.stack || err).split("\n").slice(0, 3).join(" | "));
+    } finally {
+      check(at + ": 0 console errors, page errors, failed requests or 4xx/5xx responses", problems.length === 0, problems);
+      await context.close();
+    }
+  }
+  // A text named for its own first line: "Daffodils".
+  {
+    const problems = [];
+    const context = await newContext(browser, c);
+    const page = await context.newPage();
+    watch(page, problems);
+    const at = n + " (1) exact text \"Daffodils\" whose line 1 is \"Daffodils\"";
+    try {
+      await signUp(page, n + "-daffodils");
+      await addText(page, "Daffodils", ["Daffodils", "I wandered lonely as a cloud", "That floats on high"]);
+      await page.goto(base + "/study", { waitUntil: "load" });
+      await page.waitForSelector("[data-answer-form]");
+      const w = await waiting(page);
+      const leak = /daffodil/i;
+      check(at + ": the rail does not name it before it is given (\"" + w.header + "\")", w.header === "Current set" && !leak.test(w.rail), w.rail);
+      check(at + ": the exact-text label does not name it (\"" + w.label + "\")", w.label === "Exact text · line 1", w.label);
+      check(at + ": the prompt does not name it (\"" + w.prompt + "\")", w.prompt === "Exact text: how does it begin?", w.prompt);
+      check(at + ": the page title does not name it (\"" + w.title + "\")", w.title === "Study · scry", w.title);
+      check(at + ": \"Coming up\" does not name it, and holds back the cue that quotes it", w.upcoming.length === 1 && w.upcoming[0] === "Exact text: what follows “I wandered lonely as a cloud”", w.upcoming);
+      check(at + ": the answer is nowhere in the document before it is given", !leak.test(w.html) && !leak.test(w.main) && !leak.test(w.top), (w.html.match(/.{0,60}daffodil.{0,40}/i) || [""])[0]);
+      await audit(page, c, "Study, exact title waiting", true);
+      if (n === "desktop-light") await shot(page, "13-study-exact-title-neutral.png");
+      // A wrong answer: the review names the text; Again hides it once more.
+      await page.fill("#answer", "Tulips");
+      await page.keyboard.press("Enter");
+      await page.waitForSelector("[data-review]");
+      const r = await waiting(page);
+      const reviewPrompt = await text(page, "[data-prompt]");
+      check(at + ": once answered, the review shows the real title (rail, label, prompt)", r.header === "Daffodils" && r.label === "Exact text · Daffodils · line 1" && reviewPrompt === "Daffodils: how does it begin?" && (await text(page, "[data-canonical]")) === "Daffodils", { header: r.header, label: r.label, prompt: reviewPrompt });
+      if (n === "desktop-light") await shot(page, "14-study-exact-title-revealed.png", true);
+      await page.click("[data-again]"); // the page swaps the waiting card in, in place
+      await page.waitForSelector("[data-answer-form]");
+      const again = await waiting(page);
+      check(at + ": Again: the line is owed once more and the title is gone once more, the scrollback included", !leak.test(again.html) && again.label === "Exact text · line 1 · again" && again.prompt === "Exact text: how does it begin?" && again.scrollback.join() === "Exact text: how does it begin?",
+        { label: again.label, prompt: again.prompt, scrollback: again.scrollback, leak: (again.html.match(/.{0,60}daffodil.{0,40}/i) || [""])[0] });
+      await audit(page, c, "Study, exact title waiting again", true);
+    } catch (err) {
+      check(at + ": the walk completed", false, String(err.stack || err).split("\n").slice(0, 3).join(" | "));
+    } finally {
+      check(at + ": 0 console errors, page errors, failed requests or 4xx/5xx responses", problems.length === 0, problems);
+      await context.close();
+    }
+  }
+}
+
 // declined checks that a refused card gives the form back with the reason.
 async function declined(browser) {
   const c = CONFIGS[0];
@@ -479,7 +603,10 @@ if (health.mode !== "test" || String(health.auth_mode || "").startsWith("clerk-"
 const browser = await chromium.launch({ executablePath: [process.env.CHROME_BIN, "/usr/bin/google-chrome", "/usr/bin/chromium"].find(p => p && fs.existsSync(p)), headless: true, args: ["--no-sandbox"] });
 try {
   for (const c of CONFIGS) await run(browser, c);
+  for (const c of CONFIGS) await exactSpoilers(browser, c);
   await declined(browser);
+  summary.stripeRetry = await stripeRetry(browser, base, check, opt);
+  if (summary.stripeRetry.screenshot) summary.screenshots.push(summary.stripeRetry.screenshot);
   if (opt.evidence) await walkthrough(browser);
 } finally {
   await browser.close();

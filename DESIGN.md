@@ -53,15 +53,15 @@ Ink steps are the base ink at fixed opacity, so both modes keep the same hierarc
 | sunken | `#F4F4F6` | `#241E2F` | Fields, wells, the shelf hover |
 | ink | `#0B1015` | `#FFFFFF` | Primary text |
 | ink-body | ink at 75% | ink at 75% | Reading text |
-| ink-muted | ink at 60% | ink at 60% | Labels, sources, receded items |
-| ink-ghost | ink at 20% | ink at 22% | Upcoming items, disabled, the dot grid |
+| ink-muted | ink at 60% | ink at 60% | Labels, sources, receded items, upcoming items |
+| ink-ghost | ink at 20% | ink at 22% | Control hairlines, disabled, the dot grid; never visible text |
 | line | ink at 12% | ink at 16% | Hairlines and rules |
 | accent | `#0562EF` | `#4D8DFF` | The one main action, anything due, concept links, focus ring |
 | right | `#1E7F4E` | `#5FD39A` | The "right" tag |
 | close | `#EEF17C` fill, ink text | `#EEF17C` at 30% fill, ink text | Highlighter mark behind missing words in an exact text, and matched words in search |
 | missed | `#C23B26` | `#FF7A66` | The strike through a wrong answer and the "missed" tag |
 
-The accent appears at most once as a filled control per screen. Controls come in three weights: the one filled accent action, bordered secondary buttons (ink text, a ghost hairline that turns ink on hover), and quiet text links. Hover and focus are crisp, never soft: a fill or border change in 150 ms and a 2 px accent focus ring; a pressed button moves down 1 px. Mode follows the system setting, with a toggle in Settings. Contrast: body and meta text meet 4.5:1 in both modes; ghost is never used for text the learner must read.
+The accent appears at most once as a filled control per screen. Controls come in three weights: the one filled accent action, bordered secondary buttons (ink text, a ghost hairline that turns ink on hover), and quiet text links. Hover and focus are crisp, never soft: a fill or border change in 150 ms and a 2 px accent focus ring; a pressed button moves down 1 px. Mode follows the system setting, with a toggle in Settings. Contrast: every visible text, the upcoming items included, meets 4.5:1 in both modes; ghost opacity is never used for visible text.
 
 ## Shape, space and texture
 
@@ -105,10 +105,10 @@ The center of Scry. The session reads like scrollback:
 
 - Answered items recede above the current one in ink-muted, one line each, with a mono verdict tag at the right edge ("correct", "almost correct", "incorrect").
 - The current prompt sits in the middle at Display size, with the answer line under it and a block caret.
-- Upcoming items fade below in ink-ghost, at most three.
+- Upcoming items sit below at Meta size in ink-muted, at most three: secondary by their size, and still readable (4.5:1 or better in both modes; never ghost opacity).
 - The left margin says where the learner is, in mono: the Study icon and name with the purpose line "Recall what's due today", then the spoiler-safe place and the count ("4 / 11"). The bottom right holds the key hints: "enter to check · space to start/stop speaking (empty answer)".
 
-**No spoilers.** While a card waits for its answer, the place line never shows an idea's own title. It shows the card's topic (the top-level set or idea) and a neutral set number: "NATO phonetic alphabet · Set 1". Every part of that line is checked against the answer to this card and to every card of the same idea: a topic that shares a word with one of them is dropped ("Set 1", or "Current set" when there is no set number), and a set number that happens to be an answer word ("Set 3" beside "3 teaspoons") gives way to the topic alone. If nothing safe is left, the line is empty and only the count shows. Once the answer is submitted, the review shows the real place ("NATO phonetic alphabet · Letters A–I"). Starter sets also name their sections neutrally ("Letters A–I", never "Alfa to India"). The "coming up" list follows the same rule: a cue that quotes the answer still owed (the next line of an exact text quotes the line before it) is held back until the answer is in.
+**No spoilers.** While a card waits for its answer, the place line never shows an idea's own title. It shows the card's topic (the top-level set or idea) and a neutral set number: "NATO phonetic alphabet · Set 1". Every part of that line is checked against the answer to this card and to every card of the same idea: a topic that shares a word with one of them is dropped ("Set 1", or "Current set" when there is no set number), and a set number that happens to be an answer word ("Set 3" beside "3 teaspoons") gives way to the topic alone. If nothing safe is left, the line is empty and only the count shows. Once the answer is submitted, the review shows the real place ("NATO phonetic alphabet · Letters A–I"). Starter sets also name their sections neutrally ("Letters A–I", never "Alfa to India"). No cue on the screen quotes the answer still owed, however short the answer is ("Go" counts as much as a long line): a cue in the "coming up" list or the scrollback that does (the next line of an exact text quotes the line before it) is held back until the answer is in. An exact text whose own title holds the whole of the waiting line (a text called "Daffodils" whose first line is "Daffodils") is asked for under a neutral title: the label reads "Exact text · line 1", not "Exact text · Daffodils · line 1", and the prompt "Exact text: how does it begin?"; the same neutral title stands in wherever a cue of that text is listed. The review shows the real title again. A title that only shares words with a line stays, because it is the cue that says which text is meant.
 
 States: typing; checking (instant; no spinner unless a check takes over 400 ms, then the tag reads "checking" in mono); post-answer review (see below); session end; empty library.
 
@@ -179,7 +179,7 @@ A ledger page. Top: the plan and price in one sentence. The allowance as one sen
 
 ### Card and billing forms: processing
 
-Submitting the card step (/signup/card, /billing/card) or Top up never leaves an ambiguous pause. At once: the button is disabled and marked busy (so a second press does nothing), a status line appears under it with a small spinner and plain words ("Confirming your card with Stripe…" on the card step, or "Confirming your card…" where the test-mode processor stands in for Stripe; "Updating billing…" on a top-up), and a 2 px progress line runs under that. The fields stay visible but dimmed. If the processor or Scry answers with an error, the form comes back exactly as it was, with the reason in words. A request that was stopped and never answered gives the form back after 30 seconds. Under reduced motion the spinner and line are still.
+Submitting the card step (/signup/card, /billing/card) or Top up never leaves an ambiguous pause. At once: the button is disabled and marked busy (so a second press does nothing), a status line appears under it with a small spinner and plain words ("Confirming your card with Stripe…" on the card step, or "Confirming your card…" where the test-mode processor stands in for Stripe; "Updating billing…" on a top-up), and a 2 px progress line runs under that. The fields stay visible but dimmed. If the processor or Scry answers with an error, the form comes back exactly as it was, with the reason in words. A request that was stopped and never answered gives the form back after 30 seconds. Each submission is a numbered attempt: giving the form back or submitting again supersedes the attempt before it, and a card confirmation that arrives late for a superseded attempt is ignored (it is never submitted, and it changes nothing on the page), so a retry with another card can only submit that card. Under reduced motion the spinner and line are still.
 
 ### Settings
 

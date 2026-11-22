@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -44,6 +46,7 @@ func (b *browser) postJSON(path string, kv ...string) (int, map[string]any, stri
 var (
 	railRE       = regexp.MustCompile(`(?s)<aside class="session-margin.*?</aside>`)
 	headerRE     = regexp.MustCompile(`data-study-header>([^<]*)<`)
+	upcomingRE   = regexp.MustCompile(`(?s)<ol class="upcoming".*?</ol>`)
 	tagRE        = regexp.MustCompile(`<[^>]+>`)
 	canonicalRE  = regexp.MustCompile(`(?s)data-canonical>(.*?)<`)
 	submittedRE  = regexp.MustCompile(`(?s)data-submitted>(.*?)<`)
@@ -205,6 +208,245 @@ func TestSlice41_Spoiler_HandMadeTitlesAndExactTextsFallBackToNeutralLabels(t *t
 	}
 	review = b.answer(line1, "Roses are red today")
 	has(t, review, "Coming up", "Short verse: what follows “Roses are red today”") // shown once answered
+}
+
+// Pass 2 (B1): a short line of an exact text ("Go") is quoted by the cue of
+// the line after it. That cue is held back from "coming up" while the short
+// line is still owed, whatever its length.
+func TestSlice41_Spoiler_ShortExactAnswerIsNotShownInComingUp(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("short@example.com")
+	if _, page := b.post("/library/texts", "title", "Studio notes", "text", "Go\nStay the course\nRest", "parent", "0"); !strings.Contains(page, "Studio notes") {
+		t.Fatal("the exact text was not added")
+	}
+	body := b.mustGet("/study")
+	line1, _ := b.current(body)
+	if !line1.Exact || line1.Answer != "Go" || line1.LineNo != 1 {
+		t.Fatalf("line 1 = %+v", line1)
+	}
+	has(t, body, "Exact text · Studio notes · line 1", "Studio notes: how does it begin?", "Coming up",
+		"<li>Studio notes: what follows “Stay the course”</li>") // line 3's cue quotes line 2, not the answer owed
+	hasNot(t, body, "what follows “Go”", "“Go”")
+	if showsWord(visibleText(body), "Go") {
+		t.Errorf("the study page shows the answer \"Go\" before it is given:\n%s", visibleText(body))
+	}
+	if n := strings.Count(upcomingRE.FindString(body), "<li>"); n != 1 {
+		t.Errorf("%d cues are coming up, want only line 3's", n)
+	}
+	// Once "Go" is in, the cue that quotes it is shown.
+	review := b.answer(line1, "Go")
+	has(t, review, `data-verdict="right"`, "Coming up", "<li>Studio notes: what follows “Go”</li>")
+	// Line 2 waits: its own cue quotes line 1 (that is the cue), and line
+	// 3's cue, which quotes line 2, is held back in its turn.
+	body = b.next()
+	line2, _ := b.current(body)
+	if line2.Answer != "Stay the course" {
+		t.Fatalf("line 2 = %+v", line2)
+	}
+	has(t, body, "Studio notes: what follows “Go”")
+	hasNot(t, body, "Stay the course", "Coming up")
+}
+
+// Pass 2 (B1): an exact text named for one of its own lines ("Daffodils",
+// whose first line is "Daffodils"). While that line is owed the title is
+// nowhere on the page: not in the rail, the exact-text label, the prompt,
+// the page title, the scrollback or "coming up". The review shows it.
+func TestSlice41_Spoiler_AnswerBearingExactTitleIsNeutralUntilAnswered(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("daffodils@example.com")
+	if _, page := b.post("/library/texts", "title", "Daffodils", "text", "Daffodils\nI wandered lonely as a cloud\nThat floats on high", "parent", "0"); !strings.Contains(page, "Daffodils") {
+		t.Fatal("the exact text was not added")
+	}
+	noTitle := func(when, body string) {
+		t.Helper()
+		if strings.Contains(strings.ToLower(body), "daffodil") {
+			i := strings.Index(strings.ToLower(body), "daffodil")
+			t.Errorf("%s: the page holds the answer before it is given: …%s…", when, body[max(0, i-80):min(len(body), i+60)])
+		}
+	}
+	body := b.mustGet("/study")
+	line1, _ := b.current(body)
+	if !line1.Exact || line1.Answer != "Daffodils" || line1.TextTitle != "Daffodils" || line1.Prompt != "Daffodils: how does it begin?" {
+		t.Fatalf("line 1 = %+v", line1)
+	}
+	noTitle("line 1 waiting", body) // the whole document: title, rail, label, prompt, lists, attributes
+	if got := studyHeader(t, body); got != "Current set" {
+		t.Errorf("rail = %q, want \"Current set\"", got)
+	}
+	has(t, body, "<title>Study · scry</title>", `<p class="meta exact-label">Exact text · line 1</p>`,
+		`<h1 class="prompt display" id="prompt">Exact text: how does it begin?</h1>`,
+		"Coming up", "<li>Exact text: what follows “I wandered lonely as a cloud”</li>")
+	if n := strings.Count(upcomingRE.FindString(body), "<li>"); n != 1 {
+		t.Errorf("%d cues are coming up, want only line 3's (line 2's quotes the answer)", n)
+	}
+
+	// A wrong answer: the review names the text, and the next cue.
+	review := b.answer(line1, "Tulips")
+	has(t, review, `data-kind="exact"`, `<p class="meta exact-label">Exact text · Daffodils · line 1</p>`, "data-prompt>Daffodils: how does it begin?</h1>",
+		"data-canonical>Daffodils<", "<li>Daffodils: what follows “Daffodils”</li>")
+	if got := studyHeader(t, review); got != "Daffodils" {
+		t.Errorf("rail in the review = %q", got)
+	}
+
+	// Again: the line is owed once more, so the title is gone once more,
+	// from the card and from its own row in the scrollback.
+	_, body = b.post("/study/next", "again", "1")
+	again, ok := b.current(body)
+	if !ok || again.ID != line1.ID {
+		t.Fatalf("Again did not bring line 1 back: %+v", again)
+	}
+	noTitle("line 1 again", body)
+	has(t, body, `<p class="meta exact-label">Exact text · line 1 · again</p>`, `id="prompt">Exact text: how does it begin?</h1>`,
+		`<span class="answered-q">Exact text: how does it begin?</span>`)
+
+	// Answered again, the practice review names the text.
+	review = b.answer(again, "Daffodils")
+	has(t, review, `data-verdict="right"`, "Exact text · Daffodils · line 1")
+
+	// Line 2 waits. "Daffodils" is no longer owed: the text has its name
+	// again, and the cue quotes line 1 as every cue quotes the line before.
+	body = b.next()
+	line2, _ := b.current(body)
+	if line2.Answer != "I wandered lonely as a cloud" {
+		t.Fatalf("line 2 = %+v", line2)
+	}
+	has(t, body, `<p class="meta exact-label">Exact text · Daffodils · line 2</p>`, `id="prompt">Daffodils: what follows “Daffodils”</h1>`,
+		`<span class="answered-q">Daffodils: how does it begin?</span>`)
+	hasNot(t, body, "I wandered lonely as a cloud", "Coming up")
+}
+
+// Pass 2 (B3): a card confirmation that arrives for a superseded attempt
+// (the form was given back after the 30 second timeout, or a newer submit
+// started) is ignored by stripe.js: its payment method is never written or
+// submitted, and it does not unlock the form or print an error over the
+// attempt that replaced it. scripts/verify-stripe-retry.mjs runs the same
+// race in a real browser against app.js and its real 30 second timer.
+func TestSlice41_Processing_SupersededStripeAttemptIsIgnored(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is needed for the stripe.js stand-in")
+	}
+	cmd := exec.Command("node", "-e", `
+const vm = require("node:vm"), fs = require("node:fs"), assert = require("node:assert/strict");
+const source = fs.readFileSync("static/stripe.js", "utf8");
+// page stands in for the card page. withBusy adds app.js's processing state
+// as its contract goes: start and stop each move form.dataset.submitAttempt on.
+function page(withBusy) {
+  const p = {calls: [], reports: [], submitted: [], stops: 0, error: {textContent: ""}, hidden: {value: ""}, button: {disabled: false}};
+  const handlers = {}, submits = [];
+  const mount = {dataset: {key: "pk_test_x"}};
+  const form = p.form = {dataset: {}, addEventListener(ev, fn) { submits.push(fn); }, querySelector() { return p.button; }, submit() { p.submitted.push(p.hidden.value); }};
+  const document = {
+    getElementById(id) { return id === "card-element" ? mount : id === "card-error" ? p.error : id === "payment_method" ? p.hidden : null; },
+    querySelector() { return form; }
+  };
+  const bump = () => { form.dataset.submitAttempt = String((Number(form.dataset.submitAttempt) || 0) + 1); };
+  const window = {scryReport(kind, code) { p.reports.push(code); },
+    Stripe() { return {elements() { return {create() { return {mount() {}, on(ev, fn) { handlers[ev] = fn; }}; }}; },
+      createPaymentMethod() { const call = {}; p.calls.push(call); return {then(ok, bad) { call.resolve = ok; call.reject = bad; }}; }}; }};
+  if (withBusy) window.scryBusy = {start() { bump(); }, stop() { p.stops++; bump(); p.button.disabled = false; }, attempt() { return Number(form.dataset.submitAttempt) || 0; }};
+  vm.runInNewContext(source, {window, document, setTimeout() { return 1; }, clearTimeout() {}});
+  handlers.ready();
+  // submit presses the button: every submit listener runs, as in the page.
+  p.submit = () => { const e = {defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }}; submits.forEach(fn => fn(e)); return e.defaultPrevented; };
+  // timeout is app.js giving the form back after 30 seconds.
+  p.timeout = () => { if (withBusy) window.scryBusy.stop(form); else { bump(); p.button.disabled = false; } };
+  return p;
+}
+for (const withBusy of [true, false]) {
+  const at = withBusy ? "with app.js: " : "stripe.js alone: ";
+  // The race: #1 is slow, the form is given back, #2 starts, #1 answers first.
+  for (const late of ["a payment method", "a refusal", "a network failure"]) {
+    const p = page(withBusy);
+    assert.ok(p.submit(), at + "the form must not post before the card is confirmed");
+    assert.equal(p.calls.length, 1);
+    assert.ok(p.submit(), at + "a second submit while confirming is held");
+    assert.equal(p.calls.length, 1, at + "a second submit while confirming asks the processor again");
+    p.timeout();
+    assert.equal(p.button.disabled, false);
+    p.submit();
+    assert.equal(p.calls.length, 2, at + "the retry is a new attempt");
+    assert.equal(p.button.disabled, true);
+    const stops = p.stops;
+    if (late === "a payment method") p.calls[0].resolve({paymentMethod: {id: "pm_first_stale"}});
+    if (late === "a refusal") p.calls[0].resolve({error: {message: "Your first card was declined."}});
+    if (late === "a network failure") p.calls[0].reject(new Error("Failed to fetch"));
+    assert.equal(p.hidden.value, "", at + late + " for the superseded attempt was written to the form");
+    assert.deepEqual(p.submitted, [], at + late + " for the superseded attempt submitted the form");
+    assert.equal(p.error.textContent, "", at + late + " for the superseded attempt printed an error");
+    assert.equal(p.button.disabled, true, at + late + " for the superseded attempt unlocked the form");
+    assert.equal(p.stops, stops, at + late + " for the superseded attempt ended the processing state");
+    assert.deepEqual(p.reports, [], at + late + " for the superseded attempt was reported");
+    p.calls[1].resolve({paymentMethod: {id: "pm_second"}});
+    assert.deepEqual(p.submitted, ["pm_second"], at + "only the retry's payment method is submitted");
+  }
+  // Given back and not retried: the late answer still changes nothing.
+  {
+    const p = page(withBusy);
+    p.submit(); p.timeout();
+    p.calls[0].resolve({paymentMethod: {id: "pm_first_stale"}});
+    assert.equal(p.hidden.value, "");
+    assert.deepEqual(p.submitted, []);
+    assert.equal(p.button.disabled, false);
+  }
+  // The post itself stalled: #1 was confirmed and submitted, the form was
+  // given back, and the retry confirms the card in the field now.
+  {
+    const p = page(withBusy);
+    p.submit();
+    p.calls[0].resolve({paymentMethod: {id: "pm_first"}});
+    assert.deepEqual(p.submitted, ["pm_first"]);
+    assert.ok(p.submit(), at + "a second submit while the form is posting is held");
+    assert.equal(p.calls.length, 1);
+    p.timeout();
+    assert.ok(p.submit(), at + "the retry must not post the earlier card as it stands");
+    assert.equal(p.hidden.value, "", at + "the retry kept the earlier payment method");
+    assert.equal(p.calls.length, 2);
+    p.calls[1].resolve({paymentMethod: {id: "pm_second"}});
+    assert.deepEqual(p.submitted, ["pm_first", "pm_second"]);
+  }
+  // The attempt in hand still fails the way it did: reason, form given back.
+  {
+    const p = page(withBusy);
+    p.submit();
+    p.calls[0].resolve({error: {message: "Your card was declined."}});
+    assert.equal(p.error.textContent, "Your card was declined.");
+    assert.equal(p.button.disabled, false);
+    assert.deepEqual(p.submitted, []);
+    p.submit();
+    assert.equal(p.calls.length, 2, at + "a refused card can be tried again");
+    p.calls[1].reject(new Error("Failed to fetch"));
+    assert.match(p.error.textContent, /Couldn't reach the card processor/);
+    assert.deepEqual(p.reports, ["stripe_payment_method_failed"]);
+    assert.equal(p.button.disabled, false);
+  }
+}
+`)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("stripe.js: %v\n%s", err, out)
+	}
+	// app.js numbers the attempts: starting and ending the processing
+	// state both move form.dataset.submitAttempt on.
+	js := string(mustStatic(t, "static/app.js"))
+	start := js[strings.Index(js, "function busyStart(form) {"):strings.Index(js, "function busyStop(form) {")]
+	stop := js[strings.Index(js, "function busyStop(form) {"):strings.Index(js, "window.scryBusy = ")]
+	for name, body := range map[string]string{"busyStart": start, "busyStop": stop} {
+		if !strings.Contains(body, "busySupersede(form);") {
+			t.Errorf("app.js: %s does not supersede the attempt before it", name)
+		}
+	}
+	has(t, js, "form.dataset.submitAttempt = String(next);", "window.scryBusy = { start: busyStart, stop: busyStop, attempt: busyAttempt };",
+		"form.busyTimer = setTimeout(function () { busyStop(form); }, 30000);")
+}
+
+func mustStatic(t *testing.T, name string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 // Item 2: every verdict stops on the post-answer review, which shows the

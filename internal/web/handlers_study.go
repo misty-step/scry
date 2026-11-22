@@ -200,12 +200,15 @@ func telemetry(u store.User, it store.Item, counts store.ReviewCounts, now time.
 	return t
 }
 
-func exactLabel(it store.Item) string {
+// exactLabel names the exact text a card is a line of. While the card
+// waits (answered is false), a title that gives the line away is left out:
+// "Exact text · line 1", not "Exact text · Daffodils · line 1".
+func exactLabel(it store.Item, answered bool) string {
 	if !it.Exact {
 		return ""
 	}
 	label := "Exact text"
-	if it.TextTitle != "" {
+	if it.TextTitle != "" && (answered || !titleGivesAway(it, it.Answer)) {
 		label += " · " + it.TextTitle
 	}
 	if it.LineNo > 0 {
@@ -244,7 +247,7 @@ func (s *Server) studyHeader(ctx context.Context, c *rc, it store.Item, answered
 
 func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession) map[string]any {
 	data := map[string]any{"Title": "Study", "Nav": "study", "Session": true, "Purpose": studyPurpose}
-	var rows []answeredRow
+	var answered []*store.SessionEntry
 	var shown *store.SessionEntry
 	remaining := 0
 	for i := range sess.Entries {
@@ -257,7 +260,7 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 			shown = e
 			continue
 		}
-		rows = append(rows, answeredRow{Prompt: e.Item.Prompt, Answer: e.Review.Answer, Verdict: e.Review.Verdict})
+		answered = append(answered, e)
 	}
 	var pendingReview *store.Review
 	if sess.PendingReviewID != 0 {
@@ -301,6 +304,23 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 		data["Last"] = remaining == 0
 		data["EditPrompt"], data["EditAnswer"] = shown.Item.Prompt, shown.Item.Answer
 	}
+	// While a card waits, no cue on the screen may quote its answer: not
+	// in the scrollback above it, and not in the "coming up" list below.
+	// Such a cue (the next line of an exact text quotes the line before
+	// it) is held back until the answer is in; a cue that gives the answer
+	// away only by its text's title is shown under a neutral title.
+	cue := func(it store.Item) (string, bool) {
+		if judged || cur == nil {
+			return it.Prompt, true
+		}
+		return cueWhile(it, cur.Item.Answer)
+	}
+	var rows []answeredRow
+	for _, e := range answered {
+		if prompt, ok := cue(e.Item); ok {
+			rows = append(rows, answeredRow{Prompt: prompt, Answer: e.Review.Answer, Verdict: e.Review.Verdict})
+		}
+	}
 	if n := len(rows); n > 6 {
 		rows = rows[n-6:]
 	}
@@ -308,18 +328,21 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 	if cur != nil {
 		data["Item"] = cur.Item
 		data["Position"] = cur.Position
-		data["ExactLabel"] = exactLabel(cur.Item)
+		data["ExactLabel"] = exactLabel(cur.Item, judged)
+		// The prompt as the waiting card shows it; the review shows the
+		// card's own prompt.
+		data["Prompt"] = cur.Item.Prompt
+		if !judged {
+			data["Prompt"] = waitingPrompt(cur.Item)
+		}
 		data["Retry"] = sess.RetryItemID == cur.Item.ID
 		data["Header"] = s.studyHeader(ctx, c, cur.Item, judged)
 		var up []string
 		for _, e := range sess.Entries {
 			if e.Review == nil && e.Position > cur.Position && len(up) < 3 {
-				// A cue that quotes the answer still owed (the next line of
-				// an exact text does) is held back until the answer is in.
-				if !judged && quotesAnswer(e.Item.Prompt, cur.Item.Answer) {
-					continue
+				if prompt, ok := cue(e.Item); ok {
+					up = append(up, prompt)
 				}
-				up = append(up, e.Item.Prompt)
 			}
 		}
 		data["Upcoming"] = up

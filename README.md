@@ -352,8 +352,16 @@ Enter and Space), the empty-library Study screen, the in-place starter add
 (window.scrollY unchanged), the shelf's first row, Settings' API Tokens, the
 card and top-up processing state, and on every screen zero CSP violations,
 console errors, page errors, failed requests and sideways scroll, text contrast
-of at least 4.5:1 and 44 px touch targets. `--evidence <dir>` also writes
-screenshots and a recorded walkthrough video.
+of at least 4.5:1 (the "Coming up" cues included) and 44 px touch targets. It
+also adds two exact texts and checks that neither gives a line away while it
+waits (a short line, "Go"; a text named for its own first line, "Daffodils"),
+and runs `scripts/verify-stripe-retry.mjs`: with the shipped `app.js` and
+`stripe.js`, an instrumented stand-in for Stripe.js and the real 30 second
+timer, a card confirmation that arrives late for a superseded attempt is
+ignored and only the retry's payment method is posted (about 35 seconds; it
+can be run alone with the same `--url`). `--evidence <dir>` also writes
+screenshots, taken once the page's fades have finished, and a recorded
+walkthrough video (the video needs `npx playwright-core install ffmpeg`).
 
     SCRY_MODE=test SCRY_TEST_JUDGMENTS=right,missed,close SCRY_DB=/tmp/s41.db PORT=18080 go run ./cmd/scry &
     node scripts/verify-slice41.mjs --url http://127.0.0.1:18080 --evidence /tmp/slice41
@@ -483,6 +491,9 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Slice 41 (7): card and top-up forms show a processing state and come back on an error | TestSlice41_Processing_CardAndTopUpFormsCarryTheBusyState; TestReviewBrowserSmoke |
 | Slice 41 (8): API Tokens without can_add, Study profile, plain Inbox and page purposes | TestSlice41_PlainCopy_SettingsInboxAndPagePurposes; TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
 | Slice 41 (9): one inline line-icon family; Geist only; no glows, gradients, shadows or emoji | TestSlice41_Icons_OneFamilyOfInlineLineIcons; TestSlice41_Icons_TemplatesUseOnlyDrawnIconsAndNoEmoji; TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet; internal/starter.TestSlice41_Icons_EverySetNamesAKnownIcon |
+| Slice 41 pass 2 (B1): no cue quotes the answer still owed, however short ("Go"), in "coming up" or the scrollback; an exact text named for its own line ("Daffodils") is asked for under a neutral title in the rail, label, prompt, page title, lists, and named again in the review; no starter text loses its title | TestSlice41_Spoiler_ShortExactAnswerIsNotShownInComingUp; TestSlice41_Spoiler_AnswerBearingExactTitleIsNeutralUntilAnswered; TestSlice41_Spoiler_UpcomingCueThatQuotesTheAnswerIsHeldBack; TestSlice41_Spoiler_ExactTitleThatGivesTheLineAwayIsNeutralWhileWaiting; TestSlice41_Spoiler_CuesShownWhileAnAnswerIsOwed; TestSlice41_Spoiler_EveryStarterExactTextKeepsItsTitle; scripts/verify-slice41.mjs (exactSpoilers) |
+| Slice 41 pass 2 (B2): "Coming up" cues are readable text (ink-muted at Meta size, 4.5:1 or better in light and dark, desktop and phone); ghost opacity colors no text | TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet; scripts/verify-slice41.mjs (the contrast audit no longer skips `.upcoming`, and reports it by name) |
+| Slice 41 pass 2 (B3): a card confirmation that arrives for a superseded attempt (after the 30 second timeout or a newer submit) is ignored; only the retry's payment method is posted | TestSlice41_Processing_SupersededStripeAttemptIsIgnored; scripts/verify-stripe-retry.mjs (run by scripts/verify-slice41.mjs) |
 | Slice 41 (10): the same, in a real browser on the running binary | scripts/verify-slice41.mjs; scripts/browser-smoke.cjs (TestReviewBrowserSmoke); scripts/verify-live.mjs |
 | Slice 12: orphaned allowance reservations released at boot (all users; empty table; Reserve/Settle unchanged) | internal/store.TestFailStaleReservationsReleasesOrphansAcrossUsers; internal/store.TestFailStaleReservationsEmptyTable; internal/store.TestReserveSettleUnchangedBySweep |
 | Slice 13: reservation state machine (table; rapid on a real SQLite file: reserve/settle/replay/TTL sweep/crash+restart/period reset/top-up/status) | internal/store.TestReservationTransitionTable; internal/store.TestRapidReservationStateMachine |

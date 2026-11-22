@@ -346,6 +346,10 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     // The learner keeps their place: the Save button stays where it is in
     // the window, even though the answer above it grew.
     const place = () => s.$eval("[data-edit-save]", b => Math.round(b.getBoundingClientRect().top));
+    // Measured with the button well inside the window, so the click itself
+    // has no reason to scroll it into view (a button cut by the fold would
+    // be moved by the click, not by the save).
+    await s.$eval("[data-edit-save]", b => b.scrollIntoView({ block: "center" }));
     const y = await place();
     await s.click("[data-edit-save]");
     await s.waitForSelector("[data-edit-status]:not([hidden])");
