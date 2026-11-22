@@ -1271,3 +1271,62 @@ Owner-approved spec change (2026-11-21). Choices where the brief left room:
 - **Abuse.** One trial per account. A person can still open many local
   accounts, each capped at $0.50 of AI spend. With Clerk, each needs a verified
   email.
+
+## Slice 41: dogfooding overhaul (post-answer review, spoilers, shelf, Create, icons)
+
+Choices made where the brief, PRODUCT.md or DESIGN.md were silent or pulled two ways:
+
+- **Every answer is held, in the state machine too.** A right answer used to
+  pass straight on (`EventAnswerPassed`). The pair `(Asking, AnswerPassed)` is
+  gone from the session table, so the store refuses an unheld scored answer
+  rather than merely not being asked for one; the event stays defined so the
+  refusal has a name and a test. `specs/study_session.qnt` models the same:
+  CommitAnswer always holds and never ends the session; only Next does.
+- **"Next card" reads "Finish session" on the last card.** Calling the last
+  step "Next card" would promise a card that does not exist.
+- **Ask Why? on correct answers** explains why the answer holds; the explainer
+  prompt says so. Exact texts still have none: the word diff is the explanation.
+- **Telemetry is FSRS's own fields.** Scry schedules with FSRS, which has
+  stability and difficulty, not an "ease factor", so the review shows those
+  (stability in days, difficulty out of 10) with the interval (last review to
+  next due) and the counts from the reviews table. Practice attempts ("Again")
+  are counted apart and say that the schedule did not move.
+- **Inline edit changes text only.** `POST /study/edit` keeps the card's
+  exact flag, schedule and history; the review on screen keeps the grade it was
+  given against the old text (the graded snapshot on the review row), and the
+  edit applies from the next review. A refused edit answers the page's script
+  with 200 and `saved: false` (a 4xx would put an error in the console for an
+  ordinary empty field); the plain form post still answers 422.
+- **What counts as a spoiler.** The Study rail never shows an idea's own title
+  while its card waits. It shows the top-level topic and "Set N", and each
+  candidate label ("topic · Set N", topic, "Set N", "Current set", nothing) is
+  checked whole-word against the answers of the card and its siblings; the
+  first clean one wins. So "Set 3" gives way beside the answer "3 teaspoons".
+  Matching is on whole words: "alphabet" does not show "Alpha". The "coming up"
+  list also holds back a cue that quotes the owed answer (the next line of an
+  exact text quotes the line before it), which the brief did not list but is
+  the same leak.
+- **Starter titles.** Besides the NATO sections ("Letters A–I", "J–R", "S–Z")
+  two more named a whole answer and were renamed: "First principles and
+  inversion" (answer "Inversion") and "Anchoring and framing" (answer
+  "Anchoring"). `starter.Validate` now refuses a section title that contains a
+  whole short answer. Topical overlap with long answers ("Compound interest" /
+  "Interest earned on...") is not a title giving an answer away and is left;
+  the rail guard covers it on the Study screen regardless. The set itself is
+  now titled "NATO phonetic alphabet". Libraries that already hold these sets
+  are renamed on open (by origin and old title only, idempotent).
+- **Shelf order** is the file order (NN- prefix). The first four are NATO,
+  Mental models, Kitchen numbers, World geography; the Creeds and Passages
+  worth keeping are last. No set was removed.
+- **API tokens.** New tokens always suggest through the inbox (`can_add` is
+  ignored when posted). `/api/v1/items` still works for tokens created earlier
+  with it. PRODUCT.md's story was reworded to match.
+- **"Confirming your card with Stripe…"** is shown where Stripe is configured;
+  with the test-mode processor it reads "Confirming your card…", which is true.
+- **Icons vs "no icon-card grids".** DESIGN.md's Never list forbade icon-card
+  grids. Tiles stay typographic hairline tiles; the icon is a small glyph on
+  the title line. The rule now forbids filled or colored icon tiles and emoji.
+- **The spinner loops.** DESIGN.md said nothing loops; the processing spinner
+  and progress line are now the two named exceptions, still under reduced motion.
+- **The browser smoke moved from puppeteer to Playwright**, which the repo
+  already depends on for verify-live, so it runs with `npm --prefix scripts ci`.
