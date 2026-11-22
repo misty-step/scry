@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "repo": "misty-step/scry",
+  "intentRange": "53782259..a9fe9d39",
+  "criticVerdictNote": "The Builder wrote PENDING: the Cold Critic has not run yet. Requirement ids are the Builder's slugs, since the Active Folio diff is prose without ids. localPath is relative to the Builder sandbox home.",
+  "entries": [
+    {
+      "requirementId": "PRODUCT-newcomer-no-card-trial",
+      "requirement": "Sign up and be studying within a minute; the 7-day trial starts at once, with no card up front.",
+      "verifiedSha": "72f7775675f14645db964cba64a31eca6da4aa9f",
+      "verifiedAt": "2026-11-22T02:36:37Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/walkthrough-desktop.mp4",
+      "mediaType": "video/mp4",
+      "notes": "Local auth on the real binary, desktop and mobile. Clerk: the server-rendered sign-up page with stand-in keys only; no real Clerk sign-up."
+    },
+    {
+      "requirementId": "PRODUCT-trial-days-left-and-add-card",
+      "requirement": "A learner on the trial knows the days left, can add a card any time with nothing charged until it ends, and is told calmly where to add one when the trial or its allowance runs out.",
+      "verifiedSha": "72f7775675f14645db964cba64a31eca6da4aa9f",
+      "verifiedAt": "2026-11-22T02:36:37Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/walkthrough-desktop.mp4",
+      "mediaType": "video/mp4",
+      "notes": "Chip 7 and 6 days, last day, ended; Billing and card steps; draft, Why? and judging out of allowance. The allowance was run down by editing the disposable database."
+    },
+    {
+      "requirementId": "PRODUCT-capped-trial-terms",
+      "requirement": "No free tier; capped $0.50 shared allowance, no top-ups without a card; access ends with the 7 days; a card in the trial is charged at its end, in the last hour or after it at once and only with consent; a decline never shortens it.",
+      "verifiedSha": "72f7775675f14645db964cba64a31eca6da4aa9f",
+      "verifiedAt": "2026-11-22T02:36:37Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/walkthrough-desktop.mp4",
+      "mediaType": "video/mp4",
+      "notes": "Fake card processor. Stale and missing terms gave 409 with no charge; six concurrent confirmed submits made one $5 charge; the expiry tick ended a trial with no visit."
+    },
+    {
+      "requirementId": "DESIGN-sign-up-and-trial",
+      "requirement": "Sign-up and landing copy, the trial line in the chrome, both card steps and their states.",
+      "verifiedSha": "72f7775675f14645db964cba64a31eca6da4aa9f",
+      "verifiedAt": "2026-11-22T02:36:37Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-15-billing-card-ended.png",
+      "mediaType": "image/png",
+      "notes": "Drift fixed: Clerk sign-up line, Billing card-step sentences."
+    },
+    {
+      "requirementId": "DESIGN-billing-trial-states",
+      "requirement": "Billing on the no-card trial, allowance reached, ended, and on trial with a card.",
+      "verifiedSha": "72f7775675f14645db964cba64a31eca6da4aa9f",
+      "verifiedAt": "2026-11-22T02:36:37Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-13-billing-last-hour.png",
+      "mediaType": "image/png",
+      "notes": "Drift fixed: last-hour promise of nothing charged today, meter label, explanations named."
+    },
+    {
+      "requirementId": "NOTES-slice36-model-defaults-and-speech-route",
+      "requirement": "Default models, overrides, and speech routing with SCRY_SPEECH_ROUTE.",
+      "verifiedSha": "72f7775675f14645db964cba64a31eca6da4aa9f",
+      "verifiedAt": "2026-11-22T02:36:37Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/boot.log",
+      "mediaType": "text/plain",
+      "notes": "Boot refusals and /healthz on the real binary with a placeholder key. Not verified: any real OpenRouter call (it spends money); both routes are covered by local stand-ins in the tests."
+    },
+    {
+      "requirementId": "NOTES-slice36-trial-expiry-and-legacy",
+      "requirement": "Expiry enforced on request and by the minute tick; accounts with no plan row start the trial on their next visit.",
+      "verifiedSha": "72f7775675f14645db964cba64a31eca6da4aa9f",
+      "verifiedAt": "2026-11-22T02:36:37Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/boot.log",
+      "mediaType": "text/plain",
+      "notes": "Real binary; see the log."
+    },
+    {
+      "requirementId": "NOTES-slice36-real-stripe-charge-path",
+      "requirement": "Stripe trial_end, idempotency keys and attempt lookup against Stripe.",
+      "verifiedSha": null,
+      "verifiedAt": null,
+      "criticVerdict": "PENDING",
+      "localPath": null,
+      "mediaType": null,
+      "notes": "NOT verified on a real path: no Stripe keys here and a charge would spend money. Local stand-in tests and the fake processor only."
+    },
+    {
+      "requirementId": "NOTES-slice36-pricing-and-holds",
+      "requirement": "Catalog prices, model-aware holds, speech holds and overage.",
+      "verifiedSha": null,
+      "verifiedAt": null,
+      "criticVerdict": "PENDING",
+      "localPath": null,
+      "mediaType": null,
+      "notes": "NOT verified against a provider: automated tests only."
+    }
+  ]
+}
