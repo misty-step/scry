@@ -93,7 +93,10 @@ type App struct {
 	drafts sync.WaitGroup
 	// topupsInFlight holds the top-up keys being charged by this process.
 	topupsInFlight sync.Map
-	explained      explainCache
+	// subInFlight holds the learners whose card step this process has with
+	// the processor right now.
+	subInFlight sync.Map
+	explained   explainCache
 }
 
 // FieldError is a mistake the learner can fix, said in words and shown

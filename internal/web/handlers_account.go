@@ -221,6 +221,17 @@ func (s *Server) termsChanged(w http.ResponseWriter, r *http.Request, c *rc, upd
 	return s.render(w, r, c, http.StatusConflict, "card.html", data)
 }
 
+// cardInProgressNotice is what a card step says when an earlier one by
+// the same learner is still with the card processor.
+const cardInProgressNotice = "Your card is already being processed. Refresh Billing in a moment — nothing extra was charged."
+
+// cardInProgress answers such a card step, at 409, with no form to submit
+// again.
+func (s *Server) cardInProgress(w http.ResponseWriter, r *http.Request, c *rc, data map[string]any) error {
+	data["InProgress"] = cardInProgressNotice
+	return s.render(w, r, c, http.StatusConflict, "card.html", data)
+}
+
 // cardToken turns the submitted card step into the processor's token. In
 // test mode the plain test-card fields are tokenized by the test
 // processor; with Stripe the browser has already done it.
@@ -267,6 +278,9 @@ func (s *Server) cardSubmit(w http.ResponseWriter, r *http.Request, c *rc) error
 	}
 	if errors.Is(err, app.ErrTermsChanged) {
 		return s.termsChanged(w, r, c, false)
+	}
+	if errors.Is(err, app.ErrSubscribeInProgress) {
+		return s.cardInProgress(w, r, c, s.cardData(c, "Add a card", sub))
 	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
@@ -614,17 +628,23 @@ func (s *Server) billingCard(w http.ResponseWriter, r *http.Request, c *rc) erro
 			err = app.ErrTermsChanged
 		default:
 			// The plan is over: a new card starts it again, charged today.
-			if sub.Status != "ended" {
-				sub.Status = "ended"
-				if err = c.us.SaveSubscription(r.Context(), sub); err != nil {
-					return err
+			// Only the lapsed plan this page read is ended: one another
+			// request has restarted since is left alone.
+			if _, err = c.us.ChangeSubscription(r.Context(), func(cur *store.Subscription) {
+				if cur.SubscriptionRef == sub.SubscriptionRef && !s.App.HasAccess(*cur) {
+					cur.Status = store.SubEnded
 				}
+			}); err != nil {
+				return err
 			}
 			err, ok = s.App.StartTrial(r.Context(), c.user, token, agreed), "started"
 		}
 	}
 	if errors.Is(err, app.ErrTermsChanged) {
 		return s.termsChanged(w, r, c, true)
+	}
+	if errors.Is(err, app.ErrSubscribeInProgress) {
+		return s.cardInProgress(w, r, c, data)
 	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {

@@ -1,8 +1,12 @@
-{{define "head"}}{{if .PublishableKey}}<script src="https://js.stripe.com/v3/" defer></script><script src="/static/stripe.js" defer></script>{{end}}{{end}}
+{{define "head"}}{{if and .PublishableKey (not .InProgress)}}<script src="https://js.stripe.com/v3/" defer></script><script src="/static/stripe.js" defer></script>{{end}}{{end}}
 {{define "main"}}
 <section class="column">
   {{if .Notice}}<p class="ledger-alert terms-changed" role="alert" data-terms-changed><strong>Nothing was charged.</strong> {{.Notice}}</p>{{end}}
-  {{if .Update}}
+  {{if .InProgress}}
+    <h1 class="display">Add a card</h1>
+    <p class="lede" role="alert" data-card-in-progress>{{.InProgress}}</p>
+    <p class="meta"><a class="link" href="/billing">Back to Billing</a></p>
+  {{else if .Update}}
     <h1 class="display">{{if .NoCard}}Add a card{{else if .Restart}}Start again{{else}}Update card{{end}}</h1>
     {{if and .NoCard .KeepTrial}}<p class="lede trial-terms">Nothing is charged today. Your trial still ends on {{date .TrialEnd}}, when your card is first charged {{money .Price}}, and then monthly. Cancel any time before then in Billing.</p>
     {{else if .Restart}}<p class="lede">Your card is charged {{money .Price}} today, and then monthly. Cancel any time in Billing.</p>

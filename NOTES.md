@@ -1230,6 +1230,26 @@ Owner-approved spec change (2026-11-21). Choices where the brief left room:
   no-card row (trialing in its last hour, or ended) into the active paid plan
   in one transaction (full monthly allowance, nothing used, no overage), and
   refuses, with an operator alert, if a card was added to it in between.
+- **One subscription per confirmed upgrade (pass 3).** The per-minute
+  idempotency key is gone here too. `subscription_attempts` holds one pending
+  attempt per learner (a partial unique index), claimed before the processor
+  is called, with its key (`sub-<user>-<random>`) and the parameters sent
+  under it (card token, email, trial end). A second card step in the same
+  process while one is in flight gets 409 and sends nothing. An attempt whose
+  outcome was never learned is repeated with its own key and parameters, so
+  Stripe returns what it already did; a newly entered card is not substituted,
+  because Stripe refuses a key with other parameters and the first card may
+  already be charged (it stays the card on file). A definitive refusal (a
+  decline, or `invalid_request_error`) marks the attempt failed, and the card
+  just entered is then tried under a new key. The plan, its ledger line and the
+  attempt's end are one transaction. Stripe forgets keys after 24 hours, so
+  from 23 hours (or once a trial attempt's trial end has passed) an attempt is
+  looked up by `metadata[scry_key]` and never sent again: recorded if it
+  exists, released only if a complete lookup has nothing or it is over.
+  `specs/subscription_claim.qnt` models it, with the old code's double charge
+  as tests. An attempt is settled when the learner next submits a card; there
+  is no background sweep. A learner who never returns after a lost reply is
+  covered by the operator alert the failure raised.
 - **Expiry** is enforced three times: `HasAccess` (trialing with
   `customer_ref = ''` only while `now < period_end`); the `ReserveAt` statement
   (`period_end > floor(now)`, the same predicate, since period_end is stored in

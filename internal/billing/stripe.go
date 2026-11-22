@@ -137,7 +137,7 @@ func (s *Stripe) do(ctx context.Context, method, path string, form url.Values, k
 		if se.Error.Type == "card_error" && se.Error.Message != "" {
 			return &DeclineError{Reason: se.Error.Message, Ref: se.Error.PaymentIntent.ID}
 		}
-		return &ProcessorError{Status: resp.StatusCode, Code: se.Error.Code, Message: se.Error.Message, Ref: se.Error.PaymentIntent.ID}
+		return &ProcessorError{Status: resp.StatusCode, Type: se.Error.Type, Code: se.Error.Code, Message: se.Error.Message, Ref: se.Error.PaymentIntent.ID}
 	}
 	if out == nil {
 		return nil
@@ -183,6 +183,9 @@ func (s *Stripe) Subscribe(ctx context.Context, p SubscribeParams) (Subscribed, 
 		"email":          {p.Email},
 		"payment_method": {p.CardToken},
 		"invoice_settings[default_payment_method]": {p.CardToken},
+		// The key is also kept on the customer and the subscription, so a
+		// lost reply can be looked up later (FindSubscription).
+		"metadata[scry_key]": {p.Key},
 	}, p.Key+"-cus", &cus)
 	if err != nil {
 		return Subscribed{}, err
@@ -192,6 +195,7 @@ func (s *Stripe) Subscribe(ctx context.Context, p SubscribeParams) (Subscribed, 
 		"items[0][price]":        {s.priceID},
 		"default_payment_method": {p.CardToken},
 		"expand[]":               {"latest_invoice"},
+		"metadata[scry_key]":     {p.Key},
 	}
 	if p.TrialEnd.IsZero() {
 		form.Set("payment_behavior", "error_if_incomplete")
@@ -202,16 +206,112 @@ func (s *Stripe) Subscribe(ctx context.Context, p SubscribeParams) (Subscribed, 
 	if err := s.do(ctx, http.MethodPost, "/v1/subscriptions", form, p.Key+"-sub", &sub); err != nil {
 		return Subscribed{}, err
 	}
-	card, err := s.card(ctx, p.CardToken)
-	if err != nil {
-		return Subscribed{}, err
+	if cus.ID == "" || sub.ID == "" {
+		return Subscribed{}, errors.New("card processor: subscription answer names no subscription")
 	}
-	out := Subscribed{CustomerRef: cus.ID, SubscriptionRef: sub.ID, PaymentRef: p.CardToken, Card: card,
-		PeriodStart: time.Unix(sub.CurrentPeriodStart, 0).UTC(), PeriodEnd: time.Unix(sub.CurrentPeriodEnd, 0).UTC()}
+	out := s.subscribed(ctx, cus.ID, p.CardToken, sub)
 	if p.TrialEnd.IsZero() {
 		out.ChargeRef = sub.LatestInvoice.ID
 	}
 	return out, nil
+}
+
+// subscribed is a subscription that exists at Stripe. The card's brand and
+// last digits are only for show: the plan is open (and may be paid for)
+// whether or not they can be read, so failing to read them is not a failure.
+func (s *Stripe) subscribed(ctx context.Context, customer, pm string, sub stripeSub) Subscribed {
+	card, err := s.card(ctx, pm)
+	if err != nil {
+		card = Card{}
+	}
+	return Subscribed{CustomerRef: customer, SubscriptionRef: sub.ID, PaymentRef: pm, Card: card,
+		PeriodStart: time.Unix(sub.CurrentPeriodStart, 0).UTC(), PeriodEnd: time.Unix(sub.CurrentPeriodEnd, 0).UTC()}
+}
+
+// state maps a Stripe subscription status; "" is one this adapter does not
+// know, which settles nothing.
+func (sub stripeSub) state() SubscriptionState {
+	switch sub.Status {
+	case "trialing":
+		return SubscriptionTrialing
+	case "active":
+		return SubscriptionPaid
+	case "past_due", "unpaid", "incomplete":
+		return SubscriptionUnpaid
+	case "canceled", "incomplete_expired":
+		return SubscriptionOver
+	}
+	return ""
+}
+
+// FindSubscription looks up what became of a Subscribe: it lists the
+// customers with its email created since then (a list, not search, so it
+// is strongly consistent), and the subscriptions of those carrying its key
+// in metadata. An open subscription is preferred over one that is over.
+func (s *Stripe) FindSubscription(ctx context.Context, q SubscribeParams, since time.Time) (SubscriptionState, Subscribed, error) {
+	type object struct {
+		ID       string            `json:"id"`
+		Metadata map[string]string `json:"metadata"`
+		stripeSub
+	}
+	// list walks every page, or fails: a partial list proves nothing.
+	list := func(path string, form url.Values) ([]stripeSub, error) {
+		form.Set("limit", "100")
+		var out []stripeSub
+		for page := 0; page < findPages; page++ {
+			var l struct {
+				Object string   `json:"object"`
+				Data   []object `json:"data"`
+				More   bool     `json:"has_more"`
+			}
+			if err := s.do(ctx, http.MethodGet, path+"?"+form.Encode(), nil, "", &l); err != nil {
+				return nil, err
+			}
+			if l.Object != "list" {
+				break // not a list answer at all: no evidence of absence
+			}
+			for _, o := range l.Data {
+				if o.Metadata["scry_key"] == q.Key {
+					o.stripeSub.ID = o.ID
+					out = append(out, o.stripeSub)
+				}
+			}
+			if !l.More {
+				return out, nil
+			}
+			if len(l.Data) == 0 {
+				break
+			}
+			form.Set("starting_after", l.Data[len(l.Data)-1].ID)
+		}
+		return nil, ErrLookupIncomplete
+	}
+	customers, err := list("/v1/customers", url.Values{"email": {q.Email},
+		"created[gte]": {strconv.FormatInt(since.Add(-10*time.Minute).Unix(), 10)}})
+	if err != nil {
+		return "", Subscribed{}, err
+	}
+	state, out := SubscriptionNotFound, Subscribed{}
+	for _, cus := range customers {
+		subs, err := list("/v1/subscriptions", url.Values{"customer": {cus.ID}, "status": {"all"}, "expand[]": {"data.latest_invoice"}})
+		if err != nil {
+			return "", Subscribed{}, err
+		}
+		for _, sub := range subs {
+			st := sub.state()
+			if st == "" {
+				return "", Subscribed{}, fmt.Errorf("card processor: subscription %s is %q", sub.ID, sub.Status)
+			}
+			state, out = st, s.subscribed(ctx, cus.ID, q.CardToken, sub)
+			if st == SubscriptionPaid {
+				out.ChargeRef = sub.LatestInvoice.ID
+			}
+			if st != SubscriptionOver {
+				return state, out, nil
+			}
+		}
+	}
+	return state, out, nil
 }
 
 func (s *Stripe) UpdateCard(ctx context.Context, customerRef, subscriptionRef, cardToken string) (string, Card, error) {

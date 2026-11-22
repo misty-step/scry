@@ -42,8 +42,36 @@ func (e *CanceledError) Error() string {
 // one, so the attempt can be looked up by id later.
 type ProcessorError struct {
 	Status        int
+	Type          string // the processor's error type, when it named one
 	Code, Message string
 	Ref           string
+}
+
+// NothingDone reports whether err is a definitive answer that a Subscribe
+// did nothing: the card was refused, the charge was canceled, or the
+// processor refused the request itself as invalid (a card token it does
+// not know, a trial end in the past). Everything else says nothing about
+// what happened: a lost reply, a timeout, a 5xx, a rate limit, a refused
+// credential, and above all an idempotency error, which means an earlier
+// request used the same key.
+func NothingDone(err error) bool {
+	var d *DeclineError
+	var c *CanceledError
+	var p *ProcessorError
+	switch {
+	case errors.As(err, &d), errors.As(err, &c):
+		return true
+	case errors.As(err, &p):
+		return p.Type == "invalid_request_error" && (p.Status == 400 || p.Status == 402 || p.Status == 404)
+	}
+	return false
+}
+
+// KeyInUse reports whether err is the processor still working on another
+// request with the same idempotency key.
+func KeyInUse(err error) bool {
+	var p *ProcessorError
+	return errors.As(err, &p) && p.Status == 409
 }
 
 func (e *ProcessorError) Error() string {
@@ -57,7 +85,9 @@ var ErrLookupIncomplete = errors.New("card processor lookup was incomplete")
 // Card is what Scry keeps of a card: never the number.
 type Card struct{ Brand, Last4 string }
 
-// SubscribeParams starts a plan for a new customer.
+// SubscribeParams starts a plan for a new customer. The same key with the
+// same parameters never opens a second plan, for as long as the processor
+// remembers the key (IdempotencyKeyLife).
 type SubscribeParams struct {
 	Email     string
 	CardToken string    // the processor's token for the card
@@ -75,6 +105,32 @@ type Subscribed struct {
 	PeriodStart     time.Time
 	PeriodEnd       time.Time
 	ChargeRef       string // set when the first charge was taken at once
+}
+
+// IdempotencyKeyLife is how long a repeated key is relied on to return the
+// first request's result. Stripe forgets keys after 24 hours, and a
+// forgotten key is a new request; this keeps an hour clear of that. Past
+// it, only a lookup (SubscriptionFinder) can say what became of a request.
+const IdempotencyKeyLife = 23 * time.Hour
+
+// SubscriptionState is what the processor says a subscription is now.
+type SubscriptionState string
+
+const (
+	SubscriptionNotFound SubscriptionState = "not_found" // a complete lookup has none with that key
+	SubscriptionTrialing SubscriptionState = "trialing"  // open, not charged yet
+	SubscriptionPaid     SubscriptionState = "paid"      // open, its period is paid for
+	SubscriptionUnpaid   SubscriptionState = "unpaid"    // open, its last invoice was not paid
+	SubscriptionOver     SubscriptionState = "over"      // canceled or expired: it charges nothing more
+)
+
+// SubscriptionFinder is implemented by an adapter that can look up what
+// became of a Subscribe whose reply was lost. It never creates or changes
+// anything. q is what that Subscribe was sent, and since is when. The
+// Subscribed is filled in unless the state is SubscriptionNotFound, which
+// is only reported after a complete lookup (else ErrLookupIncomplete).
+type SubscriptionFinder interface {
+	FindSubscription(ctx context.Context, q SubscribeParams, since time.Time) (SubscriptionState, Subscribed, error)
 }
 
 // EventKind is what the processor reports about a plan over time.

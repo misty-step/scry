@@ -88,6 +88,9 @@ func (s *Store) migrateAdded() error {
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0), created_at INTEGER NOT NULL DEFAULT 0)`,
 		topupSchema,
+		// Slice 36 pass 3: the durable claim on a learner's card step.
+		subscriptionAttemptsSchema,
+		subscriptionAttemptsIndex,
 	} {
 		if _, err := s.db.Exec(q); err != nil {
 			return err
@@ -241,7 +244,7 @@ func LatestSnapshot(dir string) (string, time.Time) {
 // userTables lists every table holding learner-owned rows, parents first.
 // Export, per-user restore and the privacy tests all walk this list.
 var userTables = []string{
-	"subscriptions", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items",
+	"subscriptions", "subscription_attempts", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items",
 	"study_sessions", "session_items", "reviews", "drafts", "suggestions", "agent_tokens",
 }
 

@@ -347,6 +347,21 @@ func (a *App) CardTerms(s store.Subscription) BillingTerms {
 	return TermsUpdate
 }
 
+// ErrSubscribeInProgress is a card step submitted while another one for
+// the same learner is with the card processor. Nothing was sent for this
+// one: the first decides.
+var ErrSubscribeInProgress = errors.New("the learner's card is already being processed")
+
+// errOnPlan is a card step by a learner already on a card-backed plan:
+// there is nothing to do.
+var errOnPlan = errors.New("already on a plan")
+
+// errPlanChanged is a plan that changed while the processor was being asked.
+var errPlanChanged = errors.New("the plan changed while the card was being processed")
+
+// subscribeTimeout bounds one attempt at the processor (a few calls).
+const subscribeTimeout = 60 * time.Second
+
 // StartTrial puts a card behind the learner's plan, on the terms the card
 // step showed them (agreed).
 //
@@ -369,94 +384,210 @@ func (a *App) CardTerms(s store.Subscription) BillingTerms {
 // exactly as it was, usable until its own period_end.
 //
 // A learner already on a card-backed plan is left as they are.
+//
+// A learner is never subscribed twice, however many requests ask and
+// whenever (like a top-up, TopUpResult):
+//  1. one request per learner at a time in this process; another gets
+//     ErrSubscribeInProgress and sends nothing;
+//  2. a short transaction decides, from the plan row under the write lock,
+//     and claims the learner's one pending attempt (ClaimSubscription). An
+//     attempt already pending is one whose outcome was never learned (a
+//     lost reply, a restart): it is repeated with its own key and its own
+//     parameters, or looked up, and never replaced by a new one;
+//  3. the processor is called outside any transaction;
+//  4. a short transaction records the plan and marks the attempt succeeded
+//     (CommitSubscription). A definitive refusal marks it failed, so the
+//     next submission takes a new key. Anything else leaves it pending.
 func (a *App) StartTrial(ctx context.Context, u store.User, cardToken string, agreed BillingTerms) error {
-	us := a.Store.For(u.ID)
-	now := a.now()
-	old, err := us.Subscription(ctx)
-	hadPlan := err == nil
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return err
+	if _, busy := a.subInFlight.LoadOrStore(u.ID, struct{}{}); busy {
+		return ErrSubscribeInProgress
 	}
-	if !hadPlan {
-		old = store.Subscription{}
-	}
-	terms := a.CardTerms(old)
-	if terms == TermsImmediate && agreed != TermsImmediate {
-		a.Log.InfoContext(ctx, "card step refused: terms changed to an immediate charge", "user", u.ID, "agreed", string(agreed))
-		return ErrTermsChanged
-	}
-	fromNoCard := hadPlan && old.NoCard() && (old.NoCardTrial() || old.Status == store.SubEnded)
-	switch {
-	case hadPlan && old.NoCardTrial() && terms == TermsTrial:
-		return a.addCardToTrial(ctx, u, us, old, cardToken, now)
-	case hadPlan && !fromNoCard && old.Status != store.SubEnded:
-		return nil // already on a plan
-	}
-	p := billing.SubscribeParams{Email: u.Email, CardToken: cardToken, Key: fmt.Sprintf("sub-%d-%d", u.ID, now.Unix()/60), Now: now}
-	if !hadPlan {
-		p.TrialEnd = now.AddDate(0, 0, a.Cfg.TrialDays)
-	}
-	// Nothing about the plan has changed yet: if the processor refuses the
-	// card, the learner keeps what they had.
-	res, err := a.Pay.Subscribe(ctx, p)
-	if err != nil {
-		var d *billing.DeclineError
-		if !errors.As(err, &d) {
-			a.Alert.Notify(ctx, "Card processor is failing", err.Error())
+	defer a.subInFlight.Delete(u.ID)
+	// The second time round is for an earlier attempt that turns out to
+	// have done nothing: the card just submitted is then tried afresh.
+	for {
+		att, fresh, err := a.Store.For(u.ID).ClaimSubscription(ctx, func(cur store.Subscription) (store.SubscriptionAttempt, error) {
+			return a.proposeSubscription(ctx, u, cur, cardToken, agreed)
+		})
+		if errors.Is(err, errOnPlan) {
+			return nil
 		}
-		return err
-	}
-	sub := store.Subscription{
-		UserID: u.ID, CustomerRef: res.CustomerRef, SubscriptionRef: res.SubscriptionRef, PaymentRef: res.PaymentRef,
-		CardBrand: res.Card.Brand, CardLast4: res.Card.Last4, PeriodStart: now, PeriodEnd: res.PeriodEnd,
-		TopupMicros: old.TopupMicros,
-	}
-	if hadPlan {
-		sub.Status, sub.AllowanceMicros, sub.TrialEnd = store.SubActive, a.Cfg.AllowanceMicros, old.TrialEnd
-		if fromNoCard {
-			// The no-card trial (live in its last hour, or ended) becomes the
-			// paid plan in one guarded write, only now that it is paid for.
-			if err := us.StartPaidFromNoCard(ctx, sub); err != nil {
-				a.Log.ErrorContext(ctx, "card charged at the processor but the no-card plan changed", "err", err, "user", u.ID, "subscription", res.SubscriptionRef)
-				a.Alert.Notify(ctx, "Card charged for a plan that changed", "Subscription "+res.SubscriptionRef+" was charged for a no-card plan that had already changed: "+err.Error())
-				return err
-			}
-		} else if err := us.OpenPlan(ctx, sub); err != nil {
+		if err != nil {
 			return err
 		}
-		return us.AddLedger(ctx, store.LedgerEntry{At: now, Kind: "charge", Description: "Scry, one month", AmountCents: a.Cfg.PriceCents, Status: "paid", Ref: res.ChargeRef})
+		if att.TrialEnd.IsZero() && agreed != TermsImmediate {
+			return ErrTermsChanged // repeating it could charge today
+		}
+		released, err := a.subscribe(ctx, att, fresh)
+		if !released || fresh || (err != nil && att.PaymentToken == cardToken) {
+			return err
+		}
+		a.Log.InfoContext(ctx, "earlier card attempt did nothing; trying the card just submitted", "user", u.ID, "key", att.Key)
 	}
-	sub.Status, sub.AllowanceMicros, sub.TrialEnd = "trialing", a.Cfg.CardTrialMicros, p.TrialEnd
-	if err := us.OpenPlan(ctx, sub); err != nil {
-		return err
-	}
-	return us.AddLedger(ctx, store.LedgerEntry{At: now, Kind: "trial", Description: fmt.Sprintf("%d-day trial started", a.Cfg.TrialDays), Status: "none", Ref: "trial-" + res.SubscriptionRef})
 }
 
-// addCardToTrial subscribes the learner at the processor with the no-card
-// trial's own end as the processor's trial end, then records the card on
-// the same trial (store.AddCardToTrial). Nothing is charged today.
-func (a *App) addCardToTrial(ctx context.Context, u store.User, us *store.UserStore, old store.Subscription, cardToken string, now time.Time) error {
-	res, err := a.Pay.Subscribe(ctx, billing.SubscribeParams{Email: u.Email, CardToken: cardToken,
-		Key: fmt.Sprintf("sub-%d-%d", u.ID, now.Unix()/60), Now: now, TrialEnd: old.PeriodEnd})
-	if err != nil {
-		var d *billing.DeclineError
-		if !errors.As(err, &d) {
-			a.Alert.Notify(ctx, "Card processor is failing", err.Error())
+// proposeSubscription decides what a card step asks the processor for,
+// from the plan row cur (the zero Subscription when there is none).
+func (a *App) proposeSubscription(ctx context.Context, u store.User, cur store.Subscription, cardToken string, agreed BillingTerms) (store.SubscriptionAttempt, error) {
+	now := a.now()
+	att := store.SubscriptionAttempt{Key: fmt.Sprintf("sub-%d-%s", u.ID, randomToken(18)), Email: u.Email, PaymentToken: cardToken, Created: now}
+	terms := a.CardTerms(cur)
+	if terms == TermsImmediate && agreed != TermsImmediate {
+		a.Log.InfoContext(ctx, "card step refused: terms changed to an immediate charge", "user", u.ID, "agreed", string(agreed))
+		return att, ErrTermsChanged
+	}
+	switch {
+	case cur.Status == store.SubNone:
+		att.TrialEnd = now.AddDate(0, 0, a.Cfg.TrialDays)
+	case cur.NoCardTrial() && terms == TermsTrial:
+		att.TrialEnd = cur.PeriodEnd // the same trial, to the same end
+	case cur.NoCardTrial(), cur.Status == store.SubEnded:
+		// Charged today.
+	default:
+		return att, errOnPlan
+	}
+	return att, nil
+}
+
+// subscribe takes a claimed attempt to the processor and settles it.
+// released reports that it is now known to have done nothing (it is marked
+// failed): err is then the refusal, or nil if the processor simply has
+// nothing for it. With neither released nor err the plan is recorded.
+func (a *App) subscribe(ctx context.Context, att store.SubscriptionAttempt, fresh bool) (released bool, err error) {
+	us := a.Store.For(att.UserID)
+	p := billing.SubscribeParams{Email: att.Email, CardToken: att.PaymentToken, TrialEnd: att.TrialEnd, Key: att.Key, Now: att.Created}
+	// Not cut short by the browser going away: a subscription abandoned
+	// half way is exactly what must not happen.
+	ctx = context.WithoutCancel(ctx)
+	pctx, cancel := context.WithTimeout(ctx, subscribeTimeout)
+	defer cancel()
+	finder, canFind := a.Pay.(billing.SubscriptionFinder)
+	canFind = canFind && !fresh
+	release := func(err error) (bool, error) {
+		if ferr := us.FailSubscriptionAttempt(ctx, att.ID, a.now()); ferr != nil {
+			return false, ferr
 		}
-		return err
+		return true, err
 	}
-	_, err = us.AddCardToTrial(ctx, store.Subscription{CustomerRef: res.CustomerRef, SubscriptionRef: res.SubscriptionRef,
-		PaymentRef: res.PaymentRef, CardBrand: res.Card.Brand, CardLast4: res.Card.Last4, PeriodEnd: res.PeriodEnd}, a.Cfg.CardTrialMicros, now)
-	if err != nil {
-		// The processor now has a trialing subscription Scry did not record
-		// (the trial ended or changed in between): ops must look.
-		a.Log.ErrorContext(ctx, "card added at the processor but not to the trial", "err", err, "user", u.ID, "subscription", res.SubscriptionRef)
+	find := func() (bool, error) {
+		state, res, err := finder.FindSubscription(pctx, p, att.Created)
+		if err != nil {
+			a.Log.WarnContext(ctx, "card attempt lookup was not conclusive; kept pending", "err", err, "key", att.Key)
+			return false, err
+		}
+		a.Log.InfoContext(ctx, "card attempt looked up", "key", att.Key, "state", string(state), "subscription", res.SubscriptionRef)
+		switch state {
+		case billing.SubscriptionNotFound:
+			return release(nil)
+		case billing.SubscriptionOver:
+			// Opened, never recorded here, and since ended at the processor.
+			a.Alert.Notify(ctx, "Subscription ended before Scry recorded it", "Subscription "+res.SubscriptionRef+" was opened by an attempt whose reply was lost and has since ended; check whether it owes a refund.")
+			return release(nil)
+		}
+		return false, a.recordSubscribed(ctx, us, att, state, res)
+	}
+	// A repeated key returns the first request's result only while the
+	// processor remembers it, and an attempt whose trial end has passed
+	// cannot be asked for again (and may have been charged since): what
+	// became of these is looked up, never asked for again.
+	now := a.now()
+	stale := now.Sub(att.Created) >= billing.IdempotencyKeyLife || (!att.TrialEnd.IsZero() && !now.Before(att.TrialEnd))
+	if canFind && stale {
+		return find()
+	}
+	res, err := a.Pay.Subscribe(pctx, p)
+	if err == nil {
+		state := billing.SubscriptionTrialing
+		if att.TrialEnd.IsZero() {
+			state = billing.SubscriptionPaid
+		}
+		res.PeriodStart = att.Created
+		return false, a.recordSubscribed(ctx, us, att, state, res)
+	}
+	var d *billing.DeclineError
+	if !errors.As(err, &d) {
+		a.Alert.Notify(ctx, "Card processor is failing", err.Error())
+	}
+	if billing.NothingDone(err) {
+		return release(err)
+	}
+	a.Log.WarnContext(ctx, "card attempt outcome unknown; kept pending", "err", err, "key", att.Key)
+	if billing.KeyInUse(err) {
+		return false, ErrSubscribeInProgress // another process has it at the processor
+	}
+	if canFind {
+		// The repeat did not answer either. If the subscription is there,
+		// it is recorded; not seeing it proves nothing while the key lives.
+		state, res, ferr := finder.FindSubscription(pctx, p, att.Created)
+		if ferr == nil && (state == billing.SubscriptionTrialing || state == billing.SubscriptionPaid) {
+			return false, a.recordSubscribed(ctx, us, att, state, res)
+		}
+	}
+	return false, err
+}
+
+// recordSubscribed records the plan an attempt opened at the processor,
+// and the attempt as succeeded, in one transaction.
+func (a *App) recordSubscribed(ctx context.Context, us *store.UserStore, att store.SubscriptionAttempt, state billing.SubscriptionState, res billing.Subscribed) error {
+	err := us.CommitSubscription(ctx, att.ID, res.SubscriptionRef, a.now(), func(ctx context.Context, cur store.Subscription) error {
+		sub := store.Subscription{
+			UserID: att.UserID, CustomerRef: res.CustomerRef, SubscriptionRef: res.SubscriptionRef, PaymentRef: res.PaymentRef,
+			CardBrand: res.Card.Brand, CardLast4: res.Card.Last4, PeriodStart: res.PeriodStart, PeriodEnd: res.PeriodEnd,
+			TopupMicros: cur.TopupMicros,
+		}
+		if state == billing.SubscriptionTrialing {
+			if cur.Status != store.SubNone {
+				// The same trial, now with a card: nothing is charged today.
+				_, err := us.AddCardToTrial(ctx, sub, a.Cfg.CardTrialMicros, a.now())
+				return err
+			}
+			sub.Status, sub.AllowanceMicros, sub.TrialEnd = store.SubTrialing, a.Cfg.CardTrialMicros, att.TrialEnd
+			if err := us.OpenPlan(ctx, sub); err != nil {
+				return err
+			}
+			return us.AddLedger(ctx, store.LedgerEntry{At: att.Created, Kind: "trial", Description: fmt.Sprintf("%d-day trial started", a.Cfg.TrialDays), Status: "none", Ref: "trial-" + res.SubscriptionRef})
+		}
+		sub.Status, sub.AllowanceMicros, sub.TrialEnd = store.SubActive, a.Cfg.AllowanceMicros, cur.TrialEnd
+		if state == billing.SubscriptionUnpaid {
+			// The unpaid period has not begun here: its invoice, once paid, does that.
+			sub.PeriodStart, sub.PeriodEnd, sub.AllowanceMicros = att.Created, res.PeriodStart, a.Cfg.CardTrialMicros
+		}
+		var err error
+		switch {
+		case cur.NoCardTrial(), cur.NoCard() && cur.Status == store.SubEnded:
+			// The no-card trial (live in its last hour, or ended) becomes the
+			// paid plan in one guarded write, only now that it is paid for.
+			err = us.StartPaidFromNoCard(ctx, sub)
+		case cur.Status == store.SubNone, cur.Status == store.SubEnded:
+			err = us.OpenPlan(ctx, sub)
+		default:
+			err = errPlanChanged
+		}
+		if err != nil {
+			return err
+		}
+		if state == billing.SubscriptionUnpaid {
+			_, err := us.ChangeSubscription(ctx, func(s *store.Subscription) {
+				s.Status, s.CardError, s.PastDueSince = store.SubPastDue, billing.DeclinedSentence, res.PeriodStart
+			})
+			return err
+		}
+		return us.AddLedger(ctx, store.LedgerEntry{At: res.PeriodStart, Kind: "charge", Description: "Scry, one month", AmountCents: a.Cfg.PriceCents, Status: "paid", Ref: res.ChargeRef})
+	})
+	switch {
+	case err == nil:
+		a.Log.InfoContext(ctx, "card added", "user", att.UserID, "state", string(state), "subscription", res.SubscriptionRef)
+	case state == billing.SubscriptionTrialing:
+		// The processor has a subscription Scry did not record (the trial
+		// ended or changed in between): ops must look. The attempt stays
+		// pending, so it is never opened a second time.
+		a.Log.ErrorContext(ctx, "card added at the processor but not to the trial", "err", err, "user", att.UserID, "subscription", res.SubscriptionRef)
 		a.Alert.Notify(ctx, "Card added to a trial that changed", "Subscription "+res.SubscriptionRef+" was created for a no-card trial that was no longer open: "+err.Error())
-		return err
+	default:
+		a.Log.ErrorContext(ctx, "card charged at the processor but the plan was not recorded", "err", err, "user", att.UserID, "subscription", res.SubscriptionRef)
+		a.Alert.Notify(ctx, "Card charged for a plan that changed", "Subscription "+res.SubscriptionRef+" was charged but the plan could not be recorded: "+err.Error())
 	}
-	a.Log.InfoContext(ctx, "card added to no-card trial", "user", u.ID, "trial_end", old.PeriodEnd)
-	return nil
+	return err
 }
 
 // EndExpiredTrials ends every no-card trial whose period_end has passed,
