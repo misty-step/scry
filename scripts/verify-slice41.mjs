@@ -14,7 +14,9 @@
 //      with a short line, "Go": the cue that quotes it is not in "Coming
 //      up"; an exact text named for its own first line, "Daffodils": the
 //      title is not in the rail, the exact-text label, the prompt, the page
-//      title or "Coming up" until the line has been given);
+//      title or "Coming up" until the line has been given, even on Again
+//      after editing the question to repeat the answer; a title and answer
+//      of "Exact text" cannot leak through the neutral fallback either);
 //   2. a correct, an incorrect and an almost correct answer each stop on the
 //      post-answer review (no auto-skip): both answers, the verdict in
 //      words, Ask Why?, the stored schedule (next review, interval,
@@ -435,8 +437,9 @@ const waiting = page => page.evaluate(() => {
     main: q("main").innerText, top: q("header.top")?.innerText || "", html: document.documentElement.outerHTML };
 });
 
-// exactSpoilers checks the two exact-text cases of item 1, each with a fresh
-// learner: a short line ("Go") and a text named for its own first line.
+// exactSpoilers checks the exact-text cases of item 1, each with a fresh
+// learner: a short line, a title repeated in an edited question, and a
+// title that collides with the neutral fallback.
 async function exactSpoilers(browser, c) {
   const n = c.name;
   // A short line: "Studio notes" is Go / Stay the course / Rest.
@@ -500,12 +503,54 @@ async function exactSpoilers(browser, c) {
       const reviewPrompt = await text(page, "[data-prompt]");
       check(at + ": once answered, the review shows the real title (rail, label, prompt)", r.header === "Daffodils" && r.label === "Exact text · Daffodils · line 1" && reviewPrompt === "Daffodils: how does it begin?" && (await text(page, "[data-canonical]")) === "Daffodils", { header: r.header, label: r.label, prompt: reviewPrompt });
       if (n === "desktop-light") await shot(page, "14-study-exact-title-revealed.png", true);
+      const edited = "Daffodils: what is the first line of Daffodils?";
+      await page.click("[data-edit-toggle]");
+      await page.fill("#edit-prompt", edited);
+      await page.click("[data-edit-save]");
+      await page.waitForSelector("[data-edit-status]:not([hidden])");
+      check(at + ": the question repeating the answer is saved in review", (await text(page, "[data-prompt]")) === edited);
       await page.click("[data-again]"); // the page swaps the waiting card in, in place
       await page.waitForSelector("[data-answer-form]");
       const again = await waiting(page);
-      check(at + ": Again: the line is owed once more and the title is gone once more, the scrollback included", !leak.test(again.html) && again.label === "Exact text · line 1 · again" && again.prompt === "Exact text: how does it begin?" && again.scrollback.join() === "Exact text: how does it begin?",
+      check(at + ": Again: neither occurrence of the answer is visible, including in the scrollback", !leak.test(again.html) && again.label === "Exact text · line 1 · again" && again.prompt === "Line 1 — recite from memory" && again.scrollback.length === 0,
         { label: again.label, prompt: again.prompt, scrollback: again.scrollback, leak: (again.html.match(/.{0,60}daffodil.{0,40}/i) || [""])[0] });
       await audit(page, c, "Study, exact title waiting again", true);
+      await page.fill("#answer", "Daffodils");
+      await page.keyboard.press("Enter");
+      await page.waitForSelector("[data-review]");
+      check(at + ": the original edited question returns in review", (await text(page, "[data-prompt]")) === edited && (await text(page, "[data-canonical]")) === "Daffodils");
+    } catch (err) {
+      check(at + ": the walk completed", false, String(err.stack || err).split("\n").slice(0, 3).join(" | "));
+    } finally {
+      check(at + ": 0 console errors, page errors, failed requests or 4xx/5xx responses", problems.length === 0, problems);
+      await context.close();
+    }
+  }
+  {
+    const problems = [];
+    const context = await newContext(browser, c);
+    const page = await context.newPage();
+    watch(page, problems);
+    const at = n + " (1) exact text with the fallback title as its answer";
+    try {
+      await signUp(page, n + "-fallback-title");
+      await addText(page, "Exact text", ["Exact text", "Now turn the page"]);
+      await page.goto(base + "/study", { waitUntil: "load" });
+      await page.waitForSelector("[data-answer-form]");
+      const w = await waiting(page);
+      check(at + ": no answer in the rail, label, prompt or the rest of the waiting page",
+        !/exact text/i.test(w.html) && w.header === "Current set" && w.label === "Line 1" && w.prompt === "Line 1 — recite from memory",
+        { rail: w.rail, label: w.label, prompt: w.prompt });
+      await audit(page, c, "Study, exact title fallback collision");
+      await page.fill("#answer", "Not the line");
+      await page.keyboard.press("Enter");
+      await page.waitForSelector("[data-review]");
+      const r = await waiting(page);
+      const prompt = await text(page, "[data-prompt]");
+      check(at + ": the review restores the real title and prompt",
+        r.header === "Exact text" && r.label === "Exact text · Exact text · line 1" && prompt === "Exact text: how does it begin?" && (await text(page, "[data-canonical]")) === "Exact text",
+        { header: r.header, label: r.label, prompt });
+      await audit(page, c, "Study, exact title fallback revealed");
     } catch (err) {
       check(at + ": the walk completed", false, String(err.stack || err).split("\n").slice(0, 3).join(" | "));
     } finally {

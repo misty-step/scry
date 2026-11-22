@@ -178,25 +178,25 @@ func cueWhile(it store.Item, answer string) (cue string, ok bool) {
 	return "", false
 }
 
-// waitingPrompt is the prompt of the card on screen while its answer is
-// owed. It is the card's own prompt, except for a line of an exact text
-// whose title gives the line away: there the title is replaced by a
-// neutral one ("Exact text: how does it begin?"), and a hand-written
-// prompt that still quotes the line gives way to the line's number. The
-// line quoted by a generated cue stays: it is the line before, as the text
-// has it.
+// waitingPrompt keeps an exact-text cue only if the whole rendered prompt
+// is safe, including after a title replacement. An edited cue can quote
+// the answer elsewhere, and even a neutral fallback can be the answer.
 func waitingPrompt(it store.Item) string {
-	if !titleGivesAway(it, it.Answer) {
+	if !it.Exact {
 		return it.Prompt
 	}
-	if rest, found := strings.CutPrefix(it.Prompt, it.TextTitle+": "); found {
-		return neutralExactTitle + ": " + rest
+	if cue, ok := cueWhile(it, it.Answer); ok {
+		return cue
 	}
-	if !quotesAnswer(it.Prompt, it.Answer) {
-		return it.Prompt
-	}
+	var candidates []string
 	if it.LineNo > 0 {
-		return fmt.Sprintf("Line %d of this exact text", it.LineNo)
+		candidates = append(candidates, fmt.Sprintf("Line %d — recite from memory", it.LineNo), fmt.Sprintf("Recite line %d", it.LineNo))
 	}
-	return "A line of this exact text"
+	candidates = append(candidates, "Recite this line from memory", "Next line", "…")
+	for _, prompt := range candidates {
+		if !quotesAnswer(prompt, it.Answer) {
+			return prompt
+		}
+	}
+	return ""
 }

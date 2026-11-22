@@ -201,20 +201,35 @@ func telemetry(u store.User, it store.Item, counts store.ReviewCounts, now time.
 }
 
 // exactLabel names the exact text a card is a line of. While the card
-// waits (answered is false), a title that gives the line away is left out:
-// "Exact text · line 1", not "Exact text · Daffodils · line 1".
-func exactLabel(it store.Item, answered bool) string {
+// waits, check the entire label (including the retry suffix) and drop
+// any candidate that quotes the answer.
+func exactLabel(it store.Item, answered, retry bool) string {
 	if !it.Exact {
 		return ""
 	}
-	label := "Exact text"
-	if it.TextTitle != "" && (answered || !titleGivesAway(it, it.Answer)) {
+	label := neutralExactTitle
+	if it.TextTitle != "" {
 		label += " · " + it.TextTitle
 	}
+	var line, numberOnly string
 	if it.LineNo > 0 {
-		label += " · line " + strconv.Itoa(it.LineNo)
+		number := strconv.Itoa(it.LineNo)
+		line = " · line " + number
+		numberOnly = "Line " + number
 	}
-	return label
+	if answered {
+		return label + line
+	}
+	suffix := ""
+	if retry {
+		suffix = " · again"
+	}
+	for _, candidate := range []string{label + line, neutralExactTitle + line, numberOnly} {
+		if candidate != "" && !quotesAnswer(candidate+suffix, it.Answer) {
+			return candidate + suffix
+		}
+	}
+	return ""
 }
 
 // studyPurpose is Study's one-line purpose, shown in the session rail.
@@ -328,14 +343,13 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 	if cur != nil {
 		data["Item"] = cur.Item
 		data["Position"] = cur.Position
-		data["ExactLabel"] = exactLabel(cur.Item, judged)
+		data["ExactLabel"] = exactLabel(cur.Item, judged, sess.RetryItemID == cur.Item.ID)
 		// The prompt as the waiting card shows it; the review shows the
 		// card's own prompt.
 		data["Prompt"] = cur.Item.Prompt
 		if !judged {
 			data["Prompt"] = waitingPrompt(cur.Item)
 		}
-		data["Retry"] = sess.RetryItemID == cur.Item.ID
 		data["Header"] = s.studyHeader(ctx, c, cur.Item, judged)
 		var up []string
 		for _, e := range sess.Entries {

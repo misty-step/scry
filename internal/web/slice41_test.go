@@ -317,6 +317,59 @@ func TestSlice41_Spoiler_AnswerBearingExactTitleIsNeutralUntilAnswered(t *testin
 	hasNot(t, body, "I wandered lonely as a cloud", "Coming up")
 }
 
+func TestSlice41_Spoiler_NeutralExactTitleCanBeTheAnswer(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("neutral-title@example.com")
+	b.post("/library/texts", "title", "Exact text", "text", "Exact text\nNow turn the page", "parent", "0")
+
+	body := b.mustGet("/study")
+	line, ok := b.current(body)
+	if !ok || line.Answer != "Exact text" {
+		t.Fatalf("unexpected waiting card: %+v", line)
+	}
+	hasNot(t, strings.ToLower(body), "exact text")
+	has(t, body, `<p class="meta exact-label">Line 1</p>`, `id="prompt">Line 1 — recite from memory</h1>`)
+	if got := studyHeader(t, body); got != "Current set" {
+		t.Errorf("waiting rail = %q, want Current set", got)
+	}
+
+	review := b.answer(line, "Not the line")
+	has(t, review, `<p class="meta exact-label">Exact text · Exact text · line 1</p>`,
+		"data-prompt>Exact text: how does it begin?</h1>", "data-canonical>Exact text<")
+	if got := studyHeader(t, review); got != "Exact text" {
+		t.Errorf("review rail = %q, want Exact text", got)
+	}
+}
+
+func TestSlice41_Spoiler_EditedExactPromptDoesNotRepeatOwedAnswerOnAgain(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUp("repeated-title@example.com")
+	b.post("/library/texts", "title", "Daffodils", "text", "Daffodils\nI wandered lonely as a cloud", "parent", "0")
+	line, ok := b.current(b.mustGet("/study"))
+	if !ok || line.Answer != "Daffodils" {
+		t.Fatalf("unexpected waiting card: %+v", line)
+	}
+	has(t, b.answer(line, "Tulips"), `data-kind="exact"`)
+
+	const edited = "Daffodils: what is the first line of Daffodils?"
+	status, review := b.post("/study/edit", "item_id", strconv.FormatInt(line.ID, 10), "prompt", edited, "answer", line.Answer)
+	if status != http.StatusOK {
+		t.Fatalf("edit status = %d", status)
+	}
+	has(t, review, "data-prompt>"+edited+"</h1>")
+	_, body := b.post("/study/next", "again", "1")
+	again, ok := b.current(body)
+	if !ok || again.ID != line.ID {
+		t.Fatalf("Again did not bring line 1 back: %+v", again)
+	}
+	hasNot(t, strings.ToLower(body), "daffodils")
+	has(t, body, `id="prompt">Line 1 — recite from memory</h1>`,
+		`<p class="meta exact-label">Exact text · line 1 · again</p>`)
+	has(t, b.answer(again, "Daffodils"), "data-prompt>"+edited+"</h1>", "data-canonical>Daffodils<")
+}
+
 // Pass 2 (B3): a card confirmation that arrives for a superseded attempt
 // (the form was given back after the 30 second timeout, or a newer submit
 // started) is ignored by stripe.js: its payment method is never written or

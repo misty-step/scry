@@ -116,6 +116,9 @@ func TestSlice41_Spoiler_ExactTitleThatGivesTheLineAwayIsNeutralWhileWaiting(t *
 	line := func(title string, n int, prev, answer string) store.Item {
 		return store.Item{Exact: true, TextTitle: title, LineNo: n, Prompt: store.ExactPrompt(title, n, prev), Answer: answer}
 	}
+	editedLine := func(answer string) store.Item {
+		return store.Item{Exact: true, TextTitle: "Studio notes", LineNo: 1, Prompt: "Recall " + answer + "?", Answer: answer}
+	}
 	for _, c := range []struct {
 		name                      string
 		it                        store.Item
@@ -138,27 +141,46 @@ func TestSlice41_Spoiler_ExactTitleThatGivesTheLineAwayIsNeutralWhileWaiting(t *
 			"Exact text · Studio notes · line 1", "Studio notes: how does it begin?", "Exact text · Studio notes · line 1"},
 		{"a hand-written prompt that names the title gives way to the line number",
 			store.Item{Exact: true, TextTitle: "Daffodils, by Wordsworth", LineNo: 2, Prompt: "Second line of Daffodils?", Answer: "Daffodils"},
-			"Exact text · line 2", "Line 2 of this exact text", "Exact text · Daffodils, by Wordsworth · line 2"},
+			"Exact text · line 2", "Line 2 — recite from memory", "Exact text · Daffodils, by Wordsworth · line 2"},
 		{"a hand-written prompt that does not name the title stays",
 			store.Item{Exact: true, TextTitle: "Oslo", Prompt: "Capital of Norway, spelled exactly", Answer: "Oslo"},
 			"Exact text", "Capital of Norway, spelled exactly", "Exact text · Oslo"},
 		{"a hand-written prompt naming the title, with no line number",
 			store.Item{Exact: true, TextTitle: "Oslo", Prompt: "Spell Oslo", Answer: "Oslo"},
-			"Exact text", "A line of this exact text", "Exact text · Oslo"},
+			"Exact text", "Recite this line from memory", "Exact text · Oslo"},
+		{"the neutral title is itself the answer", line("Exact text", 1, "", "Exact text"),
+			"Line 1", "Line 1 — recite from memory", "Exact text · Exact text · line 1"},
+		{"the edited prompt repeats the answer after the title prefix",
+			store.Item{Exact: true, TextTitle: "Daffodils", LineNo: 1, Prompt: "Daffodils: what is the first line of Daffodils?", Answer: "Daffodils"},
+			"Exact text · line 1", "Line 1 — recite from memory", "Exact text · Daffodils · line 1"},
+		{"the edited prompt quotes the answer even though the title is safe",
+			store.Item{Exact: true, TextTitle: "Studio notes", LineNo: 1, Prompt: "What's after Go?", Answer: "Go"},
+			"Exact text · Studio notes · line 1", "Line 1 — recite from memory", "Exact text · Studio notes · line 1"},
+		{"the first prompt fallback quotes the answer", editedLine("From memory"),
+			"Exact text · Studio notes · line 1", "Recite line 1", "Exact text · Studio notes · line 1"},
+		{"the line number is the answer", editedLine("1"),
+			"", "Recite this line from memory", "Exact text · Studio notes · line 1"},
+		{"even the numberless recitation instruction quotes the answer", editedLine("Recite"),
+			"Exact text · Studio notes · line 1", "Next line", "Exact text · Studio notes · line 1"},
+		{"every worded candidate quotes the answer", editedLine("Line"),
+			"", "…", "Exact text · Studio notes · line 1"},
 	} {
-		if got := exactLabel(c.it, false); got != c.label {
+		if got := exactLabel(c.it, false, false); got != c.label {
 			t.Errorf("%s: waiting label = %q, want %q", c.name, got, c.label)
 		}
 		if got := waitingPrompt(c.it); got != c.prompt {
 			t.Errorf("%s: waiting prompt = %q, want %q", c.name, got, c.prompt)
 		}
-		if got := exactLabel(c.it, true); got != c.labelAfter {
+		if got := exactLabel(c.it, true, false); got != c.labelAfter {
 			t.Errorf("%s: label in the review = %q, want %q", c.name, got, c.labelAfter)
 		}
 	}
+	if got := exactLabel(line("Studio notes", 1, "", "Again"), false, true); got != "" {
+		t.Errorf("retry label = %q, want no label when the retry suffix is the answer", got)
+	}
 	// An ordinary card is never touched, whatever its idea is called.
 	plain := store.Item{Prompt: "Which flower did Wordsworth write of?", Answer: "Daffodils", TextTitle: "Daffodils"}
-	if exactLabel(plain, false) != "" || waitingPrompt(plain) != plain.Prompt {
+	if exactLabel(plain, false, false) != "" || waitingPrompt(plain) != plain.Prompt {
 		t.Error("a card that is not a line of an exact text was changed")
 	}
 }
@@ -210,7 +232,7 @@ func TestSlice41_Spoiler_EveryStarterExactTextKeepsItsTitle(t *testing.T) {
 				if got := waitingPrompt(it); got != it.Prompt {
 					t.Errorf("%s line %d: the waiting prompt is %q, want %q", idea.Exact.Title, n+1, got, it.Prompt)
 				}
-				if got := exactLabel(it, false); !strings.Contains(got, idea.Exact.Title) {
+				if got := exactLabel(it, false, false); !strings.Contains(got, idea.Exact.Title) {
 					t.Errorf("%s line %d: the waiting label %q lost the title", idea.Exact.Title, n+1, got)
 				}
 				prev = l
