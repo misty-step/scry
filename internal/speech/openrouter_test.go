@@ -21,15 +21,21 @@ const (
 	notJWTDotted = "sk-proj.abc.def!" // dots, but not base64url segments
 )
 
+// chatModel is an audio-input chat model: it is heard on the chat
+// completions route (the default, microsoft/mai-transcribe-2, is heard on
+// /api/v1/audio/transcriptions; see transcriptions_test.go).
+const chatModel = "google/gemini-2.5-flash"
+
 func routerServer(t *testing.T, h http.HandlerFunc) OpenRouter {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-	return OpenRouter{APIKey: routerKey, BaseURL: srv.URL, HTTP: srv.Client()}
+	return OpenRouter{APIKey: routerKey, Model: chatModel, BaseURL: srv.URL, HTTP: srv.Client()}
 }
 
-// Slice 20: speech goes to OpenRouter's chat completions route as an
-// input_audio block, base64-encoded, with a strict verbatim prompt.
+// Slice 20: a chat-audio model hears speech on OpenRouter's chat
+// completions route as an input_audio block, base64-encoded, with a strict
+// verbatim prompt.
 func TestSlice20_OpenRouterTranscribeRequest(t *testing.T) {
 	audio := []byte{0x1a, 0x45, 0xdf, 0xa3, 0xff, 0x00, 'w', 'e', 'b', 'm'}
 	o := routerServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +59,7 @@ func TestSlice20_OpenRouterTranscribeRequest(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 			t.Fatal(err)
 		}
-		if b.Model != DefaultOpenRouterModel || b.Temperature == nil || *b.Temperature != 0 || b.MaxTokens != 512 || len(b.Messages) != 2 {
+		if b.Model != chatModel || b.Temperature == nil || *b.Temperature != 0 || b.MaxTokens != 512 || len(b.Messages) != 2 {
 			t.Errorf("request %+v", b)
 		}
 		var system string

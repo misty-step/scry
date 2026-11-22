@@ -29,7 +29,7 @@ import (
 // ChargeDelay holds every top-up charge for that long before it answers,
 // so a slow processor can be exercised in test mode (SCRY_TEST_CHARGE_DELAY).
 // Charges are deterministic in their idempotency key, like Stripe's: the
-// same key always names the same charge.
+// same key always names the same charge, and the same subscription.
 type Fake struct {
 	ChargeDelay time.Duration
 }
@@ -129,7 +129,14 @@ func ref(prefix string) string {
 func (Fake) Subscribe(_ context.Context, p SubscribeParams) (Subscribed, error) {
 	behavior, card, err := parseToken(p.CardToken)
 	if err != nil {
-		return Subscribed{}, err
+		return Subscribed{}, &ProcessorError{Status: 400, Type: "invalid_request_error", Message: err.Error()}
+	}
+	ref := func(prefix string) string {
+		if p.Key == "" {
+			return ref(prefix)
+		}
+		sum := sha256.Sum256([]byte("scry-test-" + prefix + ":" + p.Key))
+		return prefix + hex.EncodeToString(sum[:10])
 	}
 	now := p.Now
 	if now.IsZero() {

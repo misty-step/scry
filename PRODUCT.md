@@ -4,7 +4,8 @@ Scry gets what's worth knowing into your head and keeps it there, for the fewest
 
 ## User stories
 
-- As a newcomer, I can find Scry, sign up and sign in through Clerk with email and password, start a trial and be studying within a minute.
+- As a newcomer, I can find Scry, sign up and sign in through Clerk with email and password, and be studying within a minute: the 7-day trial starts at once, with no card up front.
+- As a learner on the trial, I always know how many days are left, and I can add a card any time in Billing or on the card step to keep Scry after it; adding one during the trial charges nothing until the trial ends. When the trial ends or its allowance runs out, Scry says so calmly and shows me where to add a card.
 - As a newcomer, I must verify my email before I can study or use billing.
 - As a returning learner who forgot my password, I can reset it by email and sign in with my new password.
 - As a new user with an empty library, I can pick from about 30 excellent starter sets (kitchen numbers, the NATO alphabet, the Creeds, core ideas in every major subject, vocabulary, mental models) and start right away.
@@ -21,7 +22,7 @@ Scry gets what's worth knowing into your head and keeps it there, for the fewest
 
 ## Business rules
 
-- No free tier. There's a 7-day trial with a card up front.
+- No free tier. There's a 7-day interactive trial with no card required up front, guarded by a strict capped AI usage allowance (judging, speaking, explanations and drafting share it; no top-ups without a card). Access ends when the 7 days do. Upgrade any time in Billing or on the card step to the $5 a month plan: with a card added during the trial, the first charge is when it ends; in the trial's last hour or after it, the plan starts and is charged at once, with no second trial. Scry never charges today unless the page the learner submitted said so: if the trial reached its last hour (or ended) after the page was loaded, nothing is charged and the learner is asked to confirm the charge first. A declined card never shortens the trial.
 - Prices cover costs plus a small margin, only to protect against abuse and runaway costs: a small monthly base with a capped allowance, and top-ups beyond it. Top-ups cost $5 each, up to $20 per person per calendar month (UTC); the limit resets at the start of each UTC month. One press of Top up is one charge, however often the form is resubmitted.
 - Phaedrus is the first customer, with no special powers in the product.
 - Reliable from day one: outages are noticed and fixed without anyone being asked.

@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
-	"scry/internal/ai"
 	"scry/internal/app"
 	"scry/internal/auth"
 	"scry/internal/billing"
@@ -75,7 +75,22 @@ func (s *Server) signup(w http.ResponseWriter, r *http.Request, c *rc) error {
 		return err
 	}
 	s.setCookie(w, r, token, app.SessionTTL)
-	return back(w, r, "/signup/card")
+	// The no-card trial has started: straight into Scry, no card step.
+	return s.land(w, r, &rc{user: u, us: s.App.Store.For(u.ID), signedIn: true})
+}
+
+// land sends a learner who has just started (or added a card to) a plan
+// to where studying begins: the starter shelf while the library is empty,
+// otherwise Study.
+func (s *Server) land(w http.ResponseWriter, r *http.Request, c *rc) error {
+	items, _, err := c.us.Counts(r.Context(), s.App.Now())
+	if err != nil {
+		return err
+	}
+	if items == 0 {
+		return back(w, r, "/shelf")
+	}
+	return back(w, r, "/study")
 }
 
 func (s *Server) signinForm(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -141,14 +156,80 @@ func (s *Server) signout(w http.ResponseWriter, r *http.Request, c *rc) error {
 }
 
 // cardData is what the card step needs: the trial sentence's date and how
-// the processor wants the card collected.
-func (s *Server) cardData(c *rc, title string) map[string]any {
+// the processor wants the card collected. On a no-card trial the date is
+// the trial's own end (KeepTrial when that much of it is left to keep).
+func (s *Server) cardData(c *rc, title string, sub ...store.Subscription) map[string]any {
 	cfg := s.App.Cfg
-	return map[string]any{
+	data := map[string]any{
 		"Title": title, "Bare": true, "TrialDays": cfg.TrialDays, "Price": cfg.PriceCents,
 		"TrialEnd":       s.App.Now().In(c.user.Location()).AddDate(0, 0, cfg.TrialDays),
 		"PublishableKey": s.App.Pay.PublishableKey(),
 	}
+	// Terms is what the page tells the learner adding a card costs today,
+	// carried in the form as billing_terms: StartTrial never charges today
+	// unless the submitted form said so.
+	data["Terms"] = app.TermsTrial
+	if len(sub) == 1 && sub[0].Status != store.SubNone {
+		terms := s.App.CardTerms(sub[0])
+		data["Terms"] = terms
+		if sub[0].NoCard() {
+			data["NoCard"] = true
+			data["TrialEnd"] = sub[0].PeriodEnd.In(c.user.Location())
+			data["KeepTrial"] = sub[0].NoCardTrial() && terms == app.TermsTrial
+			data["Restart"] = !s.App.HasAccess(sub[0])
+		}
+	}
+	return data
+}
+
+// termsChangedNotice is what a card step submitted on stale terms says
+// when it is shown again to confirm the immediate charge.
+func (s *Server) termsChangedNotice(sub store.Subscription) string {
+	price := money(s.App.Cfg.PriceCents)
+	switch {
+	case sub.NoCard() && s.App.HasAccess(sub):
+		return "Your trial now ends within the hour, so adding a card starts Scry today and charges " + price +
+			" now, then monthly. Your trial is unchanged until you confirm. To go ahead, enter your card again."
+	case sub.NoCard():
+		return "Your trial has ended, so adding a card now charges " + price + " today, then monthly. To go ahead, enter your card again."
+	}
+	return "Your plan is no longer active, so a new card starts it again and charges " + price + " today, then monthly. To go ahead, enter your card again."
+}
+
+// termsChanged shows the card step again, at 409, after StartTrial
+// refused a charge the submitted page had not promised (ErrTermsChanged):
+// it now states the immediate charge, and its form carries
+// billing_terms=immediate so the next submit is the learner's consent.
+func (s *Server) termsChanged(w http.ResponseWriter, r *http.Request, c *rc, update bool) error {
+	var data map[string]any
+	var sub store.Subscription
+	if update {
+		var err error
+		if data, sub, err = s.billingCardData(r, c); err != nil {
+			return err
+		}
+	} else {
+		var err error
+		sub, err = s.App.Plan(r.Context(), c.user.ID)
+		if err != nil && !errors.Is(err, app.ErrPlanEnded) {
+			return err
+		}
+		data = s.cardData(c, "Add a card", sub)
+	}
+	data["Terms"], data["KeepTrial"] = app.TermsImmediate, false
+	data["Notice"] = s.termsChangedNotice(sub)
+	return s.render(w, r, c, http.StatusConflict, "card.html", data)
+}
+
+// cardInProgressNotice is what a card step says when an earlier one by
+// the same learner is still with the card processor.
+const cardInProgressNotice = "Your card is already being processed. Refresh Billing in a moment — nothing extra was charged."
+
+// cardInProgress answers such a card step, at 409, with no form to submit
+// again.
+func (s *Server) cardInProgress(w http.ResponseWriter, r *http.Request, c *rc, data map[string]any) error {
+	data["InProgress"] = cardInProgressNotice
+	return s.render(w, r, c, http.StatusConflict, "card.html", data)
 }
 
 // cardToken turns the submitted card step into the processor's token. In
@@ -165,51 +246,58 @@ func (s *Server) cardToken(r *http.Request) (string, error) {
 	return s.App.Pay.Tokenize(r.FormValue("number"), r.FormValue("expiry"), r.FormValue("cvc"), s.App.Now())
 }
 
+// cardForm is the card step. A learner on the no-card trial (live or
+// ended) adds a card here; one whose card-backed plan is live is sent to
+// Study, and one whose card-backed plan ended restarts from Billing.
 func (s *Server) cardForm(w http.ResponseWriter, r *http.Request, c *rc) error {
-	_, err := s.App.Plan(r.Context(), c.user.ID)
-	if err == nil {
+	sub, err := s.App.Plan(r.Context(), c.user.ID)
+	switch {
+	case err == nil && !sub.NoCard():
 		return back(w, r, "/study")
-	}
-	if errors.Is(err, app.ErrPlanEnded) {
+	case errors.Is(err, app.ErrPlanEnded) && !sub.NoCard():
 		return back(w, r, "/billing")
-	}
-	if !errors.Is(err, app.ErrNoPlan) {
+	case err != nil && !errors.Is(err, app.ErrPlanEnded) && !errors.Is(err, app.ErrNoPlan):
 		return err
 	}
-	return s.render(w, r, c, http.StatusOK, "card.html", s.cardData(c, "Add a card"))
+	return s.render(w, r, c, http.StatusOK, "card.html", s.cardData(c, "Add a card", sub))
 }
 
 func (s *Server) cardSubmit(w http.ResponseWriter, r *http.Request, c *rc) error {
-	if _, err := s.App.Plan(r.Context(), c.user.ID); err == nil {
+	sub, err := s.App.Plan(r.Context(), c.user.ID)
+	switch {
+	case err == nil && !sub.NoCard():
 		return back(w, r, "/study")
+	case errors.Is(err, app.ErrPlanEnded) && !sub.NoCard():
+		return back(w, r, "/billing")
+	case err != nil && !errors.Is(err, app.ErrPlanEnded) && !errors.Is(err, app.ErrNoPlan):
+		return err
 	}
 	token, err := s.cardToken(r)
 	if err == nil {
-		err = s.App.StartTrial(r.Context(), c.user, token)
+		err = s.App.StartTrial(r.Context(), c.user, token, app.ParseBillingTerms(r.FormValue("billing_terms")))
+	}
+	if errors.Is(err, app.ErrTermsChanged) {
+		return s.termsChanged(w, r, c, false)
+	}
+	if errors.Is(err, app.ErrSubscribeInProgress) {
+		return s.cardInProgress(w, r, c, s.cardData(c, "Add a card", sub))
 	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
-		data := s.cardData(c, "Add a card")
+		data := s.cardData(c, "Add a card", sub)
 		data["Error"] = d.Reason
 		return s.render(w, r, c, http.StatusPaymentRequired, "card.html", data)
 	}
 	if err != nil {
 		return err
 	}
-	items, _, err := c.us.Counts(r.Context(), s.App.Now())
-	if err != nil {
-		return err
-	}
-	if items == 0 {
-		return back(w, r, "/shelf")
-	}
-	return back(w, r, "/study")
+	return s.land(w, r, c)
 }
 
 // billingView is everything the Billing page says, as sentences.
 type billingView struct {
 	Sub        store.Subscription
-	State      string // trial, active, cancelling, card-failed, ended
+	State      string // trial-nocard, trial, active, cancelling, card-failed, ended
 	Plan       string
 	Allowance  string
 	Covers     string
@@ -218,7 +306,19 @@ type billingView struct {
 	CardFailed string
 	GraceEnd   string
 	CanTopUp   bool
+	NoCard     bool // a no-card trial, live or ended: the next step is adding a card
 	Ledger     []store.LedgerEntry
+}
+
+// trialLeft says how much of a trial is left, in whole days.
+func trialLeft(d time.Duration) string {
+	switch {
+	case d <= 0:
+		return "ended"
+	case d < 24*time.Hour:
+		return "last day"
+	}
+	return plural(int((d+24*time.Hour-1)/(24*time.Hour)), "day", "days") + " left"
 }
 
 func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.LedgerEntry, reserved ...int64) billingView {
@@ -239,8 +339,19 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 	}
 	price := money(cfg.PriceCents)
 	end := sub.PeriodEnd.In(loc)
-	v := billingView{Sub: sub, Ledger: ledger, Percent: app.UsedPercent(sub), CanTopUp: s.App.HasAccess(sub)}
+	v := billingView{Sub: sub, Ledger: ledger, Percent: app.UsedPercent(sub), CanTopUp: s.App.HasAccess(sub) && !sub.NoCard()}
+	trialCap := money(cfg.TrialMicros / 10000)
 	switch {
+	case sub.Status == "ended" && sub.NoCard():
+		v.State = "ended"
+		v.NoCard = true
+		v.Plan = "Your " + fmt.Sprint(cfg.TrialDays) + "-day trial ended on " + date(end) + ". Your library and history are kept. Add a card to keep studying: " + price + " a month, charged today."
+	case sub.NoCardTrial():
+		v.State = "trial-nocard"
+		v.NoCard = true
+		v.Plan = fmt.Sprintf("You're on the %d-day trial, with no card on file. It ends on ", cfg.TrialDays) + date(end) +
+			" (" + trialLeft(end.Sub(s.App.Now())) + "), and nothing is charged. Add a card any time to keep Scry after it: " + price +
+			" a month, first charged when the trial ends."
 	case sub.Status == "ended":
 		v.State = "ended"
 		v.Plan = "Your plan ended on " + date(end) + ". Your library and history are kept. Start again to keep studying: " + price + " a month, charged today."
@@ -264,7 +375,18 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 		v.State = "active"
 		v.Plan = "Scry is " + price + " a month, charged to " + card + ". The next charge is on " + date(end) + "."
 	}
-	if sub.Status != "ended" {
+	if sub.NoCardTrial() {
+		p := v.Percent
+		switch {
+		case p >= 100:
+			v.Allowance = "You've used all of the trial's " + trialCap + " allowance, so judging, speaking and drafting are paused. Add a card to keep going."
+		case p >= 80:
+			v.Allowance = "You've used " + fmt.Sprint(p) + "% of the trial's " + trialCap + " allowance, so you're near its limit."
+		default:
+			v.Allowance = "You've used " + fmt.Sprint(p) + "% of the trial's " + trialCap + " allowance."
+		}
+		v.Topup = "Top-ups need a card on file."
+	} else if sub.Status != "ended" {
 		reset := "It resets on " + date(end) + "."
 		if sub.Status == "trialing" {
 			reset = "The trial's allowance lasts until " + date(end) + ", when the monthly allowance begins."
@@ -296,16 +418,28 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 		v.Covers += " The " + price + " covers running Scry and a monthly allowance of " + money(cfg.AllowanceMicros/10000) + " of model time. Prices cover costs plus a small margin."
 		return v
 	}
-	remaining := max(int64(0), sub.AllowanceMicros-sub.UsedMicros+sub.TopupMicros)
+	remaining := max(int64(0), app.Unreserved(sub, 0))
 	for _, amount := range reserved {
 		remaining = max(int64(0), remaining-amount)
 	}
-	if remaining < ai.DraftBudgetMicros {
+	draft := s.App.DraftBudget()
+	if remaining < draft {
 		v.Allowance += " Not enough allowance left for a draft. Smaller operations may still fit."
 	}
+	usage := "charged"
+	if sub.NoCardTrial() {
+		usage = "counted"
+	}
+	reserve := "Your remaining allowance can reserve " + plural(int(remaining/draft), "draft", "drafts") +
+		" at the worst-case cost. Each draft needs about " + money((draft+5000)/10000) + " available before it starts; only actual usage is " + usage + ". Judging and speech share this allowance. In-flight work reduces what is available."
+	if sub.NoCardTrial() {
+		v.Covers = "The trial includes " + trialCap + " of model time for judging, speaking, explanations and drafting, and nothing is charged. " + reserve +
+			" After the trial, " + price + " a month covers running Scry and a monthly allowance of " + money(cfg.AllowanceMicros/10000) +
+			" of model time, and a top-up adds " + money(cfg.TopupMicros/10000) + " more. Prices cover costs plus a small margin."
+		return v
+	}
 	v.Covers = "The " + price + " covers running Scry and a monthly allowance of " + money(cfg.AllowanceMicros/10000) +
-		" of model time. Your remaining allowance can reserve " + plural(int(remaining/ai.DraftBudgetMicros), "draft", "drafts") +
-		" at the worst-case cost. Each draft needs about $0.90 available before it starts; only actual usage is charged. Judging and speech share this allowance. In-flight work reduces what is available. A top-up adds " + money(cfg.TopupMicros/10000) + " more. Prices cover costs plus a small margin."
+		" of model time. " + reserve + " A top-up adds " + money(cfg.TopupMicros/10000) + " more. Prices cover costs plus a small margin."
 
 	return v
 }
@@ -353,6 +487,9 @@ func (s *Server) billing(w http.ResponseWriter, r *http.Request, c *rc) error {
 		"card":        "Your card was updated.",
 		"resumed":     "Your plan continues.",
 		"started":     "Welcome back. Your plan is active again.",
+		"subscribed":  "Your card is on file and your plan is active.",
+		"card_added":  "Your card is on file. Your trial continues, and the first charge is on the date above.",
+		"needs_card":  "Top-ups need a card on file. Add a card first.",
 	}[r.URL.Query().Get("ok")]
 	if settled > 0 {
 		flash = "Topped up. " + money(s.App.Cfg.TopupMicros/10000) + " of credit was added."
@@ -407,6 +544,8 @@ func (s *Server) billingTopup(w http.ResponseWriter, r *http.Request, c *rc) err
 		return back(w, r, "/billing?ok=refund_due")
 	case errors.Is(err, app.ErrTopupToken):
 		return back(w, r, "/billing?ok=expired")
+	case errors.Is(err, app.ErrTopupNeedsCard):
+		return back(w, r, "/billing?ok=needs_card")
 	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
@@ -436,14 +575,17 @@ func (s *Server) billingResume(w http.ResponseWriter, r *http.Request, c *rc) er
 }
 
 func (s *Server) billingCardData(r *http.Request, c *rc) (map[string]any, store.Subscription, error) {
-	sub, err := c.us.Subscription(r.Context())
-	if errors.Is(err, store.ErrNotFound) {
+	sub, err := s.App.Plan(r.Context(), c.user.ID)
+	if errors.Is(err, app.ErrNoPlan) {
 		return nil, sub, app.ErrNoPlan
 	}
-	if err != nil {
+	if err != nil && !errors.Is(err, app.ErrPlanEnded) {
 		return nil, sub, err
 	}
-	data := s.cardData(c, "Update card")
+	data := s.cardData(c, "Update card", sub)
+	if sub.NoCard() {
+		data["Title"] = "Add a card"
+	}
 	data["Bare"] = false
 	data["Nav"] = "billing"
 	data["Update"] = true
@@ -464,21 +606,45 @@ func (s *Server) billingCard(w http.ResponseWriter, r *http.Request, c *rc) erro
 	if err != nil {
 		return err
 	}
+	agreed := app.ParseBillingTerms(r.FormValue("billing_terms"))
 	token, err := s.cardToken(r)
 	ok := "card"
 	if err == nil {
-		if s.App.HasAccess(sub) {
-			err = s.App.UpdateCard(r.Context(), c.user.ID, token)
-		} else {
-			// The plan is over: a new card starts it again, charged today.
-			if sub.Status != "ended" {
-				sub.Status = "ended"
-				if err = c.us.SaveSubscription(r.Context(), sub); err != nil {
-					return err
+		switch {
+		case sub.NoCard():
+			// The first card: added to the trial, or (trial over) the plan
+			// starts today. Never an update of a customer that does not exist.
+			if err = s.App.StartTrial(r.Context(), c.user, token, agreed); err == nil {
+				ok = "subscribed"
+				if now, nerr := c.us.Subscription(r.Context()); nerr == nil && now.Status == store.SubTrialing {
+					ok = "card_added"
 				}
 			}
-			err, ok = s.App.StartTrial(r.Context(), c.user, token), "started"
+		case s.App.HasAccess(sub):
+			err = s.App.UpdateCard(r.Context(), c.user.ID, token)
+		case agreed != app.TermsImmediate:
+			// The plan is over, so a new card would charge today, which the
+			// submitted page did not say: confirm first, change nothing.
+			err = app.ErrTermsChanged
+		default:
+			// The plan is over: a new card starts it again, charged today.
+			// Only the lapsed plan this page read is ended: one another
+			// request has restarted since is left alone.
+			if _, err = c.us.ChangeSubscription(r.Context(), func(cur *store.Subscription) {
+				if cur.SubscriptionRef == sub.SubscriptionRef && !s.App.HasAccess(*cur) {
+					cur.Status = store.SubEnded
+				}
+			}); err != nil {
+				return err
+			}
+			err, ok = s.App.StartTrial(r.Context(), c.user, token, agreed), "started"
 		}
+	}
+	if errors.Is(err, app.ErrTermsChanged) {
+		return s.termsChanged(w, r, c, true)
+	}
+	if errors.Is(err, app.ErrSubscribeInProgress) {
+		return s.cardInProgress(w, r, c, data)
 	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {

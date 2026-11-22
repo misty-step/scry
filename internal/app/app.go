@@ -33,7 +33,8 @@ type Config struct {
 
 	PriceCents      int64 // the monthly base
 	AllowanceMicros int64 // metered model usage included each month, in micro-dollars
-	TrialMicros     int64 // metered usage included in the trial
+	TrialMicros     int64 // metered usage included in the no-card trial: its hard cap
+	CardTrialMicros int64 // what the trial includes once a card is on file
 	TopupCents      int64 // price of one top-up
 	TopupMicros     int64 // metered usage one top-up adds
 	TrialDays       int
@@ -52,7 +53,19 @@ func DefaultConfig() Config {
 	return Config{
 		PriceCents:      500,
 		AllowanceMicros: 3_000_000,
-		TrialMicros:     1_000_000,
+		// The no-card trial's cap: $0.50 of metered usage, enforced at
+		// admission. A hold is only admitted while what the trial has
+		// spent, plus what its settles wrote off (period overage), plus
+		// what is held leaves room for it (store.ReserveAt), and a settle
+		// never draws more than its hold (store.SettleMetered). A provider
+		// that bills more than a call's hold can still take the trial's
+		// actual cost past $0.50 by that overage, which is recorded and
+		// logged, never charged, and closes the trial to further holds.
+		// Holds are priced per model (BudgetMicros, SpeechBudgetMicros) and
+		// sized so that is rare; one worst case of each surface (a
+		// gpt-6.2-sol draft is $0.23) fits inside the cap at once.
+		TrialMicros:     500_000,
+		CardTrialMicros: 1_000_000,
 		TopupCents:      500,
 		TopupMicros:     4_000_000,
 		TrialDays:       7,
@@ -80,7 +93,10 @@ type App struct {
 	drafts sync.WaitGroup
 	// topupsInFlight holds the top-up keys being charged by this process.
 	topupsInFlight sync.Map
-	explained      explainCache
+	// subInFlight holds the learners whose card step this process has with
+	// the processor right now.
+	subInFlight sync.Map
+	explained   explainCache
 }
 
 // FieldError is a mistake the learner can fix, said in words and shown
@@ -128,7 +144,20 @@ func (a *App) SignUp(ctx context.Context, email, password, tz string) (store.Use
 	if errors.Is(err, store.ErrEmailTaken) {
 		return store.User{}, fieldErr("email", "That email already has an account.")
 	}
-	return u, err
+	if err != nil {
+		return u, err
+	}
+	a.startTrialFor(ctx, u)
+	return u, nil
+}
+
+// startTrialFor starts a new account's no-card trial. A failure here does
+// not fail the sign-up: the account exists, and Plan starts the trial on
+// the learner's next request.
+func (a *App) startTrialFor(ctx context.Context, u store.User) {
+	if err := a.StartNoCardTrial(ctx, u.ID); err != nil {
+		a.Log.ErrorContext(ctx, "no-card trial could not be started at sign-up", "err", err, "user", u.ID)
+	}
 }
 
 // SignIn checks an email and password.
@@ -148,9 +177,20 @@ func (a *App) SignIn(ctx context.Context, email, password string) (store.User, e
 	u, err := a.Store.UserBySubject(ctx, subject)
 	if errors.Is(err, store.ErrNotFound) {
 		// The provider knows them but Scry does not: finish the sign-up.
-		return a.Store.CreateUser(ctx, email, subject, "UTC", a.now())
+		return a.CreateUser(ctx, email, subject, "UTC")
 	}
 	return u, err
+}
+
+// CreateUser records an account the auth provider already knows (a first
+// Clerk sign-in) and starts its no-card trial.
+func (a *App) CreateUser(ctx context.Context, email, subject, tz string) (store.User, error) {
+	u, err := a.Store.CreateUser(ctx, email, subject, tz, a.now())
+	if err != nil {
+		return u, err
+	}
+	a.startTrialFor(ctx, u)
+	return u, nil
 }
 
 func randomToken(n int) string {

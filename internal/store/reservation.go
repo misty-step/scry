@@ -13,8 +13,9 @@ import (
 var ErrBudget = errors.New("insufficient unreserved allowance")
 
 // ErrReservationNoAccess is a reservation refused because the plan gives
-// no access at the moment of the insert: it has ended, or it is past_due
-// and its grace has run out. The check is part of the same atomic
+// no access at the moment of the insert: it has ended, it is past_due
+// and its grace has run out, or it is a no-card trial at or past its
+// period_end. The check is part of the same atomic
 // statement as the insert, so a plan that ends between the app's Plan()
 // read and Reserve can never take a new hold.
 var ErrReservationNoAccess = errors.New("plan gives no access: reservation refused")
@@ -175,11 +176,23 @@ func graceCutoff(now time.Time, grace time.Duration) int64 {
 }
 
 // reserveAccess is the access predicate of the Reserve statement, the same
-// as app.HasAccess: trialing and active plans, and past_due plans whose
-// grace has not run out. cutoff is the SQL parameter holding graceCutoff.
-func reserveAccess(cutoff string) string {
-	return `(status IN ('trialing','active') OR (status='past_due' AND past_due_since>0 AND past_due_since>=` + cutoff + `))`
+// as app.HasAccess: active plans, trialing plans (a no-card trial, with
+// customer_ref ”, only while now < period_end), and past_due plans whose
+// grace has not run out. cutoff is the SQL parameter holding graceCutoff;
+// nowSec the one holding now in whole Unix seconds (period_end is stored
+// in whole seconds, so now < period_end is period_end > floor(now)).
+func reserveAccess(cutoff, nowSec string) string {
+	return `(status='active' OR (status='trialing' AND (customer_ref<>'' OR period_end>` + nowSec + `)) OR (status='past_due' AND past_due_since>0 AND past_due_since>=` + cutoff + `))`
 }
+
+// reserveBalance is what a new hold may draw on before the holds already
+// in flight are taken off: the unspent allowance plus top-up credit. A
+// no-card trial (customer_ref ”) has no top-up credit, and its period
+// overage (cost its settles wrote off, Subscription.OverageMicros) counts
+// as spent: the trial's $0.50 is a cap on what it actually cost, so once
+// used + overage reaches the allowance no further hold is admitted.
+const reserveBalance = `(allowance_micros-period_used_micros+topup_micros-
+ CASE WHEN customer_ref='' THEN topup_micros+period_overage_micros ELSE 0 END)`
 
 // Reserve holds amount micro-dollars of the learner's allowance (and then
 // top-up credit) for work about to start, checking access by the wall
@@ -191,7 +204,8 @@ func (u *UserStore) Reserve(ctx context.Context, id string, amount int64) error 
 
 // ReserveAt holds amount micro-dollars for work about to start, as of now.
 // One atomic INSERT .. SELECT both checks that the plan gives access at
-// now (trialing, active, or past_due within grace) and that the unreserved
+// now (active, trialing, or past_due within grace; a no-card trial only
+// before its period_end) and that the unreserved
 // allowance plus top-up credit covers amount, so neither can change
 // between the check and the hold. The hold records now as its created_at
 // for the TTL sweep. It returns ErrInvalidReservationAmount for an amount
@@ -204,10 +218,9 @@ func (u *UserStore) ReserveAt(ctx context.Context, id string, amount int64, now 
 	}
 	db := u.s.billingDB(ctx)
 	res, err := db.ExecContext(ctx, `INSERT INTO reservations(id,user_id,amount,created_at)
- SELECT ?1,user_id,?2,?3 FROM subscriptions WHERE user_id=?4 AND `+reserveAccess("?5")+` AND
- allowance_micros-period_used_micros+topup_micros-
- COALESCE((SELECT SUM(amount) FROM reservations WHERE user_id=?4),0)>=?2`,
-		id, amount, ts(now), u.uid, graceCutoff(now, grace))
+ SELECT ?1,user_id,?2,?3 FROM subscriptions WHERE user_id=?4 AND `+reserveAccess("?5", "?6")+` AND
+ `+reserveBalance+`-COALESCE((SELECT SUM(amount) FROM reservations WHERE user_id=?4),0)>=?2`,
+		id, amount, ts(now), u.uid, graceCutoff(now, grace), now.Unix())
 	if err != nil {
 		return err
 	}
@@ -221,8 +234,8 @@ func (u *UserStore) ReserveAt(ctx context.Context, id string, amount int64, now 
 	// Refused. Which reason is only for the caller's message: the refusal
 	// itself was decided atomically above.
 	var access bool
-	err = db.QueryRowContext(ctx, `SELECT `+reserveAccess("?2")+` FROM subscriptions WHERE user_id=?1`,
-		u.uid, graceCutoff(now, grace)).Scan(&access)
+	err = db.QueryRowContext(ctx, `SELECT `+reserveAccess("?2", "?3")+` FROM subscriptions WHERE user_id=?1`,
+		u.uid, graceCutoff(now, grace), now.Unix()).Scan(&access)
 	if err == nil && !access {
 		return ErrReservationNoAccess
 	}
@@ -233,29 +246,51 @@ func (u *UserStore) ReserveAt(ctx context.Context, id string, amount int64, now 
 }
 
 // Settle ends a hold: it deletes the row and, in the same transaction,
-// spends what the work actually cost (ResEventSettle), or spends nothing
+// meters what the work actually cost (ResEventSettle), or spends nothing
 // when it cost nothing (ResEventRelease). A hold that is already over
 // (settled, released, swept or expired) is a replay and returns nil
 // without spending anything again, so settle is idempotent. A negative
-// cost is refused with ErrNegativeCost and the hold stays held.
+// cost is refused with ErrNegativeCost and the hold stays held. See
+// SettleMetered for how the cost is drawn.
 func (u *UserStore) Settle(ctx context.Context, id string, use Usage, now time.Time) error {
+	_, err := u.SettleMetered(ctx, id, use, now)
+	return err
+}
+
+// SettleMetered is Settle, reporting the overage: the part of the cost
+// that no hold covered and so was written off rather than drawn.
+//
+// The debit is capped at the hold (specs/allowance_reservations.qnt,
+// Spend: "cap at reservation, write off the rest"):
+//
+//	debit   = min(cost, hold, max(0, allowance - used + topup))
+//	overage = cost - debit
+//
+// drawn from the allowance first, then from top-up credit. Because the
+// debit never passes this hold's own amount, a call that cost more than it
+// reserved can never draw on allowance backing another hold still in
+// flight (inv_reserved_within_available, inv_debit_within_reservation).
+// The usage row keeps the full cost, and the overage is added to the
+// plan's period_overage_micros: on a no-card trial ReserveAt counts it as
+// spent, so a trial whose actual cost reached its allowance admits no
+// further hold. Holds are sized so overage is rare (app.SpeechBudgetMicros).
+func (u *UserStore) SettleMetered(ctx context.Context, id string, use Usage, now time.Time) (int64, error) {
 	if use.CostMicros < 0 {
-		return ErrNegativeCost
+		return 0, ErrNegativeCost
 	}
-	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
-		res, err := u.s.billingDB(ctx).ExecContext(ctx, "DELETE FROM reservations WHERE id=? AND user_id=?", id, u.uid)
-		if err != nil {
-			return err
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
+	var overage int64
+	err := u.s.BillingTransaction(ctx, func(ctx context.Context) error {
+		db := u.s.billingDB(ctx)
+		var hold int64
 		from := ReservationHeld
-		if n == 0 {
+		err := db.QueryRowContext(ctx, "DELETE FROM reservations WHERE id=? AND user_id=? RETURNING amount", id, u.uid).Scan(&hold)
+		if errors.Is(err, sql.ErrNoRows) {
 			// No row: the hold is over already. Which terminal state it
 			// reached is not recorded; every one of them absorbs a replay.
-			from = ReservationSettled
+			from, err = ReservationSettled, nil
+		}
+		if err != nil {
+			return err
 		}
 		to, err := TransitionReservation(from, settleEvent(use.CostMicros))
 		if err != nil {
@@ -264,8 +299,28 @@ func (u *UserStore) Settle(ctx context.Context, id string, use Usage, now time.T
 		if from.Terminal() || to == ReservationReleased {
 			return nil
 		}
-		return u.Spend(ctx, use, now)
+		var allowance, used, topup int64
+		if err := db.QueryRowContext(ctx, "SELECT allowance_micros, period_used_micros, topup_micros FROM subscriptions WHERE user_id=?", u.uid).
+			Scan(&allowance, &used, &topup); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		debit := min(use.CostMicros, hold, max(0, allowance-used+topup))
+		fromAllowance := min(debit, max(0, allowance-used))
+		overage = use.CostMicros - debit
+		if _, err := db.ExecContext(ctx, `
+		INSERT INTO usage (user_id, at, kind, model, input_tokens, output_tokens, seconds, cost_micros) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			u.uid, ts(now), use.Kind, use.Model, use.InputTokens, use.OutputTokens, use.Seconds, use.CostMicros); err != nil {
+			return err
+		}
+		_, err = db.ExecContext(ctx, `UPDATE subscriptions SET period_used_micros = period_used_micros + ?1,
+		  topup_micros = topup_micros - ?2, period_overage_micros = period_overage_micros + ?3 WHERE user_id = ?4`,
+			fromAllowance, debit-fromAllowance, overage, u.uid)
+		return err
 	})
+	if err != nil {
+		return 0, err
+	}
+	return overage, nil
 }
 
 // ReservedMicros reports allowance held by work in flight.

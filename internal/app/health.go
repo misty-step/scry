@@ -24,6 +24,13 @@ type Readiness struct {
 	AuthMode    string // clerk-live, clerk-test or local
 	// Providers is the exact active adapter for each capability.
 	Providers map[string]string
+	// Models is the model each AI capability is configured to call
+	// (grading, explainer, drafting, speech), after SCRY_*_MODEL overrides
+	// and route defaults; "" when the capability is not wired.
+	Models map[string]string
+	// SpeechRoute is where recordings are sent: audio/transcriptions or
+	// chat/completions on OpenRouter, test for the fake, "" when unwired.
+	SpeechRoute string
 	// Warnings are deliberate but unusual wirings an operator must see,
 	// such as live mode charging with Stripe test keys.
 	Warnings []string
@@ -31,7 +38,7 @@ type Readiness struct {
 
 // Readiness reports the wiring. It makes no network call.
 func (a *App) Readiness() Readiness {
-	r := Readiness{BuildSHA: a.Cfg.BuildSHA, Mode: "live", Providers: map[string]string{}, Warnings: []string{}}
+	r := Readiness{BuildSHA: a.Cfg.BuildSHA, Mode: "live", Providers: map[string]string{}, Models: map[string]string{}, Warnings: []string{}}
 	if r.BuildSHA == "" {
 		r.BuildSHA = "dev"
 	}
@@ -66,6 +73,12 @@ func (a *App) Readiness() Readiness {
 	case *speech.OpenAI:
 		r.Speech = s != nil
 	}
+
+	r.Models["grading"] = ai.JudgeModel(judge)
+	r.Models["drafting"] = ai.DraftModel(draft)
+	r.Models["explainer"] = ai.ExplainModel(a.Explainer)
+	r.Models["speech"] = speech.ModelOf(a.Speech)
+	r.SpeechRoute = speech.RouteOf(a.Speech)
 
 	r.BillingMode = "test"
 	if a.Pay != nil {

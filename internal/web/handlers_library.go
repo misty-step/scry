@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"scry/internal/ai"
 	"scry/internal/app"
 	"scry/internal/store"
 )
@@ -304,8 +303,11 @@ func (s *Server) learn(w http.ResponseWriter, r *http.Request, c *rc) error {
 		return err
 	}
 	hint := ""
-	if sub.AllowanceMicros-sub.UsedMicros+sub.TopupMicros-reserved < ai.DraftBudgetMicros {
+	if app.Unreserved(sub, reserved) < s.App.DraftBudget() {
 		hint = "Not enough allowance left for a draft. Top up or check Billing."
+		if sub.NoCard() {
+			hint = "Not enough of the trial's allowance left for a draft. Add a card in Billing to keep going."
+		}
 	}
 
 	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Learn something new", "Nav": "learn", "Q": r.URL.Query().Get("q"), "Error": hint})
@@ -354,7 +356,7 @@ func (s *Server) draft(w http.ResponseWriter, r *http.Request, c *rc) error {
 	}
 	return s.render(w, r, c, http.StatusOK, "draft.html", map[string]any{
 		"Title": d.Title, "Nav": "learn", "Draft": d, "Kind": kind, "Groups": groups, "Pending": pending, "Approved": approved,
-		"Ideas": len(groups), "Reset": c.sub.PeriodEnd.In(c.user.Location()), "Retry": url.QueryEscape(d.Query),
+		"Ideas": len(groups), "Reset": c.sub.PeriodEnd.In(c.user.Location()), "NoCard": c.sub.NoCard(), "Retry": url.QueryEscape(d.Query),
 	})
 }
 

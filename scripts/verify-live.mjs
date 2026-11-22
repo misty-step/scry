@@ -11,15 +11,22 @@
 // browser context, asserting zero CSP violations, console errors, page errors
 // and failed requests. Signed in (--session-cookie and/or --local-signup,
 // each in its own separate context) it checks /signup/card, or /billing/card
-// when the account already has a plan and /signup/card redirects to /study
-// or /billing. When Stripe Elements is on the card page it waits for the
-// js.stripe.com iframe and checks it is visible and sized. Prints one JSON
-// summary on stdout; exits 0 only when every check passes.
+// when the account already has a card-backed plan and /signup/card redirects
+// to /study or /billing; on a no-card trial both card pages. When Stripe
+// Elements is on a card page it waits for the js.stripe.com iframe and checks
+// it is visible and sized. It also checks /billing and /study (which may
+// show /shelf for an empty library) signed in. --local-signup checks that a
+// new sign-up lands straight in Scry (/shelf or /study, no card step) with
+// the no-card trial's status line in the chrome. Prints one JSON summary on
+// stdout; exits 0 only when every check passes.
 //
 // Flags (env in brackets):
 //   --url <base>                 [SCRY_VERIFY_URL] required
 //   --screenshot <file.png>      [SCRY_VERIFY_SCREENSHOT] card-page screenshot (with
 //                                both signed-in modes the second gets a -<mode> suffix)
+//   --screenshot-dir <dir>       [SCRY_VERIFY_SCREENSHOT_DIR] desktop (1280x800) and mobile
+//                                (390x844) full-page PNGs of /, the signed-in landing page,
+//                                /billing and the card page(s), named <page>-<viewport>.png
 //   --session-cookie name=value  [SCRY_VERIFY_SESSION_COOKIE] a signed-in session
 //                                (prefer the env var; the value is never printed)
 //   --local-signup               sign up a fresh local-auth learner (refused when
@@ -37,13 +44,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright-core";
 
-const usage = "usage: verify-live.mjs --url <base-url> [--screenshot file.png] [--session-cookie name=value] " +
+const usage = "usage: verify-live.mjs --url <base-url> [--screenshot file.png] [--screenshot-dir dir] [--session-cookie name=value] " +
   "[--local-signup] [--expect-stripe] [--expect-clerk] [--simulate-violation] [--timeout ms]";
 
 function parseArgs(argv) {
   const o = {
     url: process.env.SCRY_VERIFY_URL || "",
     screenshot: process.env.SCRY_VERIFY_SCREENSHOT || "",
+    screenshotDir: process.env.SCRY_VERIFY_SCREENSHOT_DIR || "",
     sessionCookie: process.env.SCRY_VERIFY_SESSION_COOKIE || "",
     localSignup: false, expectStripe: false, expectClerk: false, simulateViolation: false, timeout: 30000,
   };
@@ -58,6 +66,7 @@ function parseArgs(argv) {
     switch (flag) {
       case "--url": o.url = value(); break;
       case "--screenshot": o.screenshot = value(); break;
+      case "--screenshot-dir": o.screenshotDir = value(); break;
       case "--session-cookie": o.sessionCookie = value(); break;
       case "--local-signup": o.localSignup = true; break;
       case "--expect-stripe": o.expectStripe = true; break;
@@ -191,7 +200,18 @@ async function main() {
         } else {
           signedIn = await localSignup(ctx, base, opt);
         }
-        if (signedIn) await signedInCard(ctx, base, opt, mode, modes.length > 1 && mode !== modes[0]);
+        if (signedIn) {
+          const cards = await signedInCard(ctx, base, opt, mode, modes.length > 1 && mode !== modes[0]);
+          await signedInPages(ctx, base, opt, mode);
+          if (opt.screenshotDir) {
+            const landed = (summary.session || {}).landedOn;
+            const shots = [];
+            if (mode === "local-signup" && landed) shots.push({ path: landed, name: "signup-landing" + landed.replace(/\//g, "-") });
+            shots.push({ path: "/billing", name: mode + "-billing" });
+            for (const c of cards || []) shots.push({ path: c, name: mode + c.replace(/\//g, "-"), card: true });
+            await screens(browser, base, opt, shots, await ctx.storageState());
+          }
+        }
       } finally {
         await ctx.close();
       }
@@ -200,6 +220,7 @@ async function main() {
 
     if (opt.simulateViolation) await simulateViolation(pub, base, opt);
     await pub.close();
+    if (opt.screenshotDir) await screens(browser, base, opt, [{ path: "/", name: "landing" }]);
   } finally {
     await browser.close();
   }
@@ -243,7 +264,7 @@ async function signedOutCard(ctx, base) {
 // redirect hop decides, since /study itself may redirect on (to /shelf).
 async function signedInCard(ctx, base, opt, mode, altShot) {
   const shot = opt.screenshot && altShot ? opt.screenshot.replace(/(\.png)?$/i, "-" + mode + ".png") : opt.screenshot;
-  let target = "/signup/card", hop = "";
+  let targets = ["/signup/card", "/billing/card"], hop = "";
   try {
     const res = await ctx.request.get(base + "/signup/card", { maxRedirects: 0, failOnStatusCode: false });
     const loc = res.headers()["location"] || "";
@@ -251,26 +272,78 @@ async function signedInCard(ctx, base, opt, mode, altShot) {
     await res.dispose();
     if (res.status() !== 200) {
       if (res.status() >= 300 && res.status() < 400 && (hop === "/study" || hop === "/billing")) {
-        target = "/billing/card";
-        (summary.session ||= {})[mode] = "account already has a plan (/signup/card redirects to " + hop + "): checking /billing/card";
+        targets = ["/billing/card"];
+        (summary.session ||= {})[mode] = "account already has a card-backed plan (/signup/card redirects to " + hop + "): checking /billing/card";
       } else {
         check(mode + ": signed in", false, "GET /signup/card answered " + res.status() + (hop ? " to " + hop : "") + " (the session was not accepted)");
-        return;
+        return [];
       }
+    } else {
+      // A learner still choosing (the no-card trial, live or ended): both
+      // card pages take a card.
+      (summary.session ||= {})[mode] = "no card on file (/signup/card answers 200): checking /signup/card and /billing/card";
     }
   } catch (err) {
     check(mode + ": GET /signup/card", false, String(err.message || err).split("\n")[0]);
-    return;
+    return [];
   }
-  const rec = await visit(ctx, base, target, opt, { card: true, screenshot: shot, mode });
-  if (!rec) return;
-  if (summary.stripe) check(mode + ": Stripe card field shown on " + target, rec.stripe, rec.stripe ? undefined : target + " rendered no #card-element[data-key]");
-  (summary.cardPages ||= []).push({ mode, path: target, signupCardRedirect: hop || null, stripeIframe: rec.stripeIframe || null });
+  const done = [];
+  for (const target of targets) {
+    const rec = await visit(ctx, base, target, opt, { card: true, screenshot: target === targets[0] ? shot : "", mode });
+    if (!rec) continue;
+    done.push(target);
+    if (summary.stripe) check(mode + ": Stripe card field shown on " + target, rec.stripe, rec.stripe ? undefined : target + " rendered no #card-element[data-key]");
+    (summary.cardPages ||= []).push({ mode, path: target, signupCardRedirect: hop || null, stripeIframe: rec.stripeIframe || null });
+  }
+  return done;
+}
+
+// signedInPages checks the signed-in pages a learner lives on: /billing,
+// and /study (an empty library shows the starter shelf instead), each with
+// zero CSP violations, console errors, page errors and failed requests.
+async function signedInPages(ctx, base, opt, mode) {
+  await visit(ctx, base, "/billing", opt, { expectStatus: 200, mode });
+  await visit(ctx, base, "/study", opt, { expectStatus: 200, mode, allowFinal: ["/shelf"] });
+}
+
+// screens captures full-page PNGs at a desktop and a phone viewport, in
+// fresh contexts carrying the given storage state (cookies) if any. Card
+// pages wait for the Stripe iframe first. Screenshots are evidence only;
+// the checks above are the verdict.
+const VIEWPORTS = { desktop: { width: 1280, height: 800 }, mobile: { width: 390, height: 844 } };
+async function screens(browser, base, opt, shots, storageState) {
+  fs.mkdirSync(path.resolve(opt.screenshotDir), { recursive: true });
+  for (const [vp, size] of Object.entries(VIEWPORTS)) {
+    const ctx = await browser.newContext({ viewport: size, storageState, isMobile: vp === "mobile", hasTouch: vp === "mobile", deviceScaleFactor: vp === "mobile" ? 2 : 1 });
+    ctx.setDefaultTimeout(opt.timeout);
+    try {
+      for (const s of shots) {
+        const page = await ctx.newPage();
+        try {
+          await page.goto(base + s.path, { waitUntil: "load" });
+          await page.waitForLoadState("networkidle", { timeout: Math.min(opt.timeout, 15000) }).catch(() => {});
+          if (s.card && await page.locator("#card-element[data-key]").count()) {
+            await page.locator('#card-element iframe[src*="js.stripe.com"]').first().waitFor({ state: "visible", timeout: Math.max(opt.timeout, 20000) }).catch(() => {});
+            await page.waitForTimeout(1500);
+          }
+          const file = path.join(opt.screenshotDir, s.name.replace(/^-+|[^a-z0-9-]/gi, "") + "-" + vp + ".png");
+          await page.screenshot({ path: file, fullPage: true });
+          (summary.screenshots ||= []).push(file);
+        } catch (err) {
+          check("screenshot " + s.path + " (" + vp + ")", false, String(err.message || err).split("\n")[0]);
+        } finally {
+          await page.close();
+        }
+      }
+    } finally {
+      await ctx.close();
+    }
+  }
 }
 
 // visit opens path in a fresh page and records every way it can fail
 // silently in a learner's browser.
-async function visit(context, base, p, opt, { expectStatus, card, screenshot, mode } = {}) {
+async function visit(context, base, p, opt, { expectStatus, card, screenshot, mode, allowFinal = [] } = {}) {
   const page = await context.newPage();
   const rec = { path: p, cspViolations: [], consoleErrors: [], pageErrors: [], failedRequests: [], ignoredRequests: [] };
   if (mode) rec.mode = mode;
@@ -309,7 +382,7 @@ async function visit(context, base, p, opt, { expectStatus, card, screenshot, mo
   const final = new URL(page.url());
   rec.status = res ? res.status() : 0;
   rec.finalPath = final.pathname;
-  if (final.pathname !== p) check(label + " stays on " + p, false, "ended at " + final.pathname);
+  if (final.pathname !== p && !allowFinal.includes(final.pathname)) check(label + " stays on " + p, false, "ended at " + final.pathname);
   if (expectStatus) check("GET " + label + " " + expectStatus, rec.status === expectStatus, { status: rec.status });
 
   let stripe = false;
@@ -368,7 +441,17 @@ async function localSignup(context, base, opt) {
     await Promise.all([page.waitForURL(u => new URL(u).pathname !== "/signup", { timeout: opt.timeout }), page.click("form[action='/signup'] button, main form button")]);
     const at = new URL(page.url()).pathname;
     summary.session = Object.assign(summary.session || {}, { localSignup: true, landedOn: at });
-    return check("local sign-up lands on /signup/card", at === "/signup/card", { landedOn: at });
+    // The no-card trial starts at once: straight into Scry, never the card step.
+    const landed = check("local sign-up lands in Scry (/shelf or /study), not /signup/card", at === "/shelf" || at === "/study", { landedOn: at });
+    const chip = page.locator("[data-trial]");
+    const shown = (await chip.count()) > 0 && await chip.first().isVisible();
+    const text = shown ? ((await chip.first().textContent()) || "").replace(/\s+/g, " ").trim() : "";
+    summary.session.trialIndicator = text || null;
+    const chipOk = check("trial status line shown after sign-up (Trial · N days left · Upgrade)",
+      /^Trial · (\d+ days? left|last day) · Upgrade$/.test(text), { text });
+    const href = shown ? await chip.first().getAttribute("href") : "";
+    check("trial status line links to the card step", href === "/signup/card" || href === "/billing", { href });
+    return landed && chipOk;
   } catch (err) {
     return check("local sign-up", false, String(err.message || err).split("\n")[0]);
   } finally {

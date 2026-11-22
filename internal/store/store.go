@@ -88,6 +88,9 @@ func (s *Store) migrateAdded() error {
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), amount INTEGER NOT NULL CHECK(amount>0), created_at INTEGER NOT NULL DEFAULT 0)`,
 		topupSchema,
+		// Slice 36 pass 3: the durable claim on a learner's card step.
+		subscriptionAttemptsSchema,
+		subscriptionAttemptsIndex,
 	} {
 		if _, err := s.db.Exec(q); err != nil {
 			return err
@@ -96,6 +99,10 @@ func (s *Store) migrateAdded() error {
 	// A reservations table from before the TTL sweep gains created_at; its
 	// old rows read 0 (age unknown) and are released by the next sweep.
 	if err := s.addColumn("reservations", "created_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	// Slice 36 pass 2: a plan's period overage (Settle's write-off).
+	if err := s.addColumn("subscriptions", "period_overage_micros", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	for _, c := range topupColumns {
@@ -237,7 +244,7 @@ func LatestSnapshot(dir string) (string, time.Time) {
 // userTables lists every table holding learner-owned rows, parents first.
 // Export, per-user restore and the privacy tests all walk this list.
 var userTables = []string{
-	"subscriptions", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items",
+	"subscriptions", "subscription_attempts", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items",
 	"study_sessions", "session_items", "reviews", "drafts", "suggestions", "agent_tokens",
 }
 

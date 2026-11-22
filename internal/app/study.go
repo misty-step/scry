@@ -160,7 +160,7 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		if err != nil {
 			return store.Review{}, err
 		}
-		reservation, err := a.reserve(ctx, u.ID, ai.JudgeBudgetMicros)
+		reservation, err := a.reserve(ctx, u.ID, a.JudgeBudget())
 		if err != nil {
 			return store.Review{}, err
 		}

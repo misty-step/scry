@@ -23,10 +23,28 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
  await page.setViewport({width:1280,height:1000});
  const go=async path=>{const r=await page.goto(base+path,{waitUntil:"networkidle0"});assert.equal(r.status(),200);};
  const submit=async selector=>Promise.all([page.waitForNavigation({waitUntil:"networkidle0"}),page.click(selector)]);
+ // Slice 36: sign-up starts the 7-day no-card trial and lands straight on
+ // the starter shelf, with the trial chip in the chrome; no card step.
+ const onTrialShelf=async(p,label)=>{
+  assert.equal(new URL(p.url()).pathname,"/shelf",label+": sign-up must land on /shelf, not the card step");
+  const chip=await p.$eval("[data-trial]",e=>({text:e.textContent.trim(),href:e.getAttribute("href"),shown:e.getClientRects().length>0}));
+  assert(chip.shown&&chip.text.startsWith("Trial · 7 days left")&&chip.href==="/signup/card",label+": trial chip "+JSON.stringify(chip));
+  assert.equal(await p.$("#number"),null,label+": no card fields on the shelf");
+  await p.waitForSelector("#nato-alphabet");
+ };
  await go("/signup");await page.type("#email","browser@example.com");await page.type("#password","browser-password");
  await submit("form button");
+ await onTrialShelf(page,"signup");
+ await page.screenshot({path:out+"/trial-shelf.png",fullPage:true});
+ // Upgrading still works: the card step says nothing is charged today,
+ // carries those terms in the form, and lands back on the shelf.
+ await go("/signup/card");
+ assert((await page.$eval(".trial-terms",e=>e.textContent)).includes("Nothing is charged today"));
+ assert.equal(await page.$eval('input[name="billing_terms"]',e=>e.value),"trial");
  await page.type("#number","4242424242424242");await page.type("#expiry","12/30");await page.type("#cvc","123");
  await submit("form button");
+ assert.equal(new URL(page.url()).pathname,"/shelf","card added: back to the shelf");
+ assert.equal(await page.$("[data-trial]"),null,"no no-card trial chip once a card is on file");
  await page.waitForSelector("#nato-alphabet");await submit("#nato-alphabet button");
  await go("/study");
  for(const width of [1280,390])for(const theme of ["light","dark"]){
@@ -161,8 +179,7 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
  await exact.goto(base+"/signup",{waitUntil:"networkidle0"});
  await exact.type("#email","exact-browser@example.com");await exact.type("#password","browser-password");
  await exactSubmit("form button");
- await exact.type("#number","4242424242424242");await exact.type("#expiry","12/30");await exact.type("#cvc","123");
- await exactSubmit("form button");
+ await onTrialShelf(exact,"second signup"); // studies on the no-card trial
  await exact.goto(base+"/library/texts/new",{waitUntil:"networkidle0"});
  await exact.type("#title","Key exercise");await exact.type("#text","Remember this line.");
  await exactSubmit("form button");
@@ -176,6 +193,6 @@ const pause = ms => new Promise(r => setTimeout(r,ms));
  await exact.waitForSelector(".done");
  await context.close();
  assert.deepEqual(errors,[]);
- console.log("signup, trial, shelf, typed/spoken study, missed, library, inbox, billing, settings: PASS");
+ console.log("signup (no-card trial, shelf), card upgrade, trial study, typed/spoken study, missed, library, inbox, billing, settings: PASS");
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

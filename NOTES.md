@@ -1145,3 +1145,129 @@ Pass 2 (cold critic remediation):
   cancelled navigations and for requests a cross-origin child frame (Stripe's
   hCaptcha logo) cancels itself; requests Scry's policy blocks fail as
   `ERR_BLOCKED_BY_CSP` and always count.
+
+## Slice 36: empirical model winners, OpenRouter audio/transcriptions, 7-day no-card trial
+
+Owner-approved spec change (2026-11-21). Choices where the brief left room:
+
+- **Defaults.** Grading `typesafe/jev-1.14` (Decisions route), explainer
+  `openai/gpt-6-luna`, drafting `openai/gpt-6.2-sol`, speech
+  `microsoft/mai-transcribe-2`, all on `OPENROUTER_API_KEY`. Each
+  `SCRY_*_MODEL` overrides its surface; `SCRY_JUDGE_MODEL` is now checked to be a
+  vendor/model slug when OpenRouter is the route, like the other three.
+- **Speech routing** is by slug (`speech.UsesTranscriptionsRoute`): anything
+  from `elevenlabs/`, `deepgram/` or `assemblyai/`, `mistralai/voxtral*`, any
+  `*whisper*`, `*transcribe*` or `*scribe*` model, and `*-stt*` names go to `POST /api/v1/audio/transcriptions` as multipart `model` + `file`
+  (`audio.<ext>` from `AudioFormat`, with a matching audio Content-Type); every
+  other slug is treated as an audio-input chat model on chat completions with
+  `input_audio`. No `language` field is sent (the eval forced `en`), so an
+  answer in another language is still written down as spoken. Scry converts
+  every recording to WAV before transcribing, so production uploads are
+  `audio.wav`; the other extensions are covered by unit tests.
+  `SCRY_SPEECH_ROUTE` (pass 2) overrides the name rule for a model it gets
+  wrong: `auto` or unset (the rule), `transcriptions` or `chat` (forced). Any
+  other value stops the boot in every mode, and `chat` without
+  `OPENROUTER_API_KEY` does too (the direct OpenAI route has no chat audio).
+  `/healthz` `speech_route` reports the effective route.
+- **Pricing.** Catalog prices were read from the public
+  `https://openrouter.ai/api/v1/models` listing on 2026-11-21: gpt-6.2-sol
+  $2/$10 and gpt-6-luna $0.10/$0.50 per million tokens. jev-1.14 is not in the
+  chat catalog; NOTES' $0.042/M input, free output is priced here at $0.10/$1 as
+  a margin. mai-transcribe-2 lists `"0.1"` with no unit (Slice #29 read it as per
+  second and skipped it). Read as per hour, which matches mai-transcribe-1.5's
+  `0.36`, it is about 28 micros a second, so Scry keeps metering speech at 50
+  micros a second ($0.003 a minute). It also meters a recording at the
+  provider's own `usage.cost` whenever that is higher, so a wrong reading of the
+  unit is metered truthfully rather than absorbed.
+- **Model-aware reservations.** A hold is the worst case at the configured
+  model's rate (`app.BudgetMicros`), and the old $8/$40 ceiling for any model
+  without a price. A dated resolved id (`typesafe/jev-1.14-20261014`) is priced
+  as its model. The old `ai.*BudgetMicros` constants remain as the ceiling.
+- **Trial cap.** `Cfg.TrialMicros = $0.50` (no card). One worst-case draft
+  ($0.226), judgment, explanation and longest recording fit inside it at once.
+  The cap is enforced at admission, and that is all an admission rule can
+  promise (pass 2): a hold is the most one call can draw, because
+  `store.SettleMetered` debits `min(cost, hold, available)` (the Quint spec's
+  "cap at reservation"), so a call billed over its hold never draws on
+  allowance backing another hold in flight. The rest is written off, kept
+  in full on the usage row, added to the plan's `period_overage_micros`, and
+  logged as a warning ("usage cost over its reservation; overage written
+  off"). On a no-card trial the overage counts as spent: `ReserveAt` admits a
+  hold only while `allowance - used - overage - held >= amount`, so once what
+  the trial actually cost reaches $0.50 nothing more is admitted. What it
+  actually cost can still pass $0.50 by the overage of calls already
+  admitted; no rule can bound a third party's bill after the fact, so the
+  holds are sized to make that rare. Speech holds are
+  `max(ceil(seconds) x 250, 15,000)` micros (`app.SpeechBudgetMicros`, $0.03
+  for a 2-minute clip), 5x the meter, to cover what dedicated STT models
+  (mai-transcribe, whisper, scribe) and audio chat models (gemini) report as
+  `usage.cost`; the old 6,000-micro hold let 77 recordings billed $0.0065
+  each reach $0.5005. On a card-backed plan overage is recorded but does not
+  gate admission (the margin absorbs it).
+  Adding a card raises the trial allowance to `Cfg.CardTrialMicros = $1.00`
+  (the previous card-up-front trial allowance), and what was spent stays spent.
+- **Upgrade inside the window** keeps the trial's end. Stripe is asked for
+  `trial_end = period_end`, nothing is charged that day, and the first $5 is on
+  the original end date, so adding a card early costs no free days. With under
+  an hour left (`app.MinCardTrialLeft`) adding a card starts the paid plan at
+  once, charged today, so Stripe is never asked for a trial ending within the
+  hour. After the end it is the existing restart path: charged today, full
+  allowance, no second trial.
+- **Consent to the charge (pass 2).** The card step's form carries what its
+  page said, `billing_terms` = `trial` ("nothing charged today") or
+  `immediate` ("$5 today"); `app.CardTerms` decides it and the copy from the
+  same plan state. `StartTrial` charges today only when the submitted form
+  said `immediate`. A page loaded with over an hour left and submitted with
+  less (or after the end), or a post with no or unknown terms, is refused
+  before the processor is called: nothing is charged, the trial is
+  unchanged, and the card step is shown again (409) saying the trial ends
+  within the hour (or has ended) and a card now charges $5 today, with
+  `billing_terms=immediate`, so the next submit is the learner's consent.
+- **Nothing changes before the processor does (pass 2).** The trial row is
+  never ended or rewritten before `Subscribe` succeeds. A declined card (402)
+  or processor error leaves the no-card trial exactly as it was, usable until
+  its own `period_end`. On success `store.StartPaidFromNoCard` turns the
+  no-card row (trialing in its last hour, or ended) into the active paid plan
+  in one transaction (full monthly allowance, nothing used, no overage), and
+  refuses, with an operator alert, if a card was added to it in between.
+- **One subscription per confirmed upgrade (pass 3).** The per-minute
+  idempotency key is gone here too. `subscription_attempts` holds one pending
+  attempt per learner (a partial unique index), claimed before the processor
+  is called, with its key (`sub-<user>-<random>`) and the parameters sent
+  under it (card token, email, trial end). A second card step in the same
+  process while one is in flight gets 409 and sends nothing. An attempt whose
+  outcome was never learned is repeated with its own key and parameters, so
+  Stripe returns what it already did; a newly entered card is not substituted,
+  because Stripe refuses a key with other parameters and the first card may
+  already be charged (it stays the card on file). A definitive refusal (a
+  decline, or `invalid_request_error`) marks the attempt failed, and the card
+  just entered is then tried under a new key. The plan, its ledger line and the
+  attempt's end are one transaction. Stripe forgets keys after 24 hours, so
+  from 23 hours (or once a trial attempt's trial end has passed) an attempt is
+  looked up by `metadata[scry_key]` and never sent again: recorded if it
+  exists, released only if a complete lookup has nothing or it is over.
+  `specs/subscription_claim.qnt` models it, with the old code's double charge
+  as tests. An attempt is settled when the learner next submits a card; there
+  is no background sweep. A learner who never returns after a lost reply is
+  covered by the operator alert the failure raised.
+- **Expiry** is enforced three times: `HasAccess` (trialing with
+  `customer_ref = ''` only while `now < period_end`); the `ReserveAt` statement
+  (`period_end > floor(now)`, the same predicate, since period_end is stored in
+  whole seconds); and the move to `ended` (`Plan` on the learner's next request,
+  plus `EndExpiredNoCardTrials` on the minute renewal tick for every processor,
+  not just the test one). No-card rows are excluded from `SubscriptionsDue`, so
+  the test processor never renews one into a paid plan, and `applyEvent`
+  ignores any processor event naming one.
+- **Legacy accounts** with no plan row (signed up before this slice and never
+  added a card) start the no-card trial on their next visit (`Plan`), so no one
+  is left on the old forced card step. A trial already had (a row exists, live
+  or ended) is never given again.
+- **Chrome indicator.** DESIGN.md said the trial end date is "never a banner
+  elsewhere". The owner asked for a calm indicator in the chrome, so it is one
+  line of micro mono text after the wordmark, not a banner. It is only on
+  non-bare pages and only for no-card plans.
+- **Cancel** is hidden on a no-card trial and `SetCancel` is a no-op for one:
+  nothing would be charged, and there is no processor subscription to cancel.
+- **Abuse.** One trial per account. A person can still open many local
+  accounts, each capped at $0.50 of AI spend. With Clerk, each needs a verified
+  email.

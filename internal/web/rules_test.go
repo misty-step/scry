@@ -6,6 +6,7 @@ package web_test
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -18,53 +19,84 @@ import (
 	"scry/internal/store"
 )
 
-// Rule: No free tier. There's a 7-day trial with a card up front.
-func TestRule_NoFreeTier_SevenDayTrialWithACardUpFront(t *testing.T) {
+// Rule: No free tier. There's a 7-day interactive trial with no card up
+// front, guarded by a capped AI allowance; upgrade any time to the paid plan.
+func TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 	b.get("/signup")
 	b.post("/signup", "email", "nocard@example.com", "password", "correct horse")
+	if b.path != "/shelf" {
+		t.Fatalf("sign-up landed on %s, want /shelf (no card step)", b.path)
+	}
 
-	// Signed up but no card: every part of the product leads to the card step.
+	// No card: every part of the product works at once, with the trial's
+	// quiet status line in the chrome.
 	for _, path := range []string{"/study", "/library", "/shelf", "/inbox", "/learn", "/billing"} {
-		b.get(path)
-		if b.path != "/signup/card" {
-			t.Errorf("without a card, %s ends at %s, want /signup/card", path, b.path)
+		page := b.mustGet(path)
+		if b.path != path && !((path == "/study" || path == "/library") && b.path == "/shelf") { // an empty library starts on the shelf
+			t.Errorf("on the no-card trial, %s ends at %s", path, b.path)
 		}
+		has(t, page, "Trial · 7 days left", `class="trial-act">Upgrade</span>`)
 	}
-	if status, _ := b.post("/shelf/add", "slug", "nato-alphabet"); b.path != "/signup/card" {
-		t.Errorf("without a card, adding a set gave %d at %s", status, b.path)
+	if status, _ := b.post("/shelf/add", "slug", "nato-alphabet"); status != 200 {
+		t.Errorf("adding a set on the trial gave %d at %s", status, b.path)
 	}
-	if n, _, _ := w.lib("nocard@example.com").Counts(ctx, w.now()); n != 0 {
-		t.Fatal("material was added without a plan")
-	}
-
-	// The card comes first; the trial then runs exactly seven days.
-	b.get("/signup/card")
-	b.post("/signup/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
 	lib := w.lib("nocard@example.com")
-	sub, _ := lib.Subscription(ctx)
-	if sub.Status != "trialing" || sub.TrialEnd.Sub(w.now()) != 7*24*time.Hour || sub.CardLast4 != "4242" {
-		t.Fatalf("trial = %+v", sub)
+	if n, _, _ := lib.Counts(ctx, w.now()); n == 0 {
+		t.Fatal("the trial could not add material")
 	}
-	if led, _ := lib.Ledger(ctx); len(led) != 1 || led[0].AmountCents != 0 {
+	sub, _ := lib.Subscription(ctx)
+	if !sub.NoCardTrial() || sub.CustomerRef != "" || sub.SubscriptionRef != store.NoCardTrialRef(sub.UserID) ||
+		sub.TrialEnd.Sub(w.now()) != 7*24*time.Hour || !sub.PeriodEnd.Equal(sub.TrialEnd) || sub.AllowanceMicros != w.app.Cfg.TrialMicros {
+		t.Fatalf("no-card trial = %+v", sub)
+	}
+	if w.app.Cfg.TrialMicros > 1_000_000 {
+		t.Fatalf("the no-card trial must be capped at no more than $1, not %d micros", w.app.Cfg.TrialMicros)
+	}
+	if led, _ := lib.Ledger(ctx); len(led) != 1 || led[0].Kind != "trial" || led[0].AmountCents != 0 {
 		t.Fatalf("the trial start should cost nothing: %+v", led)
 	}
+
+	// Billing says so plainly; there is nothing to cancel and no top-up
+	// without a card.
+	page := b.mustGet("/billing")
+	has(t, page, "with no card on file", "nothing is charged", "Top-ups need a card on file.", "Add a card · nothing charged today")
+	hasNot(t, page, `action="/billing/topup"`, "Cancel plan")
+
+	// Six days in it still works; at the seventh day's end it stops: no
+	// renewal, no charge, and Billing asks for a card.
 	w.advance(6*24*time.Hour + 23*time.Hour)
 	b.mustGet("/library")
-	if led, _ := lib.Ledger(ctx); len(led) != 1 {
-		t.Fatalf("charged before the trial ended: %+v", led)
+	w.advance(time.Hour)
+	b.get("/study")
+	if b.path != "/billing" {
+		t.Fatalf("expired no-card trial: /study ends at %s, want /billing", b.path)
 	}
-	// On day seven the card is charged the monthly base and the plan is active.
-	w.advance(2 * time.Hour)
-	b.get("/shelf")
+	sub, _ = lib.Subscription(ctx)
+	if sub.Status != store.SubEnded || sub.CustomerRef != "" {
+		t.Fatalf("after the trial: %+v", sub)
+	}
+	if led, _ := lib.Ledger(ctx); len(led) != 1 {
+		t.Fatalf("an expired no-card trial was charged: %+v", led)
+	}
+	page = b.mustGet("/billing")
+	has(t, page, "7-day trial ended on", "Add a card to keep studying", "Add a card · $5 a month", "Trial ended")
+
+	// There is no second trial: a card after the trial starts the paid plan
+	// today, from the card step or Billing.
+	card := b.mustGet("/signup/card")
+	has(t, card, "Add a card", "$5 today")
+	b.post("/signup/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
 	sub, _ = lib.Subscription(ctx)
 	led, _ := lib.Ledger(ctx)
-	if sub.Status != "active" || len(led) != 2 || led[0].Kind != "charge" || led[0].AmountCents != 500 || led[0].Status != "paid" {
-		t.Fatalf("after the trial: %+v, ledger %+v", sub, led)
+	if sub.Status != store.SubActive || sub.CustomerRef == "" || sub.AllowanceMicros != w.app.Cfg.AllowanceMicros || len(led) != 2 ||
+		led[0].Kind != "charge" || led[0].AmountCents != 500 || led[0].Status != "paid" {
+		t.Fatalf("paid after the trial: %+v, ledger %+v", sub, led)
 	}
+	hasNot(t, b.mustGet("/study"), "data-trial")
 
-	// There is no second trial: a learner who lets the plan end pays to return.
+	// A learner who lets the paid plan end pays to return, as before.
 	b.get("/billing")
 	b.post("/billing/cancel")
 	w.advance(32 * 24 * time.Hour)
@@ -75,12 +107,94 @@ func TestRule_NoFreeTier_SevenDayTrialWithACardUpFront(t *testing.T) {
 		t.Fatalf("ended plan: at %s", b.path)
 	}
 	has(t, b.mustGet("/billing/card"), "Start again", "Your card is charged $5 today")
-	_, page := b.post("/billing/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
+	_, page = b.post("/billing/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
 	has(t, page, "Welcome back.")
+	if sub, _ = lib.Subscription(ctx); sub.Status != store.SubActive {
+		t.Errorf("restart: %+v", sub)
+	}
+}
+
+// Rule: adding a card during the no-card trial keeps the same trial end,
+// charges nothing today, unlocks top-ups, and charges the monthly base on
+// the trial's end date.
+func TestRule_CardAddedDuringTheTrialKeepsItsEnd(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUpNoCard("upgrade@example.com")
+	lib := w.lib("upgrade@example.com")
+	start, _ := lib.Subscription(ctx)
+	w.advance(2 * 24 * time.Hour)
+	if _, err := lib.ChangeSubscription(ctx, func(s *store.Subscription) { s.UsedMicros = 300_000 }); err != nil {
+		t.Fatal(err)
+	}
+	card := b.mustGet("/signup/card")
+	has(t, card, "Nothing is charged today: your trial still ends on "+start.TrialEnd.Format("January 2"), "Add card · nothing charged today")
+	b.post("/signup/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
+	sub, _ := lib.Subscription(ctx)
+	if sub.Status != store.SubTrialing || sub.NoCard() || sub.CardLast4 != "4242" || !sub.TrialEnd.Equal(start.TrialEnd) ||
+		!sub.PeriodEnd.Equal(start.PeriodEnd) || !sub.PeriodStart.Equal(start.PeriodStart) || sub.UsedMicros != 300_000 ||
+		sub.AllowanceMicros != w.app.Cfg.CardTrialMicros || sub.SubscriptionRef == start.SubscriptionRef {
+		t.Fatalf("card added to the trial: %+v (was %+v)", sub, start)
+	}
+	if led, _ := lib.Ledger(ctx); len(led) != 1 {
+		t.Fatalf("charged when the card was added: %+v", led)
+	}
+	page := b.mustGet("/billing")
+	has(t, page, "You're on the 7-day trial. It ends on", `action="/billing/topup"`, "Cancel plan")
+	hasNot(t, page, "data-trial", "with no card on file")
+	// On the trial's last day nothing is charged; at its end, the base is.
+	w.advance(4*24*time.Hour + 23*time.Hour)
+	b.mustGet("/library")
+	if led, _ := lib.Ledger(ctx); len(led) != 1 {
+		t.Fatalf("charged before the trial ended: %+v", led)
+	}
+	w.advance(2 * time.Hour)
+	b.get("/shelf")
 	sub, _ = lib.Subscription(ctx)
-	led, _ = lib.Ledger(ctx)
-	if sub.Status != "active" || led[0].AmountCents != 500 || led[0].Status != "paid" || len(led) != 3 {
-		t.Errorf("restart: %+v, ledger %+v", sub, led)
+	led, _ := lib.Ledger(ctx)
+	if sub.Status != store.SubActive || len(led) != 2 || led[0].Kind != "charge" || led[0].AmountCents != 500 || led[0].Status != "paid" ||
+		sub.AllowanceMicros != w.app.Cfg.AllowanceMicros || sub.UsedMicros != 0 {
+		t.Fatalf("after the trial: %+v, ledger %+v", sub, led)
+	}
+
+	// Billing's own card form does the same for a second learner.
+	c := w.browser()
+	c.signUpNoCard("billing-card@example.com")
+	has(t, c.mustGet("/billing/card"), "Add a card", "Nothing is charged today. Your trial still ends on")
+	_, page = c.post("/billing/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
+	has(t, page, "Your card is on file. Your trial continues")
+	if s, _ := w.lib("billing-card@example.com").Subscription(ctx); s.Status != store.SubTrialing || s.NoCard() {
+		t.Fatalf("billing card on the trial: %+v", s)
+	}
+}
+
+// Rule: on a no-card trial, a top-up is never sent to the processor: the
+// form is not shown, and a forged submission is refused before any charge.
+func TestRule_NoCardTrialNeverChargesATopup(t *testing.T) {
+	w := newWorld(t)
+	b := w.browser()
+	b.signUpNoCard("forged@example.com")
+	b.mustGet("/billing")
+	_, page := b.post("/billing/topup", "topup_token", "forged.token")
+	has(t, page, "That top-up form had expired")
+	lib := w.lib("forged@example.com")
+	uid := w.user("forged@example.com").ID
+	for _, tok := range []string{"aaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbb"} {
+		if _, err := w.app.TopUpResult(ctx, uid, tok); !errors.Is(err, app.ErrTopupNeedsCard) {
+			t.Fatalf("top-up on a no-card trial: %v", err)
+		}
+	}
+	if n, _ := lib.MonthTopups(ctx, w.now()); n != 0 {
+		t.Fatalf("%d top-up attempts recorded on a no-card trial", n)
+	}
+	if sub, _ := lib.Subscription(ctx); sub.TopupMicros != 0 {
+		t.Fatalf("credit granted with no card: %+v", sub)
+	}
+	// Cancelling a no-card trial changes nothing at a processor (there is
+	// none) and nothing in the plan.
+	b.post("/billing/cancel")
+	if sub, _ := lib.Subscription(ctx); sub.CancelAtEnd || !sub.NoCardTrial() {
+		t.Fatalf("cancel on a no-card trial: %+v", sub)
 	}
 }
 

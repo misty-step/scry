@@ -1,23 +1,46 @@
-{{define "head"}}{{if .PublishableKey}}<script src="https://js.stripe.com/v3/" defer></script><script src="/static/stripe.js" defer></script>{{end}}{{end}}
+{{define "head"}}{{if and .PublishableKey (not .InProgress)}}<script src="https://js.stripe.com/v3/" defer></script><script src="/static/stripe.js" defer></script>{{end}}{{end}}
 {{define "main"}}
 <section class="column">
-  {{if .Update}}
-    <h1 class="display">{{if .Restart}}Start again{{else}}Update card{{end}}</h1>
-    {{if .Restart}}<p class="lede">Your card is charged {{money .Price}} today, and then monthly. Cancel any time in Billing.</p>
+  {{if .Notice}}<p class="ledger-alert terms-changed" role="alert" data-terms-changed><strong>Nothing was charged.</strong> {{.Notice}}</p>{{end}}
+  {{if .InProgress}}
+    <h1 class="display">Add a card</h1>
+    <p class="lede" role="alert" data-card-in-progress>{{.InProgress}}</p>
+    <p class="meta"><a class="link" href="/billing">Back to Billing</a></p>
+  {{else if .Update}}
+    <h1 class="display">{{if .NoCard}}Add a card{{else if .Restart}}Start again{{else}}Update card{{end}}</h1>
+    {{if and .NoCard .KeepTrial}}<p class="lede trial-terms">Nothing is charged today. Your trial still ends on {{date .TrialEnd}}, when your card is first charged {{money .Price}}, and then monthly. Cancel any time before then in Billing.</p>
+    {{else if .Restart}}<p class="lede">Your card is charged {{money .Price}} today, and then monthly. Cancel any time in Billing.</p>
+    {{else if .NoCard}}<p class="lede">Your trial ends within the hour, so your card is charged {{money .Price}} today, and then monthly. Cancel any time in Billing.</p>
     {{else}}<p class="lede">The new card replaces the one on file. If a charge was waiting, it is tried again now.</p>{{end}}
     <form method="post" action="/billing/card" class="form" novalidate data-card-form>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="billing_terms" value="{{.Terms}}">
       {{template "cardfields" .}}
-      <button class="btn btn-accent wide">{{if .Restart}}Start again · {{money .Price}} a month{{else}}Save card{{end}}</button>
+      <button class="btn btn-accent wide">{{if and .NoCard .KeepTrial}}Add card · nothing charged today{{else if or .Restart .NoCard}}Start · {{money .Price}} a month{{else}}Save card{{end}}</button>
     </form>
     <p class="meta"><a class="link" href="/billing">Back to Billing</a></p>
+  {{else if .NoCard}}
+    <h1 class="display">Add a card</h1>
+    {{if .KeepTrial}}
+    <p class="lede trial-terms">Keep Scry after your trial. Nothing is charged today: your trial still ends on {{date .TrialEnd}}, when your card is first charged {{money .Price}}. Cancel any time before then in Billing.</p>
+    <p class="meta">After the trial, Scry is {{money .Price}} a month. Adding a card also unlocks top-ups.</p>
+    {{else}}
+    <p class="lede">Your {{.TrialDays}}-day trial {{if .Restart}}ended on {{date .TrialEnd}}{{else}}ends within the hour{{end}}. Add a card to keep studying: {{money .Price}} today, and then monthly. Your library and history are kept.</p>
+    {{end}}
+    <form method="post" action="/signup/card" class="form" novalidate data-card-form>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="billing_terms" value="{{.Terms}}">
+      {{template "cardfields" .}}
+      <button class="btn btn-accent wide">{{if .KeepTrial}}Add card · nothing charged today{{else}}Start · {{money .Price}} a month{{end}}</button>
+    </form>
+    <p class="meta"><a class="link" href="/study">Not now, back to studying</a></p>
   {{else}}
-    <p class="meta">Step 2 of 2 · card</p>
     <h1 class="display">Add a card</h1>
     <p class="lede trial-terms">{{.TrialDays}}-day trial. You won't be charged until {{date .TrialEnd}}. Cancel any time before then in Billing.</p>
     <p class="meta">After the trial, Scry is {{money .Price}} a month.</p>
     <form method="post" action="/signup/card" class="form" novalidate data-card-form>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="billing_terms" value="{{.Terms}}">
       {{template "cardfields" .}}
       <button class="btn btn-accent wide">Start trial</button>
     </form>

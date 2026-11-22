@@ -216,10 +216,14 @@ func (s *Server) studyAnswer(w http.ResponseWriter, r *http.Request, c *rc) erro
 	if err == nil || errors.Is(err, app.ErrStale) {
 		return s.afterStudy(w, r, c)
 	}
-	status, msg, link := http.StatusServiceUnavailable, "", ""
+	status, msg, link, href := http.StatusServiceUnavailable, "", "", "/billing"
 	switch {
 	case errors.Is(err, app.ErrJudgeUnavailable):
 		msg = "Couldn't check that just now. Your answer is still here; press Enter to try again."
+	case errors.Is(err, app.ErrAllowance) && c.sub.NoCard():
+		status = http.StatusPaymentRequired
+		msg = "You've used the trial's allowance, so Scry can't judge this answer yet. Add a card to keep going."
+		link, href = "Add a card", "/signup/card"
 	case errors.Is(err, app.ErrAllowance):
 		status = http.StatusPaymentRequired
 		msg = "You've reached this month's allowance, so Scry can't judge this answer yet. It resets on " +
@@ -233,7 +237,7 @@ func (s *Server) studyAnswer(w http.ResponseWriter, r *http.Request, c *rc) erro
 		return back(w, r, "/study")
 	}
 	data := s.studyData(r.Context(), c, sess)
-	data["Message"], data["MessageLink"], data["Draft"] = msg, link, answer
+	data["Message"], data["MessageLink"], data["MessageHref"], data["Draft"] = msg, link, href, answer
 	return s.render(w, r, c, status, "study.html", data)
 }
 
@@ -321,6 +325,8 @@ func (s *Server) studySpeech(w http.ResponseWriter, r *http.Request, c *rc) erro
 		// Not a recording Scry's recorder makes; nothing to hear in it.
 		writeJSON(w, http.StatusUnsupportedMediaType, map[string]string{"error": "Scry couldn't read that recording. Type your answer instead."})
 
+	case errors.Is(err, app.ErrAllowance) && c.sub.NoCard():
+		writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": "You've used the trial's allowance, so Scry can't listen right now. Type your answer, or add a card in Billing to keep going."})
 	case errors.Is(err, app.ErrAllowance):
 		writeJSON(w, http.StatusPaymentRequired, map[string]string{"error": "You've reached this month's allowance, so Scry can't listen right now. Type your answer, or top up in Billing."})
 	case errors.Is(err, app.ErrSpeechUnavailable):

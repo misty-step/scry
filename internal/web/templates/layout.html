@@ -16,7 +16,7 @@
 <body{{if .Session}} class="in-session"{{end}}>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top frame">
-  <a class="wordmark" href="/" aria-label="scry, home">scry</a>
+  <span class="brand"><a class="wordmark" href="/" aria-label="scry, home">scry</a>{{if and .Trial (not .Bare)}}<a class="trial-chip" href="/signup/card" data-trial>{{.Trial.Label}} · <span class="trial-act">{{.Trial.Action}}</span></a>{{end}}</span>
   {{if and .User (not .Bare)}}
   <nav class="nav" aria-label="Main">
     <a href="/study"{{if eq .Nav "study"}} aria-current="page"{{end}}>Study</a>

@@ -29,7 +29,7 @@ func TestJev_RoutesAndUntrustedInjection(t *testing.T) {
 				calls++
 				path, model := "/v1/systemone", "jev-latest"
 				if route == "openrouter" {
-					path, model = "/api/alpha/decisions", "openai/gpt-6-luna-decisions"
+					path, model = "/api/alpha/decisions", DefaultOpenRouterJudgeModel // typesafe/jev-1.14
 				}
 				if r.URL.Path != path || r.Header.Get("Authorization") != "Bearer local-secret" {
 					t.Error("wrong route/auth")

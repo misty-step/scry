@@ -149,9 +149,15 @@ func TestClerkSessionStandIn(t *testing.T) {
 		t.Fatal(b.path)
 	}
 	b.c.Jar.SetCookies(target, []*http.Cookie{{Name: "__session", Value: "verified"}})
-	b.get("/billing")
-	if b.path != "/signup/card" {
+	// A first verified Clerk sign-in starts the no-card trial: Billing
+	// shows it, with no card step in between.
+	page := b.mustGet("/billing")
+	if b.path != "/billing" {
 		t.Fatal(b.path)
+	}
+	has(t, page, "with no card on file", "Add a card")
+	if sub, err := w.lib("verified@example.com").Subscription(ctx); err != nil || !sub.NoCardTrial() || sub.AllowanceMicros != w.app.Cfg.TrialMicros {
+		t.Fatalf("first Clerk sign-in plan: %+v %v", sub, err)
 	}
 }
 

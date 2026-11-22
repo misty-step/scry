@@ -183,6 +183,12 @@ func (w *billingWorld) advance(d time.Duration) { w.mu.Lock(); w.clock = w.clock
 // newBillingWorld is a real SQLite-backed Scry whose learner has just
 // started the trial with the scripted processor.
 func newBillingWorld(t fataler, path string) *billingWorld {
+	return newBillingWorldWith(t, path, false)
+}
+
+// newBillingWorldWith is newBillingWorld; with noCard the learner is on the
+// no-card trial every sign-up starts (slice 36) instead.
+func newBillingWorldWith(t fataler, path string, noCard bool) *billingWorld {
 	t.Helper()
 	st, err := store.Open(path)
 	if err != nil {
@@ -198,7 +204,13 @@ func newBillingWorld(t fataler, path string) *billingWorld {
 		t.Fatal(err)
 	}
 	w.us = st.For(w.user.ID)
-	if err := w.app.StartTrial(w.ctx, w.user, "tok_ok"); err != nil {
+	if noCard {
+		if err := w.app.StartNoCardTrial(w.ctx, w.user.ID); err != nil {
+			t.Fatal(err)
+		}
+		return w
+	}
+	if err := w.app.StartTrial(w.ctx, w.user, "tok_ok", app.TermsTrial); err != nil {
 		t.Fatal(err)
 	}
 	return w
@@ -254,6 +266,10 @@ func (m *billingMachine) TopUp(t *rapid.T) {
 		errors.Is(err, app.ErrPlanEnded), errors.Is(err, store.ErrTopupCap),
 		errors.Is(err, app.ErrTopupPending), errors.Is(err, app.ErrTopupUnconfirmed),
 		errors.Is(err, app.ErrTopupReleased), errors.Is(err, store.ErrTopupCapExceededLate):
+	case errors.Is(err, app.ErrTopupNeedsCard):
+		if !m.sub(t).NoCard() {
+			t.Fatalf("top-up %s refused for want of a card on a card-backed plan", tok)
+		}
 	default:
 		t.Fatalf("top-up %s: unexpected error %v", tok, err)
 	}
@@ -276,6 +292,10 @@ func (m *billingMachine) TopUpBurst(t *rapid.T) {
 			errors.Is(err, app.ErrPlanEnded), errors.Is(err, store.ErrTopupCap),
 			errors.Is(err, app.ErrTopupPending), errors.Is(err, app.ErrTopupUnconfirmed),
 			errors.Is(err, app.ErrTopupReleased), errors.Is(err, store.ErrTopupCapExceededLate):
+		case errors.Is(err, app.ErrTopupNeedsCard):
+			if !m.sub(t).NoCard() {
+				t.Fatalf("top-up %s refused for want of a card on a card-backed plan", tok)
+			}
 		default:
 			t.Fatalf("top-up %s: unexpected error %v", tok, err)
 		}
@@ -332,6 +352,9 @@ func (m *billingMachine) Invoice(t *rapid.T) {
 	p := m.w.pay
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if len(p.subs) == 0 {
+		t.Skip("no processor subscription yet (a no-card trial)")
+	}
 	s := p.subs[len(p.subs)-1]
 	if s.ended || s.invoiced >= 6 {
 		t.Skip("no invoice to bill")
@@ -357,6 +380,9 @@ func (m *billingMachine) EndPlan(t *rapid.T) {
 	p := m.w.pay
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if len(p.subs) == 0 {
+		t.Skip("no processor subscription yet (a no-card trial)")
+	}
 	s := p.subs[len(p.subs)-1]
 	if s.ended {
 		t.Skip("already ended")
@@ -385,11 +411,83 @@ func (m *billingMachine) Reopen(t *rapid.T) {
 	if m.sub(t).Status != store.SubEnded {
 		t.Skip("plan not ended")
 	}
-	if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok"); err != nil {
+	if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok", app.TermsImmediate); err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
 	if s := m.sub(t); s.Status != store.SubActive {
 		t.Fatalf("reopened plan is %s", s.Status)
+	}
+}
+
+// AddCard is the card step on a no-card trial (slice 36): with an hour or
+// more of the trial left the card is added and the trial keeps its end;
+// otherwise the paid plan starts, charged today.
+func (m *billingMachine) AddCard(t *rapid.T) {
+	before := m.sub(t)
+	if !before.NoCardTrial() {
+		t.Skip("not on a live no-card trial")
+	}
+	m.w.pay.mu.Lock()
+	subs := len(m.w.pay.subs)
+	m.w.pay.mu.Unlock()
+	terms := m.w.app.CardTerms(before)
+	if terms == app.TermsImmediate && rapid.Bool().Draw(t, "stale_page") {
+		// A page loaded while the trial was still promised: refused with
+		// nothing sent and nothing changed (critic finding 1).
+		if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok", app.TermsTrial); !errors.Is(err, app.ErrTermsChanged) {
+			t.Fatalf("stale trial terms with %v left: %v", before.PeriodEnd.Sub(m.w.now()), err)
+		}
+		m.w.pay.mu.Lock()
+		n := len(m.w.pay.subs)
+		m.w.pay.mu.Unlock()
+		if after := m.sub(t); n != subs || after != before {
+			t.Fatalf("refused card step changed things: %d subs, %+v -> %+v", n-subs, before, after)
+		}
+		return
+	}
+	if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok", terms); err != nil {
+		t.Fatalf("add card: %v", err)
+	}
+	after := m.sub(t)
+	m.w.pay.mu.Lock()
+	sp := m.w.pay.subs[len(m.w.pay.subs)-1]
+	added := len(m.w.pay.subs) == subs+1
+	m.w.pay.mu.Unlock()
+	if !added || after.NoCard() {
+		t.Fatalf("no processor subscription behind the card: %+v", after)
+	}
+	keep := before.PeriodEnd.Sub(m.w.now()) >= app.MinCardTrialLeft
+	switch {
+	case keep && (after.Status != store.SubTrialing || !after.PeriodEnd.Equal(before.PeriodEnd) || !sp.end0.Equal(before.PeriodEnd) || after.UsedMicros != before.UsedMicros):
+		t.Fatalf("card inside the trial: %+v -> %+v (processor trial end %v)", before, after, sp.end0)
+	case !keep && (after.Status != store.SubActive || after.AllowanceMicros != m.w.app.Cfg.AllowanceMicros):
+		t.Fatalf("card at the trial's end: %+v -> %+v", before, after)
+	}
+}
+
+// Housekeeping is the renewal tick: it ends no-card trials past their end
+// (the scripted processor renews nothing itself).
+func (m *billingMachine) Housekeeping(t *rapid.T) {
+	if err := m.w.app.RunRenewals(m.w.ctx); err != nil {
+		t.Fatalf("renewals: %v", err)
+	}
+}
+
+// ForgedTrialEvent delivers an invoice or end event naming the no-card
+// trial's ref: no genuine processor sends one, and it changes nothing.
+func (m *billingMachine) ForgedTrialEvent(t *rapid.T) {
+	before := m.sub(t)
+	if !before.NoCard() {
+		t.Skip("plan has a card")
+	}
+	kind := rapid.SampledFrom([]billing.EventKind{billing.InvoicePaid, billing.InvoiceFailed, billing.SubscriptionEnded}).Draw(t, "kind")
+	ev := billing.Event{ID: fmt.Sprintf("evt_forged_%d", rapid.Int().Draw(t, "n")), Kind: kind, SubscriptionRef: before.SubscriptionRef,
+		AmountCents: 500, At: m.w.now(), PeriodStart: before.PeriodEnd, PeriodEnd: before.PeriodEnd.AddDate(0, 1, 0)}
+	if err := m.w.app.ApplyEvent(m.w.ctx, ev); err != nil {
+		t.Fatal(err)
+	}
+	if after := m.sub(t); after != before {
+		t.Fatalf("an event moved a no-card plan: %+v -> %+v", before, after)
 	}
 }
 
@@ -475,6 +573,25 @@ func (m *billingMachine) Check(t *rapid.T) {
 	ctx, cfg := m.w.ctx, m.w.app.Cfg
 	sub := m.sub(t)
 	atts := m.topups(t)
+	// Slice 36: nothing is ever charged without a customer, and a plan with
+	// no card has no top-up attempts or credit; a no-card trial past its
+	// end gives no access.
+	m.w.pay.mu.Lock()
+	for _, pi := range m.w.pay.intents {
+		if pi.customer == "" {
+			m.w.pay.mu.Unlock()
+			t.Fatalf("charge %s sent with no customer", pi.id)
+		}
+	}
+	m.w.pay.mu.Unlock()
+	if sub.NoCard() {
+		if len(atts) != 0 || sub.TopupMicros != 0 || sub.AllowanceMicros != cfg.TrialMicros || (sub.Status != store.SubTrialing && sub.Status != store.SubEnded) {
+			t.Fatalf("no-card plan %+v with %d top-up attempts", sub, len(atts))
+		}
+		if !m.w.now().Before(sub.PeriodEnd) && m.w.app.HasAccess(sub) {
+			t.Fatalf("no-card trial past its end (%v) still has access at %v", sub.PeriodEnd, m.w.now())
+		}
+	}
 
 	succeeded := map[string]bool{} // charge refs of succeeded attempts
 	refundDue := 0
@@ -606,7 +723,7 @@ func TestRapidBillingStateMachine(t *testing.T) {
 	var n atomic.Int64
 	var refunds, late atomic.Int64
 	rapid.Check(t, func(t *rapid.T) {
-		w := newBillingWorld(t, filepath.Join(dir, fmt.Sprintf("billing%d.db", n.Add(1))))
+		w := newBillingWorldWith(t, filepath.Join(dir, fmt.Sprintf("billing%d.db", n.Add(1))), rapid.Bool().Draw(t, "nocard"))
 		defer w.st.Close()
 		count := rapid.IntRange(2, 9).Draw(t, "tokens")
 		m := &billingMachine{w: w, seen: map[string]store.TopupStatus{}, endedRefs: map[string]bool{}}
@@ -688,7 +805,7 @@ func TestEndedPlanIsNotResurrectedByLateInvoices(t *testing.T) {
 		t.Fatalf("alerts: %v", w.alert.Titles())
 	}
 	// Only an explicit new plan opens again, under a new subscription.
-	if err := w.app.StartTrial(w.ctx, w.user, "tok_ok"); err != nil {
+	if err := w.app.StartTrial(w.ctx, w.user, "tok_ok", app.TermsImmediate); err != nil {
 		t.Fatal(err)
 	}
 	re, _ := w.us.Subscription(w.ctx)

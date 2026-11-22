@@ -52,6 +52,10 @@ CREATE TABLE subscriptions (
   past_due_since       INTEGER NOT NULL DEFAULT 0
 );
 
+-- topups and subscription_attempts (one row per charge attempt, claimed
+-- before the processor is called) are created on every open, so databases
+-- from before them gain them too: see store.migrateAdded.
+
 CREATE TABLE ledger (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

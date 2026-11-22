@@ -37,8 +37,12 @@ type Claude struct {
 const (
 	DefaultDraftModel = "claude-opus-5-5"
 	// OpenRouter slugs, checked against https://openrouter.ai/api/v1/models.
-	DefaultOpenRouterDraftModel   = "anthropic/claude-sonnet-5.5"
-	DefaultOpenRouterExplainModel = "anthropic/claude-sonnet-5.5"
+	// They are the Slice #29 bench winners: openai/gpt-6.2-sol drafts
+	// (strict-contract valid, 2.1-3.9 s to the first idea, about $0.01 a
+	// draft) and openai/gpt-6-luna explains (99.5 rubric, 915 ms p50).
+	// SCRY_DRAFT_MODEL and SCRY_EXPLAIN_MODEL override them.
+	DefaultOpenRouterDraftModel   = "openai/gpt-6.2-sol"
+	DefaultOpenRouterExplainModel = "openai/gpt-6-luna"
 )
 
 // NewClaude builds the adapter. Extra options let tests point it at a

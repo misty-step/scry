@@ -49,9 +49,13 @@ func TestStory_Newcomer_AuthPageHeadingsAndTitles(t *testing.T) {
 				check(body, title)
 			}
 			if mode == "local" {
-				_, body := b.post("/signup", "email", "copy@example.com", "password", "correct horse")
+				b.post("/signup", "email", "copy@example.com", "password", "correct horse")
+				if b.path != "/shelf" {
+					t.Fatalf("sign-up landed on %s, want /shelf", b.path)
+				}
+				body := b.mustGet("/signup/card")
 				check(body, "Add a card")
-				has(t, body, "7-day trial. You won't be charged until", "Cancel any time before then in Billing.")
+				has(t, body, "Nothing is charged today: your trial still ends on", "Cancel any time before then in Billing.")
 				status, body := b.post("/signup/card", "number", "invalid", "expiry", "12/30", "cvc", "123")
 				if status != http.StatusPaymentRequired {
 					t.Fatalf("card error status %d", status)

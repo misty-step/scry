@@ -171,6 +171,7 @@ type browser struct {
 	c     *http.Client
 	csrf  string
 	topup string // the top-up form token of the last Billing page it saw
+	terms string // the billing_terms of the last card step it saw
 	path  string // where the last request ended up
 }
 
@@ -181,6 +182,7 @@ func (w *world) browser() *browser {
 
 var csrfRE = regexp.MustCompile(`name="csrf" value="([^"]+)"`)
 var topupRE = regexp.MustCompile(`name="topup_token" value="([^"]+)"`)
+var termsRE = regexp.MustCompile(`name="billing_terms" value="([^"]*)"`)
 
 func (b *browser) do(req *http.Request) (int, string) {
 	b.t.Helper()
@@ -196,6 +198,9 @@ func (b *browser) do(req *http.Request) (int, string) {
 	}
 	if m := topupRE.FindStringSubmatch(body); m != nil {
 		b.topup = m[1]
+	}
+	if m := termsRE.FindStringSubmatch(body); m != nil {
+		b.terms = m[1]
 	}
 	b.path = resp.Request.URL.Path
 	// Entities are decoded so tests can look for the words a person reads.
@@ -214,6 +219,10 @@ func (b *browser) post(path string, kv ...string) (int, string) {
 	if path == "/billing/topup" {
 		// Like a person pressing the button on the Billing page last seen.
 		form.Set("topup_token", b.topup)
+	}
+	if path == "/signup/card" || path == "/billing/card" {
+		// The card step submits the terms the page it was loaded from stated.
+		form.Set("billing_terms", b.terms)
 	}
 	for i := 0; i+1 < len(kv); i += 2 {
 		form.Set(kv[i], kv[i+1])
@@ -235,13 +244,21 @@ func (b *browser) mustGet(path string) string {
 
 const goodCard = "4242 4242 4242 4242"
 
-// signUp creates an account and starts its trial with a working card.
-func (b *browser) signUp(email string) {
+// signUpNoCard creates an account, which starts its no-card trial and
+// lands on the starter shelf with no card step.
+func (b *browser) signUpNoCard(email string) {
 	b.t.Helper()
 	b.get("/signup")
-	if status, _ := b.post("/signup", "email", email, "password", "correct horse"); status != 200 || b.path != "/signup/card" {
+	if status, _ := b.post("/signup", "email", email, "password", "correct horse"); status != 200 || b.path != "/shelf" {
 		b.t.Fatalf("sign-up for %s: status %d at %s", email, status, b.path)
 	}
+}
+
+// signUp creates an account and adds a working card to its trial, so it
+// can top up and is charged when the trial ends.
+func (b *browser) signUp(email string) {
+	b.t.Helper()
+	b.signUpNoCard(email)
 	if status, body := b.post("/signup/card", "number", goodCard, "expiry", "12/30", "cvc", "123"); status != 200 || b.path != "/shelf" {
 		b.t.Fatalf("card step: status %d at %s\n%s", status, b.path, body)
 	}
