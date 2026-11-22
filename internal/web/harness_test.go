@@ -273,7 +273,10 @@ func (b *browser) addSet(slug string) {
 }
 
 var (
-	itemRE   = regexp.MustCompile(`name="item_id" value="(\d+)"`)
+	// The answer form's item: the card waiting for an answer. The review's
+	// Edit card form carries an item_id too, and must not be mistaken for it.
+	itemRE   = regexp.MustCompile(`(?s)data-answer-form.*?name="item_id" value="(\d+)"`)
+	reviewRE = regexp.MustCompile(`(?s)data-edit-form.*?name="item_id" value="(\d+)"`)
 	promptRE = regexp.MustCompile(`(?s)<h1 class="prompt[^"]*"[^>]*>(.*?)</h1>`)
 	countRE  = regexp.MustCompile(`<span class="margin-count">(\d+) / (\d+)</span>`)
 )
@@ -317,6 +320,26 @@ func (b *browser) answer(item store.Item, text string, kv ...string) string {
 }
 
 // next presses Enter on a judgment.
+// reviewed reads, off a post-answer review page, the card under review.
+func (b *browser) reviewed(body string) (int64, bool) {
+	m := reviewRE.FindStringSubmatch(body)
+	if m == nil || !strings.Contains(body, "data-review") {
+		return 0, false
+	}
+	id, _ := strconv.ParseInt(m[1], 10, 64)
+	return id, true
+}
+
+// answerNext answers the card and moves on from its review, returning the
+// page after "Next card".
+func (b *browser) answerNext(item store.Item, text string) string {
+	b.t.Helper()
+	if review := b.answer(item, text); !strings.Contains(review, "data-review") {
+		b.t.Fatalf("answering %q did not stop on the post-answer review", item.Prompt)
+	}
+	return b.next()
+}
+
 func (b *browser) next() string {
 	b.t.Helper()
 	_, body := b.post("/study/next")

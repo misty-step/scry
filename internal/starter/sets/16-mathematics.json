@@ -2,6 +2,7 @@
   "slug": "mathematics",
   "title": "Core ideas in mathematics",
   "description": "The ideas the rest of mathematics rests on, from proof and primes to calculus.",
+  "icon": "sigma",
   "ideas": [
     {
       "title": "Proof",

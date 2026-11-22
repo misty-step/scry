@@ -2,6 +2,7 @@
   "slug": "chemistry",
   "title": "Core ideas in chemistry",
   "description": "How atoms, bonds and reactions work, and how to read the periodic table.",
+  "icon": "beaker",
   "ideas": [
     {
       "title": "Atoms and elements",

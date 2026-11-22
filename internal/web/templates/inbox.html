@@ -3,6 +3,7 @@
   <header class="list-head">
     <h1 class="display">Inbox</h1>
     <p class="meta list-count">{{plural (len .Suggestions) "suggestion" "suggestions"}}</p>
+    <p class="purpose list-purpose">Cards suggested by external scripts or tools wait here until you approve them.</p>
     {{if .Suggestions}}
     <form method="post" action="/inbox/approve-all" class="list-action">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -18,7 +19,7 @@
   <p class="hints micro">j k move · a approve · d dismiss</p>
   {{else}}
   <p class="empty">Nothing waiting.</p>
-  <p class="meta">Suggestions from your agents arrive here. Give an agent a token in <a class="link quiet" href="/settings#agents">Settings</a>.</p>
+  <p class="meta">To send suggestions from a script or tool, create an API token in <a class="link quiet" href="/settings#api-tokens">Settings</a>.</p>
   {{end}}
 </section>
 {{end}}

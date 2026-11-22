@@ -20,8 +20,9 @@ import (
 // with a typed error.
 func TestSessionTransitionTable(t *testing.T) {
 	legal := map[sessionStep]SessionPhase{
+		// Every scored answer is held for its post-answer review: there is
+		// no (Asking, AnswerPassed) pair, so a right answer cannot skip it.
 		{PhaseAsking, EventAnswerHeld}:            PhasePendingReview,
-		{PhaseAsking, EventAnswerPassed}:          PhaseAsking,
 		{PhaseRetryingExact, EventAnswerPractice}: PhasePendingReview,
 		{PhasePendingReview, EventAdvance}:        PhaseAsking,
 		{PhasePendingReview, EventRetry}:          PhaseRetryingExact,
@@ -179,14 +180,13 @@ func (m *sessionModel) AnswerScored(t *rapid.T) {
 		t.Skip("no session yet")
 	}
 	_, answered := m.answered[item]
-	legal := m.open != 0 && m.phase() == PhaseAsking && m.entries[item] && !answered && !m.deleted[item] && m.current() == item
+	// A scored answer is legal only when it is held for its review.
+	legal := hold && m.open != 0 && m.phase() == PhaseAsking && m.entries[item] && !answered && !m.deleted[item] && m.current() == item
 	id, err := m.record(t, session, item, false, hold)
 	m.expect(t, fmt.Sprintf("scored answer to %d (hold %v) in %s", item, hold, m.phase()), err, legal)
 	if legal {
 		m.answered[item], m.reps[item] = id, m.reps[item]+1
-		if hold {
-			m.pending, m.pendItem, m.pendWord = id, item, m.exact[item]
-		}
+		m.pending, m.pendItem, m.pendWord = id, item, m.exact[item]
 	}
 }
 

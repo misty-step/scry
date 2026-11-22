@@ -2,9 +2,10 @@
   "slug": "mental-models",
   "title": "Mental models",
   "description": "Thinking tools you can name, explain and reach for when a decision gets hard.",
+  "icon": "layers",
   "ideas": [
     {
-      "title": "First principles and inversion",
+      "title": "Reasoning from the ground up",
       "summary": "Break a problem down to what must be true, or turn it around and ask what would guarantee failure.",
       "links": ["The razors", "Second-order thinking", "philosophy:Knowledge and doubt"],
       "items": [
@@ -17,7 +18,7 @@
     {
       "title": "The razors",
       "summary": "Razors are rules of thumb that shave away unlikely explanations: prefer the simpler one, and the less sinister.",
-      "links": ["Map and territory", "First principles and inversion"],
+      "links": ["Map and territory", "Reasoning from the ground up"],
       "items": [
         {"q": "Which razor says that, among explanations that fit the facts, you should prefer the one with the fewest assumptions?", "a": "Occam's razor"},
         {"q": "Which razor says never to attribute to malice what is adequately explained by carelessness or stupidity?", "a": "Hanlon's razor"},
@@ -40,7 +41,7 @@
     {
       "title": "Second-order thinking",
       "summary": "Ask \"and then what?\" because the consequences of consequences often matter more than the first effect.",
-      "links": ["First principles and inversion", "economics:When markets fail"],
+      "links": ["Reasoning from the ground up", "economics:When markets fail"],
       "items": [
         {"q": "What is second-order thinking?", "a": "Considering the consequences of the consequences, not just the immediate effect"},
         {"q": "What does Chesterton's fence advise before you remove a rule or structure whose purpose you cannot see?", "a": "First find out why it was put there"},

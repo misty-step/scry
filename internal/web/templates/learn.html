@@ -1,5 +1,9 @@
 {{define "main"}}
 <section class="learn">
+  <header class="page-head">
+    <h1 class="title page-title">{{icon "create"}}Create</h1>
+    <p class="purpose">Generate cards with AI</p>
+  </header>
   <form method="post" action="/learn" class="ask">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="sr" for="q">What do you want to know?</label>

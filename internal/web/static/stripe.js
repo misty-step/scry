@@ -26,8 +26,14 @@
     report(code);
   }
 
+  // The processing state (app.js) starts on submit; every path that keeps
+  // the learner on this page gives the form back as it was.
+  function giveBack() {
+    if (window.scryBusy) window.scryBusy.stop(form);
+  }
+
   form.addEventListener("submit", function (e) {
-    if (broken) { e.preventDefault(); if (error) error.textContent = unavailable; }
+    if (broken) { e.preventDefault(); if (error) error.textContent = unavailable; giveBack(); }
   });
 
   if (!window.Stripe) { fail("stripe_script_missing"); return; }
@@ -55,22 +61,56 @@
     });
   } catch (err) { /* older Stripe.js: the ready timer still covers it */ }
   card.on("change", function (e) { if (!broken) error.textContent = e.error ? e.error.message : ""; });
+  // Each submission is one numbered attempt on the form
+  // (form.dataset.submitAttempt, kept by app.js's processing state: a new
+  // submit and every give-back, the 30 second timeout included, move it
+  // on). begin starts this script's attempt and returns its number.
+  function current() {
+    return Number(form.dataset.submitAttempt) || 0;
+  }
+  function begin() {
+    if (window.scryBusy) window.scryBusy.start(form);
+    else form.dataset.submitAttempt = String(current() + 1);
+    return current();
+  }
+
+  // waiting is the attempt this script is carrying: its card is with the
+  // processor, or its form is on the way to Scry.
+  var waiting = 0;
   form.addEventListener("submit", function (e) {
-    if (broken || hidden.value) return;
+    if (broken) return;
+    var again = e.defaultPrevented || (waiting !== 0 && waiting === current());
     e.preventDefault();
+    // A second submit while this attempt is still under way changes
+    // nothing: one attempt, one request to the processor, one post.
+    if (again) return;
     var button = form.querySelector("button");
     button.disabled = true;
+    // A new attempt confirms the card that is in the field now. Whatever an
+    // earlier attempt left behind (it was given back after the timeout) is
+    // dropped, so a retry can never post the card it replaced.
+    hidden.value = "";
+    var attempt = waiting = begin();
     stripe.createPaymentMethod({ type: "card", card: card }).then(function (res) {
+      // Superseded (the form was given back after the timeout, or a newer
+      // submit started): this answer is for a card the learner may have
+      // replaced. It is never submitted and changes nothing on the page.
+      if (current() !== attempt) return;
       if (res.error) {
+        waiting = 0;
         error.textContent = res.error.message; // the reason the processor gives
         button.disabled = false;
+        giveBack();
         return;
       }
       hidden.value = res.paymentMethod.id;
       form.submit();
     }, function () {
+      if (current() !== attempt) return; // superseded: see above
+      waiting = 0;
       error.textContent = "Couldn't reach the card processor. Check your connection and try again.";
       button.disabled = false;
+      giveBack();
       report("stripe_payment_method_failed");
     });
   });

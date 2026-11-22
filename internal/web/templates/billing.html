@@ -1,6 +1,7 @@
 {{define "main"}}
 <section class="ledger">
   <h1 class="display">Billing</h1>
+  <p class="purpose">Your plan, what you have used and what you have been charged.</p>
   {{template "flash" .}}
   <p class="ledger-plan">{{.B.Plan}}</p>
 
@@ -20,12 +21,13 @@
     <svg class="meter" role="img" aria-label="{{.B.Percent}}% of this month's allowance used" width="100%" height="2" preserveAspectRatio="none"><rect class="meter-track" width="100%" height="2"></rect><rect class="meter-fill" width="{{.B.Percent}}%" height="2"></rect></svg>
     {{if .B.Topup}}<p class="meta">{{.B.Topup}}{{if .B.NoCard}} <a class="link" href="/billing/card">Add a card</a>{{end}}</p>{{end}}
     {{if .B.CanTopUp}}
-    <form method="post" action="/billing/topup" class="topup">
+    <form method="post" action="/billing/topup" class="topup" data-busy-form data-busy-text="Updating billing…">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="topup_token" value="{{.TopupToken}}">
       {{if .TopupCapped}}<p>Monthly $20 top-up limit reached. Resets {{.TopupReset}}.</p>{{end}}
       <button {{if .TopupCapped}}disabled{{end}} class="btn{{if and (ne .B.State "card-failed") (ne .B.State "ended")}} btn-accent{{end}}">Top up · {{money .TopupPrice}}</button>
       {{if .TopupError}}<p class="field-error" role="alert">{{.TopupError}} <a class="link" href="/billing/card">Update card</a></p>{{end}}
+      {{template "busy" "Updating billing…"}}
     </form>
     {{end}}
   </section>

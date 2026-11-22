@@ -2,6 +2,7 @@
   "slug": "physics",
   "title": "Core ideas in physics",
   "description": "The laws behind motion, energy, light and matter, with the numbers worth knowing.",
+  "icon": "atom",
   "ideas": [
     {
       "title": "Newton's laws of motion",

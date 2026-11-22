@@ -2,6 +2,7 @@
   "slug": "philosophy",
   "title": "Core ideas in philosophy",
   "description": "The big questions of knowledge, ethics, mind and justice, and who said what about them.",
+  "icon": "column",
   "ideas": [
     {
       "title": "Knowledge and doubt",

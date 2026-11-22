@@ -1271,3 +1271,96 @@ Owner-approved spec change (2026-11-21). Choices where the brief left room:
 - **Abuse.** One trial per account. A person can still open many local
   accounts, each capped at $0.50 of AI spend. With Clerk, each needs a verified
   email.
+
+## Slice 41: dogfooding overhaul (post-answer review, spoilers, shelf, Create, icons)
+
+Choices made where the brief, PRODUCT.md or DESIGN.md were silent or pulled two ways:
+
+- **Every answer is held, in the state machine too.** A right answer used to
+  pass straight on (`EventAnswerPassed`). The pair `(Asking, AnswerPassed)` is
+  gone from the session table, so the store refuses an unheld scored answer
+  rather than merely not being asked for one; the event stays defined so the
+  refusal has a name and a test. `specs/study_session.qnt` models the same:
+  CommitAnswer always holds and never ends the session; only Next does.
+- **"Next card" reads "Finish session" on the last card.** Calling the last
+  step "Next card" would promise a card that does not exist.
+- **Ask Why? on correct answers** explains why the answer holds; the explainer
+  prompt says so. Exact texts still have none: the word diff is the explanation.
+- **Telemetry is FSRS's own fields.** Scry schedules with FSRS, which has
+  stability and difficulty, not an "ease factor", so the review shows those
+  (stability in days, difficulty out of 10) with the interval (last review to
+  next due) and the counts from the reviews table. Practice attempts ("Again")
+  are counted apart and say that the schedule did not move.
+- **Inline edit changes text only.** `POST /study/edit` keeps the card's
+  exact flag, schedule and history; the review on screen keeps the grade it was
+  given against the old text (the graded snapshot on the review row), and the
+  edit applies from the next review. A refused edit answers the page's script
+  with 200 and `saved: false` (a 4xx would put an error in the console for an
+  ordinary empty field); the plain form post still answers 422.
+- **What counts as a spoiler.** The Study rail never shows an idea's own title
+  while its card waits. It shows the top-level topic and "Set N", and each
+  candidate label ("topic · Set N", topic, "Set N", "Current set", nothing) is
+  checked whole-word against the answers of the card and its siblings; the
+  first clean one wins. So "Set 3" gives way beside the answer "3 teaspoons".
+  Matching is on whole words: "alphabet" does not show "Alpha". The "coming up"
+  list also holds back a cue that quotes the owed answer (the next line of an
+  exact text quotes the line before it), which the brief did not list but is
+  the same leak.
+- **Starter titles.** Besides the NATO sections ("Letters A–I", "J–R", "S–Z")
+  two more named a whole answer and were renamed: "First principles and
+  inversion" (answer "Inversion") and "Anchoring and framing" (answer
+  "Anchoring"). `starter.Validate` now refuses a section title that contains a
+  whole short answer. Topical overlap with long answers ("Compound interest" /
+  "Interest earned on...") is not a title giving an answer away and is left;
+  the rail guard covers it on the Study screen regardless. The set itself is
+  now titled "NATO phonetic alphabet". Libraries that already hold these sets
+  are renamed on open (by origin and old title only, idempotent).
+- **Shelf order** is the file order (NN- prefix). The first four are NATO,
+  Mental models, Kitchen numbers, World geography; the Creeds and Passages
+  worth keeping are last. No set was removed.
+- **API tokens.** New tokens always suggest through the inbox (`can_add` is
+  ignored when posted). `/api/v1/items` still works for tokens created earlier
+  with it. PRODUCT.md's story was reworded to match.
+- **"Confirming your card with Stripe…"** is shown where Stripe is configured;
+  with the test-mode processor it reads "Confirming your card…", which is true.
+- **Icons vs "no icon-card grids".** DESIGN.md's Never list forbade icon-card
+  grids. Tiles stay typographic hairline tiles; the icon is a small glyph on
+  the title line. The rule now forbids filled or colored icon tiles and emoji.
+- **The spinner loops.** DESIGN.md said nothing loops; the processing spinner
+  and progress line are now the two named exceptions, still under reduced motion.
+- **The browser smoke moved from puppeteer to Playwright**, which the repo
+  already depends on for verify-live, so it runs with `npm --prefix scripts ci`.
+- **Pass 2: what counts as a title giving a line away (exact texts).** The
+  brief said "per the spoiler check". The rail's check (any shared word) would
+  strip the title from shipped texts ("Preamble to the United States
+  Constitution" shares words with its first line; "Ozymandias" with line 10),
+  leaving "how does it begin?" with no text named, which cannot be answered.
+  So the exact-text label and prompt use the stricter-to-trigger rule: the
+  title is replaced by "Exact text" only when it holds the whole waiting line,
+  word for word (case, punctuation and a leading article aside). The rail
+  keeps its own any-shared-word rule. `TestSlice41_Spoiler_EveryStarterExactTextKeepsItsTitle`
+  pins that no starter text loses its title.
+- **Pass 2: the neutral cue.** A text named for its line is asked for as
+  "Exact text: how does it begin?" / "Exact text: what follows “…”" (the stored
+  cue with the title swapped), and labelled "Exact text · line 1". A
+  hand-written prompt on such a text that still quotes the line falls back to
+  "Line N of this exact text". The stored prompt is not changed; the review shows it.
+- **Pass 2: the cue of a repeated line is left alone.** The cue for a line is
+  the line before it. Where a text repeats a line, that cue is the same words
+  as the answer; it is still the text's own cue, so the waiting card shows it.
+- **Pass 2: short answers.** An answer of any length now holds back a cue that
+  quotes it as whole words, so a one-word answer such as "A" can hold back an
+  unrelated cue that happens to contain that word until it is answered. The
+  list then shows the cues after it; nothing is lost.
+- **Pass 2: the scrollback follows the same rule** as "coming up" while a card
+  waits (a row whose cue quotes the answer owed is held back or shown under
+  the neutral title). This matters after "Again", when the line's own row is
+  above the card.
+- **Pass 2: "Coming up" is Meta type in ink-muted** (13 px mono, 5.0:1 light,
+  7.2:1 dark). ink-ghost now colors hairlines and the dot grid only.
+- **Pass 2: a retry always confirms the card in the field.** Besides ignoring
+  a late answer for a superseded attempt, stripe.js no longer re-posts a
+  payment method left in the form by an earlier attempt whose post brought no
+  page back: after the form is given back, the next submit confirms the card
+  again. Otherwise a learner who changed the card after the timeout would post
+  the earlier one.

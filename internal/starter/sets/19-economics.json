@@ -2,6 +2,7 @@
   "slug": "economics",
   "title": "Core ideas in economics",
   "description": "The handful of ideas economists use to explain prices, trade, incentives and growth.",
+  "icon": "trend",
   "ideas": [
     {
       "title": "Scarcity and opportunity cost",

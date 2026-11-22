@@ -2,6 +2,7 @@
   "slug": "art-history",
   "title": "Core ideas in art history",
   "description": "The movements, techniques and terms that help you see what a painting is doing.",
+  "icon": "image",
   "ideas": [
     {
       "title": "Perspective and the Renaissance",

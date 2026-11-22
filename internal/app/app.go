@@ -248,7 +248,7 @@ func (a *App) SignOut(ctx context.Context, token string) error {
 func (a *App) CreateAgentToken(ctx context.Context, userID int64, name string, canAdd bool) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", fieldErr("name", "Give the agent a name, such as “reading agent”.")
+		return "", fieldErr("name", "Give the token a name, such as “reading script”.")
 	}
 	if len(name) > 40 {
 		return "", fieldErr("name", "Keep the name under 40 characters.")

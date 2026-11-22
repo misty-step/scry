@@ -580,7 +580,7 @@ function run(stripe) {
   const reports = [], handlers = {}, submits = [], timers = [];
   const error = {textContent: ""}, hidden = {value: ""};
   const mount = {dataset: {key: "pk_test_x"}, mounted: false};
-  const form = {addEventListener(ev, fn) { submits.push(fn); }, querySelector() { return {disabled: false}; }, submit() {}};
+  const form = {dataset: {}, addEventListener(ev, fn) { submits.push(fn); }, querySelector() { return {disabled: false}; }, submit() {}};
   const document = {
     getElementById(id) { return id === "card-element" ? mount : id === "card-error" ? error : id === "payment_method" ? hidden : null; },
     querySelector() { return form; }
@@ -615,7 +615,7 @@ assert.deepEqual(r.reports, [["integration_error", "stripe_load_error"]]);
   const reports = [], handlers = {}, submits = [];
   const error = {textContent: ""}, hidden = {value: ""}, button = {disabled: false};
   const mount = {dataset: {key: "pk_test_x"}};
-  const form = {addEventListener(ev, fn) { submits.push(fn); }, querySelector() { return button; }, submit() {}};
+  const form = {dataset: {}, addEventListener(ev, fn) { submits.push(fn); }, querySelector() { return button; }, submit() {}};
   const document = {
     getElementById(id) { return id === "card-element" ? mount : id === "card-error" ? error : id === "payment_method" ? hidden : null; },
     querySelector() { return form; }

@@ -14,10 +14,13 @@
 // when the account already has a card-backed plan and /signup/card redirects
 // to /study or /billing; on a no-card trial both card pages. When Stripe
 // Elements is on a card page it waits for the js.stripe.com iframe and checks
-// it is visible and sized. It also checks /billing and /study (which may
-// show /shelf for an empty library) signed in. --local-signup checks that a
-// new sign-up lands straight in Scry (/shelf or /study, no card step) with
-// the no-card trial's status line in the chrome. Prints one JSON summary on
+// it is visible and sized. It also checks /billing and /study signed in
+// (/study answers 200 itself, even for an empty library). --local-signup
+// checks that a new sign-up lands straight in Scry (/shelf or /study, no
+// card step) with the no-card trial's status line in the chrome, that the
+// navigation reads Study, Library, Inbox, Create, Billing, Settings with an
+// icon each, and that Study with the new, empty library is its own screen
+// with its two ways forward (never a silent redirect). Prints one JSON summary on
 // stdout; exits 0 only when every check passes.
 //
 // Flags (env in brackets):
@@ -203,6 +206,7 @@ async function main() {
         if (signedIn) {
           const cards = await signedInCard(ctx, base, opt, mode, modes.length > 1 && mode !== modes[0]);
           await signedInPages(ctx, base, opt, mode);
+          if (mode === "local-signup") await emptyStudy(ctx, base, opt, mode);
           if (opt.screenshotDir) {
             const landed = (summary.session || {}).landedOn;
             const shots = [];
@@ -299,11 +303,39 @@ async function signedInCard(ctx, base, opt, mode, altShot) {
 }
 
 // signedInPages checks the signed-in pages a learner lives on: /billing,
-// and /study (an empty library shows the starter shelf instead), each with
-// zero CSP violations, console errors, page errors and failed requests.
+// /study (which stays on /study whatever is in the library), /shelf, /learn
+// (Create), /inbox and /settings, each with zero CSP violations, console
+// errors, page errors and failed requests.
 async function signedInPages(ctx, base, opt, mode) {
-  await visit(ctx, base, "/billing", opt, { expectStatus: 200, mode });
-  await visit(ctx, base, "/study", opt, { expectStatus: 200, mode, allowFinal: ["/shelf"] });
+  for (const p of ["/billing", "/study", "/shelf", "/learn", "/inbox", "/settings"]) {
+    await visit(ctx, base, p, opt, { expectStatus: 200, mode });
+  }
+}
+
+// emptyStudy checks what a brand-new learner sees: the navigation with its
+// six labelled, icon-carrying destinations (Create, not Learn), and Study
+// with an empty library as its own screen with both ways forward.
+async function emptyStudy(ctx, base, opt, mode) {
+  const page = await ctx.newPage();
+  try {
+    const res = await page.goto(base + "/study", { waitUntil: "load" });
+    const seen = await page.evaluate(() => ({
+      path: location.pathname,
+      empty: !!document.querySelector("[data-study-empty]"),
+      head: (document.querySelector("[data-study-empty] h1") || {}).textContent || "",
+      ctas: [...document.querySelectorAll("[data-study-empty] .actions a")].map(a => a.getAttribute("href")),
+      nav: [...document.querySelectorAll(".nav a")].map(a => ({ label: (a.querySelector("span") || {}).textContent || "", icon: !!a.querySelector("svg[aria-hidden=true]") })),
+    }));
+    check(mode + ": GET /study with an empty library answers 200 on /study (no redirect)", res.status() === 200 && seen.path === "/study", { status: res.status(), path: seen.path });
+    check(mode + ": empty Study says so and offers a starter set and Create", seen.empty && seen.head.trim() === "No cards to study yet." &&
+      seen.ctas.join(",") === "/shelf,/learn", { head: seen.head.trim(), ctas: seen.ctas });
+    check(mode + ": navigation reads Study, Library, Inbox, Create, Billing, Settings, each with an icon",
+      seen.nav.map(n => n.label).join(",") === "Study,Library,Inbox,Create,Billing,Settings" && seen.nav.every(n => n.icon), seen.nav);
+  } catch (err) {
+    check(mode + ": empty Study", false, String(err.message || err).split("\n")[0]);
+  } finally {
+    await page.close();
+  }
 }
 
 // screens captures full-page PNGs at a desktop and a phone viewport, in

@@ -2,15 +2,65 @@
         <form method="post" action="/study/explain" class="explain" data-explain-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           <input type="hidden" name="review_id" value="{{.Judged.ReviewID}}">
-          {{if not .Judged.Explanation}}<button class="btn explain-btn" data-explain aria-controls="explanation">Why?<span class="sr"> Explain what differed</span></button>{{end}}
+          {{if not .Judged.Explanation}}<button class="btn explain-btn" data-explain aria-controls="explanation">{{icon "help"}}<span data-explain-label>Ask Why?</span><span class="sr"> Explain this verdict</span></button>{{end}}
           <p class="explanation" id="explanation" data-explanation aria-live="polite"{{if not .Judged.Explanation}} hidden{{end}}>{{.Judged.Explanation}}</p>
           <p class="meta explain-note" data-explain-note{{if not .ExplainFallback}} hidden{{end}}>A fuller explanation isn't available right now.</p>
         </form>
 {{end}}{{end}}
+
+{{define "verdict"}}
+        <p class="verdict"><span class="verdict-badge verdict-{{.Judged.Verdict}}" data-verdict="{{.Judged.Verdict}}">{{icon .Judged.Icon}}<span data-verdict-label>{{.Judged.Badge}}</span></span> <span class="why">{{.Judged.Why}}</span></p>
+{{end}}
+
+{{define "review"}}
+        {{template "explain" .}}
+        {{with .Telemetry}}
+        <dl class="telemetry" data-telemetry aria-label="This card's schedule">
+          <div class="fact fact-next"><dt>{{icon "calendar"}}Next review</dt><dd data-next-review><time datetime="{{.NextISO}}">{{.NextDate}}</time> · {{.NextRel}}</dd></div>
+          {{if .Interval}}<div class="fact"><dt>Interval</dt><dd data-interval>{{.Interval}}</dd></div>{{end}}
+          {{if .Stability}}<div class="fact"><dt>Stability</dt><dd data-stability>{{.Stability}}</dd></div>
+          <div class="fact"><dt>Difficulty</dt><dd data-difficulty>{{.Difficulty}}</dd></div>{{end}}
+          <div class="fact fact-reviews"><dt>Reviews</dt><dd data-reviews data-review-total="{{.Total}}">{{.Reviews}}</dd></div>
+        </dl>
+        {{end}}
+        {{if .Judged.Practice}}<p class="meta practice-note">Practice attempt: the schedule did not move.</p>{{end}}
+        <div class="review-foot">
+        <details class="edit-card" data-edit{{if .EditOpen}} open{{end}}>
+          <summary class="btn edit-toggle" data-edit-toggle>{{icon "pencil"}}Edit card</summary>
+          <form method="post" action="/study/edit" class="form edit-form" data-edit-form>
+            <input type="hidden" name="csrf" value="{{.CSRF}}">
+            <input type="hidden" name="item_id" value="{{.Item.ID}}">
+            <div class="field">
+              <label class="label" for="edit-prompt">Question</label>
+              <textarea class="input" id="edit-prompt" name="prompt" rows="2" maxlength="1000" required>{{.EditPrompt}}</textarea>
+            </div>
+            <div class="field">
+              <label class="label" for="edit-answer">Correct answer</label>
+              <textarea class="input" id="edit-answer" name="answer" rows="2" maxlength="2000" required>{{.EditAnswer}}</textarea>
+            </div>
+            <p class="field-error" role="alert" data-edit-error{{if not .EditError}} hidden{{end}}>{{.EditError}}</p>
+            <div class="edit-actions">
+              <button class="btn" data-edit-save>Save card</button>
+              <span class="meta edit-status" role="status" data-edit-status{{if not .Saved}} hidden{{end}}>{{icon "check"}}Saved</span>
+            </div>
+            <p class="meta">Edits apply from the next review. This grade and its schedule stay as they are.</p>
+          </form>
+        </details>
+        <form method="post" action="/study/next" class="judged-actions" data-next-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          {{if eq .Judged.Kind "exact"}}<button class="link" name="again" value="1" data-again>Again</button>{{end}}
+          <button class="btn btn-accent" autofocus data-next>{{if .Last}}Finish session{{else}}Next card{{end}}{{icon "arrow"}}</button>
+        </form>
+        </div>
+        <p class="hints micro">{{if eq .Judged.Kind "exact"}}a again · {{end}}enter or space for {{if .Last}}finish{{else}}next card{{end}}</p>
+{{end}}
+
 {{define "main"}}
 <section class="session" data-session>
   <aside class="session-margin meta" aria-label="Where you are">
-    {{if .Item}}<span class="margin-idea">{{.Item.IdeaTitle}}</span>
+    <span class="margin-mode">{{icon "cards"}}Study</span>
+    <span class="margin-purpose">{{.Purpose}}</span>
+    {{if .Item}}<span class="margin-idea" data-study-header>{{.Header}}</span>
     <span class="margin-count">{{.Position}} / {{.Total}}</span>{{end}}
   </aside>
 
@@ -21,55 +71,41 @@
       <li class="answered">
         <span class="answered-q">{{.Prompt}}</span>
         <span class="tag tag-{{.Verdict}}">{{.Verdict.Label}}</span>
-        {{if .Why}}<p class="answered-why">{{.Why}}</p>{{end}}
       </li>
       {{end}}
     </ol>
     {{end}}
 
     {{if .Judged}}
-    <div class="current judged judged-{{.Judged.Kind}}" data-judged>
+    <div class="current judged judged-{{.Judged.Kind}}" data-judged data-review data-kind="{{.Judged.Kind}}">
       {{if eq .Judged.Kind "exact"}}
         <p class="meta exact-label">{{.ExactLabel}}</p>
-        <h1 class="prompt prompt-receded">{{.Item.Prompt}}</h1>
-        <p class="exact-line display">{{range .Judged.Ops}}{{if eq .Kind "same"}}<span class="x-same">{{.Word}}</span> {{else if eq .Kind "missing"}}<ins class="x-missing"><span class="sr">missing: </span>{{.Word}}</ins> {{else if eq .Kind "wrong"}}<del class="x-wrong"><span class="sr">you wrote: </span>{{.Word}}</del> <span class="x-fix"><span class="sr">the text has: </span>{{.Fix}}</span> {{else}}<del class="x-wrong"><span class="sr">not in the text: </span>{{.Word}}</del> {{end}}{{end}}</p>
-        <p class="verdict"><span class="tag tag-{{.Judged.Verdict}}">{{.Judged.Verdict.Label}}</span> <span class="why">{{.Judged.Why}}</span></p>
-        <form method="post" action="/study/next" class="judged-actions" data-next-form>
-          <input type="hidden" name="csrf" value="{{.CSRF}}">
-          <button class="link" name="again" value="1" data-again>Again</button>
-          <button class="btn btn-accent" autofocus data-next>Next</button>
-        </form>
-        <p class="hints micro">a again · enter for next</p>
+        <h1 class="prompt prompt-receded" data-prompt>{{.Item.Prompt}}</h1>
+        <p class="exact-line display" data-submitted>{{range .Judged.Ops}}{{if eq .Kind "same"}}<span class="x-same">{{.Word}}</span> {{else if eq .Kind "missing"}}<ins class="x-missing"><span class="sr">missing: </span>{{.Word}}</ins> {{else if eq .Kind "wrong"}}<del class="x-wrong"><span class="sr">you wrote: </span>{{.Word}}</del> <span class="x-fix"><span class="sr">the text has: </span>{{.Fix}}</span> {{else}}<del class="x-wrong"><span class="sr">not in the text: </span>{{.Word}}</del> {{end}}{{end}}</p>
+        <p class="expected"><span class="meta">The text</span> <span data-canonical>{{.Judged.Expected}}</span></p>
+        {{template "verdict" .}}
       {{else if eq .Judged.Kind "missed"}}
-        <h1 class="prompt prompt-receded">{{.Item.Prompt}}</h1>
+        <h1 class="prompt prompt-receded" data-prompt>{{.Item.Prompt}}</h1>
         <div class="judgment-pair">
-          {{if .Judged.Answer}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text">{{.Judged.Answer}}</span></span></p>{{end}}
-          <p class="judgment judgment-right"><span class="sr">The answer: </span>{{.Judged.Expected}}</p>
+          {{if .Judged.Answer}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text" data-submitted>{{.Judged.Answer}}</span></span></p>{{end}}
+          <p class="judgment judgment-right"><span class="sr">The correct answer: </span><span data-canonical>{{.Judged.Expected}}</span></p>
         </div>
-        <p class="verdict"><span class="tag tag-missed">incorrect</span> <span class="why">{{.Judged.Why}}</span></p>
-        {{template "explain" .}}
-        <form method="post" action="/study/next" class="judged-actions" data-next-form>
-          <input type="hidden" name="csrf" value="{{.CSRF}}">
-          <button class="btn btn-accent" autofocus data-next>Next</button>
-        </form>
-        <p class="hints micro">enter for next</p>
+        {{if not .Judged.Answer}}<p class="meta" data-submitted>No answer given.</p>{{end}}
+        {{template "verdict" .}}
       {{else}}
-        <h1 class="prompt display">{{.Item.Prompt}}</h1>
-        <p class="answer-given display"><span class="sr">Your answer: </span>{{.Judged.Answer}}</p>
-        <p class="verdict"><span class="tag tag-close">almost correct</span> <span class="why">{{.Judged.Why}}</span></p>
-        <p class="expected"><span class="meta">answer</span> {{.Judged.Expected}}</p>
-        {{template "explain" .}}
-        <form method="post" action="/study/next" class="judged-actions" data-next-form>
-          <input type="hidden" name="csrf" value="{{.CSRF}}">
-          <button class="btn btn-accent" autofocus data-next>Next</button>
-        </form>
-        <p class="hints micro">enter for next</p>
+        <h1 class="prompt prompt-receded" data-prompt>{{.Item.Prompt}}</h1>
+        <dl class="compare">
+          <div class="compare-cell"><dt class="meta">Your answer</dt><dd class="compare-answer" data-submitted>{{.Judged.Answer}}</dd></div>
+          <div class="compare-cell"><dt class="meta">Correct answer</dt><dd class="compare-answer" data-canonical>{{.Judged.Expected}}</dd></div>
+        </dl>
+        {{template "verdict" .}}
       {{end}}
+      {{template "review" .}}
     </div>
     {{else if .Item}}
-    <div class="current asking">
-      {{if .ExactLabel}}<p class="meta exact-label">{{.ExactLabel}}{{if .Retry}} · again{{end}}</p>{{end}}
-      <h1 class="prompt display" id="prompt">{{.Item.Prompt}}</h1>
+    <div class="current asking" data-asking>
+      {{if .ExactLabel}}<p class="meta exact-label">{{.ExactLabel}}</p>{{end}}
+      <h1 class="prompt display" id="prompt">{{.Prompt}}</h1>
       <form method="post" action="/study/answer" class="answer" data-answer-form autocomplete="off">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <input type="hidden" name="item_id" value="{{.Item.ID}}">
@@ -82,7 +118,7 @@
         <p class="status meta" id="status" role="status" data-status>{{if .Message}}{{.Message}} {{if .MessageLink}}<a class="link" href="{{if .MessageHref}}{{.MessageHref}}{{else}}/billing{{end}}">{{.MessageLink}}</a>{{end}}{{end}}</p>
         <div class="answer-actions">
           <button type="button" class="mic" data-mic aria-label="Speak your answer" aria-pressed="false">
-            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
           </button>
           <button class="btn btn-accent" data-check>Check</button>
         </div>

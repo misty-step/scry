@@ -2,6 +2,7 @@
   "slug": "computer-science",
   "title": "Core ideas in computer science",
   "description": "How computers store information, run algorithms, and where their limits lie.",
+  "icon": "chip",
   "ideas": [
     {
       "title": "Bits and binary",

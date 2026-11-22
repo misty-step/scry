@@ -310,7 +310,7 @@ func (s *Server) learn(w http.ResponseWriter, r *http.Request, c *rc) error {
 		}
 	}
 
-	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Learn something new", "Nav": "learn", "Q": r.URL.Query().Get("q"), "Error": hint})
+	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": r.URL.Query().Get("q"), "Error": hint})
 }
 
 func (s *Server) learnAsk(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -318,7 +318,7 @@ func (s *Server) learnAsk(w http.ResponseWriter, r *http.Request, c *rc) error {
 	id, err := s.App.Learn(r.Context(), c.user, q)
 	var fe *app.FieldError
 	if errors.As(err, &fe) {
-		return s.render(w, r, c, http.StatusUnprocessableEntity, "learn.html", map[string]any{"Title": "Learn something new", "Nav": "learn", "Q": q, "Error": fe.Msg})
+		return s.render(w, r, c, http.StatusUnprocessableEntity, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": q, "Error": fe.Msg})
 	}
 	if err != nil {
 		return err

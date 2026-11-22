@@ -2,11 +2,12 @@
   "slug": "cognitive-biases",
   "title": "Cognitive biases",
   "description": "Name the common errors of judgment and spot them in everyday decisions.",
+  "icon": "eye",
   "ideas": [
     {
       "title": "Two systems and heuristics",
       "summary": "Fast intuitive thinking runs on shortcuts that usually work and sometimes fail in predictable ways.",
-      "links": ["Anchoring and framing", "Availability and base rates"],
+      "links": ["Reference points and wording", "Availability and base rates"],
       "items": [
         {"q": "In Daniel Kahneman's \"Thinking, Fast and Slow\", what is System 1?", "a": "Fast, automatic, intuitive thinking"},
         {"q": "In Daniel Kahneman's \"Thinking, Fast and Slow\", what is System 2?", "a": "Slow, effortful, deliberate thinking"},
@@ -15,7 +16,7 @@
       ]
     },
     {
-      "title": "Anchoring and framing",
+      "title": "Reference points and wording",
       "summary": "The first number we hear and the way a choice is worded shift our judgment more than they should.",
       "links": ["Two systems and heuristics", "Loss aversion and sunk costs"],
       "items": [
@@ -51,7 +52,7 @@
     {
       "title": "Loss aversion and sunk costs",
       "summary": "Losses hurt more than equal gains please, so we cling to what we have and to what we have already spent.",
-      "links": ["Anchoring and framing", "economics:Scarcity and opportunity cost"],
+      "links": ["Reference points and wording", "economics:Scarcity and opportunity cost"],
       "items": [
         {"q": "What is loss aversion?", "a": "Losing something hurts more than gaining the same thing pleases, often put at about twice as much"},
         {"q": "What is the sunk cost fallacy?", "a": "Carrying on with something because of what you have already spent, though that cost cannot be recovered"},

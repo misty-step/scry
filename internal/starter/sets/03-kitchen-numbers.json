@@ -2,6 +2,7 @@
   "slug": "kitchen-numbers",
   "title": "Kitchen numbers",
   "description": "The conversions and temperatures that let you cook without looking anything up.",
+  "icon": "ruler",
   "ideas": [
     {
       "title": "Spoons and cups",

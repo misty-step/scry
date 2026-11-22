@@ -2,6 +2,7 @@
   "slug": "biology",
   "title": "Core ideas in biology",
   "description": "How life works, from cells and DNA to evolution and the flow of energy.",
+  "icon": "leaf",
   "ideas": [
     {
       "title": "Cells",

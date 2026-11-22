@@ -2,6 +2,7 @@
   "slug": "earth-and-climate",
   "title": "Core ideas in earth science",
   "description": "How the planet works: its layers, moving plates, rocks, air, oceans and climate.",
+  "icon": "mountain",
   "ideas": [
     {
       "title": "Earth's layers and age",

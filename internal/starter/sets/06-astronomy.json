@@ -2,6 +2,7 @@
   "slug": "astronomy",
   "title": "Core ideas in astronomy",
   "description": "The scale and story of the universe, from the solar system to the Big Bang.",
+  "icon": "orbit",
   "ideas": [
     {
       "title": "The solar system",

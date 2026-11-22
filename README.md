@@ -249,9 +249,11 @@ removed ideas; export is not a whole-database backup.
 
 ## Agents and keyboard
 
-Settings creates/revokes agent tokens. Send Authorization: Bearer TOKEN:
+Settings (API Tokens) creates/revokes API tokens. Send Authorization: Bearer TOKEN:
 GET /api/v1/ideas lists private ideas; POST /api/v1/suggestions queues approval;
-POST /api/v1/items requires “may add”. Body example:
+POST /api/v1/items requires a token that may add. Settings no longer offers that
+option: tokens made there suggest through the inbox, and a token made earlier
+with it keeps working until revoked. Body example:
 
     {"source":"Reading notes","items":[{"question":"What is inversion?","answer":"Reason backward from failure","idea":"Mental models"}]}
 
@@ -335,9 +337,34 @@ line linking to `/signup/card`.
 The reservation table is part of private backups and selective recovery.
 Older snapshots need whole restore/migration before selective recovery.
 
-Optional local browser regression (requires Chromium and puppeteer-core):
+Optional local browser regression (Playwright with the system Chrome; nothing is
+downloaded):
 
-    SCRY_BROWSER_SMOKE=1 NODE_PATH=/path/to/tooling/node_modules       go test -race ./internal/web -run TestReviewBrowserSmoke -count=1 -v
+    npm --prefix scripts ci
+    SCRY_BROWSER_SMOKE=1 go test -race ./internal/web -run TestReviewBrowserSmoke -count=1 -v
+
+`scripts/verify-slice41.mjs` checks the slice-41 behavior on a running test-mode
+binary (not the Go test server), at desktop 1440x900 and phone 390x844 in light
+and dark: the spoiler-free Study rail, the post-answer review for correct,
+incorrect and almost correct answers (no auto-skip, both answers, verdict,
+Ask Why?, schedule facts, inline edit saved and persisted, Next card by button,
+Enter and Space), the empty-library Study screen, the in-place starter add
+(window.scrollY unchanged), the shelf's first row, Settings' API Tokens, the
+card and top-up processing state, and on every screen zero CSP violations,
+console errors, page errors, failed requests and sideways scroll, text contrast
+of at least 4.5:1 (the "Coming up" cues included) and 44 px touch targets. It
+also adds two exact texts and checks that neither gives a line away while it
+waits (a short line, "Go"; a text named for its own first line, "Daffodils"),
+and runs `scripts/verify-stripe-retry.mjs`: with the shipped `app.js` and
+`stripe.js`, an instrumented stand-in for Stripe.js and the real 30 second
+timer, a card confirmation that arrives late for a superseded attempt is
+ignored and only the retry's payment method is posted (about 35 seconds; it
+can be run alone with the same `--url`). `--evidence <dir>` also writes
+screenshots, taken once the page's fades have finished, and a recorded
+walkthrough video (the video needs `npx playwright-core install ffmpeg`).
+
+    SCRY_MODE=test SCRY_TEST_JUDGMENTS=right,missed,close SCRY_DB=/tmp/s41.db PORT=18080 go run ./cmd/scry &
+    node scripts/verify-slice41.mjs --url http://127.0.0.1:18080 --evidence /tmp/slice41
 
 The smoke blocks external requests, uses synthetic microphone input and test
 adapters, measures Check contrast in both modes and at desktop/phone widths,
@@ -373,8 +400,9 @@ The four choices use Scry's existing verdict vocabulary:
 | none_of_these | The answer cannot reliably be classified using the other criteria. |
 
 Explanation policy (accepted by Phaedrus): the hot path shows the winning
-criterion description as the one-line why, with no extra call. On close and
-missed answers the learner may press “Why?”: POST /study/explain (session,
+criterion description as the one-line why, with no extra call. On any
+model-graded answer (correct ones too) the learner may press “Ask Why?” in the
+post-answer review: POST /study/explain (session,
 CSRF, review ownership) makes one bounded post-verdict call (Anthropic Messages,
 non-streaming, SCRY_EXPLAIN_MODEL, low effort, max_tokens 1024, 8 s timeout,
 280-character clamp, reserved against the allowance and metered as judging).
@@ -450,9 +478,23 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | D1 after-stop voice text | TestG12_SpeechUploadsOnlyAtStop; TestReviewBrowserSmoke |
 | D6 intrinsic missed-pair stacking | TestReviewBrowserSmoke (1280/900/600/390 geometry and screenshots) |
 | D8 reading-page measure, row exemptions | TestD8_ReadingMeasure |
-| D9 newest-right why lifetime | TestReviewBrowserSmoke (newest-right, next answer, Next, screenshots) |
+| D9 the why is shown in the review, never left in the scrollback | TestReviewBrowserSmoke (review, Space/Enter to move on, one-line scrollback) |
 | D11 navigation/study keys and Tab/Enter elsewhere | TestReviewBrowserSmoke; TestD11_KeyHints |
-| D9 right-to-right and right-to-missed lifetime | TestD9_NewestRightReasonLifetime |
+| D9 the why lives in the review; the scrollback stays one line | TestD9_TheWhyLivesInTheReviewAndTheScrollbackStaysOneLine |
+| Slice 41 (1): no answer on the Study screen before it is given (rail, header, "coming up"; hand-made and drafted titles; starter section titles; existing libraries renamed) | TestSlice41_Spoiler_StudyScreenShowsNoAnswerBeforeItIsGiven; TestSlice41_Spoiler_HandMadeTitlesAndExactTextsFallBackToNeutralLabels; TestSlice41_Spoiler_SafeHeaderGuard; TestSlice41_Spoiler_EveryStarterSetHasASafeHeader; TestSlice41_Spoiler_UpcomingCueThatQuotesTheAnswerIsHeldBack; internal/starter.TestSlice41_Spoiler_NoSectionTitleGivesAnAnswerAway; internal/starter.TestSlice41_Spoiler_TitleGivesAway; internal/store.TestSlice41_Spoiler_IdeaPlaceNamesTheTopicAndASetNumber; internal/store.TestSlice41_Spoiler_ExistingLibrariesLoseTheLeakingTitles |
+| Slice 41 (2): every answer stops on the post-answer review (both answers, verdict in words, Ask Why? on any model-graded answer, schedule facts from the store, Next card; nothing auto-advances) | TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts; TestSlice41_Review_LastCardAndExactText; TestSlice41_Telemetry_IsFormattedFromTheStoredSchedule; internal/app.TestSlice41_Review_EveryVerdictIsHeldUntilNext; internal/app.TestSlice41_AskWhy_ExplainsARightAnswerWithoutChangingIt; internal/store.TestSlice41_Review_AScoredAnswerThatIsNotHeldIsRefused; internal/store.TestSlice41_Telemetry_ReviewCountsComeFromTheHistory; internal/store.TestSessionTransitionTable; internal/app.TestRapidStudyStateMachine; specs/study_session.qnt (inv_answer_held, reviewInlineEditTest) |
+| Slice 41 (2): inline Edit card (POST /study/edit: sign-in, CSRF, ownership, non-empty, persisted; JSON in place and form fallback; grade and schedule untouched) | TestSlice41_Edit_SavesInPlacePersistsAndIsGuarded; internal/app.TestSlice41_EditCard_PersistsTextAndNothingElse; internal/app.TestRapidStudyStateMachine (EditInReview); specs/study_session.qnt (inv_edit_keeps_schedule) |
+| Slice 41 (3): Study with an empty library is its own screen | TestSlice41_EmptyLibrary_StudySaysSoAndOffersTwoWaysForward |
+| Slice 41 (4): Study and Create are unmistakable (label, icon, purpose line, g n) | TestSlice41_Nav_StudyAndCreateAreUnmistakable; TestD11_KeyHints |
+| Slice 41 (5): adding a starter set confirms in place (JSON, no redirect; plain post fallback) | TestSlice41_Shelf_AddConfirmsInPlaceWithoutAPageLoad; TestReviewBrowserSmoke (window.scrollY unchanged) |
+| Slice 41 (6): the shelf leads with broad sets; the Creeds close it | TestSlice41_Shelf_HeadlineOrderIconsAndCounts; internal/starter.TestSlice41_ShelfOrder_BroadSetsLeadAndTheCreedsComeLast |
+| Slice 41 (7): card and top-up forms show a processing state and come back on an error | TestSlice41_Processing_CardAndTopUpFormsCarryTheBusyState; TestReviewBrowserSmoke |
+| Slice 41 (8): API Tokens without can_add, Study profile, plain Inbox and page purposes | TestSlice41_PlainCopy_SettingsInboxAndPagePurposes; TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
+| Slice 41 (9): one inline line-icon family; Geist only; no glows, gradients, shadows or emoji | TestSlice41_Icons_OneFamilyOfInlineLineIcons; TestSlice41_Icons_TemplatesUseOnlyDrawnIconsAndNoEmoji; TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet; internal/starter.TestSlice41_Icons_EverySetNamesAKnownIcon |
+| Slice 41 pass 2 (B1): no cue quotes the answer still owed, however short ("Go"), in "coming up" or the scrollback; an exact text named for its own line ("Daffodils") is asked for under a neutral title in the rail, label, prompt, page title, lists, and named again in the review; no starter text loses its title | TestSlice41_Spoiler_ShortExactAnswerIsNotShownInComingUp; TestSlice41_Spoiler_AnswerBearingExactTitleIsNeutralUntilAnswered; TestSlice41_Spoiler_UpcomingCueThatQuotesTheAnswerIsHeldBack; TestSlice41_Spoiler_ExactTitleThatGivesTheLineAwayIsNeutralWhileWaiting; TestSlice41_Spoiler_CuesShownWhileAnAnswerIsOwed; TestSlice41_Spoiler_EveryStarterExactTextKeepsItsTitle; scripts/verify-slice41.mjs (exactSpoilers) |
+| Slice 41 pass 2 (B2): "Coming up" cues are readable text (ink-muted at Meta size, 4.5:1 or better in light and dark, desktop and phone); ghost opacity colors no text | TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet; scripts/verify-slice41.mjs (the contrast audit no longer skips `.upcoming`, and reports it by name) |
+| Slice 41 pass 2 (B3): a card confirmation that arrives for a superseded attempt (after the 30 second timeout or a newer submit) is ignored; only the retry's payment method is posted | TestSlice41_Processing_SupersededStripeAttemptIsIgnored; scripts/verify-stripe-retry.mjs (run by scripts/verify-slice41.mjs) |
+| Slice 41 (10): the same, in a real browser on the running binary | scripts/verify-slice41.mjs; scripts/browser-smoke.cjs (TestReviewBrowserSmoke); scripts/verify-live.mjs |
 | Slice 12: orphaned allowance reservations released at boot (all users; empty table; Reserve/Settle unchanged) | internal/store.TestFailStaleReservationsReleasesOrphansAcrossUsers; internal/store.TestFailStaleReservationsEmptyTable; internal/store.TestReserveSettleUnchangedBySweep |
 | Slice 13: reservation state machine (table; rapid on a real SQLite file: reserve/settle/replay/TTL sweep/crash+restart/period reset/top-up/status) | internal/store.TestReservationTransitionTable; internal/store.TestRapidReservationStateMachine |
 | Slice 13: Reserve refuses ended and grace-expired plans atomically (TOCTOU), non-positive amounts; TTL sweep; created_at migration | internal/store.TestReserveGuardFollowsHasAccess; internal/store.TestReserveRefusedWhenAccessEndsAfterPlanRead; internal/store.TestReserveRacingPlanEnd; internal/store.TestReserveRejectsNonPositiveAmount; internal/store.TestSweepExpiredReservations; internal/store.TestReservationsCreatedAtMigration; internal/app.TestAppReserveFollowsAccess; internal/app.TestSweepReservationsReleasesExpiredHolds |

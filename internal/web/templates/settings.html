@@ -1,6 +1,7 @@
 {{define "main"}}
 <section class="reading settings">
   <h1 class="display">Settings</h1>
+  <p class="purpose">Appearance, your study profile, API tokens and your data.</p>
   {{template "flash" .}}
 
   <section class="setting">
@@ -18,22 +19,22 @@
   </section>
 
   <section class="setting">
-    <h2 class="title">About you</h2>
-    <p>Scry shapes new material to this: what you do, what you already know, what you want it for.</p>
+    <h2 class="title">Study profile</h2>
+    <p>Background and goals used to tailor AI-generated cards.</p>
     <form method="post" action="/settings/about" class="form" data-tz-form>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="tz" value="">
       <div class="field">
-        <label class="label" for="about">In your own words</label>
+        <label class="label" for="about">Background and goals</label>
         <textarea class="input" id="about" name="about" rows="4" maxlength="1000">{{.User.About}}</textarea>
       </div>
-      <button class="btn">Save</button>
+      <button class="btn">Save profile</button>
     </form>
   </section>
 
-  <section class="setting" id="agents">
-    <h2 class="title">Agents</h2>
-    <p>Your own agents can suggest items from what you read and discuss. Suggestions wait in your inbox until you approve them. A token marked “may add” skips the inbox.</p>
+  <section class="setting" id="api-tokens">
+    <h2 class="title">API Tokens</h2>
+    <p>Programmatic access to your account. A token lets your own scripts or tools suggest cards through the Scry API; suggestions wait in your Inbox until you approve them.</p>
     {{if .NewToken}}
     <div class="token-new" role="status">
       <p><strong>Token for {{.NewTokenName}}.</strong> Copy it now; Scry keeps only a fingerprint and can't show it again.</p>
@@ -49,7 +50,7 @@
       {{range .Tokens}}
       <li class="row token-row">
         <span>{{.Name}}</span>
-        <span class="meta">{{if .CanAdd}}may add{{else}}suggests only{{end}} · {{if .LastUsed.IsZero}}never used{{else}}last used {{short .LastUsed}}{{end}}</span>
+        <span class="meta">{{if .CanAdd}}adds to library{{else}}suggests to inbox{{end}} · {{if .LastUsed.IsZero}}never used{{else}}last used {{short .LastUsed}}{{end}}</span>
         <form method="post" action="/settings/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link quiet" aria-label="Revoke the token for {{.Name}}">Revoke</button></form>
       </li>
       {{end}}
@@ -58,11 +59,10 @@
     <form method="post" action="/settings/tokens" class="form">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <div class="field{{if .TokenError}} has-error{{end}}">
-        <label class="label" for="name">New agent's name</label>
-        <input class="input" id="name" name="name" placeholder="reading agent" maxlength="40" required>
+        <label class="label" for="name">Token name</label>
+        <input class="input" id="name" name="name" placeholder="reading script" maxlength="40" required>
         {{if .TokenError}}<p class="field-error" role="alert">{{.TokenError}}</p>{{end}}
       </div>
-      <label class="check"><input type="checkbox" name="can_add" value="1"> May add straight to my library, without the inbox</label>
       <button class="btn">Create token</button>
     </form>
   </section>

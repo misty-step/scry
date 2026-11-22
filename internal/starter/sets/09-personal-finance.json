@@ -2,6 +2,7 @@
   "slug": "personal-finance",
   "title": "Personal finance",
   "description": "The few principles that do most of the work in saving, borrowing and investing.",
+  "icon": "banknote",
   "ideas": [
     {
       "title": "Compound interest",

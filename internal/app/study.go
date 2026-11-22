@@ -96,6 +96,10 @@ func (a *App) Study(ctx context.Context, u store.User) (*store.StudySession, err
 // The store checks the same guard again inside the write transaction that
 // records the review, so a double submit, a second tab or an answer racing
 // the end of the session is ErrStale and never reschedules an item twice.
+//
+// Every recorded answer, right ones included, leaves the session in
+// PhasePendingReview: the post-answer review stays on screen until the
+// learner presses Next. Answer never advances or ends the session itself.
 func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, via string) (store.Review, error) {
 	us := a.Store.For(u.ID)
 	s, err := us.ActiveSession(ctx)
@@ -148,7 +152,6 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 	r := store.Review{ItemID: item.ID, SessionID: s.ID, At: now, Answer: answer, Via: via, Practice: practice,
 		GradedPrompt: item.Prompt, GradedExpected: item.Answer}
 	var detail Detail
-	hold := true
 	switch {
 	case item.Exact:
 		// The one exception to model judging: exact texts, word for word.
@@ -174,7 +177,6 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 			return store.Review{}, ErrJudgeUnavailable
 		}
 		r.Verdict, r.Reason, r.Judge = j.Verdict, strings.Join(strings.Fields(j.Reason), " "), use.Model
-		hold = j.Verdict != srs.Right
 	}
 	raw, _ := json.Marshal(detail)
 	r.Detail = string(raw)
@@ -193,7 +195,8 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 			return store.Review{}, err
 		}
 	}
-	id, err := us.RecordReview(ctx, r, next, hold)
+	// Held: the review of this answer is what the learner sees next.
+	id, err := us.RecordReview(ctx, r, next, true)
 	if errors.Is(err, store.ErrIllegalTransition) {
 		return store.Review{}, ErrStale
 	}
@@ -201,11 +204,47 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 		return store.Review{}, err
 	}
 	r.ID = id
-	if !hold {
-		// Nothing is waiting on screen; if that was the last item, the session is over.
-		a.endIfDone(ctx, us)
-	}
 	return r, nil
+}
+
+// Limits on a card's text, shared by every way of writing one.
+const (
+	MaxPromptLen = 1000
+	MaxAnswerLen = 2000
+)
+
+// EditCard changes the question and the correct answer of one of the
+// learner's own cards, from the post-answer review or anywhere else. It
+// writes only the item's text: whether the card is judged word for word,
+// its schedule, its history and the judgment on screen all stay as they
+// are, and a review already recorded keeps the text it was graded against
+// (store.Review.GradedPrompt and GradedExpected), so the edit applies from
+// the next review. Another learner's card, or one that was removed, is
+// store.ErrNotFound; an empty or over-long question or answer is a
+// *FieldError and changes nothing.
+func (a *App) EditCard(ctx context.Context, u store.User, itemID int64, prompt, answer string) (store.Item, error) {
+	us := a.Store.For(u.ID)
+	it, err := us.Item(ctx, itemID) // scoped: another learner's item is not found
+	if err != nil {
+		return store.Item{}, err
+	}
+	prompt, answer = strings.TrimSpace(prompt), strings.TrimSpace(answer)
+	switch {
+	case prompt == "" && answer == "":
+		return it, &FieldError{Field: "prompt", Msg: "A card needs both a question and a correct answer."}
+	case prompt == "":
+		return it, &FieldError{Field: "prompt", Msg: "The question can't be empty."}
+	case answer == "":
+		return it, &FieldError{Field: "answer", Msg: "The correct answer can't be empty."}
+	case len(prompt) > MaxPromptLen:
+		return it, &FieldError{Field: "prompt", Msg: "That question is too long. Keep it under 1,000 characters."}
+	case len(answer) > MaxAnswerLen:
+		return it, &FieldError{Field: "answer", Msg: "That answer is too long. Keep it under 2,000 characters."}
+	}
+	if err := us.UpdateItem(ctx, itemID, prompt, answer, it.Exact); err != nil {
+		return it, err
+	}
+	return us.Item(ctx, itemID)
 }
 
 // judge calls the model on a reserved budget and decides the reservation

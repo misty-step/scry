@@ -10,12 +10,11 @@ import (
 	"scry/internal/store"
 )
 
-// ErrNotExplainable is a review that has nothing to explain on demand: a
-// right answer, or an exact text (whose word-by-word diff already says
-// what differed).
-var ErrNotExplainable = errors.New("only close and missed model-judged answers can be explained")
+// ErrNotExplainable is a review that has nothing to explain on demand: an
+// exact text, whose word-by-word diff already says what differed.
+var ErrNotExplainable = errors.New("only model-judged answers can be explained")
 
-// Explanation is what the learner sees after asking "Why?".
+// Explanation is what the learner sees after asking "Ask Why?".
 type Explanation struct {
 	Text     string
 	Fallback bool // the explainer was unavailable; Text is the fixed criterion sentence
@@ -43,8 +42,9 @@ func (c *explainCache) put(id int64, s string) {
 	c.m[id] = s
 }
 
-// Explain writes the on-demand "what differed" explanation of one of the
-// learner's own judged answers. It runs strictly after the verdict and only
+// Explain writes the on-demand explanation of one of the learner's own
+// model-judged answers: what differed for a close or missed answer, why it
+// holds for a right one. It runs strictly after the verdict and only
 // when asked: it reads the review and never writes it or its item, so the
 // recorded grade, review row and scheduling cannot change. It explains the
 // question and expected answer snapshotted on the review when it was
