@@ -28,10 +28,12 @@
 // 0 failed requests, 0 px of sideways scroll, text contrast >= 4.5:1 and,
 // on the phone, 44 px touch targets.
 // With --evidence <dir> it also writes the screenshots and a recorded
-// walkthrough video (slice41-walkthrough.webm) there. Prints one JSON
+// walkthrough video (slice41-walkthrough.webm) there; the video needs
+// Playwright's ffmpeg (npx playwright-core install ffmpeg). Prints one JSON
 // summary on stdout; exits 0 only when every check passes.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { chromium } from "playwright-core";
 
@@ -410,9 +412,18 @@ async function declined(browser) {
 // post-answer review, Ask Why?, inline edit, Next card -> Create -> Settings API Tokens.
 async function walkthrough(browser) {
   const c = { name: "walkthrough", width: 1280, height: 720, scheme: "light" };
-  const dir = fs.mkdtempSync(path.join(opt.evidence, ".video-"));
-  const context = await newContext(browser, c, { recordVideo: { dir, size: { width: 1280, height: 720 } } });
-  const page = await context.newPage();
+  // Recorded to a temporary folder, so the evidence folder holds only finished files.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scry-walkthrough-"));
+  let context, page;
+  try {
+    context = await newContext(browser, c, { recordVideo: { dir, size: { width: 1280, height: 720 } } });
+    page = await context.newPage();
+  } catch (err) {
+    // Playwright records with its own ffmpeg build: npx playwright-core install ffmpeg
+    check("walkthrough video recorded", false, String(err.message || err).split("\n")[0] + " (run: npx playwright-core install ffmpeg)");
+    if (context) await context.close().catch(() => {});
+    return;
+  }
   const beat = (ms = 1100) => page.waitForTimeout(ms);
   const typeSlow = (sel, s) => page.locator(sel).pressSequentially(s, { delay: 70 });
   try {

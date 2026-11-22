@@ -482,8 +482,8 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 .fact dt .icon { width: 14px; height: 14px; }
 .fact dd { color: var(--ink); font-variant-numeric: tabular-nums; }
 .practice-note { color: var(--ink-muted); }
-/* Edit card and Next card share one row; the open edit form takes the row
-   and Next card moves under it. */
+/* Edit card and Next card share one row: the edit form opens under its
+   toggle and Next card stays at the right (under the form when narrow). */
 .review-foot { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--s3) var(--s4); }
 .review-foot .judged-actions { margin-left: auto; }
 .edit-card { max-width: 560px; }
@@ -667,7 +667,7 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
 .busy-line .icon { width: 14px; height: 14px; color: var(--accent); animation: spin 800ms linear infinite; }
 .busy-track { position: relative; height: 2px; background: var(--line); overflow: hidden; }
 .busy-bar { position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: var(--accent); animation: slide 1200ms var(--ease) infinite; }
-form.is-busy .field, form.is-busy .field-row, form.is-busy .hint { opacity: 0.55; pointer-events: none; transition: opacity var(--fast) var(--ease); }
+form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity: 0.6; pointer-events: none; transition: opacity var(--fast) var(--ease); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 
