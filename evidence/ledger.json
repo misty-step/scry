@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "repo": "misty-step/scry",
+  "intentRange": "a9fe9d39..92350ed3",
+  "criticVerdictNote": "The Builder wrote PENDING: the Cold Critic has not run yet. Requirement ids are the Builder's slugs, since the Active Folio diff is prose without ids. localPath is relative to the Builder sandbox home.",
+  "entries": [
+    {
+      "requirementId": "PRODUCT-starter-shelf-order-and-in-place-add",
+      "requirement": "Shelf leads with NATO, Mental models, Kitchen numbers, World geography; Creeds lower; adding confirms in place with a Start studying bar.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-03-shelf-added-in-place.png",
+      "mediaType": "image/png",
+      "notes": "scrollY unchanged and same document in 4 configurations; no-JS post checked. Add control and hover drift fixed."
+    },
+    {
+      "requirementId": "PRODUCT-empty-library-study",
+      "requirement": "Study with no cards says so and offers two ways forward.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-02-study-empty.png",
+      "mediaType": "image/png",
+      "notes": ""
+    },
+    {
+      "requirementId": "PRODUCT-study-vs-create",
+      "requirement": "Study and Create are told apart; Create drafts to the study profile.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-11-create-draft-counts.png",
+      "mediaType": "image/png",
+      "notes": "Drift fixed: 'Learn something else'. Drafts come from the test model; the profile reaching the model is proved by TestStory_AskForAnyTopic_AndGetItShapedToMe."
+    },
+    {
+      "requirementId": "PRODUCT-api-tokens-suggest-through-inbox",
+      "requirement": "New tokens always go through the inbox; an older add token works until revoked.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-14-inbox.png",
+      "mediaType": "image/png",
+      "notes": "Posted can_add ignored, items endpoint 403, suggestions 201; a token flagged in the disposable database added (201) and was refused (401) after Revoke. Drift fixed: 'agents' copy, API error text."
+    },
+    {
+      "requirementId": "PRODUCT-no-spoilers",
+      "requirement": "Nothing on the Study screen gives the answer away.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/00-before-after.png",
+      "mediaType": "image/png",
+      "notes": "Drift fixed: one-letter, number-word and common-word answers. Labels of all 159 starter ideas unchanged."
+    },
+    {
+      "requirementId": "PRODUCT-every-answer-stops-on-review",
+      "requirement": "Every answer stops on a review; Scry never skips ahead.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/00-before-after.png",
+      "mediaType": "image/png",
+      "notes": "Drift fixed: holding Enter skipped reviews and graded blank answers."
+    },
+    {
+      "requirementId": "PRODUCT-review-real-schedule",
+      "requirement": "Next due, interval, stability, difficulty and review history from stored data.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-09-review-2.png",
+      "mediaType": "image/png",
+      "notes": "Practice attempt leaves the schedule as it was."
+    },
+    {
+      "requirementId": "PRODUCT-edit-card-in-review",
+      "requirement": "Edit question or answer in the review; saved at once, grade and schedule unchanged.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-07-empty-edit-refused-in-words.png",
+      "mediaType": "image/png",
+      "notes": "Drift fixed: an empty field met the browser's bubble instead of words under the fields."
+    },
+    {
+      "requirementId": "PRODUCT-never-grade-myself-ask-why",
+      "requirement": "Three verdicts by a decisions model; Ask Why? on any model-graded answer, never changing grade or schedule; exact texts word for word.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-06-ask-why-on-correct.png",
+      "mediaType": "image/png",
+      "notes": "Test judge and test explainer; exact diff real. The real decisions model was not called."
+    },
+    {
+      "requirementId": "DESIGN-icons",
+      "requirement": "One family of line icons; 16, 18 and 20 px; counts carry the card-stack icon.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-13-search-count.png",
+      "mediaType": "image/png",
+      "notes": "Drift fixed: Add 16 to 18, calendar 14 to 16, page titles 20 to 16, three item counts without the icon. Page-title size is a reading of 'inline labels'."
+    },
+    {
+      "requirementId": "DESIGN-controls-and-contrast",
+      "requirement": "Crisp hover in 150 ms, pressed state, 4.5:1 text.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/verify-final.json",
+      "mediaType": "application/json",
+      "notes": "Lowest text contrast 4.78:1. Drift fixed: accent and + Add hover, mic and Approve pressed state."
+    },
+    {
+      "requirementId": "DESIGN-motion",
+      "requirement": "Nothing loops except the two processing marks.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/verify-09-card-loading-state.png",
+      "mediaType": "image/png",
+      "notes": ""
+    },
+    {
+      "requirementId": "DESIGN-study-session-no-spoilers",
+      "requirement": "Rail, upcoming, scrollback and exact-title rules.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/verify-13-study-exact-title-neutral.png",
+      "mediaType": "image/png",
+      "notes": ""
+    },
+    {
+      "requirementId": "DESIGN-post-answer-review",
+      "requirement": "Review order, badges, Ask Why?, schedule, Edit card, Next card, keys.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/walkthrough-desktop.mp4",
+      "mediaType": "video/mp4",
+      "notes": ""
+    },
+    {
+      "requirementId": "DESIGN-page-headers",
+      "requirement": "Every top-level destination opens with its name and purpose.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/verify-32-nothing-due-header.png",
+      "mediaType": "image/png",
+      "notes": "Drift fixed: Study with nothing due; Inbox purpose shared the title's row. Session end stays one statement, as DESIGN says."
+    },
+    {
+      "requirementId": "DESIGN-card-and-billing-processing",
+      "requirement": "Processing state; a superseded attempt is ignored.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/verify-15-stripe-retry-superseded-ignored.png",
+      "mediaType": "image/png",
+      "notes": "Test processor and an instrumented Stripe.js stand-in with the real 30 s timer."
+    },
+    {
+      "requirementId": "DESIGN-settings",
+      "requirement": "Plain sections; API Tokens with one field.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/desktop-14a-token-masked.png",
+      "mediaType": "image/png",
+      "notes": "The disposable token is hidden in the picture and the videos."
+    },
+    {
+      "requirementId": "DESIGN-phones",
+      "requirement": "One column, thumb-reachable actions, no sideways scroll at 390 px.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/walkthrough-mobile.mp4",
+      "mediaType": "video/mp4",
+      "notes": "At 390 px the Create placeholder 'What do you want to know?' is clipped at Display size; left for the owner."
+    },
+    {
+      "requirementId": "NOTES-slice41-state-machine",
+      "requirement": "Every answer is held in the state machine and the Quint model.",
+      "verifiedSha": "f73f3b483dde58eca7ddc211b794883ca4181efe",
+      "verifiedAt": "2026-11-22T06:37:34Z",
+      "criticVerdict": "PENDING",
+      "localPath": "chief-evidence/media/verify-final.json",
+      "mediaType": "application/json",
+      "notes": "make verify-formal 18/18 at dd12c98, which differs from verifiedSha only by whitespace in one test file."
+    },
+    {
+      "requirementId": "NOTES-slice41-existing-libraries-renamed",
+      "requirement": "Starter ideas in existing libraries are renamed on open.",
+      "verifiedSha": null,
+      "verifiedAt": null,
+      "criticVerdict": "PENDING",
+      "localPath": null,
+      "mediaType": null,
+      "notes": "Not exercised on the running binary; covered by internal/store TestSlice41 tests only."
+    },
+    {
+      "requirementId": "NOTES-slice41-live-providers",
+      "requirement": "Real OpenRouter, Stripe and Clerk paths.",
+      "verifiedSha": null,
+      "verifiedAt": null,
+      "criticVerdict": "PENDING",
+      "localPath": null,
+      "mediaType": null,
+      "notes": "Not verified: they spend money or need keys this sandbox does not have."
+    }
+  ]
+}
