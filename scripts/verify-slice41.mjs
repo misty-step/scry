@@ -30,6 +30,9 @@
 //   7. the card step and Top up show a processing state while they submit;
 //   8. Settings says "API Tokens" with no can_add checkbox; Inbox, Library,
 //      Billing and Settings each say what they are for;
+//   and, beyond the eight (reconcile): a held Enter or Space is one press, an
+//   empty edit is refused in words, a one-letter answer is kept out of the
+//   rail, and Study with nothing due opens with its name and purpose;
 // and on every screen: 0 CSP violations, 0 console errors, 0 page errors,
 // 0 failed requests, 0 px of sideways scroll, text contrast >= 4.5:1 (the
 // "Coming up" cues included, reported on their own) and, on the phone,
@@ -421,6 +424,82 @@ async function run(browser, c) {
   }
 }
 
+// reconcile checks, for a fresh learner, what the walk above does not reach:
+// a held Enter is one press, an empty edit is refused in words, a one-letter
+// answer is kept out of the rail, Study with nothing due says what it is, and
+// the review's and shelf's icons have their size.
+async function reconcile(browser, c) {
+  const problems = [];
+  const context = await newContext(browser, c);
+  const page = await context.newPage();
+  watch(page, problems);
+  const n = c.name, at = n + " (reconcile)";
+  const hold = async key => { await page.keyboard.down(key); for (let i = 0; i < 12; i++) { await page.waitForTimeout(40); await page.keyboard.down(key); } await page.keyboard.up(key); await page.waitForTimeout(300); };
+  const iconPx = sel => page.$eval(sel, e => getComputedStyle(e).width);
+  try {
+    await signUp(page, n + "-rec");
+    await page.goto(base + "/settings", { waitUntil: "load" });
+    await page.fill("#name", "reconcile");
+    await Promise.all([page.waitForNavigation({ waitUntil: "load" }), page.click("form[action='/settings/tokens'] button")]);
+    const token = await text(page, ".token-value");
+    const items = [
+      { question: "Which vitamin prevents scurvy?", answer: "C", idea: "Vitamin C" },
+      { question: "Which house has 435 members?", answer: "Two houses, this one", idea: "The two-party system" },
+      { question: "What is inversion?", answer: "Reason backward", idea: "Thinking tools" },
+    ];
+    const sent = await page.request.post(base + "/api/v1/suggestions", { headers: { Authorization: "Bearer " + token }, data: { source: "verify-slice41", items } });
+    check(at + ": the API token suggests to the inbox", sent.status() === 201, sent.status());
+    await page.goto(base + "/inbox", { waitUntil: "load" });
+    await Promise.all([page.waitForNavigation({ waitUntil: "load" }), page.click("form[action='/inbox/approve-all'] button")]);
+    await page.goto(base + "/study", { waitUntil: "load" });
+    for (let i = 0; i < items.length; i++) {
+      await page.waitForSelector("[data-answer-form]");
+      const w = await waiting(page), item = items.find(x => x.question === w.prompt);
+      const want = item.answer === "Reason backward" ? "Thinking tools" : "Current set";
+      check(at + ": the rail holds no word of \"" + item.answer + "\" (topic \"" + item.idea + "\")", w.header === want, w.header);
+      if (i === 0 && n === "desktop-light") await shot(page, "30-study-one-letter-answer-no-leak.png");
+      await page.fill("#answer", "an answer");
+      let posts = 0;
+      const count = r => { if (r.method() === "POST" && /\/study\/(answer|next)$/.test(r.url())) posts++; };
+      page.on("request", count);
+      await hold("Enter");
+      const held = await page.evaluate(() => ({ review: !!document.querySelector("[data-review]"), count: document.querySelector(".margin-count")?.textContent }));
+      check(at + ": holding Enter on an answer stops on its review (one post)", held.review && posts === 1 && held.count === (i + 1) + " / 3", { ...held, posts });
+      if (i === 0) {
+        check(at + ": the schedule's inline icon is 16 px, the button's and verdict's 18 px", (await iconPx(".fact dt .icon")) === "16px" && (await iconPx("[data-next] .icon")) === "18px" && (await iconPx("[data-verdict] .icon")) === "18px");
+        await page.click("[data-edit-toggle]");
+        await page.fill("#edit-prompt", "");
+        await page.click("[data-edit-save]");
+        await page.waitForSelector("[data-edit-error]:not([hidden])", { timeout: 4000 }).catch(() => {});
+        check(at + ": an empty question is refused in words under the fields", (await text(page, "[data-edit-error]")) === "The question can't be empty." && await page.isVisible("[data-edit-error]"), await text(page, "[data-edit-error]"));
+        await audit(page, c, "review, edit refused");
+        if (n === "desktop-light") await shot(page, "31-edit-empty-refused-in-words.png");
+        await page.reload({ waitUntil: "load" });
+      }
+      posts = 0;
+      await page.focus("[data-next]");
+      await hold(i === 1 ? " " : "Enter");
+      await page.waitForFunction(() => !document.querySelector("[data-review]"));
+      check(at + ": holding " + (i === 1 ? "Space" : "Enter") + " on Next card moves one card and submits nothing", posts === 1 && (i === 2 ? new URL(page.url()).pathname === "/study/done" : (await page.textContent(".margin-count")) === (i + 2) + " / 3"), { posts, url: page.url() });
+      page.off("request", count);
+    }
+    await page.goto(base + "/study", { waitUntil: "load" });
+    check(at + ": Study with nothing due opens with its name and purpose", /^Study · Recall what's due today/.test((await text(page, ".done")).trim()) && (await text(page, ".done h1")) === "Nothing due.", await text(page, ".done"));
+    await audit(page, c, "Study, nothing due");
+    if (n === "desktop-light") await shot(page, "32-nothing-due-header.png");
+    await page.goto(base + "/shelf", { waitUntil: "load" });
+    check(at + ": the Add button's icon is 18 px and a tile's 20 px", (await iconPx(".tile-add .icon")) === "18px" && (await iconPx(".tile-title .icon")) === "20px");
+    await page.goto(base + "/library?q=vitamin", { waitUntil: "load" });
+    check(at + ": search results carry the card-stack count", (await text(page, ".item-count")) === "1 item" && (await iconPx(".item-count .icon")) === "16px", await text(page, ".item-count"));
+    await audit(page, c, "Library search");
+  } catch (err) {
+    check(at + ": the walk completed", false, String(err.stack || err).split("\n").slice(0, 3).join(" | "));
+  } finally {
+    check(at + ": 0 console errors, page errors, failed requests or 4xx/5xx responses", problems.length === 0, problems);
+    await context.close();
+  }
+}
+
 // addText adds an exact text through the library's own form.
 async function addText(page, title, lines) {
   await page.goto(base + "/library/texts/new", { waitUntil: "load" });
@@ -649,6 +728,7 @@ const browser = await chromium.launch({ executablePath: [process.env.CHROME_BIN,
 try {
   for (const c of CONFIGS) await run(browser, c);
   for (const c of CONFIGS) await exactSpoilers(browser, c);
+  for (const c of CONFIGS) await reconcile(browser, c);
   await declined(browser);
   summary.stripeRetry = await stripeRetry(browser, base, check, opt);
   if (summary.stripeRetry.screenshot) summary.screenshots.push(summary.stripeRetry.screenshot);

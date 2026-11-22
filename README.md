@@ -1,6 +1,6 @@
 # Scry
 
-One Go service: private libraries, model-judged study, exact texts, and agent suggestions.
+One Go service: private libraries, model-judged study, exact texts, and suggestions from your own scripts or tools.
 Server-rendered HTML, self-hosted Geist fonts, SQLite, no frontend build step.
 
 ## Run and test
@@ -212,8 +212,8 @@ runbook for configuration and the end-to-end drill.
 
 SQLite uses WAL, FULL synchronous writes, foreign keys, and transactions.
 Learner queries are scoped by user ID. Cookies are HttpOnly/SameSite; mutations
-require CSRF. Agent tokens are hashed and default to suggestions-only; direct
-addition is an explicit permission. Data is private between accounts, **not
+require CSRF. API tokens are hashed. New ones only suggest through the inbox; a
+token made earlier that may add directly keeps working until revoked. Data is private between accounts, **not
 end-to-end encrypted**: host administrators and backup holders can read it.
 Encrypt volumes and off-host backups and restrict operator access.
 
@@ -242,12 +242,12 @@ destination and stop traffic/background work, then:
 This replaces owned rows transactionally, leaves other users untouched, and
 rejects conflicting account identities. It does not restore account profile,
 local passwords, or browser sessions; use whole recovery for these. Billing and
-agent-token rows are restored: reconcile billing and revoke restored tokens
+API-token rows are restored: reconcile billing and revoke restored tokens
 before reopening access. It is not an import between unrelated databases.
 Settings also offers JSON export (without token hashes) and 30-day undo for
 removed ideas; export is not a whole-database backup.
 
-## Agents and keyboard
+## API tokens and keyboard
 
 Settings (API Tokens) creates/revokes API tokens. Send Authorization: Bearer TOKEN:
 GET /api/v1/ideas lists private ideas; POST /api/v1/suggestions queues approval;
@@ -258,9 +258,10 @@ with it keeps working until revoked. Body example:
     {"source":"Reading notes","items":[{"question":"What is inversion?","answer":"Reason backward from failure","idea":"Mental models"}]}
 
 Tab/Enter operate controls. Outside fields: g s study, g l library, g i inbox,
-g n learn, g b billing; / focuses search. Inbox: A approve, D dismiss,
-J/K or arrows move. Study: Enter checks/continues, Space on an empty answer
-starts voice and another Space stops it, A repeats exact text. Settings has
+g n create, g b billing; / focuses search. Inbox: A approve, D dismiss,
+J/K or arrows move. Study: Enter checks, Enter or Space moves on from the review,
+Space on an empty answer starts voice and another Space stops it, A repeats
+exact text; a held key counts as one press. Settings has
 system/light/dark modes; reduced motion disables transitions.
 
 ## Contract → automated proof
@@ -276,7 +277,8 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
 | Story: any topic shaped to learner | TestStory_AskForAnyTopic_AndGetItShapedToMe |
 | Story: favorite book core ideas | TestStory_TurnAFavoriteBookIntoASetOfItsCoreIdeas |
-| Story: agents add/suggest; one-tap approval | TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
+| Story: API tokens suggest (older ones may add); one-tap approval | TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
+| Slice 41 reconciled: short and common answers stay out of the rail, an empty edit is refused in words, Study with nothing due names itself, item counts, icon sizes, control states, copy | internal/web.TestSlice41Reconcile_*; a held Enter or Space is one press: `reconcile` in scripts/verify-slice41.mjs |
 | Story: due items, typing/speaking, five minutes | TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinutes |
 | Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |
 | Story: connected ideas; each item belongs to an idea | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea |

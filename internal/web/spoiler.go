@@ -28,23 +28,24 @@ var spoilerStop = map[string]bool{
 	"the": true, "a": true, "an": true, "and": true, "or": true, "of": true, "to": true, "in": true, "on": true,
 	"at": true, "by": true, "for": true, "from": true, "with": true, "is": true, "are": true, "was": true,
 	"be": true, "it": true, "its": true, "as": true, "that": true, "this": true, "not": true, "no": true,
-	"but": true, "than": true, "then": true, "into": true, "per": true, "one": true, "two": true,
+	"but": true, "than": true, "then": true, "into": true, "per": true,
 }
+
+// apostrophes drops apostrophes, so the letters after one stay in its word.
+var apostrophes = strings.NewReplacer("'", "", "’", "")
 
 // spoilerWords are the words of s that could give an answer away:
 // lowercased runs of letters and digits, without common words, and with a
-// plural "s" dropped so "Capitals" matches "capital". A single letter is
-// not a word here; a number of any length is.
+// plural "s" dropped so "Capitals" matches "capital". A letter standing
+// alone is a word ("Vitamin C" names the answer "C"); an apostrophe joins
+// its word, so "Newton's" is "Newton" and never a stray "s".
 func spoilerWords(s string) map[string]bool {
 	out := map[string]bool{}
-	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+	for _, w := range strings.FieldsFunc(apostrophes.Replace(strings.ToLower(s)), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
 		if spoilerStop[w] {
 			continue
 		}
 		numeric := strings.IndexFunc(w, func(r rune) bool { return !unicode.IsDigit(r) }) < 0
-		if len([]rune(w)) < 2 && !numeric {
-			continue
-		}
 		if !numeric && len([]rune(w)) > 3 && strings.HasSuffix(w, "s") && !strings.HasSuffix(w, "ss") {
 			w = strings.TrimSuffix(w, "s")
 		}
@@ -53,13 +54,18 @@ func spoilerWords(s string) map[string]bool {
 	return out
 }
 
-// leaksAnswer reports whether label holds a word of any of the answers.
+// leaksAnswer reports whether label holds a word of any of the answers, or
+// the whole of one: an answer made only of common words ("No", "It") is
+// still given away by a label that says it.
 func leaksAnswer(label string, answers []string) bool {
-	words := spoilerWords(label)
-	if len(words) == 0 {
+	if label == "" {
 		return false
 	}
+	words := spoilerWords(label)
 	for _, a := range answers {
+		if quotesAnswer(label, a) {
+			return true
+		}
 		for w := range spoilerWords(a) {
 			if words[w] {
 				return true

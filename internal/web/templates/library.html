@@ -22,7 +22,7 @@
   <article class="pane pane-idea">
     {{if .Query}}
       <h2 class="title">Results for “{{.Query}}”</h2>
-      <p class="meta">{{plural (len .Results) "item" "items"}}</p>
+      <p class="meta">{{template "count" (len .Results)}}</p>
       {{if .Results}}
       <ul class="rows">
         {{range .Results}}

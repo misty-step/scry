@@ -9,7 +9,7 @@
     {{if eq .Draft.Status "drafting"}}
       <p class="meta list-count" role="status">drafting{{if .Pending}} · {{plural .Ideas "idea" "ideas"}} so far{{end}}</p>
     {{else if and (eq .Draft.Status "ready") .Pending}}
-      <p class="meta list-count">{{plural .Pending "item" "items"}} in {{plural .Ideas "idea" "ideas"}}</p>
+      <p class="meta list-count item-count">{{icon "cards"}}{{plural .Pending "item" "items"}} in {{plural .Ideas "idea" "ideas"}}</p>
       <form method="post" action="/learn/{{.Draft.ID}}/approve-all" class="list-action">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <button class="btn btn-accent">Approve all</button>
@@ -33,7 +33,7 @@
     {{if and .Draft.Note (ne .Draft.Status "drafting")}}<p class="meta draft-note">{{.Draft.Note}}</p>{{end}}
     {{if and (eq .Draft.Status "ready") (not .Pending)}}
       <p class="empty">{{if .Approved}}All approved. {{plural .Approved "item" "items"}} joined your library.{{else}}Nothing left in this draft.{{end}}</p>
-      <p><a class="link" href="/study">Start studying</a> · <a class="link quiet" href="/library">See it in the library</a> · <a class="link quiet" href="/learn">Learn something else</a></p>
+      <p><a class="link" href="/study">Start studying{{icon "arrow"}}</a> · <a class="link quiet" href="/library">See it in the library</a> · <a class="link quiet" href="/learn">Create something else</a></p>
     {{else}}
       <p class="meta">Nothing enters your library until you approve it.</p>
     {{end}}

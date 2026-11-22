@@ -434,13 +434,14 @@ func (s *Server) studyEdit(w http.ResponseWriter, r *http.Request, c *rc) error 
 	return back(w, r, "/study?saved=1")
 }
 
-// renderRest is the study page when nothing is due.
+// renderRest is the study page when nothing is due. Like every top-level
+// page it opens with its name and purpose.
 func (s *Server) renderRest(w http.ResponseWriter, r *http.Request, c *rc) error {
 	line := "Nothing else is due today."
 	if next, err := c.us.NextDue(r.Context()); err == nil && !next.IsZero() {
 		line = "Your next review is " + strings.TrimPrefix(dueLabel(c.user, store.Item{Sched: srs.State{Due: next}}, s.App.Now()), "due ") + "."
 	}
-	return s.render(w, r, c, http.StatusOK, "done.html", map[string]any{"Title": "Nothing due", "Nav": "study", "Head": "Nothing due.", "Line": line})
+	return s.render(w, r, c, http.StatusOK, "done.html", map[string]any{"Title": "Nothing due", "Nav": "study", "Purpose": studyPurpose, "Head": "Nothing due.", "Line": line})
 }
 
 func (s *Server) afterStudy(w http.ResponseWriter, r *http.Request, c *rc) error {

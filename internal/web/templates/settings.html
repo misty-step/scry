@@ -73,7 +73,7 @@
     <p>Removed ideas are kept for 30 days.</p>
     <ul class="rows">
       {{range .Removed}}
-      <li class="row token-row"><span>{{.Title}}</span><span class="meta">{{plural .Items "item" "items"}} · removed {{short .Removed}}</span>
+      <li class="row token-row"><span>{{.Title}}</span><span class="meta">{{template "count" .Items}} · removed {{short .Removed}}</span>
         <form method="post" action="/settings/restore/{{.ID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link" aria-label="Restore {{.Title}}">Restore</button></form></li>
       {{end}}
     </ul>

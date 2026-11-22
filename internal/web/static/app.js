@@ -138,6 +138,18 @@
 
   // ---- Global keys -------------------------------------------------------
 
+  // A key held down repeats. In a study session that would press Check and
+  // Next card over and over, skip reviews and submit blank answers, so one
+  // press of Enter or Space is one step however long it is held. Typing is
+  // left alone: a space inside an answer, or anything in the Edit card fields.
+  doc.addEventListener("keydown", function (e) {
+    if (!e.repeat || (e.key !== "Enter" && e.key !== " ") || !$("[data-session]")) return;
+    var el = e.target;
+    if (el.tagName === "TEXTAREA" || (e.key === " " && typing(el) && el.value !== "")) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
   var go = { s: "/study", l: "/library", i: "/inbox", n: "/learn", b: "/billing" };
   var pendingG = 0;
   doc.addEventListener("keydown", function (e) {

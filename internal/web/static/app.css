@@ -182,7 +182,7 @@ p { max-width: var(--measure); }
 .purpose { color: var(--ink-body); font-size: var(--body); max-width: var(--measure); }
 .page-head { display: grid; gap: var(--s1); margin-bottom: var(--s4); }
 .page-title { display: flex; align-items: center; gap: var(--s2); }
-.page-title .icon { width: 20px; height: 20px; color: var(--ink-muted); }
+.page-title .icon { width: 16px; height: 16px; color: var(--ink-muted); }
 .page-kicker { display: flex; align-items: center; gap: 6px; }
 .page-kicker .icon { width: 16px; height: 16px; }
 
@@ -235,8 +235,8 @@ p { max-width: var(--measure); }
 }
 .btn:hover { background: var(--sunken); border-color: var(--ink); }
 .btn:active { transform: translateY(1px); }
-.btn-accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); transition: none; }
-.btn-accent:hover { background: var(--accent); border-color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.btn-accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); transition: border-color var(--fast) var(--ease); }
+.btn-accent:hover { background: var(--accent); border-color: var(--ink); }
 .btn[aria-busy="true"] { cursor: progress; }
 .btn:disabled:active, .btn[aria-disabled="true"]:active { transform: none; }
 .btn:disabled, .btn[aria-disabled="true"] { color: var(--ink-muted); border-color: var(--line); background: transparent; cursor: default; }
@@ -247,6 +247,7 @@ p { max-width: var(--measure); }
   color: var(--accent); font: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
   min-height: var(--touch); display: inline-flex; align-items: center;
 }
+.link .icon { margin-left: var(--s1); }
 .link.quiet { color: var(--ink-muted); }
 .link:hover { color: var(--ink); }
 
@@ -320,6 +321,8 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 .tile:hover .tile-title .icon, .tile.is-added .tile-title .icon { color: var(--ink); }
 .tile-count { display: flex; align-items: center; gap: 6px; }
 .tile-count .icon { width: 16px; height: 16px; }
+.item-count { font-variant-numeric: tabular-nums; }
+.item-count .icon { width: 16px; height: 16px; margin-right: 6px; }
 .num { font-variant-numeric: tabular-nums; color: var(--ink); }
 .tile-desc { color: var(--ink-body); flex: 1; }
 .tile-tag { color: var(--accent); min-height: var(--touch); display: flex; align-items: center; gap: 6px; }
@@ -334,8 +337,8 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
   font: 500 var(--meta)/1 var(--mono);
   transition: border-color var(--fast) var(--ease), background-color var(--fast) var(--ease), color var(--fast) var(--ease);
 }
-.tile-add .icon { width: 16px; height: 16px; }
-.tile-add:hover { border-color: var(--accent); color: var(--accent); background: var(--page); }
+.tile-add .icon { width: 18px; height: 18px; }
+.tile-add:hover { border-color: var(--ink); background: var(--page); }
 .tile-add:active { transform: translateY(1px); }
 .tile-add:disabled { color: var(--ink-muted); border-color: var(--line); background: transparent; cursor: progress; transform: none; }
 /* After the first add: pinned to the bottom of the window, so adding a set
@@ -439,6 +442,7 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
   transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease);
 }
 .mic:hover { border-color: var(--ink); }
+.mic:active { transform: translateY(1px); }
 .is-listening .mic { border-color: var(--accent); color: var(--accent); }
 /* While listening, the answer line's hairline swells. */
 .is-listening .answer-line { border-bottom-color: var(--accent); border-bottom-width: 3px; }
@@ -481,7 +485,7 @@ mark, .x-missing { background: var(--close-fill); color: var(--ink); text-decora
 }
 .fact { display: grid; gap: 2px; padding: var(--s2) 0; }
 .fact dt { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); }
-.fact dt .icon { width: 14px; height: 14px; }
+.fact dt .icon { width: 16px; height: 16px; }
 .fact dd { color: var(--ink); font-variant-numeric: tabular-nums; }
 .practice-note { color: var(--ink-muted); }
 /* Edit card and Next card share one row: the edit form opens under its
@@ -595,7 +599,7 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
 /* ---- Inbox and drafts -------------------------------------------------- */
 
 .list-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); margin-bottom: var(--s4); }
-.list-purpose { order: 1; flex-basis: 100%; }
+.list-purpose { order: 1; flex-basis: 100%; max-width: none; }
 .list-count { flex: 1; }
 .list-action { margin-left: auto; }
 .sug { position: relative; align-items: flex-start; gap: var(--s4); padding: var(--s3); outline-offset: -2px; }
@@ -616,6 +620,7 @@ a.links-box:hover { border-color: var(--accent); color: var(--accent); }
   font: 400 var(--meta)/1 var(--mono);
   transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease);
 }
+.btn-approve:active { transform: translateY(1px); }
 .btn-approve:hover { background: var(--accent); color: var(--on-accent); }
 .row-keys { display: none; position: absolute; right: var(--s3); bottom: var(--s1); }
 .sug:focus .row-keys, .sug:focus-within .row-keys { display: block; }

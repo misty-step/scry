@@ -27,7 +27,7 @@
         <div class="review-foot">
         <details class="edit-card" data-edit{{if .EditOpen}} open{{end}}>
           <summary class="btn edit-toggle" data-edit-toggle>{{icon "pencil"}}Edit card</summary>
-          <form method="post" action="/study/edit" class="form edit-form" data-edit-form>
+          <form method="post" action="/study/edit" class="form edit-form" novalidate data-edit-form>
             <input type="hidden" name="csrf" value="{{.CSRF}}">
             <input type="hidden" name="item_id" value="{{.Item.ID}}">
             <div class="field">

@@ -3,6 +3,8 @@
   <div class="busy-track" aria-hidden="true"><span class="busy-bar"></span></div>
 </div>{{end}}
 
+{{define "count"}}<span class="item-count">{{icon "cards"}}{{plural . "item" "items"}}</span>{{end}}
+
 {{define "flash"}}{{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}{{end}}
 
 {{define "cardfields"}}

@@ -1,5 +1,6 @@
 {{define "main"}}
 <section class="done">
+  {{if .Purpose}}<p class="meta page-kicker">{{icon "cards"}}Study · {{.Purpose}}</p>{{end}}
   <h1 class="display">{{.Head}}</h1>
   <p class="done-line">{{.Line}}</p>
   <p><a class="link quiet" href="/learn">Create new cards</a></p>

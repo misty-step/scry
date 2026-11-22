@@ -134,7 +134,7 @@ type agentRequest struct {
 func (s *Server) agent(w http.ResponseWriter, r *http.Request) (store.AgentToken, bool) {
 	bearer, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "send your agent token as: Authorization: Bearer scry_…"})
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "send your API token as: Authorization: Bearer scry_…"})
 		return store.AgentToken{}, false
 	}
 	t, err := s.App.AgentFromToken(r.Context(), strings.TrimSpace(bearer))
@@ -201,7 +201,7 @@ func (s *Server) apiAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	ids, err := s.App.AgentAdd(r.Context(), t, req.Source, req.Items)
 	if errors.Is(err, app.ErrAgentMayNotAdd) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "this token may suggest but not add; POST to /api/v1/suggestions, or ask the learner for a token that may add"})
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "this token may suggest but not add; POST to /api/v1/suggestions"})
 		return
 	}
 	if err != nil {
