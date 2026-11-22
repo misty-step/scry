@@ -53,10 +53,17 @@ func DefaultConfig() Config {
 	return Config{
 		PriceCents:      500,
 		AllowanceMicros: 3_000_000,
-		// The no-card trial's cap: $0.50 of metered usage, so a sign-up can
-		// never cost more than that. Reservations are priced per model
-		// (BudgetMicros), so it still covers the worst case of a
-		// gpt-6.2-sol draft ($0.23) with room for grading and speech.
+		// The no-card trial's cap: $0.50 of metered usage, enforced at
+		// admission. A hold is only admitted while what the trial has
+		// spent, plus what its settles wrote off (period overage), plus
+		// what is held leaves room for it (store.ReserveAt), and a settle
+		// never draws more than its hold (store.SettleMetered). A provider
+		// that bills more than a call's hold can still take the trial's
+		// actual cost past $0.50 by that overage, which is recorded and
+		// logged, never charged, and closes the trial to further holds.
+		// Holds are priced per model (BudgetMicros, SpeechBudgetMicros) and
+		// sized so that is rare; one worst case of each surface (a
+		// gpt-6.2-sol draft is $0.23) fits inside the cap at once.
 		TrialMicros:     500_000,
 		CardTrialMicros: 1_000_000,
 		TopupCents:      500,

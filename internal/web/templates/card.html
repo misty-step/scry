@@ -1,6 +1,7 @@
 {{define "head"}}{{if .PublishableKey}}<script src="https://js.stripe.com/v3/" defer></script><script src="/static/stripe.js" defer></script>{{end}}{{end}}
 {{define "main"}}
 <section class="column">
+  {{if .Notice}}<p class="ledger-alert terms-changed" role="alert" data-terms-changed><strong>Nothing was charged.</strong> {{.Notice}}</p>{{end}}
   {{if .Update}}
     <h1 class="display">{{if .NoCard}}Add a card{{else if .Restart}}Start again{{else}}Update card{{end}}</h1>
     {{if and .NoCard .KeepTrial}}<p class="lede trial-terms">Nothing is charged today. Your trial still ends on {{date .TrialEnd}}, when your card is first charged {{money .Price}}, and then monthly. Cancel any time before then in Billing.</p>
@@ -9,6 +10,7 @@
     {{else}}<p class="lede">The new card replaces the one on file. If a charge was waiting, it is tried again now.</p>{{end}}
     <form method="post" action="/billing/card" class="form" novalidate data-card-form>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="billing_terms" value="{{.Terms}}">
       {{template "cardfields" .}}
       <button class="btn btn-accent wide">{{if and .NoCard .KeepTrial}}Add card · nothing charged today{{else if or .Restart .NoCard}}Start · {{money .Price}} a month{{else}}Save card{{end}}</button>
     </form>
@@ -23,6 +25,7 @@
     {{end}}
     <form method="post" action="/signup/card" class="form" novalidate data-card-form>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="billing_terms" value="{{.Terms}}">
       {{template "cardfields" .}}
       <button class="btn btn-accent wide">{{if .KeepTrial}}Add card · nothing charged today{{else}}Start · {{money .Price}} a month{{end}}</button>
     </form>
@@ -33,6 +36,7 @@
     <p class="meta">After the trial, Scry is {{money .Price}} a month.</p>
     <form method="post" action="/signup/card" class="form" novalidate data-card-form>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="billing_terms" value="{{.Terms}}">
       {{template "cardfields" .}}
       <button class="btn btn-accent wide">Start trial</button>
     </form>

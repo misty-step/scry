@@ -41,7 +41,7 @@ func (a *App) SeedDemo(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := a.StartTrial(ctx, u, tok); err != nil {
+	if err := a.StartTrial(ctx, u, tok, a.CardTerms(store.Subscription{})); err != nil {
 		return err
 	}
 	sub, err := us.Subscription(ctx)

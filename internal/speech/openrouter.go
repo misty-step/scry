@@ -31,10 +31,14 @@ const DefaultOpenRouterModel = "microsoft/mai-transcribe-2"
 // model and gets it as an input_audio content block on
 // /api/v1/chat/completions, with a prompt asking for a verbatim transcript.
 type OpenRouter struct {
-	APIKey  string
-	Model   string // defaults to DefaultOpenRouterModel
-	BaseURL string // local stand-ins only; production uses https://openrouter.ai
-	HTTP    *http.Client
+	APIKey string
+	Model  string // defaults to DefaultOpenRouterModel
+	// RouteOverride is SCRY_SPEECH_ROUTE: "" or RouteAuto picks the route
+	// by the model's name (UsesTranscriptionsRoute); RouteForceTranscriptions
+	// and RouteForceChat force one, for a model the name rule gets wrong.
+	RouteOverride string
+	BaseURL       string // local stand-ins only; production uses https://openrouter.ai
+	HTTP          *http.Client
 }
 
 func (o OpenRouter) Name() string { return "openrouter" }
@@ -48,8 +52,15 @@ func (o OpenRouter) ModelName() string {
 }
 
 // Route is the OpenRouter route this adapter's model is called on:
-// RouteTranscriptions or RouteChat.
+// RouteTranscriptions or RouteChat. SCRY_SPEECH_ROUTE (RouteOverride)
+// wins; otherwise the model's name decides (UsesTranscriptionsRoute).
 func (o OpenRouter) Route() string {
+	switch o.RouteOverride {
+	case RouteForceTranscriptions:
+		return RouteTranscriptions
+	case RouteForceChat:
+		return RouteChat
+	}
 	if UsesTranscriptionsRoute(o.ModelName()) {
 		return RouteTranscriptions
 	}
@@ -62,16 +73,43 @@ const (
 	RouteChat           = "chat/completions"
 )
 
+// The values SCRY_SPEECH_ROUTE takes.
+const (
+	RouteAuto                = "auto"           // (or unset) by the model's name
+	RouteForceTranscriptions = "transcriptions" // POST /api/v1/audio/transcriptions
+	RouteForceChat           = "chat"           // POST /api/v1/chat/completions, input_audio
+)
+
+// ParseSpeechRoute reads SCRY_SPEECH_ROUTE: "" and "auto" are RouteAuto,
+// "transcriptions" and "chat" force that route. Any other value is an
+// error naming the variable, so a typo stops the boot instead of quietly
+// sending recordings to the wrong endpoint.
+func ParseSpeechRoute(v string) (string, error) {
+	switch r := strings.ToLower(strings.TrimSpace(v)); r {
+	case "", RouteAuto:
+		return RouteAuto, nil
+	case RouteForceTranscriptions, RouteForceChat:
+		return r, nil
+	}
+	return "", fmt.Errorf("SCRY_SPEECH_ROUTE=%q must be auto, transcriptions or chat (or unset)", v)
+}
+
 // UsesTranscriptionsRoute reports whether an OpenRouter model slug is a
 // dedicated speech-to-text model, sent the recording on
 // POST /api/v1/audio/transcriptions, rather than an audio-input chat model
 // (google/gemini-2.5-flash, google/gemini-3.1-flash-lite,
 // google/gemini-4-hydrogen ...), sent it as input_audio on
 // /api/v1/chat/completions. Dedicated models are recognised by name:
-// anything from deepgram/, Whisper and every *transcribe* model
-// (microsoft/mai-transcribe-2, openai/gpt-4o-mini-transcribe,
-// mistralai/voxtral-mini-transcribe ...), and *stt* models
-// (x-ai/grok-stt-2.0, mistralai/voxtral-small-24b-2507-stt).
+//
+//   - every model from a speech-only vendor: elevenlabs/ (scribe-v2 ...),
+//     deepgram/, assemblyai/;
+//   - mistralai/voxtral*;
+//   - any name with whisper, transcribe or scribe in it
+//     (openai/whisper-1, microsoft/mai-transcribe-2,
+//     openai/gpt-4o-mini-transcribe ...);
+//   - *stt* names (x-ai/grok-stt-2.0, mistralai/voxtral-small-24b-2507-stt).
+//
+// SCRY_SPEECH_ROUTE overrides the rule for a model it gets wrong.
 func UsesTranscriptionsRoute(model string) bool {
 	m := strings.ToLower(strings.TrimSpace(model))
 	vendor, name, ok := strings.Cut(m, "/")
@@ -79,11 +117,13 @@ func UsesTranscriptionsRoute(model string) bool {
 		return false
 	}
 	switch {
-	case vendor == "deepgram":
+	case vendor == "elevenlabs", vendor == "deepgram", vendor == "assemblyai":
 		return true
-	case strings.Contains(name, "whisper"), strings.Contains(name, "transcribe"):
+	case vendor == "mistralai" && strings.HasPrefix(name, "voxtral"):
 		return true
-	case name == "stt", strings.HasPrefix(name, "stt-"), strings.HasSuffix(name, "-stt"), strings.Contains(name, "-stt-"), strings.Contains(name, "-stt."):
+	case strings.Contains(name, "whisper"), strings.Contains(name, "transcribe"), strings.Contains(name, "scribe"):
+		return true
+	case name == "stt", strings.HasPrefix(name, "stt-"), strings.Contains(name, "-stt"), strings.Contains(name, "_stt"):
 		return true
 	}
 	return false
@@ -204,10 +244,13 @@ func (u *usageCost) micros() *int64 {
 	return &m
 }
 
-func statusErr(status int, e *routerError) error {
+// statusErr is a provider failure with its message, the key redacted
+// before the message is bounded: redacting after the cut could leave a
+// prefix of a key that straddled it.
+func (o OpenRouter) statusErr(status int, e *routerError) error {
 	msg := ""
 	if e != nil && strings.TrimSpace(e.Message) != "" {
-		msg = " " + bounded(e.Message)
+		msg = " " + bounded(safeerr.RedactString(e.Message, o.APIKey))
 	}
 	return fmt.Errorf("speech provider: status %d%s", status, msg)
 }
@@ -251,7 +294,7 @@ func (o OpenRouter) transcriptions(ctx context.Context, a Audio) (string, *int64
 	}
 	cost := out.Usage.micros()
 	if status != http.StatusOK || out.Error != nil {
-		return "", cost, statusErr(status, out.Error)
+		return "", cost, o.statusErr(status, out.Error)
 	}
 	if out.Text == nil {
 		return "", cost, errors.New("speech provider returned no transcript")
@@ -294,7 +337,7 @@ func (o OpenRouter) chat(ctx context.Context, a Audio) (string, *int64, error) {
 	}
 	cost := out.Usage.micros()
 	if status != http.StatusOK || out.Error != nil {
-		return "", cost, statusErr(status, out.Error)
+		return "", cost, o.statusErr(status, out.Error)
 	}
 	if len(out.Choices) == 0 {
 		return "", cost, errors.New("speech provider returned no transcript")

@@ -11,7 +11,6 @@ import (
 
 	"scry/internal/ai"
 	"scry/internal/billing"
-	"scry/internal/speech"
 	"scry/internal/store"
 )
 
@@ -139,10 +138,29 @@ func (a *App) ExplainBudget() int64 {
 	return BudgetMicros(ai.ExplainModel(a.Explainer), explainInTokens, explainOutTokens)
 }
 
-// SpeechBudget is what one recording reserves: the longest one Scry sends
-// on, at the configured speech model's per-second price.
+// Speech holds are sized for what a provider may really bill, not for
+// the per-second meter: a dedicated STT model (mai-transcribe, whisper,
+// scribe) or an audio-in chat model (gemini) can report a usage.cost well
+// above speechMicrosPerSecond, and settle meters the larger of the two.
+// A settle never debits more than its hold (store.SettleMetered), so the
+// hold is the admission-time ceiling on what one recording can draw:
+// speechHoldMicrosPerSecond per whole second, at least speechHoldFloorMicros
+// (a provider's per-request minimum).
+const (
+	speechHoldMicrosPerSecond = 250    // 5x the meter; $0.015 a minute
+	speechHoldFloorMicros     = 15_000 // $0.015
+)
+
+// SpeechBudgetMicros is what a recording of the given length reserves:
+// max(ceil(seconds) x 250, 15,000) micros, so $0.03 for the longest
+// (MaxSpeechSeconds) clip, well inside the no-card trial's $0.50.
+func SpeechBudgetMicros(seconds float64) int64 {
+	return max(int64(math.Ceil(max(seconds, 0)))*speechHoldMicrosPerSecond, speechHoldFloorMicros)
+}
+
+// SpeechBudget is what the longest recording Scry sends on reserves.
 func (a *App) SpeechBudget() int64 {
-	return int64(math.Ceil(MaxSpeechSeconds * speechRate(speech.ModelOf(a.Speech))))
+	return SpeechBudgetMicros(MaxSpeechSeconds)
 }
 
 // DraftsPerAllowance estimates how many drafts the monthly allowance
@@ -176,9 +194,30 @@ func (a *App) HasAccess(s store.Subscription) bool {
 	return false
 }
 
+// spent is what counts against the allowance this period: what was drawn
+// and, on a no-card trial, the overage its settles wrote off (the trial's
+// cap is on what it actually cost; store.reserveBalance).
+func spent(s store.Subscription) int64 {
+	if s.NoCard() {
+		return s.UsedMicros + s.OverageMicros
+	}
+	return s.UsedMicros
+}
+
+// Unreserved is what a new hold could draw on before the holds in flight
+// (reserved) are taken off: the store's reserveBalance less reserved, so
+// on a no-card trial the period's overage counts as spent and top-up
+// credit never applies. It can be negative.
+func Unreserved(s store.Subscription, reserved int64) int64 {
+	if s.NoCard() {
+		return s.AllowanceMicros - spent(s) - reserved
+	}
+	return s.AllowanceMicros - s.UsedMicros + s.TopupMicros - reserved
+}
+
 // CanSpend reports whether there is allowance or top-up credit left.
 func CanSpend(s store.Subscription) bool {
-	return s.UsedMicros < s.AllowanceMicros || s.TopupMicros > 0
+	return spent(s) < s.AllowanceMicros || (!s.NoCard() && s.TopupMicros > 0)
 }
 
 // UsedPercent is how much of this period's allowance is spent, 0 to 100.
@@ -186,7 +225,7 @@ func UsedPercent(s store.Subscription) int {
 	if s.AllowanceMicros <= 0 {
 		return 100
 	}
-	p := int(s.UsedMicros * 100 / s.AllowanceMicros)
+	p := int(spent(s) * 100 / s.AllowanceMicros)
 	return min(max(p, 0), 100)
 }
 
@@ -253,7 +292,63 @@ func (a *App) StartNoCardTrial(ctx context.Context, userID int64) error {
 // processor is never asked for a trial that ends within the hour.
 const MinCardTrialLeft = time.Hour
 
-// StartTrial puts a card behind the learner's plan.
+// BillingTerms is what the card step told the learner adding a card costs
+// today. The page carries it in the form (billing_terms), and StartTrial
+// only charges today when the learner submitted "immediate": a page that
+// said "nothing charged today" can never turn into a charge.
+type BillingTerms string
+
+const (
+	// TermsTrial: nothing is charged today (a trial, or the same trial
+	// continuing with the card on file).
+	TermsTrial BillingTerms = "trial"
+	// TermsImmediate: the plan starts at once and the price is charged
+	// today.
+	TermsImmediate BillingTerms = "immediate"
+	// TermsUpdate: a card-backed plan with access swaps its card.
+	TermsUpdate BillingTerms = "update"
+)
+
+// ParseBillingTerms reads a submitted billing_terms field. Anything else,
+// including a missing field, is "" and never counts as consent to a charge.
+func ParseBillingTerms(v string) BillingTerms {
+	switch t := BillingTerms(strings.TrimSpace(v)); t {
+	case TermsTrial, TermsImmediate, TermsUpdate:
+		return t
+	}
+	return ""
+}
+
+// ErrTermsChanged is a card step submitted on terms that no longer hold:
+// the page said nothing would be charged today, but by the time it was
+// submitted the trial had ended or had less than MinCardTrialLeft to go,
+// so adding the card now would charge today. Nothing was sent to the
+// processor and the plan is unchanged; the learner must confirm the
+// immediate charge (billing_terms "immediate").
+var ErrTermsChanged = errors.New("adding a card now charges today; the learner must confirm")
+
+// CardTerms is what adding a card to this plan costs today, as of now:
+//
+//   - no plan at all (Status ""): TermsTrial, the trial with a card;
+//   - a no-card trial with at least MinCardTrialLeft to go: TermsTrial,
+//     the same trial continuing;
+//   - a no-card trial with less left, an ended no-card trial, or a plan
+//     with no access: TermsImmediate, charged today;
+//   - a card-backed plan with access: TermsUpdate.
+func (a *App) CardTerms(s store.Subscription) BillingTerms {
+	switch {
+	case s.Status == store.SubNone:
+		return TermsTrial
+	case s.NoCardTrial() && s.PeriodEnd.Sub(a.now()) >= MinCardTrialLeft:
+		return TermsTrial
+	case s.NoCard() || !a.HasAccess(s):
+		return TermsImmediate
+	}
+	return TermsUpdate
+}
+
+// StartTrial puts a card behind the learner's plan, on the terms the card
+// step showed them (agreed).
 //
 //   - No plan at all: the 7-day trial, with the card on file
 //     (Cfg.CardTrialMicros), first charged when it ends.
@@ -267,8 +362,14 @@ const MinCardTrialLeft = time.Hour
 //     full monthly allowance.
 //   - A plan that has ended: the same, charged today.
 //
+// Charging today needs agreed == TermsImmediate: otherwise StartTrial
+// returns ErrTermsChanged without asking the processor for anything. The
+// learner's plan row is only changed after the processor has taken the
+// card, so a declined card (or a processor error) leaves a no-card trial
+// exactly as it was, usable until its own period_end.
+//
 // A learner already on a card-backed plan is left as they are.
-func (a *App) StartTrial(ctx context.Context, u store.User, cardToken string) error {
+func (a *App) StartTrial(ctx context.Context, u store.User, cardToken string, agreed BillingTerms) error {
 	us := a.Store.For(u.ID)
 	now := a.now()
 	old, err := us.Subscription(ctx)
@@ -276,27 +377,27 @@ func (a *App) StartTrial(ctx context.Context, u store.User, cardToken string) er
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
-	if hadPlan && old.NoCardTrial() {
-		if old.PeriodEnd.Sub(now) >= MinCardTrialLeft {
-			return a.addCardToTrial(ctx, u, us, old, cardToken, now)
-		}
-		// Too little (or none) of the trial is left to keep: it ends now,
-		// and the paid plan starts below, charged today.
-		if old, err = us.ChangeSubscription(ctx, func(s *store.Subscription) {
-			if s.NoCardTrial() {
-				s.Status = store.SubEnded
-			}
-		}); err != nil {
-			return err
-		}
+	if !hadPlan {
+		old = store.Subscription{}
 	}
-	if hadPlan && old.Status != "ended" {
+	terms := a.CardTerms(old)
+	if terms == TermsImmediate && agreed != TermsImmediate {
+		a.Log.InfoContext(ctx, "card step refused: terms changed to an immediate charge", "user", u.ID, "agreed", string(agreed))
+		return ErrTermsChanged
+	}
+	fromNoCard := hadPlan && old.NoCard() && (old.NoCardTrial() || old.Status == store.SubEnded)
+	switch {
+	case hadPlan && old.NoCardTrial() && terms == TermsTrial:
+		return a.addCardToTrial(ctx, u, us, old, cardToken, now)
+	case hadPlan && !fromNoCard && old.Status != store.SubEnded:
 		return nil // already on a plan
 	}
 	p := billing.SubscribeParams{Email: u.Email, CardToken: cardToken, Key: fmt.Sprintf("sub-%d-%d", u.ID, now.Unix()/60), Now: now}
 	if !hadPlan {
 		p.TrialEnd = now.AddDate(0, 0, a.Cfg.TrialDays)
 	}
+	// Nothing about the plan has changed yet: if the processor refuses the
+	// card, the learner keeps what they had.
 	res, err := a.Pay.Subscribe(ctx, p)
 	if err != nil {
 		var d *billing.DeclineError
@@ -311,8 +412,16 @@ func (a *App) StartTrial(ctx context.Context, u store.User, cardToken string) er
 		TopupMicros: old.TopupMicros,
 	}
 	if hadPlan {
-		sub.Status, sub.AllowanceMicros, sub.TrialEnd = "active", a.Cfg.AllowanceMicros, old.TrialEnd
-		if err := us.OpenPlan(ctx, sub); err != nil {
+		sub.Status, sub.AllowanceMicros, sub.TrialEnd = store.SubActive, a.Cfg.AllowanceMicros, old.TrialEnd
+		if fromNoCard {
+			// The no-card trial (live in its last hour, or ended) becomes the
+			// paid plan in one guarded write, only now that it is paid for.
+			if err := us.StartPaidFromNoCard(ctx, sub); err != nil {
+				a.Log.ErrorContext(ctx, "card charged at the processor but the no-card plan changed", "err", err, "user", u.ID, "subscription", res.SubscriptionRef)
+				a.Alert.Notify(ctx, "Card charged for a plan that changed", "Subscription "+res.SubscriptionRef+" was charged for a no-card plan that had already changed: "+err.Error())
+				return err
+			}
+		} else if err := us.OpenPlan(ctx, sub); err != nil {
 			return err
 		}
 		return us.AddLedger(ctx, store.LedgerEntry{At: now, Kind: "charge", Description: "Scry, one month", AmountCents: a.Cfg.PriceCents, Status: "paid", Ref: res.ChargeRef})
@@ -917,7 +1026,7 @@ func (a *App) applyEvent(ctx context.Context, ev billing.Event) error {
 			if !ev.PeriodEnd.IsZero() {
 				sub.PeriodStart, sub.PeriodEnd = ev.PeriodStart, ev.PeriodEnd
 			}
-			sub.AllowanceMicros, sub.UsedMicros = a.Cfg.AllowanceMicros, 0
+			sub.AllowanceMicros, sub.UsedMicros, sub.OverageMicros = a.Cfg.AllowanceMicros, 0, 0
 		}
 		// Otherwise the current period's unpaid invoice was paid late: the
 		// plan recovers, and what was already spent of it stays spent.
@@ -1024,7 +1133,16 @@ func (a *App) settle(userID int64, id, kind string, u ai.Usage, seconds float64)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	err := a.Store.For(userID).Settle(ctx, id, store.Usage{Kind: kind, Model: u.Model, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, Seconds: seconds, CostMicros: cost}, a.now())
+	overage, err := a.Store.For(userID).SettleMetered(ctx, id, store.Usage{Kind: kind, Model: u.Model, InputTokens: u.InputTokens, OutputTokens: u.OutputTokens, Seconds: seconds, CostMicros: cost}, a.now())
+	if err == nil && overage > 0 {
+		// The call cost more than its hold: only the hold was drawn, so no
+		// other hold in flight lost its backing, and the rest is written
+		// off (period_overage_micros; on a no-card trial it counts against
+		// the cap, so no further hold is admitted once it is reached). The
+		// hold sizes should make this rare: ops should look at the model.
+		a.Log.WarnContext(ctx, "usage cost over its reservation; overage written off", "user", userID, "kind", kind,
+			"model", u.Model, "cost_micros", cost, "overage_micros", overage)
+	}
 	if err != nil {
 		a.Log.ErrorContext(ctx, "reservation settlement failed", "err", err, "user", userID)
 		a.Alert.Notify(ctx, "Usage settlement failed", "A reservation remains held; reconcile before releasing it.")

@@ -50,6 +50,7 @@ func modeEnv(t *testing.T, mode string, sets ...map[string]string) {
 	t.Setenv("SCRY_DRAFT_MODEL", "")
 	t.Setenv("SCRY_EXPLAIN_MODEL", "")
 	t.Setenv("SCRY_SPEECH_MODEL", "")
+	t.Setenv("SCRY_SPEECH_ROUTE", "")
 	t.Setenv("SENTRY_DSN", "")
 	for _, set := range sets {
 		for k, v := range set {
@@ -761,6 +762,17 @@ func TestSlice36_DefaultModelsAndOverridesInHealthz(t *testing.T) {
 		{"stt override", map[string]string{"SCRY_SPEECH_MODEL": "openai/whisper-large-v3-turbo"},
 			map[string]string{"grading": "typesafe/jev-1.14", "speech": "openai/whisper-large-v3-turbo"}, "audio/transcriptions", ""},
 		{"judge model must be a slug", map[string]string{"SCRY_JUDGE_MODEL": "jev-latest"}, nil, "", "SCRY_JUDGE_MODEL=\"jev-latest\" is not an OpenRouter model slug"},
+		// Slice 36 pass 2: elevenlabs/scribe-v2 is a dedicated STT model, and
+		// SCRY_SPEECH_ROUTE forces a route either way.
+		{"scribe on transcriptions", map[string]string{"SCRY_SPEECH_MODEL": "elevenlabs/scribe-v2"},
+			map[string]string{"speech": "elevenlabs/scribe-v2"}, "audio/transcriptions", ""},
+		{"SCRY_SPEECH_ROUTE=transcriptions", map[string]string{"SCRY_SPEECH_MODEL": "google/gemini-3.1-flash-lite", "SCRY_SPEECH_ROUTE": "transcriptions"},
+			map[string]string{"speech": "google/gemini-3.1-flash-lite"}, "audio/transcriptions", ""},
+		{"SCRY_SPEECH_ROUTE=chat", map[string]string{"SCRY_SPEECH_ROUTE": "chat"},
+			map[string]string{"speech": "microsoft/mai-transcribe-2"}, "chat/completions", ""},
+		{"SCRY_SPEECH_ROUTE=auto", map[string]string{"SCRY_SPEECH_ROUTE": "auto", "SCRY_SPEECH_MODEL": "elevenlabs/scribe-v2"},
+			map[string]string{"speech": "elevenlabs/scribe-v2"}, "audio/transcriptions", ""},
+		{"invalid SCRY_SPEECH_ROUTE", map[string]string{"SCRY_SPEECH_ROUTE": "multipart"}, nil, "", `SCRY_SPEECH_ROUTE="multipart" must be auto, transcriptions or chat`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			modeEnv(t, "live", append(base, tc.env)...)
@@ -797,4 +809,20 @@ func TestSlice36_DefaultModelsAndOverridesInHealthz(t *testing.T) {
 			assertNoSecrets(t, raw)
 		})
 	}
+}
+
+// Slice 36 pass 2: an invalid SCRY_SPEECH_ROUTE stops the boot in test
+// mode too, where speech is the fake, and "chat" is refused on the direct
+// OpenAI route, which has no chat endpoint for audio.
+func TestSlice36_SpeechRouteRejectedAtBootInEveryMode(t *testing.T) {
+	modeEnv(t, "test", map[string]string{"SCRY_SPEECH_ROUTE": "chat-completions"})
+	mustFail(t, `SCRY_SPEECH_ROUTE="chat-completions" must be auto, transcriptions or chat`)
+	modeEnv(t, "test", map[string]string{"SCRY_SPEECH_ROUTE": "transcriptions"})
+	if _, err := tryBuild(t); err != nil {
+		t.Fatalf("test mode with a valid route: %v", err)
+	}
+	modeEnv(t, "live", liveKeys, liveNoAI, stripeTestKeys, clerkTestKeys, map[string]string{
+		"OPENROUTER_API_KEY": "", "TYPESAFE_API_KEY": "ts-TYPESAFEstandin0005", "ANTHROPIC_API_KEY": "ant-ANTHROPICstandin0007",
+		"OPENAI_API_KEY": "oai-OPENAIstandin0008", "SCRY_STRIPE_MODE": "test", "SCRY_SPEECH_ROUTE": "chat"})
+	mustFail(t, "SCRY_SPEECH_ROUTE=chat needs OPENROUTER_API_KEY")
 }

@@ -281,7 +281,7 @@ func (a *App) Transcribe(ctx context.Context, u store.User, audio speech.Audio) 
 	if err != nil {
 		return "", err
 	}
-	reservation, err := a.reserve(ctx, u.ID, a.SpeechBudget())
+	reservation, err := a.reserve(ctx, u.ID, SpeechBudgetMicros(audio.Seconds))
 	if err != nil {
 		return "", err
 	}

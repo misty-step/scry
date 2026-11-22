@@ -186,6 +186,11 @@ func build(log *slog.Logger) (*app.App, error) {
 	if err := checkClerkKeys(test, authMode, env("CLERK_PUBLISHABLE_KEY", ""), env("CLERK_SECRET_KEY", "")); err != nil {
 		return nil, err
 	}
+	// SCRY_SPEECH_ROUTE is checked in every mode, before anything opens:
+	// a typo never boots, even where speech is the fake.
+	if _, err := speech.ParseSpeechRoute(env("SCRY_SPEECH_ROUTE", "")); err != nil {
+		return nil, err
+	}
 	st, err := store.Open(env("SCRY_DB", "data/scry.db"))
 	if err != nil {
 		return nil, err
@@ -381,7 +386,7 @@ func realAI(log *slog.Logger) (judge *ai.Jev, claude *ai.Claude, ear speech.Tran
 	}
 	if router == "" && openai == "" {
 		missing = append(missing, "OPENROUTER_API_KEY or OPENAI_API_KEY")
-	} else if ear, err = speech.NewTranscriber(router, openai, env("SCRY_SPEECH_MODEL", "")); err != nil {
+	} else if ear, err = speech.NewTranscriberWithRoute(router, openai, env("SCRY_SPEECH_MODEL", ""), env("SCRY_SPEECH_ROUTE", "")); err != nil {
 		if !(router != "" && safeerr.LooksLikeJWT(router)) { // already reported once
 			invalid = append(invalid, err.Error())
 		}

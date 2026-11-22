@@ -165,13 +165,60 @@ func (s *Server) cardData(c *rc, title string, sub ...store.Subscription) map[st
 		"TrialEnd":       s.App.Now().In(c.user.Location()).AddDate(0, 0, cfg.TrialDays),
 		"PublishableKey": s.App.Pay.PublishableKey(),
 	}
-	if len(sub) == 1 && sub[0].NoCard() {
-		data["NoCard"] = true
-		data["TrialEnd"] = sub[0].PeriodEnd.In(c.user.Location())
-		data["KeepTrial"] = sub[0].NoCardTrial() && sub[0].PeriodEnd.Sub(s.App.Now()) >= app.MinCardTrialLeft
-		data["Restart"] = !s.App.HasAccess(sub[0])
+	// Terms is what the page tells the learner adding a card costs today,
+	// carried in the form as billing_terms: StartTrial never charges today
+	// unless the submitted form said so.
+	data["Terms"] = app.TermsTrial
+	if len(sub) == 1 && sub[0].Status != store.SubNone {
+		terms := s.App.CardTerms(sub[0])
+		data["Terms"] = terms
+		if sub[0].NoCard() {
+			data["NoCard"] = true
+			data["TrialEnd"] = sub[0].PeriodEnd.In(c.user.Location())
+			data["KeepTrial"] = sub[0].NoCardTrial() && terms == app.TermsTrial
+			data["Restart"] = !s.App.HasAccess(sub[0])
+		}
 	}
 	return data
+}
+
+// termsChangedNotice is what a card step submitted on stale terms says
+// when it is shown again to confirm the immediate charge.
+func (s *Server) termsChangedNotice(sub store.Subscription) string {
+	price := money(s.App.Cfg.PriceCents)
+	switch {
+	case sub.NoCard() && s.App.HasAccess(sub):
+		return "Your trial now ends within the hour, so adding a card starts Scry today and charges " + price +
+			" now, then monthly. Your trial is unchanged until you confirm. To go ahead, enter your card again."
+	case sub.NoCard():
+		return "Your trial has ended, so adding a card now charges " + price + " today, then monthly. To go ahead, enter your card again."
+	}
+	return "Your plan is no longer active, so a new card starts it again and charges " + price + " today, then monthly. To go ahead, enter your card again."
+}
+
+// termsChanged shows the card step again, at 409, after StartTrial
+// refused a charge the submitted page had not promised (ErrTermsChanged):
+// it now states the immediate charge, and its form carries
+// billing_terms=immediate so the next submit is the learner's consent.
+func (s *Server) termsChanged(w http.ResponseWriter, r *http.Request, c *rc, update bool) error {
+	var data map[string]any
+	var sub store.Subscription
+	if update {
+		var err error
+		if data, sub, err = s.billingCardData(r, c); err != nil {
+			return err
+		}
+	} else {
+		var err error
+		sub, err = s.App.Plan(r.Context(), c.user.ID)
+		if err != nil && !errors.Is(err, app.ErrPlanEnded) {
+			return err
+		}
+		data = s.cardData(c, "Add a card", sub)
+	}
+	data["Terms"], data["KeepTrial"] = app.TermsImmediate, false
+	data["Notice"] = s.termsChangedNotice(sub)
+	return s.render(w, r, c, http.StatusConflict, "card.html", data)
 }
 
 // cardToken turns the submitted card step into the processor's token. In
@@ -216,7 +263,10 @@ func (s *Server) cardSubmit(w http.ResponseWriter, r *http.Request, c *rc) error
 	}
 	token, err := s.cardToken(r)
 	if err == nil {
-		err = s.App.StartTrial(r.Context(), c.user, token)
+		err = s.App.StartTrial(r.Context(), c.user, token, app.ParseBillingTerms(r.FormValue("billing_terms")))
+	}
+	if errors.Is(err, app.ErrTermsChanged) {
+		return s.termsChanged(w, r, c, false)
 	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {
@@ -354,7 +404,7 @@ func (s *Server) billingView(c *rc, sub store.Subscription, ledger []store.Ledge
 		v.Covers += " The " + price + " covers running Scry and a monthly allowance of " + money(cfg.AllowanceMicros/10000) + " of model time. Prices cover costs plus a small margin."
 		return v
 	}
-	remaining := max(int64(0), sub.AllowanceMicros-sub.UsedMicros+sub.TopupMicros)
+	remaining := max(int64(0), app.Unreserved(sub, 0))
 	for _, amount := range reserved {
 		remaining = max(int64(0), remaining-amount)
 	}
@@ -542,6 +592,7 @@ func (s *Server) billingCard(w http.ResponseWriter, r *http.Request, c *rc) erro
 	if err != nil {
 		return err
 	}
+	agreed := app.ParseBillingTerms(r.FormValue("billing_terms"))
 	token, err := s.cardToken(r)
 	ok := "card"
 	if err == nil {
@@ -549,7 +600,7 @@ func (s *Server) billingCard(w http.ResponseWriter, r *http.Request, c *rc) erro
 		case sub.NoCard():
 			// The first card: added to the trial, or (trial over) the plan
 			// starts today. Never an update of a customer that does not exist.
-			if err = s.App.StartTrial(r.Context(), c.user, token); err == nil {
+			if err = s.App.StartTrial(r.Context(), c.user, token, agreed); err == nil {
 				ok = "subscribed"
 				if now, nerr := c.us.Subscription(r.Context()); nerr == nil && now.Status == store.SubTrialing {
 					ok = "card_added"
@@ -557,6 +608,10 @@ func (s *Server) billingCard(w http.ResponseWriter, r *http.Request, c *rc) erro
 			}
 		case s.App.HasAccess(sub):
 			err = s.App.UpdateCard(r.Context(), c.user.ID, token)
+		case agreed != app.TermsImmediate:
+			// The plan is over, so a new card would charge today, which the
+			// submitted page did not say: confirm first, change nothing.
+			err = app.ErrTermsChanged
 		default:
 			// The plan is over: a new card starts it again, charged today.
 			if sub.Status != "ended" {
@@ -565,8 +620,11 @@ func (s *Server) billingCard(w http.ResponseWriter, r *http.Request, c *rc) erro
 					return err
 				}
 			}
-			err, ok = s.App.StartTrial(r.Context(), c.user, token), "started"
+			err, ok = s.App.StartTrial(r.Context(), c.user, token, agreed), "started"
 		}
+	}
+	if errors.Is(err, app.ErrTermsChanged) {
+		return s.termsChanged(w, r, c, true)
 	}
 	var d *billing.DeclineError
 	if errors.As(err, &d) {

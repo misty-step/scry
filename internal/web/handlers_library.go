@@ -303,7 +303,7 @@ func (s *Server) learn(w http.ResponseWriter, r *http.Request, c *rc) error {
 		return err
 	}
 	hint := ""
-	if sub.AllowanceMicros-sub.UsedMicros+sub.TopupMicros-reserved < s.App.DraftBudget() {
+	if app.Unreserved(sub, reserved) < s.App.DraftBudget() {
 		hint = "Not enough allowance left for a draft. Top up or check Billing."
 		if sub.NoCard() {
 			hint = "Not enough of the trial's allowance left for a draft. Add a card in Billing to keep going."

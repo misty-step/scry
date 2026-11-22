@@ -1156,14 +1156,19 @@ Owner-approved spec change (2026-11-21). Choices where the brief left room:
   `SCRY_*_MODEL` overrides its surface; `SCRY_JUDGE_MODEL` is now checked to be a
   vendor/model slug when OpenRouter is the route, like the other three.
 - **Speech routing** is by slug (`speech.UsesTranscriptionsRoute`): anything
-  from `deepgram/`, any `*whisper*` or `*transcribe*` model, and `*-stt*`
-  names go to `POST /api/v1/audio/transcriptions` as multipart `model` + `file`
+  from `elevenlabs/`, `deepgram/` or `assemblyai/`, `mistralai/voxtral*`, any
+  `*whisper*`, `*transcribe*` or `*scribe*` model, and `*-stt*` names go to `POST /api/v1/audio/transcriptions` as multipart `model` + `file`
   (`audio.<ext>` from `AudioFormat`, with a matching audio Content-Type); every
   other slug is treated as an audio-input chat model on chat completions with
   `input_audio`. No `language` field is sent (the eval forced `en`), so an
   answer in another language is still written down as spoken. Scry converts
   every recording to WAV before transcribing, so production uploads are
   `audio.wav`; the other extensions are covered by unit tests.
+  `SCRY_SPEECH_ROUTE` (pass 2) overrides the name rule for a model it gets
+  wrong: `auto` or unset (the rule), `transcriptions` or `chat` (forced). Any
+  other value stops the boot in every mode, and `chat` without
+  `OPENROUTER_API_KEY` does too (the direct OpenAI route has no chat audio).
+  `/healthz` `speech_route` reports the effective route.
 - **Pricing.** Catalog prices were read from the public
   `https://openrouter.ai/api/v1/models` listing on 2026-11-21: gpt-6.2-sol
   $2/$10 and gpt-6-luna $0.10/$0.50 per million tokens. jev-1.14 is not in the
@@ -1180,15 +1185,51 @@ Owner-approved spec change (2026-11-21). Choices where the brief left room:
   as its model. The old `ai.*BudgetMicros` constants remain as the ceiling.
 - **Trial cap.** `Cfg.TrialMicros = $0.50` (no card). One worst-case draft
   ($0.226), judgment, explanation and longest recording fit inside it at once.
+  The cap is enforced at admission, and that is all an admission rule can
+  promise (pass 2): a hold is the most one call can draw, because
+  `store.SettleMetered` debits `min(cost, hold, available)` (the Quint spec's
+  "cap at reservation"), so a call billed over its hold never draws on
+  allowance backing another hold in flight. The rest is written off, kept
+  in full on the usage row, added to the plan's `period_overage_micros`, and
+  logged as a warning ("usage cost over its reservation; overage written
+  off"). On a no-card trial the overage counts as spent: `ReserveAt` admits a
+  hold only while `allowance - used - overage - held >= amount`, so once what
+  the trial actually cost reaches $0.50 nothing more is admitted. What it
+  actually cost can still pass $0.50 by the overage of calls already
+  admitted; no rule can bound a third party's bill after the fact, so the
+  holds are sized to make that rare. Speech holds are
+  `max(ceil(seconds) x 250, 15,000)` micros (`app.SpeechBudgetMicros`, $0.03
+  for a 2-minute clip), 5x the meter, to cover what dedicated STT models
+  (mai-transcribe, whisper, scribe) and audio chat models (gemini) report as
+  `usage.cost`; the old 6,000-micro hold let 77 recordings billed $0.0065
+  each reach $0.5005. On a card-backed plan overage is recorded but does not
+  gate admission (the margin absorbs it).
   Adding a card raises the trial allowance to `Cfg.CardTrialMicros = $1.00`
   (the previous card-up-front trial allowance), and what was spent stays spent.
 - **Upgrade inside the window** keeps the trial's end. Stripe is asked for
   `trial_end = period_end`, nothing is charged that day, and the first $5 is on
   the original end date, so adding a card early costs no free days. With under
-  an hour left (`app.MinCardTrialLeft`) the trial is ended and the paid plan
-  starts at once, so Stripe is never asked for a trial ending within the hour.
-  After the end it is the existing restart path: charged today, full allowance,
-  no second trial.
+  an hour left (`app.MinCardTrialLeft`) adding a card starts the paid plan at
+  once, charged today, so Stripe is never asked for a trial ending within the
+  hour. After the end it is the existing restart path: charged today, full
+  allowance, no second trial.
+- **Consent to the charge (pass 2).** The card step's form carries what its
+  page said, `billing_terms` = `trial` ("nothing charged today") or
+  `immediate` ("$5 today"); `app.CardTerms` decides it and the copy from the
+  same plan state. `StartTrial` charges today only when the submitted form
+  said `immediate`. A page loaded with over an hour left and submitted with
+  less (or after the end), or a post with no or unknown terms, is refused
+  before the processor is called: nothing is charged, the trial is
+  unchanged, and the card step is shown again (409) saying the trial ends
+  within the hour (or has ended) and a card now charges $5 today, with
+  `billing_terms=immediate`, so the next submit is the learner's consent.
+- **Nothing changes before the processor does (pass 2).** The trial row is
+  never ended or rewritten before `Subscribe` succeeds. A declined card (402)
+  or processor error leaves the no-card trial exactly as it was, usable until
+  its own `period_end`. On success `store.StartPaidFromNoCard` turns the
+  no-card row (trialing in its last hour, or ended) into the active paid plan
+  in one transaction (full monthly allowance, nothing used, no overage), and
+  refuses, with an operator alert, if a card was added to it in between.
 - **Expiry** is enforced three times: `HasAccess` (trialing with
   `customer_ref = ''` only while `now < period_end`); the `ReserveAt` statement
   (`period_end > floor(now)`, the same predicate, since period_end is stored in

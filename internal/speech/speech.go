@@ -183,7 +183,8 @@ func (o OpenAI) Transcribe(ctx context.Context, a Audio) (result string, retErr 
 		return "", fmt.Errorf("speech provider: status %d", resp.StatusCode)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("speech provider: status %d %s", resp.StatusCode, bounded(out.Error.Message))
+		// Redacted before it is bounded, so no fragment of a key survives the cut.
+		return "", fmt.Errorf("speech provider: status %d %s", resp.StatusCode, bounded(safeerr.RedactString(out.Error.Message, o.APIKey)))
 	}
 	return strings.TrimSpace(out.Text), nil
 }

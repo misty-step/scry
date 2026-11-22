@@ -448,6 +448,19 @@ module billing_topup {
            "card_added"),
   }
 
+  // Slice 36 pass 2: a card confirmed on "charged today" terms in the
+  // no-card trial's last hour (app.StartTrial -> store.StartPaidFromNoCard):
+  // the processor takes the card first, then the trial row becomes the
+  // paid plan in one write: active on processor subscription 1. A declined
+  // card is a stutter here: the row is only written after the processor
+  // succeeded, so the trial is exactly as it was.
+  action UpgradeNow = all {
+    db.sub.status == "trialing", db.sub.ref == 0,
+    commit({ ...db, sub: { ...noSub, status: "active", ref: 1 } },
+           { ...proc, subs: proc.subs.set(1, { open: true, paid: 0, ended: false }) },
+           "upgraded_now"),
+  }
+
   // Slice 36: the no-card trial reached its period_end (Plan /
   // EndExpiredNoCardTrials): ended, with no processor involved.
   action TrialExpire = all {
@@ -580,6 +593,7 @@ module billing_topup {
     StartTrial,
     StartNoCardTrial,
     AddCard,
+    UpgradeNow,
     TrialExpire,
     Reopen,
     // A resubmitted token is settleExisting -> reconcile (= Reconcile) or a no-op.
@@ -1037,6 +1051,16 @@ module billing_topup {
       .then(StartNoCardTrial)
       .then(AddCard)
       .expect(db.sub.status == "trialing" and db.sub.ref == 1)
+      .then(payOne(1, true))
+      .expect(status(1) == "succeeded" and db.credited == TOPUP_CREDIT and inv_all)
+
+  // pass 2: a confirmed upgrade in the trial's last hour is the paid plan
+  // at once, and top-ups work on it.
+  run nocardUpgradeNowThenTopupTest =
+    init
+      .then(StartNoCardTrial)
+      .then(UpgradeNow)
+      .expect(db.sub.status == "active" and db.sub.ref == 1 and inv_all)
       .then(payOne(1, true))
       .expect(status(1) == "succeeded" and db.credited == TOPUP_CREDIT and inv_all)
 

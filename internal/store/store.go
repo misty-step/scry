@@ -98,6 +98,10 @@ func (s *Store) migrateAdded() error {
 	if err := s.addColumn("reservations", "created_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	// Slice 36 pass 2: a plan's period overage (Settle's write-off).
+	if err := s.addColumn("subscriptions", "period_overage_micros", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	for _, c := range topupColumns {
 		if err := s.addColumn("topups", c[0], c[1]); err != nil {
 			return err

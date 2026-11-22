@@ -120,10 +120,10 @@ func TestSlice36_ModelAwareReservationBudgets(t *testing.T) {
 		name      string
 		got, want int64
 	}{
-		{"judge typesafe/jev-1.14 at $0.10/$1", a.JudgeBudget(), 1946},       // 9,216 x 0.1 + 1,024 x 1
-		{"draft openai/gpt-6.2-sol at $2/$10", a.DraftBudget(), 226048},      // 33,024 x 2 + 16,000 x 10
-		{"explain openai/gpt-6-luna at $0.10/$0.50", a.ExplainBudget(), 768}, // 2,560 x 0.1 + 1,024 x 0.5
-		{"speech microsoft/mai-transcribe-2, 120 s", a.SpeechBudget(), 6000}, // 120 s x 50
+		{"judge typesafe/jev-1.14 at $0.10/$1", a.JudgeBudget(), 1946},        // 9,216 x 0.1 + 1,024 x 1
+		{"draft openai/gpt-6.2-sol at $2/$10", a.DraftBudget(), 226048},       // 33,024 x 2 + 16,000 x 10
+		{"explain openai/gpt-6-luna at $0.10/$0.50", a.ExplainBudget(), 768},  // 2,560 x 0.1 + 1,024 x 0.5
+		{"speech microsoft/mai-transcribe-2, 120 s", a.SpeechBudget(), 30000}, // max(120 s x 250, 15,000)
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s: %d micros, want %d", tc.name, tc.got, tc.want)
@@ -396,7 +396,7 @@ func TestSlice36_UpgradeFromTheNoCardTrial(t *testing.T) {
 		if err := w.app.UpdateCard(w.ctx, w.user.ID, "tok_x"); !errors.Is(err, app.ErrNoCardOnFile) || len(w.pay.updates) != 0 {
 			t.Fatalf("UpdateCard on a no-card trial: %v %v", err, w.pay.updates)
 		}
-		if err := w.app.StartTrial(w.ctx, w.user, goodToken(t, w)); err != nil {
+		if err := w.app.StartTrial(w.ctx, w.user, goodToken(t, w), app.TermsTrial); err != nil {
 			t.Fatal(err)
 		}
 		s := w.sub(t)
@@ -414,7 +414,7 @@ func TestSlice36_UpgradeFromTheNoCardTrial(t *testing.T) {
 		if ok, err := w.app.TopUpResult(w.ctx, w.user.ID, "after-card-token-0001"); err != nil || !ok || len(w.pay.charges) != 1 || w.pay.charges[0] != s.CustomerRef {
 			t.Fatalf("top-up with a card: %v %v %v", ok, err, w.pay.charges)
 		}
-		if err := w.app.StartTrial(w.ctx, w.user, goodToken(t, w)); err != nil || len(w.pay.subscribes) != 1 {
+		if err := w.app.StartTrial(w.ctx, w.user, goodToken(t, w), app.TermsTrial); err != nil || len(w.pay.subscribes) != 1 {
 			t.Fatalf("second card add: %v %d", err, len(w.pay.subscribes))
 		}
 		// At the trial's end the test processor renews it as a paid plan.
@@ -438,7 +438,7 @@ func TestSlice36_UpgradeFromTheNoCardTrial(t *testing.T) {
 			old := w.sub(t)
 			w.set(tc.at(old.PeriodEnd))
 			w.app.Plan(w.ctx, w.user.ID) // a visit, as the card page makes
-			if err := w.app.StartTrial(w.ctx, w.user, goodToken(t, w)); err != nil {
+			if err := w.app.StartTrial(w.ctx, w.user, goodToken(t, w), app.TermsImmediate); err != nil {
 				t.Fatal(err)
 			}
 			s := w.sub(t)

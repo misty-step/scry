@@ -108,6 +108,7 @@ type reservationMachine struct {
 	noCard       bool      // slice 36: no processor customer (a no-card trial, live or ended)
 	periodEnd    time.Time // the no-card trial's end, in whole seconds
 	noCardSpent  int64     // ghost: spent while there was no card
+	overage      int64     // period_overage_micros: cost settles wrote off this period
 
 	held   map[string]resHold
 	states map[string]ReservationState // every id ever issued
@@ -136,7 +137,13 @@ func (m *reservationMachine) reserved() int64 {
 	return n
 }
 
+// available is what the Reserve statement compares against the amount
+// (store.reserveBalance): on a no-card trial the period's overage counts
+// as spent.
 func (m *reservationMachine) available() int64 {
+	if m.noCard {
+		return m.allowance - m.used - m.overage - m.reserved()
+	}
 	return m.allowance - m.used + m.topup - m.reserved()
 }
 
@@ -257,7 +264,7 @@ func (m *reservationMachine) Settle(t *rapid.T) {
 	case "negative":
 		cost = -rapid.Int64Range(1, 1000).Draw(t, "neg")
 	}
-	err := m.us.Settle(m.ctx, id, Usage{Kind: "judge", Model: "test-judge", CostMicros: cost}, m.now)
+	overage, err := m.us.SettleMetered(m.ctx, id, Usage{Kind: "judge", Model: "test-judge", CostMicros: cost}, m.now)
 	if cost < 0 {
 		if !errors.Is(err, ErrNegativeCost) {
 			t.Fatalf("settle at %d = %v; want ErrNegativeCost", cost, err)
@@ -269,14 +276,23 @@ func (m *reservationMachine) Settle(t *rapid.T) {
 	}
 	m.move(t, id, settleEvent(cost))
 	if cost > 0 {
-		left := max(0, m.allowance-m.used)
-		before := m.used
-		m.topup = max(0, m.topup-max(0, cost-left))
-		m.used = max(0, min(m.allowance, m.used+cost))
+		// Spend (the fixed step): debit at most the hold and at most what
+		// is available, allowance first; the rest is the overage.
+		debit := min(cost, amount, max(0, m.allowance-m.used+m.topup))
+		fromAllowance := min(debit, max(0, m.allowance-m.used))
+		m.used += fromAllowance
+		m.topup -= debit - fromAllowance
+		m.overage += cost - debit
 		if m.noCard {
-			m.noCardSpent += m.used - before
+			m.noCardSpent += debit
 		}
 		m.usages++
+		// inv_debit_within_reservation
+		if debit > amount || overage != cost-debit {
+			t.Fatalf("settle %s at %d of a %d hold: debit %d, overage %d (model %d)", id, cost, amount, debit, overage, cost-debit)
+		}
+	} else if overage != 0 {
+		t.Fatalf("release reported overage %d", overage)
 	}
 }
 
@@ -377,11 +393,11 @@ func (m *reservationMachine) PeriodReset(t *rapid.T) {
 	}
 	if _, err := m.us.ChangeSubscription(m.ctx, func(s *Subscription) {
 		s.Status, s.PastDueSince, s.CardError = SubActive, time.Time{}, ""
-		s.AllowanceMicros, s.UsedMicros = rAllowance, 0
+		s.AllowanceMicros, s.UsedMicros, s.OverageMicros = rAllowance, 0, 0
 	}); err != nil {
 		t.Fatal(err)
 	}
-	m.status, m.pastDueSince, m.allowance, m.used = SubActive, time.Time{}, rAllowance, 0
+	m.status, m.pastDueSince, m.allowance, m.used, m.overage = SubActive, time.Time{}, rAllowance, 0, 0
 }
 
 // TopupCredit adds one top-up's credit (only a plan with access may top up).
@@ -410,7 +426,7 @@ func (m *reservationMachine) StatusChange(t *rapid.T) {
 			Status: SubActive, AllowanceMicros: rAllowance}); err != nil {
 			t.Fatal(err)
 		}
-		m.status, m.pastDueSince, m.allowance, m.used, m.noCard = SubActive, time.Time{}, rAllowance, 0, false
+		m.status, m.pastDueSince, m.allowance, m.used, m.noCard, m.overage = SubActive, time.Time{}, rAllowance, 0, false, 0
 	case m.status == SubEnded || to == SubActive:
 		t.Skip("no such move")
 	case to == SubPastDue:
@@ -519,13 +535,18 @@ func (m *reservationMachine) Check(t *rapid.T) {
 	m.restarted = false
 	// the store is the model
 	if sub.Status != m.status || sub.AllowanceMicros != m.allowance || sub.UsedMicros != m.used || sub.TopupMicros != m.topup ||
-		!sub.PastDueSince.Equal(m.pastDueSince) {
-		t.Fatalf("plan %s allowance %d used %d topup %d past due %v; model %s %d %d %d %v",
-			sub.Status, sub.AllowanceMicros, sub.UsedMicros, sub.TopupMicros, sub.PastDueSince,
-			m.status, m.allowance, m.used, m.topup, m.pastDueSince)
+		!sub.PastDueSince.Equal(m.pastDueSince) || sub.OverageMicros != m.overage {
+		t.Fatalf("plan %s allowance %d used %d topup %d past due %v overage %d; model %s %d %d %d %v %d",
+			sub.Status, sub.AllowanceMicros, sub.UsedMicros, sub.TopupMicros, sub.PastDueSince, sub.OverageMicros,
+			m.status, m.allowance, m.used, m.topup, m.pastDueSince, m.overage)
 	}
 	if reserved != m.reserved() {
 		t.Fatalf("reserved %d, model %d", reserved, m.reserved())
+	}
+	// inv_reserved_within_available: every held micro is backed by
+	// allowance or credit, so no settle can starve a hold in flight.
+	if reserved > sub.AllowanceMicros-sub.UsedMicros+sub.TopupMicros {
+		t.Fatalf("held %d over what backs it: allowance %d used %d topup %d", reserved, sub.AllowanceMicros, sub.UsedMicros, sub.TopupMicros)
 	}
 	// slice 36: inv_nocard_never_charged and inv_nocard_spend_capped.
 	if sub.NoCard() != m.noCard {
@@ -537,6 +558,14 @@ func (m *reservationMachine) Check(t *rapid.T) {
 		}
 		if sub.UsedMicros+reserved > rNoCard {
 			t.Fatalf("no-card trial: used %d + held %d over the cap %d", sub.UsedMicros, reserved, rNoCard)
+		}
+		// inv_nocard_overage_blocks_admission: once what the trial
+		// actually cost (used + overage) plus what is held leaves no room,
+		// the store takes no further hold.
+		if left := rNoCard - sub.UsedMicros - sub.OverageMicros - reserved; left < 1 {
+			if err := m.us.ReserveAt(m.ctx, "probe-over-cap", 1, m.now, rGrace); err == nil {
+				t.Fatalf("no-card trial took a hold with used %d + overage %d + held %d at the cap %d", sub.UsedMicros, sub.OverageMicros, reserved, rNoCard)
+			}
 		}
 	}
 	if m.noCardSpent > rNoCard {

@@ -14,6 +14,7 @@ import (
 //	trialing|active|past_due -> past_due      an invoice failed
 //	trialing|active|past_due -> ended         the plan ended
 //	trialing (no card) -> trialing (card)     AddCardToTrial: same trial end
+//	trialing|ended (no card) -> active        StartPaidFromNoCard: charged today
 //	trialing (no card) -> ended               the no-card trial ran out (period_end)
 //	ended             -> active               OpenPlan with a NEW subscription_ref
 //
@@ -162,6 +163,13 @@ type Subscription struct {
 	UsedMicros      int64  // spent from the allowance this period
 	TopupMicros     int64  // top-up credit left; it does not expire
 	PastDueSince    time.Time
+	// OverageMicros is this period's metered cost that no hold covered:
+	// what settles wrote off because a call cost more than it reserved
+	// (Settle debits at most the hold). It is never charged. On a no-card
+	// trial it counts against the allowance at admission (ReserveAt), so
+	// once the trial's actual cost reaches its allowance no further hold
+	// is taken. A new period starts it at zero.
+	OverageMicros int64
 }
 
 // NoCard reports whether the plan has no processor customer behind it: a
@@ -178,14 +186,15 @@ func (s Subscription) NoCardTrial() bool { return s.Status == SubTrialing && s.C
 func NoCardTrialRef(userID int64) string { return fmt.Sprintf("trial-nocard-%d", userID) }
 
 const subCols = `user_id, customer_ref, subscription_ref, payment_ref, status, trial_end, period_start, period_end,
-	cancel_at_period_end, card_brand, card_last4, card_error, allowance_micros, period_used_micros, topup_micros, past_due_since`
+	cancel_at_period_end, card_brand, card_last4, card_error, allowance_micros, period_used_micros, topup_micros, past_due_since,
+	period_overage_micros`
 
 func scanSub(row interface{ Scan(...any) error }) (Subscription, error) {
 	var s Subscription
 	var trial, ps, pe, pd int64
 	var cancel int
 	err := row.Scan(&s.UserID, &s.CustomerRef, &s.SubscriptionRef, &s.PaymentRef, &s.Status, &trial, &ps, &pe, &cancel,
-		&s.CardBrand, &s.CardLast4, &s.CardError, &s.AllowanceMicros, &s.UsedMicros, &s.TopupMicros, &pd)
+		&s.CardBrand, &s.CardLast4, &s.CardError, &s.AllowanceMicros, &s.UsedMicros, &s.TopupMicros, &pd, &s.OverageMicros)
 	s.TrialEnd, s.PeriodStart, s.PeriodEnd, s.PastDueSince, s.CancelAtEnd = tm(trial), tm(ps), tm(pe), tm(pd), cancel == 1
 	return s, notFound(err)
 }
@@ -198,15 +207,16 @@ func (u *UserStore) Subscription(ctx context.Context) (Subscription, error) {
 // SaveSubscription writes the learner's plan.
 func (u *UserStore) SaveSubscription(ctx context.Context, s Subscription) error {
 	_, err := u.s.billingDB(ctx).ExecContext(ctx, `
-		INSERT INTO subscriptions (`+subCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO subscriptions (`+subCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET customer_ref = excluded.customer_ref, subscription_ref = excluded.subscription_ref,
 		  payment_ref = excluded.payment_ref, status = excluded.status, trial_end = excluded.trial_end,
 		  period_start = excluded.period_start, period_end = excluded.period_end,
 		  cancel_at_period_end = excluded.cancel_at_period_end, card_brand = excluded.card_brand, card_last4 = excluded.card_last4,
 		  card_error = excluded.card_error, allowance_micros = excluded.allowance_micros,
-		  period_used_micros = excluded.period_used_micros, topup_micros = excluded.topup_micros, past_due_since = excluded.past_due_since`,
+		  period_used_micros = excluded.period_used_micros, topup_micros = excluded.topup_micros, past_due_since = excluded.past_due_since,
+		  period_overage_micros = excluded.period_overage_micros`,
 		u.uid, s.CustomerRef, s.SubscriptionRef, s.PaymentRef, s.Status, ts(s.TrialEnd), ts(s.PeriodStart), ts(s.PeriodEnd),
-		b2i(s.CancelAtEnd), s.CardBrand, s.CardLast4, s.CardError, s.AllowanceMicros, s.UsedMicros, s.TopupMicros, ts(s.PastDueSince))
+		b2i(s.CancelAtEnd), s.CardBrand, s.CardLast4, s.CardError, s.AllowanceMicros, s.UsedMicros, s.TopupMicros, ts(s.PastDueSince), s.OverageMicros)
 	return err
 }
 
@@ -434,6 +444,44 @@ func (u *UserStore) AddCardToTrial(ctx context.Context, next Subscription, minAl
 		return u.SaveSubscription(ctx, cur)
 	})
 	return out, err
+}
+
+// StartPaidFromNoCard replaces the learner's no-card plan, a trial still
+// trialing (in its last hour) or one that has ended, with the paid plan
+// next (status active, charged today), in one transaction: trialing ->
+// active is SubEventInvoicePaid, ended -> active SubEventOpenPaid. The
+// new period starts afresh (nothing used, no overage); top-up credit and
+// the trial's end date carry over. It refuses with ErrNotNoCardTrial,
+// changing nothing, when the row is not a no-card plan any more (a card
+// was added in between). Call it only after the processor took the card.
+func (u *UserStore) StartPaidFromNoCard(ctx context.Context, next Subscription) error {
+	return u.s.BillingTransaction(ctx, func(ctx context.Context) error {
+		cur, err := u.Subscription(ctx)
+		if err != nil {
+			return err
+		}
+		if !cur.NoCard() || (cur.Status != SubTrialing && cur.Status != SubEnded) {
+			return ErrNotNoCardTrial
+		}
+		ev := SubEventOpenPaid
+		if cur.Status == SubTrialing {
+			ev = SubEventInvoicePaid
+		}
+		to, err := TransitionSubscription(cur.Status, ev)
+		if err != nil {
+			return err
+		}
+		if to != SubActive || next.CustomerRef == "" || next.SubscriptionRef == "" || next.SubscriptionRef == cur.SubscriptionRef {
+			return errors.New("a paid plan from a no-card trial needs a processor customer and a new subscription")
+		}
+		next.UserID, next.Status = u.uid, to
+		next.UsedMicros, next.OverageMicros, next.PastDueSince = 0, 0, time.Time{}
+		next.TopupMicros = cur.TopupMicros
+		if next.TrialEnd.IsZero() {
+			next.TrialEnd = cur.TrialEnd
+		}
+		return u.SaveSubscription(ctx, next)
+	})
 }
 
 // EndExpiredNoCardTrial ends the learner's no-card trial if its

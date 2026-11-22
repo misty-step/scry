@@ -210,7 +210,7 @@ func newBillingWorldWith(t fataler, path string, noCard bool) *billingWorld {
 		}
 		return w
 	}
-	if err := w.app.StartTrial(w.ctx, w.user, "tok_ok"); err != nil {
+	if err := w.app.StartTrial(w.ctx, w.user, "tok_ok", app.TermsTrial); err != nil {
 		t.Fatal(err)
 	}
 	return w
@@ -411,7 +411,7 @@ func (m *billingMachine) Reopen(t *rapid.T) {
 	if m.sub(t).Status != store.SubEnded {
 		t.Skip("plan not ended")
 	}
-	if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok"); err != nil {
+	if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok", app.TermsImmediate); err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
 	if s := m.sub(t); s.Status != store.SubActive {
@@ -430,7 +430,22 @@ func (m *billingMachine) AddCard(t *rapid.T) {
 	m.w.pay.mu.Lock()
 	subs := len(m.w.pay.subs)
 	m.w.pay.mu.Unlock()
-	if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok"); err != nil {
+	terms := m.w.app.CardTerms(before)
+	if terms == app.TermsImmediate && rapid.Bool().Draw(t, "stale_page") {
+		// A page loaded while the trial was still promised: refused with
+		// nothing sent and nothing changed (critic finding 1).
+		if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok", app.TermsTrial); !errors.Is(err, app.ErrTermsChanged) {
+			t.Fatalf("stale trial terms with %v left: %v", before.PeriodEnd.Sub(m.w.now()), err)
+		}
+		m.w.pay.mu.Lock()
+		n := len(m.w.pay.subs)
+		m.w.pay.mu.Unlock()
+		if after := m.sub(t); n != subs || after != before {
+			t.Fatalf("refused card step changed things: %d subs, %+v -> %+v", n-subs, before, after)
+		}
+		return
+	}
+	if err := m.w.app.StartTrial(m.w.ctx, m.w.user, "tok_ok", terms); err != nil {
 		t.Fatalf("add card: %v", err)
 	}
 	after := m.sub(t)
@@ -790,7 +805,7 @@ func TestEndedPlanIsNotResurrectedByLateInvoices(t *testing.T) {
 		t.Fatalf("alerts: %v", w.alert.Titles())
 	}
 	// Only an explicit new plan opens again, under a new subscription.
-	if err := w.app.StartTrial(w.ctx, w.user, "tok_ok"); err != nil {
+	if err := w.app.StartTrial(w.ctx, w.user, "tok_ok", app.TermsImmediate); err != nil {
 		t.Fatal(err)
 	}
 	re, _ := w.us.Subscription(w.ctx)

@@ -171,6 +171,7 @@ type browser struct {
 	c     *http.Client
 	csrf  string
 	topup string // the top-up form token of the last Billing page it saw
+	terms string // the billing_terms of the last card step it saw
 	path  string // where the last request ended up
 }
 
@@ -181,6 +182,7 @@ func (w *world) browser() *browser {
 
 var csrfRE = regexp.MustCompile(`name="csrf" value="([^"]+)"`)
 var topupRE = regexp.MustCompile(`name="topup_token" value="([^"]+)"`)
+var termsRE = regexp.MustCompile(`name="billing_terms" value="([^"]*)"`)
 
 func (b *browser) do(req *http.Request) (int, string) {
 	b.t.Helper()
@@ -196,6 +198,9 @@ func (b *browser) do(req *http.Request) (int, string) {
 	}
 	if m := topupRE.FindStringSubmatch(body); m != nil {
 		b.topup = m[1]
+	}
+	if m := termsRE.FindStringSubmatch(body); m != nil {
+		b.terms = m[1]
 	}
 	b.path = resp.Request.URL.Path
 	// Entities are decoded so tests can look for the words a person reads.
@@ -214,6 +219,10 @@ func (b *browser) post(path string, kv ...string) (int, string) {
 	if path == "/billing/topup" {
 		// Like a person pressing the button on the Billing page last seen.
 		form.Set("topup_token", b.topup)
+	}
+	if path == "/signup/card" || path == "/billing/card" {
+		// The card step submits the terms the page it was loaded from stated.
+		form.Set("billing_terms", b.terms)
 	}
 	for i := 0; i+1 < len(kv); i += 2 {
 		form.Set(kv[i], kv[i+1])
