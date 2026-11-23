@@ -787,10 +787,10 @@ func TestSlice41_Nav_StudyAndCreateAreUnmistakable(t *testing.T) {
 		nav := page[strings.Index(page, `<nav class="nav"`):]
 		nav = nav[:strings.Index(nav, "</nav>")]
 		for _, want := range []string{
-			`<a href="/study"`, `icon-cards`, `<span>Study</span>`,
-			`icon-library`, `<span>Library</span>`, `icon-inbox`, `<span>Inbox</span>`,
-			`<a href="/learn"`, `icon-create`, `<span>Create</span>`,
-			`icon-billing`, `<span>Billing</span>`, `icon-settings`, `<span>Settings</span>`,
+			`<a href="/study"`, `icon-cards`, `<span class="nav-label">Study</span>`,
+			`icon-library`, `<span class="nav-label">Library</span>`, `icon-inbox`, `<span class="nav-label">Inbox</span>`,
+			`<a href="/learn"`, `icon-create`, `<span class="nav-label">Create</span>`,
+			`icon-billing`, `<span class="nav-label">Billing</span>`, `icon-settings`, `<span class="nav-label">Settings</span>`,
 		} {
 			if !strings.Contains(nav, want) {
 				t.Errorf("%s: the navigation is missing %s", path, want)

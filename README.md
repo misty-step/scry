@@ -272,14 +272,16 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Contract | Test |
 | --- | --- |
 | Operator story: continuous monitoring, incident triage, fix proposal and fault drill | `TestStory_ContinuousMonitoringFaultDrillRestartRecovery`, `TestMonitoringDedupTriageFixQuietDurability` (internal/watch) |
-| Story: signup, trial and study within a minute | TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute |
+| Story: signup, trial and study within a minute; understand Scry at a glance, see one judged card on the landing page, add Scry to the home screen | TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen; TestDesign_BrandMarkBesideTheWordmark; internal/web.TestBrand_MarkIsOneDrawingEverywhere |
+| Story: forgot password: email on Sign in, then "Forgot password" on the password step | TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep; TestClerkFrontendStandIn |
 | Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
-| Story: any topic shaped to learner | TestStory_AskForAnyTopic_AndGetItShapedToMe |
+| Story: any topic shaped to learner, or tap a starter example under the field | TestStory_AskForAnyTopic_AndGetItShapedToMe; TestStory_Create_TapAStarterExampleUnderTheField |
 | Story: favorite book core ideas | TestStory_TurnAFavoriteBookIntoASetOfItsCoreIdeas |
 | Story: agents add/suggest; one-tap approval | TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
 | Story: due items, typing/speaking, five minutes | TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinutes |
 | Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |
-| Story: connected ideas; each item belongs to an idea | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea |
+| Story: connected ideas; each item belongs to an idea; on phones the opened idea comes first with a compact collapsible outline | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea; TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline |
+| Story: every answer stops on a review that stays framed at the question and judgment | TestStory_Review_StaysFramedAtTheQuestionAndJudgment (plus the real-browser walkthrough below) |
 | Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
 | Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
 | Rule: no free tier, 7-day no-card trial with a capped allowance | TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance; TestRule_CardAddedDuringTheTrialKeepsItsEnd; TestRule_NoCardTrialNeverChargesATopup; internal/app.TestSlice36_NoCardTrialExpiresAtPeriodEnd; internal/app.TestSlice36_ConcurrentReservationsCannotPassTheCapOrTheEnd; internal/app.TestSlice36_UpgradeFromTheNoCardTrial; TestSlice36_StaleCardStepConfirmsBeforeChargingAndADeclineKeepsTheTrial; TestSlice36_CardStepWithoutTermsIsNeverCharged; internal/app.TestSlice36_StaleTrialTermsNeverChargeSilently; internal/app.TestSlice36_DeclineInTheLastHourKeepsTheTrial; internal/app.TestSlice36_ConfirmedUpgradeInTheLastHour; internal/app.TestSlice36_SpeechHoldsKeepTheTrialInsideItsCap; internal/app.TestSlice36_OverageNeverStarvesAConcurrentHoldAndStopsTheTrial |

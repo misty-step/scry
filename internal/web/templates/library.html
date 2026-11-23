@@ -1,9 +1,28 @@
+{{define "outline"}}<ol class="outline">
+      {{range .Outline}}
+      <li><a class="outline-row{{if .Depth}} is-sub{{end}}" href="/library/ideas/{{.ID}}"{{if and $.Idea (eq $.Idea.ID .ID)}} aria-current="true"{{end}}><span class="outline-num">{{.Number}}</span><span class="outline-title">{{.Title}}</span></a></li>
+      {{end}}
+    </ol>{{end}}
 {{define "main"}}
 {{template "flash" .}}
 <header class="page-head">
   <h1 class="title page-title">{{icon "library"}}Library</h1>
   <p class="purpose">Every card you have, grouped by idea.</p>
 </header>
+{{/* On phones the idea comes first: a compact, collapsible idea picker
+   stands in for the full outline above it, so tapping an idea lands straight
+   on its content (DESIGN.md, Library and concept links). */}}
+<details class="idea-picker" data-idea-picker>
+  <summary class="picker-summary"><span class="meta">Ideas</span><span class="picker-current">{{if .Query}}Results for “{{.Query}}”{{else if .Idea}}<span class="outline-num">{{.Idea.Number}}</span> {{.Idea.Title}}{{end}}</span><span class="micro picker-hint" aria-hidden="true">all ideas</span></summary>
+  <div class="picker-body">
+    <form method="get" action="/library" class="search" role="search">
+      <label class="sr" for="q-picker">Search your library</label>
+      <input class="input mono" id="q-picker" name="q" type="search" value="{{.Query}}" placeholder="Search">
+    </form>
+    {{template "outline" .}}
+    <p class="pane-links meta"><a class="link quiet" href="/shelf">Starter shelf</a> · <a class="link quiet" href="/library/texts/new">Add an exact text</a></p>
+  </div>
+</details>
 <div class="library">
   <nav class="pane pane-outline" aria-label="Ideas">
     <form method="get" action="/library" class="search" role="search">
@@ -11,11 +30,7 @@
       <input class="input mono" id="q" name="q" type="search" value="{{.Query}}" placeholder="Search" data-search>
       <span class="micro search-key" aria-hidden="true">/</span>
     </form>
-    <ol class="outline">
-      {{range .Outline}}
-      <li><a class="outline-row{{if .Depth}} is-sub{{end}}" href="/library/ideas/{{.ID}}"{{if and $.Idea (eq $.Idea.ID .ID)}} aria-current="true"{{end}}><span class="outline-num">{{.Number}}</span><span class="outline-title">{{.Title}}</span></a></li>
-      {{end}}
-    </ol>
+    {{template "outline" .}}
     <p class="pane-links meta"><a class="link quiet" href="/shelf">Starter shelf</a> · <a class="link quiet" href="/library/texts/new">Add an exact text</a></p>
   </nav>
 

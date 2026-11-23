@@ -121,8 +121,21 @@
     if (nav && here) here.innerHTML = nav.innerHTML;
     if (url && url !== location.href) history.replaceState(null, "", url);
     init();
+    if (frameReview()) return;
     var focus = $("main [autofocus]");
     if (focus) focus.focus();
+  }
+
+  // The post-answer review stays framed at the question and its judgment
+  // (DESIGN.md, Post-answer review): "Next card" takes focus without
+  // scrolling, so loud Judgment type never pushes the question or the top
+  // bar out of view. Focusing it here, before the browser handles the
+  // autofocus attribute, also keeps a freshly loaded review in place.
+  function frameReview() {
+    var review = $("[data-review]"), next = $("[data-next]");
+    if (!review || !next) return false;
+    next.focus({ preventScroll: true });
+    return true;
   }
 
   function post(form, extra) {
@@ -457,7 +470,7 @@
         if (note) note.hidden = !fallback;
         button.remove();
         var next = $("[data-next]");
-        if (next) next.focus();
+        if (next) next.focus({ preventScroll: true });
       };
       var why = $(".why");
       fetch(form.action, {
@@ -577,8 +590,45 @@
     }, 700);
   }
 
+  // ---- Create: example prompts -------------------------------------------
+
+  // Tapping an example fills the field (it is a plain link without script).
+  function initExamples() {
+    var input = $("#q.ask-input");
+    if (!input) return;
+    $$("[data-example]").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        input.value = a.getAttribute("data-example");
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      });
+    });
+  }
+
+  // ---- Settings: appearance applies at once ------------------------------
+
+  // Choosing a mode changes the page immediately, and saves it as well.
+  function initTheme() {
+    var form = $("[data-theme-form]");
+    if (!form) return;
+    $$("input[name=theme]", form).forEach(function (radio) {
+      radio.addEventListener("change", function () {
+        if (!radio.checked) return;
+        if (radio.value === "system") doc.documentElement.removeAttribute("data-theme");
+        else doc.documentElement.setAttribute("data-theme", radio.value);
+        fetch(form.action, {
+          method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
+          headers: { "X-Requested-With": "fetch" }
+        }).catch(function () { /* the Save button still posts the plain way */ });
+      });
+    });
+  }
+
   function init() {
     initTZ();
+    initExamples();
+    initTheme();
     initShelf();
     initBusy();
     initStudy();
@@ -587,4 +637,5 @@
   }
 
   init();
+  frameReview();
 })();
