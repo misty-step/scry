@@ -18,22 +18,37 @@
 // open idea; Settings applying a mode at once and saving rapid switches one
 // POST at a time with the last choice persisted; the phone's single-row
 // header and navigation; and 0 console errors, page errors, failed requests,
-// CSP violations and HTTP >= 500 everywhere. With --evidence it writes the
-// screenshots and one walkthrough video per viewport. Prints a JSON summary;
-// exits 0 only when every check passes.
+// CSP violations and HTTP >= 500 everywhere.
+//
+// Pass 3 adds: a theme change still waiting behind an in-flight save is kept
+// when the learner navigates away at once (keepalive flush, sent once); the
+// review without JavaScript stays at scrollY 0 for a sentence-length
+// Incorrect answer; "/" on the phone Library opens the idea picker and
+// focuses its search; a sentence typed on the phone Study screen never
+// widens the page. Theme-save checks are gated on request events (a held
+// response released on cue), not on fixed waits.
+//
+// Signing in happens in an unrecorded setup context; the recorded
+// walkthrough reuses its storageState, so the test-mode demo hint on the
+// sign-in page is never in a video. With --evidence it writes a compact set
+// of screenshots and one walkthrough video per viewport (re-encoded with
+// ffmpeg VP9 when available). Prints a JSON summary; exits 0 only when every
+// check passes.
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { chromium } from "playwright-core";
 
 const args = process.argv.slice(2);
-const opt = { url: "", evidence: "", sha: "" };
+const opt = { url: "", evidence: "", sha: "", serverLog: "" };
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--url") opt.url = args[++i];
+  else if (args[i] === "--server-log") opt.serverLog = path.resolve(args[++i]);
   else if (args[i] === "--evidence") opt.evidence = path.resolve(args[++i]);
   else if (args[i] === "--sha") opt.sha = args[++i];
-  else { console.error("usage: verify-slice54.mjs --url <base-url> [--evidence dir] [--sha short-sha]"); process.exit(2); }
+  else { console.error("usage: verify-slice54.mjs --url <base-url> [--evidence dir] [--sha short-sha] [--server-log scry.log]"); process.exit(2); }
 }
 if (!opt.url) { console.error("--url is required"); process.exit(2); }
 const base = opt.url.replace(/\/+$/, "");
@@ -45,12 +60,12 @@ function check(name, ok, detail) {
   if (!ok) summary.failures.push(name + (detail === undefined ? "" : ": " + JSON.stringify(detail)));
   return ok;
 }
-const pause = ms => new Promise(r => setTimeout(r, ms));
 const CONFIGS = [
   { name: "desktop", width: 1440, height: 900 },
   { name: "phone", width: 390, height: 844, mobile: true },
 ];
 const DEMO = { email: "phaedrus@example.com", password: "know-thyself" };
+const LONG_ANSWER = "I think it is the word that pilots use for this letter of the alphabet";
 
 function watch(page, label) {
   const push = s => summary.problems.push(label + " " + s);
@@ -90,19 +105,25 @@ async function common(page, c, label) {
 
 const press = (page, c, sel) => c.mobile ? page.locator(sel).first().tap() : page.locator(sel).first().click();
 
-async function run(browser, c) {
-  const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), "scry54-video-"));
-  const context = await browser.newContext({
-    viewport: { width: c.width, height: c.height }, isMobile: !!c.mobile, hasTouch: !!c.mobile, deviceScaleFactor: c.mobile ? 2 : 1,
-    colorScheme: "light", recordVideo: opt.evidence ? { dir: videoDir, size: { width: c.mobile ? 390 : 1280, height: c.mobile ? 844 : 800 } } : undefined,
-  });
+const contextOptions = c => ({
+  viewport: { width: c.width, height: c.height }, isMobile: !!c.mobile, hasTouch: !!c.mobile, deviceScaleFactor: c.mobile ? 2 : 1,
+  colorScheme: "light",
+});
+async function instrument(context) {
   context.setDefaultTimeout(20000);
   await context.addInitScript(() => {
     window.__csp = [];
     document.addEventListener("securitypolicyviolation", e => window.__csp.push((e.effectiveDirective || e.violatedDirective) + " " + e.blockedURI), true);
   });
+}
+
+// Signed-out landing and sign-in, in a context that is never recorded.
+// Returns the signed-in storageState for the recorded walkthrough.
+async function setup(browser, c) {
+  const context = await browser.newContext(contextOptions(c));
+  await instrument(context);
   const page = await context.newPage();
-  watch(page, c.name);
+  watch(page, c.name + " setup");
 
   // ---- Landing, brand, icons -------------------------------------------
   await page.goto(base + "/", { waitUntil: "load" });
@@ -135,7 +156,7 @@ async function run(browser, c) {
   check(c.name + " landing: public footer names Misty Step and privacy", /Misty Step/.test(land.foot) && /yours alone/.test(land.foot), land.foot);
   if (c.mobile) check("phone landing: signed-out header is one 56px row with Sign in", Math.round(land.topH) === 56 && land.oneRow, { h: land.topH, oneRow: land.oneRow });
   await common(page, c, "landing");
-  await shot(page, c.name + "-landing.png", !c.mobile);
+  if (!c.mobile) await shot(page, "desktop-landing.png");
   if (c.mobile) {
     await page.locator(".specimen").scrollIntoViewIfNeeded();
     await shot(page, "phone-landing-specimen.png");
@@ -157,6 +178,52 @@ async function run(browser, c) {
   const inputBorder = await page.$eval("#email", e => getComputedStyle(e).borderTopWidth + " " + getComputedStyle(e).borderTopStyle);
   check(c.name + " inputs: 1px hairline border at rest", inputBorder === "1px solid", inputBorder);
   await Promise.all([page.waitForURL(u => new URL(u).pathname !== "/signin"), press(page, c, "main form button.btn-accent")]);
+  const state = await context.storageState();
+  await context.close();
+  return state;
+}
+
+// themePosts counts the POST /settings/theme requests in the server's
+// structured request log (--server-log). A keepalive request sent while the
+// page unloads is not seen by Playwright's routing, so the server's own log
+// is the witness that it was sent, and sent once.
+function themePosts() {
+  if (!opt.serverLog) return -1;
+  return fs.readFileSync(opt.serverLog, "utf8").split("\n").filter(l => l.includes('"method":"POST","path":"/settings/theme"')).length;
+}
+async function untilPolled(pred, ms = 8000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    if (await pred()) return true;
+    if (Date.now() > end) return false;
+    await new Promise(r => setTimeout(r, 50));
+  }
+}
+
+// waiter resolves pred-gated promises whenever notify() is called.
+function waiter() {
+  const list = [];
+  return {
+    notify() { for (const w of list.splice(0)) { if (w.pred()) w.resolve(); else list.push(w); } },
+    until(pred, label, ms = 10000) {
+      if (pred()) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error("timed out waiting for " + label)), ms);
+        list.push({ pred, resolve: () => { clearTimeout(t); resolve(); } });
+      });
+    },
+  };
+}
+
+async function run(browser, c, state) {
+  const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), "scry54-video-"));
+  const context = await browser.newContext(Object.assign(contextOptions(c), {
+    storageState: state,
+    recordVideo: opt.evidence ? { dir: videoDir, size: { width: c.mobile ? 390 : 1280, height: c.mobile ? 844 : 800 } } : undefined,
+  }));
+  await instrument(context);
+  const page = await context.newPage();
+  watch(page, c.name);
 
   // ---- Header and nav --------------------------------------------------
   await page.goto(base + "/library", { waitUntil: "load" });
@@ -175,16 +242,22 @@ async function run(browser, c) {
   const lib = await page.evaluate(() => ({ tabular: getComputedStyle(document.querySelector(".outline-num")).fontVariantNumeric, ideas: document.querySelectorAll(".pane-outline .outline-row").length }));
   check(c.name + " library: outline numbers are tabular", /tabular-nums/.test(lib.tabular) && lib.ideas > 1, lib);
   await common(page, c, "library");
+  if (!c.mobile) {
+    // "/" focuses the outline's search on desktop.
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.keyboard.press("/");
+    const slash = await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName);
+    check("desktop library: '/' focuses the outline search", slash === "q", slash);
+    await page.keyboard.press("Escape");
+  }
   if (c.mobile) {
     const pick = await page.evaluate(() => {
       const p = document.querySelector("[data-idea-picker]"), idea = document.querySelector(".pane-idea"), out = document.querySelector(".pane-outline");
       return { visible: getComputedStyle(p).display !== "none", open: p.open, above: p.getBoundingClientRect().bottom <= idea.getBoundingClientRect().top + 1, outlineHidden: getComputedStyle(out).display === "none", ideaTop: idea.getBoundingClientRect().top };
     });
     check("phone library: collapsed idea picker above the open idea, full outline hidden", pick.visible && !pick.open && pick.above && pick.outlineHidden && pick.ideaTop < 844, pick);
-    await shot(page, "phone-library.png");
     await press(page, c, ".picker-summary");
-    await pause(300);
-    await shot(page, "phone-library-picker-open.png");
+    await page.waitForFunction(() => document.querySelector("[data-idea-picker]").open);
     const target = page.locator("[data-idea-picker] .outline-row:not([aria-current])").nth(1);
     const title = (await target.locator(".outline-title").textContent()).trim();
     await Promise.all([page.waitForURL(/\/library\/ideas\//), target.tap()]);
@@ -194,9 +267,20 @@ async function run(browser, c) {
       return { open: p.open, title: t.textContent.trim(), titleTop: t.getBoundingClientRect().top, scrollY, current: document.querySelector(".picker-current").textContent.replace(/\s+/g, " ").trim() };
     });
     check("phone library: tapping an idea lands on it, title in view, picker collapsed above", landed.title === title && !landed.open && landed.titleTop > 0 && landed.titleTop < 400 && landed.current.includes(title), { title, landed });
-    await shot(page, "phone-library-idea.png");
-  } else {
-    await shot(page, "desktop-library.png");
+    // "/" with nothing focused: the outline (and its search) is hidden on a
+    // phone, so the picker opens and its own search takes focus.
+    await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+    const before = await page.evaluate(() => ({ active: document.activeElement?.tagName, desktopSearchHidden: document.querySelector("[data-search]").offsetParent === null }));
+    await page.keyboard.press("/");
+    await page.waitForFunction(() => document.querySelector("[data-idea-picker]").open, null, { timeout: 3000 }).catch(() => {});
+    const slash = await page.evaluate(() => {
+      const p = document.querySelector("[data-idea-picker]"), a = document.activeElement, r = a.getBoundingClientRect();
+      return { open: p.open, active: a.id || a.tagName, inView: r.top >= 0 && r.bottom <= innerHeight && r.width > 0 };
+    });
+    check("phone library: '/' opens the idea picker and focuses its search", before.desktopSearchHidden && before.active === "BODY" && slash.open && slash.active === "q-picker" && slash.inView, { before, slash });
+    await common(page, c, "library picker");
+    await shot(page, "phone-library-slash-picker.png");
+    await page.keyboard.press("Escape");
   }
 
   // ---- Create ----------------------------------------------------------
@@ -209,18 +293,16 @@ async function run(browser, c) {
     check("phone create: field scales so its placeholder fits", ph.w <= ph.box + 1, ph);
   }
   await common(page, c, "create");
-  await shot(page, c.name + "-create.png");
   await press(page, c, "[data-example] >> nth=1");
   const filled = await page.$eval("#q", e => e.value);
   check(c.name + " create: tapping an example fills the field", filled === ex[1].text, { filled, want: ex[1].text });
-  await shot(page, c.name + "-create-example-filled.png");
+  if (!c.mobile) await shot(page, "desktop-create-example-filled.png");
   await Promise.all([page.waitForURL(/\/learn\/\d+/), press(page, c, ".ask button.btn-accent")]);
   await page.waitForFunction(() => !document.querySelector("[data-drafting]") && document.querySelector(".draft-idea .sug"), null, { timeout: 30000 });
   await settle(page);
   const draft = await page.evaluate(() => ({ ideas: document.querySelectorAll(".draft-idea").length, rows: document.querySelectorAll(".draft-idea .sug").length, perRowIdea: document.querySelectorAll(".draft-idea .sug .sug-idea").length }));
   check(c.name + " create: draft outline rows do not repeat the idea heading", draft.ideas > 0 && draft.rows > 0 && draft.perRowIdea === 0, draft);
   await common(page, c, "draft");
-  await shot(page, c.name + "-create-draft.png", !c.mobile);
 
   // ---- Study -----------------------------------------------------------
   await page.goto(base + "/study", { waitUntil: "load" });
@@ -240,7 +322,18 @@ async function run(browser, c) {
   }
   check(c.name + " study: session sits on the 22px dot grid", /grid\.svg/.test(wait.grid) && /22px/.test(wait.grid), wait.grid);
   await common(page, c, "study waiting");
-  await shot(page, c.name + "-study-waiting.png");
+  if (c.mobile) {
+    // A full sentence typed on a phone never widens the page or pushes
+    // Check off screen.
+    await page.locator("#answer").pressSequentially(LONG_ANSWER);
+    const wide = await page.evaluate(() => {
+      const b = document.querySelector("[data-check]").getBoundingClientRect();
+      return { scrollWidth: document.documentElement.scrollWidth, innerWidth, checkLeft: Math.round(b.left), checkRight: Math.round(b.right) };
+    });
+    check("phone study: a sentence-length answer keeps the page 390px wide, Check on screen", wide.scrollWidth === 390 && wide.innerWidth === 390 && wide.checkRight <= 390 && wide.checkLeft >= 0, wide);
+    await shot(page, "phone-study-long-answer.png");
+    await page.fill("#answer", "");
+  }
   await page.fill("#answer", "Able");
   await press(page, c, "[data-check]");
   await page.waitForSelector("[data-review]");
@@ -253,14 +346,13 @@ async function run(browser, c) {
   summary.reviewVerdicts = Object.assign(summary.reviewVerdicts || {}, { [c.name]: rev.label });
   check(c.name + " review: verdict in words", /^(Correct|Almost Correct|Incorrect)$/.test(rev.label || ""), rev.label);
   await common(page, c, "review");
-  await shot(page, c.name + "-study-review.png");
+  if (!c.mobile) await shot(page, "desktop-study-review.png");
   if (await page.$("[data-explain]")) {
     await press(page, c, "[data-explain]");
     await page.waitForSelector(".explanation:not([hidden])");
     await settle(page);
     const why = await page.$eval(".explanation:not([hidden])", e => ({ rule: getComputedStyle(e).borderLeftWidth + " " + getComputedStyle(e).borderLeftStyle, text: e.textContent.trim().slice(0, 80) }));
     check(c.name + " review: Ask Why explanation set off by a 2px left rule", why.rule === "2px solid" && why.text.length > 0, why);
-    await shot(page, c.name + "-study-review-explained.png", !c.mobile);
   } else check(c.name + " review: Ask Why offered", false, "no [data-explain]");
   // Opening the review afresh (a new navigation, so the browser's own scroll
   // restoration after clicking Ask Why further down does not apply).
@@ -276,60 +368,184 @@ async function run(browser, c) {
   await page.goto(base + "/settings", { waitUntil: "load" });
   const btn = await page.evaluate(() => { const b = document.querySelector(".setting .form > .btn"), f = b.closest(".form"); return { b: Math.round(b.getBoundingClientRect().width), f: Math.round(f.getBoundingClientRect().width) }; });
   if (!c.mobile) check("desktop settings: section buttons content-sized", btn.b < btn.f, btn);
-  let inFlight = 0, maxInFlight = 0; const bodies = [];
-  await page.route("**/settings/theme", async route => {
-    inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
-    bodies.push(new URLSearchParams(route.request().postData() || "").get("theme"));
-    await pause(600); // a slow network, so later switches land while a save is in flight
-    try { await route.continue(); } finally { inFlight--; }
+  // Every theme POST passes through here. The server handles it at once
+  // (route.fetch); its response is handed back to the page only when the
+  // test releases the gate, so "a save is in flight" is a fact, not a timing.
+  const t = { sent: [], done: [], inFlight: 0, maxInFlight: 0, gate: null, onAccepted: null };
+  const w = waiter();
+  const hold = () => {
+    let release, accepted;
+    t.gate = new Promise(r => { release = r; });
+    const acceptedP = new Promise(r => { accepted = r; });
+    t.onAccepted = accepted;
+    return { release, accepted: acceptedP };
+  };
+  await context.route("**/settings/theme", async route => {
+    const v = new URLSearchParams(route.request().postData() || "").get("theme");
+    t.sent.push(v); t.inFlight++; t.maxInFlight = Math.max(t.maxInFlight, t.inFlight); w.notify();
+    const gate = t.gate, accepted = t.onAccepted;
+    t.gate = null; t.onAccepted = null;
+    try {
+      const response = await route.fetch({ maxRedirects: 0 }); // the server has stored it
+      if (accepted) accepted(v);
+      if (gate) await gate;
+      await route.fulfill({ response }).catch(() => {}); // the page may be gone
+    } catch (err) {
+      await route.abort().catch(() => {});
+    } finally {
+      t.inFlight--; t.done.push(v); w.notify();
+    }
   });
+  const reset = () => { t.sent.length = 0; t.done.length = 0; t.maxInFlight = 0; };
+  // After the last expected save completes, give the page one task turn to
+  // react to it (a follow-up, if any, is started from that response).
+  const quiet = async n => {
+    await w.until(() => t.done.length >= n && t.inFlight === 0, n + " theme saves");
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)))).catch(() => {});
+  };
   const radio = v => "input[name=theme][value=" + v + "]";
+  const attr = () => page.evaluate(() => document.documentElement.getAttribute("data-theme"));
+
+  // Real taps, as fast as a learner can switch: five changes while the
+  // first save is held in flight.
+  reset();
+  let h = hold();
   await press(page, c, radio("dark"));
-  const applied = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
-  check(c.name + " settings: dark applies immediately", applied === "dark", applied);
-  await shot(page, c.name + "-settings-dark-applied.png");
-  // Real taps, as fast as a learner can switch: five changes in a row.
-  for (const v of ["light", "system", "light", "dark"]) { await press(page, c, radio(v)); await pause(60); }
-  const final = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
-  const idle = async () => { for (let i = 0; i < 80 && inFlight > 0; i++) await pause(100); await pause(800); for (let i = 0; i < 80 && inFlight > 0; i++) await pause(100); };
-  await idle();
-  const tapped = bodies.splice(0);
-  check(c.name + " settings: rapid tapped switches save one POST at a time (never two in flight)", maxInFlight === 1, { maxInFlight, tapped });
-  check(c.name + " settings: tapped switches coalesce (fewer POSTs than changes) and the last POST carries the latest choice", tapped.length >= 2 && tapped.length < 5 && tapped[tapped.length - 1] === "dark" && final === "dark", { tapped, final });
-  // A burst inside one save: every change lands while the first POST is in
-  // flight, so exactly one follow-up goes out, carrying the last choice.
-  maxInFlight = 0;
+  check(c.name + " settings: dark applies immediately", (await attr()) === "dark", await attr());
+  await h.accepted;
+  for (const v of ["light", "system", "light", "dark"]) await press(page, c, radio(v));
+  const final = await attr();
+  const sentWhileHeld = t.sent.length;
+  h.release();
+  await quiet(2);
+  const tapped = t.sent.slice();
+  check(c.name + " settings: rapid tapped switches save one POST at a time (never two in flight)", t.maxInFlight === 1 && sentWhileHeld === 1, { maxInFlight: t.maxInFlight, sentWhileHeld, tapped });
+  check(c.name + " settings: tapped switches coalesce (fewer POSTs than changes) and the last POST carries the latest choice", tapped.length === 2 && tapped[1] === "dark" && final === "dark", { tapped, final });
+
+  // A burst inside one save: every change lands while the first POST is
+  // held, so exactly one follow-up goes out, carrying the last choice.
+  reset();
+  h = hold();
   await page.evaluate(() => { for (const v of ["light", "system", "dark", "light"]) document.querySelector("input[name=theme][value=" + v + "]").click(); });
-  const burstApplied = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
-  await idle();
-  const burst = bodies.splice(0);
-  check(c.name + " settings: a burst of 4 switches during one save sends exactly 2 POSTs, serialized, the last = latest", maxInFlight === 1 && burst.length === 2 && burst[0] === "light" && burst[1] === "light" && burstApplied === "light", { maxInFlight, burst, burstApplied });
+  const burstApplied = await attr();
+  await h.accepted;
+  h.release();
+  await quiet(2);
+  const burst = t.sent.slice();
+  check(c.name + " settings: a burst of 4 switches during one save sends exactly 2 POSTs, serialized, the last = latest", t.maxInFlight === 1 && burst.length === 2 && burst[0] === "light" && burst[1] === "light" && burstApplied === "light", { maxInFlight: t.maxInFlight, burst, burstApplied });
+
   // Back to dark with one tap, for the persisted check and the dark picture.
+  reset();
   await press(page, c, radio("dark"));
-  await idle();
-  bodies.splice(0);
-  await page.unroute("**/settings/theme");
+  await quiet(1);
   await page.reload({ waitUntil: "load" });
   const persisted = await page.evaluate(() => ({ checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme") }));
   check(c.name + " settings: latest mode persisted after reload", persisted.checked === "dark" && persisted.attr === "dark", persisted);
   await common(page, c, "settings");
-  await shot(page, c.name + "-settings-dark.png", !c.mobile);
-  // Restore "Follow my system" (one switch, saved) so later runs start clean.
+  if (!c.mobile) await shot(page, "desktop-settings-dark.png", true);
+
+  // Leaving at once: start from "Follow my system", select Dark and hold its
+  // response after the server has stored it, select Light (applied at once,
+  // its save waiting behind Dark), then go straight to Library. Light must
+  // still be the saved mode, sent exactly once.
+  reset();
   await press(page, c, radio("system"));
-  for (let i = 0; i < 30; i++) { await pause(100); }
+  await quiet(1);
+  await page.reload({ waitUntil: "load" });
+  reset();
+  h = hold();
+  const logBefore = themePosts();
+  await press(page, c, radio("dark"));
+  await h.accepted; // the server has stored Dark; its response is held
+  await press(page, c, radio("light"));
+  const leftWith = await attr();
+  const pendingBeforeLeave = t.sent.slice();
+  await Promise.all([page.waitForURL(u => new URL(u).pathname === "/library"), press(page, c, ".nav a[href='/library']")]);
+  // The flushed save is a keepalive request from the page being left; wait
+  // for the server to have it (its log, or else the stored mode).
+  const savedLight = async () => /value="light" checked/.test(await (await context.request.get(base + "/settings")).text());
+  const flushed = opt.serverLog ? await untilPolled(() => themePosts() - logBefore >= 2) : await untilPolled(savedLight);
+  h.release();
+  await w.until(() => t.inFlight === 0, "the held Dark save to finish").catch(() => {});
+  await page.goto(base + "/settings", { waitUntil: "load" });
+  const kept = await page.evaluate(() => ({ checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme") }));
+  const serverPosts = opt.serverLog ? themePosts() - logBefore : null; // Dark + the one flushed Light
+  check(c.name + " settings: leaving during an in-flight save keeps the last choice (Light), sent once",
+    leftWith === "light" && pendingBeforeLeave.join() === "dark" && flushed && kept.checked === "light" && kept.attr === "light" && (serverPosts === null || serverPosts === 2),
+    { leftWith, pendingBeforeLeave, flushed, serverPosts, kept });
+  if (serverPosts === null) summary.notes = (summary.notes || []).concat("no --server-log: the flushed save was confirmed by the stored mode, not counted");
+
+  // Restore "Follow my system" (one switch, saved) so later runs start clean.
+  reset();
+  await press(page, c, radio("system"));
+  await quiet(1);
+  await context.unroute("**/settings/theme");
   await page.reload({ waitUntil: "load" });
   const restored = await page.evaluate(() => document.querySelector("input[name=theme]:checked")?.value);
   check(c.name + " settings: single switch back to system saved", restored === "system", restored);
-  await shot(page, c.name + "-settings.png", !c.mobile);
 
   const video = page.video();
   await context.close();
   if (video && opt.evidence) {
+    const raw = path.join(videoDir, "raw.webm");
+    await video.saveAs(raw);
     const dest = path.join(opt.evidence, "walkthrough-" + c.name + "-" + c.width + "x" + c.height + ".webm");
-    await video.saveAs(dest);
+    compactVideo(raw, dest, c);
     summary.videos.push(path.basename(dest));
   }
   fs.rmSync(videoDir, { recursive: true, force: true });
+}
+
+// A sentence-length Incorrect answer (its struck answer set at Judgment
+// size, so the review is far taller than the window) opens its review at
+// the top with the question in view: with JavaScript, Next card is focused
+// without scrolling; without it, nothing (no HTML autofocus) scrolls down.
+async function longReview(browser, c, state, js) {
+  const context = await browser.newContext(Object.assign(contextOptions(c), { storageState: state, javaScriptEnabled: js }));
+  await instrument(context);
+  const page = await context.newPage();
+  const tag = js ? "JS" : "no-JS";
+  watch(page, c.name + " " + tag);
+  await page.goto(base + "/study", { waitUntil: "load" });
+  // Without script every step is a page load; with it, <main> is swapped.
+  const step = async sel => {
+    if (js) {
+      await page.locator(sel).click();
+      await page.waitForSelector(sel === "[data-next]" ? "[data-answer-form]" : "[data-review]");
+    } else {
+      await Promise.all([page.waitForNavigation({ waitUntil: "load" }), page.locator(sel).click()]);
+    }
+  };
+  let label = "";
+  for (let tries = 0; tries < 6; tries++) {
+    if (await page.$("[data-review]")) { await step("[data-next]"); continue; } // move off any open review
+    await page.fill("#answer", LONG_ANSWER);
+    await step("[data-check]");
+    label = ((await page.textContent("[data-verdict-label]").catch(() => "")) || "").trim();
+    if (label === "Incorrect") break;
+  }
+  await settle(page);
+  const r = await page.evaluate(() => {
+    const p = document.querySelector("[data-prompt]").getBoundingClientRect(), n = document.querySelector("[data-next]");
+    return { scrollY, promptTop: Math.round(p.top), promptBottom: Math.round(p.bottom), docHeight: document.documentElement.scrollHeight,
+      label: document.querySelector("[data-verdict-label]")?.textContent.trim(), htmlAutofocus: n ? n.hasAttribute("autofocus") : null,
+      nextFocused: document.activeElement === n, typedShown: document.querySelector("[data-review]").textContent.includes("pilots use for this letter") };
+  });
+  const ok = r.label === "Incorrect" && r.typedShown && r.scrollY === 0 && r.promptTop >= 0 && r.promptBottom <= c.height && r.htmlAutofocus === false && r.docHeight > c.height && (js ? r.nextFocused : true);
+  check(c.name + " " + tag + " review: sentence-length Incorrect answer opens at scrollY 0, question in view" + (js ? ", Next card focused" : ""), ok, r);
+  if (!js && !c.mobile) await shot(page, "desktop-review-nojs-sentence.png");
+  await common(page, c, tag + " review");
+  await step("[data-next]"); // leave the session clean for the next run
+  await context.close();
+}
+
+// compactVideo re-encodes Playwright's VP8 recording as a small VP9 file
+// (no audio). Without ffmpeg the recording is kept as it is.
+function compactVideo(raw, dest, c) {
+  const scale = c.mobile ? "360:-2" : "960:-2";
+  const r = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-an", "-vf", "fps=12,scale=" + scale,
+    "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", c.mobile ? "46" : "44", "-deadline", "good", "-cpu-used", "4", "-row-mt", "1", dest], { encoding: "utf8" });
+  if (r.status !== 0) { fs.copyFileSync(raw, dest); summary.videoNote = "ffmpeg unavailable or failed; raw recording kept"; }
 }
 
 (async () => {
@@ -340,7 +556,11 @@ async function run(browser, c) {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN || "/usr/bin/google-chrome", headless: true, args: ["--no-sandbox"] });
   try {
     for (const c of CONFIGS) {
-      try { await run(browser, c); } catch (err) { check(c.name + " walkthrough ran to the end", false, String(err.stack || err).split("\n").slice(0, 3).join(" | ")); }
+      try {
+        const state = await setup(browser, c);
+        await run(browser, c, state);
+        if (!c.mobile) { await longReview(browser, c, state, true); await longReview(browser, c, state, false); }
+      } catch (err) { check(c.name + " walkthrough ran to the end", false, String(err.stack || err).split("\n").slice(0, 3).join(" | ")); }
     }
   } finally { await browser.close(); }
   check("0 console errors, page errors, failed or external requests, HTTP >= 500", summary.problems.length === 0, summary.problems);

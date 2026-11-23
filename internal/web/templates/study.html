@@ -49,7 +49,7 @@
         <form method="post" action="/study/next" class="judged-actions" data-next-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           {{if eq .Judged.Kind "exact"}}<button class="link" name="again" value="1" data-again>Again</button>{{end}}
-          <button class="btn btn-accent" autofocus data-next>{{if .Last}}Finish session{{else}}Next card{{end}}{{icon "arrow"}}</button>
+          <button class="btn btn-accent" data-autofocus-no-scroll data-next>{{if .Last}}Finish session{{else}}Next card{{end}}{{icon "arrow"}}</button>
         </form>
         </div>
         <p class="hints micro">{{if eq .Judged.Kind "exact"}}a again · {{end}}enter or space for {{if .Last}}finish{{else}}next card{{end}}</p>

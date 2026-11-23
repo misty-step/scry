@@ -545,6 +545,10 @@ func TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts(t *testing.T) {
 			`icon-verdict-`+string(c.verdict), "Reason for "+c.kind+".",
 			"data-explain", "Ask Why?", "data-telemetry", "Next review", "Interval", "Stability", "Difficulty", "Reviews",
 			"data-edit-toggle", "Edit card", "data-next", "Next card", "enter or space for next card")
+		// Next card is focused by script without scrolling; plain HTML
+		// autofocus would scroll a long review down to it without script.
+		has(t, review, `<button class="btn btn-accent" data-autofocus-no-scroll data-next>`)
+		hasNot(t, review, "autofocus data-next", `data-next autofocus`)
 		if got := submittedRE.FindStringSubmatch(review); got == nil || got[1] != c.typed {
 			t.Errorf("%s: submitted answer shown as %v, want %q", c.kind, got, c.typed)
 		}

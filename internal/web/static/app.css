@@ -443,6 +443,9 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .answer { display: grid; gap: var(--s2); }
 .answer-line {
   position: relative; display: flex; align-items: baseline;
+  /* The caret's hidden measuring ruler grows with a long answer; it must
+     never widen the page (a sentence pushed Check off a phone screen). */
+  overflow: hidden;
   border-bottom: 1px solid var(--ink-ghost);
   transition: border-color var(--fast) var(--ease), border-bottom-width var(--fast) var(--ease);
 }

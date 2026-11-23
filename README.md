@@ -377,12 +377,19 @@ scroll, a review framed at the question with Next card focused and the Ask Why
 2 px rule; Create's three example prompts and draft rows; the Library's tabular
 outline and the phone idea picker above the open idea; Settings applying a mode
 at once while rapid switches save one POST at a time with the latest choice
-persisted; the phone's single-row header and navigation; and zero console
-errors, page errors, failed or external requests, CSP violations and 5xx.
+persisted (held responses released on cue, no fixed waits), and the last
+choice kept when the learner leaves during an in-flight save; a
+sentence-length Incorrect review opening at the top with and without
+JavaScript; "/" opening the phone idea picker's search; a typed sentence never
+widening the phone Study page; the phone's single-row header and navigation;
+and zero console errors, page errors, failed or external requests, CSP
+violations and 5xx. Sign-in happens in an unrecorded context, so the test-mode
+demo hint never appears in the videos; `--server-log` lets it count the
+keepalive theme save in the server's request log.
 
     make build
-    SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,close,right SCRY_DB=/tmp/s54/demo.db PORT=18095 ./bin/scry &
-    node scripts/verify-slice54.mjs --url http://127.0.0.1:18095 --sha "$(git rev-parse --short HEAD)" --evidence /tmp/slice54
+    SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,close,right SCRY_DB=/tmp/s54/demo.db PORT=18095 ./bin/scry > /tmp/s54/scry.log 2>&1 &
+    node scripts/verify-slice54.mjs --url http://127.0.0.1:18095 --sha "$(git rev-parse --short HEAD)" --evidence /tmp/slice54 --server-log /tmp/s54/scry.log
 
 The smoke blocks external requests, uses synthetic microphone input and test
 adapters, measures Check contrast in both modes and at desktop/phone widths,

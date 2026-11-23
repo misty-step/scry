@@ -1404,16 +1404,33 @@ Choices where the Folio left room:
   rows. The picker is a separate phone-only `<details>` that repeats the
   outline (desktop keeps its pane); one of the two is always `display: none`.
 - **Review framing.** "Next card" is focused with `preventScroll`, both after
-  an answer is swapped in and on a full page load (focused before the
-  browser's own autofocus pass). Nothing scrolls the window programmatically
-  (the slice-41 no-jump rule stands); a review the learner scrolled stays
-  where they put it.
+  an answer is swapped in and on a full page load. Nothing scrolls the window
+  programmatically (the slice-41 no-jump rule stands); a review the learner
+  scrolled stays where they put it. The button carries no HTML `autofocus`
+  (a browser without script scrolled a sentence-length Incorrect review down
+  to it, question out of view); it is marked `data-autofocus-no-scroll` and
+  focused by app.js only. Without script, Next card is therefore not focused
+  (Enter/Space shortcuts need script anyway). A sentence-length Incorrect
+  answer is struck at Judgment size, so on a 1440x900 window the verdict line
+  can sit below the fold; the review still opens at the top with the question
+  in view, and the layout is unchanged.
 - **Settings appearance** applies the mode to the page on change and posts
   the same form in the background; "Save appearance" still works without
   script. Background saves are serialized: one POST is in flight at a time,
   and changes made meanwhile coalesce into a single follow-up that reads the
   form when it is sent, so rapid switching always persists the last choice
-  (the server's write path is unchanged).
+  (the server's write path is unchanged). A follow-up still waiting when the
+  learner leaves or hides the page (`pagehide`, or `visibilitychange` to
+  hidden) is sent at once as a url-encoded `keepalive` fetch (a few dozen
+  bytes, far under the 64 KiB keepalive budget) and cleared, so it is sent
+  exactly once. It can reach the server while the earlier save is still
+  being handled; the observed case (the earlier save already accepted, its
+  response still on the way) always ends on the last choice.
+- **"/" on phones.** The Library outline (and its search) is hidden on
+  phones, so "/" opens the idea picker and focuses the picker's own search.
+- **Long answers on phones.** The block caret's hidden measuring ruler is
+  clipped inside the answer line (`overflow: hidden`), so a typed sentence no
+  longer widens the page (it was ~929-1903 px) or pushes Check off screen.
 - **Hover** rules (fills and colour changes) now live in one
   `@media (hover: hover)` block; focus styles are unchanged.
 - **Password reset in test mode.** The reset flow is Clerk's (live and

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -198,7 +199,18 @@ func TestStory_Create_TapAStarterExampleUnderTheField(t *testing.T) {
 func TestStory_Review_StaysFramedAtTheQuestionAndJudgment(t *testing.T) {
 	w := newWorld(t)
 	js, _ := staticAsset(t, w, "/static/app.js")
-	has(t, js, "function frameReview()", "next.focus({ preventScroll: true });", "if (frameReview()) return;")
+	has(t, js, "function frameReview()", "next.focus({ preventScroll: true });", "if (frameReview()) return;",
+		`$("[data-next][data-autofocus-no-scroll]")`)
+	// Without script nothing may scroll the review: the template carries no
+	// HTML autofocus on Next card (checked on a rendered review in
+	// TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts).
+	tpl, err := os.ReadFile("templates/study.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if regexp.MustCompile(`<button[^>]*\sautofocus[\s>][^>]*data-next`).Match(tpl) || regexp.MustCompile(`<button[^>]*data-next[^>]*\sautofocus[\s>]`).Match(tpl) {
+		t.Error("study.html: Next card still carries HTML autofocus")
+	}
 	if strings.Contains(js, "next.focus();") || strings.Contains(js, "if (next) next.focus()\n") {
 		t.Error("app.js still focuses Next card with a scroll")
 	}
@@ -233,6 +245,11 @@ func TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline(t *testi
 	phone := css[strings.Index(css, "@media (max-width: 760px)"):]
 	has(t, css, ".idea-picker { display: none; }", "font-variant-numeric: tabular-nums; color: var(--ink-muted); }")
 	has(t, phone, ".idea-picker { display: block;", ".pane-outline { display: none; }")
+	// "/" on a phone opens the picker and focuses its search, since the
+	// outline's own search is hidden there.
+	has(t, body, `id="q-picker" name="q" type="search"`, "data-picker-search>")
+	js, _ := staticAsset(t, w, "/static/app.js")
+	has(t, js, `search.offsetParent === null && picker && picker.offsetParent !== null`, `search = $("[data-picker-search]", picker);`, "picker.open = true;")
 }
 
 // DESIGN.md, Inbox: the purpose line is always on its own row beneath the
@@ -260,6 +277,18 @@ func TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized(t *test
 	// Saves are serialized: one POST in flight, later changes coalesce into a
 	// single follow-up that reads the form (the latest choice) when it is sent.
 	has(t, js, "if (saving) { pending = true; return; }", "if (pending) saveTheme();")
+	// A follow-up still waiting when the page is left or hidden is sent at
+	// once as a keepalive request, exactly once.
+	has(t, js, "keepalive: true, credentials: \"same-origin\"", "pending = false; // sent once",
+		`window.addEventListener("pagehide", function () { if (themeFlush) themeFlush(); });`,
+		`if (doc.visibilityState === "hidden" && themeFlush) themeFlush();`)
+	// The keepalive body is the form, url-encoded, as the handler reads it.
+	if st, _ := b.post("/settings/theme", "theme", "light"); st != http.StatusOK {
+		t.Fatalf("url-encoded theme POST = %d", st)
+	}
+	if page := b.mustGet("/settings"); !strings.Contains(page, `value="light" checked`) {
+		t.Error("an url-encoded theme POST did not save")
+	}
 	css, _ := staticAsset(t, w, "/static/app.css")
 	has(t, css, ".setting .form > .btn { justify-self: start; }")
 }
@@ -271,6 +300,9 @@ func TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized(t *test
 func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 	w := newWorld(t)
 	css, _ := staticAsset(t, w, "/static/app.css")
+	// A long typed answer never widens the page: the caret's measuring ruler
+	// is clipped inside the answer line.
+	has(t, css, "overflow: hidden;\n  border-bottom: 1px solid var(--ink-ghost);")
 	has(t, css,
 		"border: 1px solid var(--line); border-radius: var(--radius-control);",
 		".input:focus { border-color: var(--ink); }",
