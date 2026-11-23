@@ -6,25 +6,27 @@
     "PRODUCT.md",
     "DESIGN.md"
   ],
-  "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-  "verifiedAt": "2026-11-23T21:25:45Z",
+  "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+  "verifiedAt": "2026-11-23T22:39:03Z",
   "criticVerdict": "PENDING",
   "evidenceRoot": "Builder evidence bundle (media/ collected from ~/chief-evidence/media)",
   "realPath": {
-    "build": "make build (bin/scry, build_sha 2af6671)",
-    "run": "SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,close,right SCRY_DB=/tmp/scry54p3/final/demo.db PORT=18095 ./bin/scry > /tmp/scry54p3/final/scry.log",
-    "healthz": "200 status ok database ok build_sha 2af6671 mode test",
-    "walkthrough": "node scripts/verify-slice54.mjs --url http://127.0.0.1:18095 --sha 2af6671 --evidence ~/chief-evidence/media --server-log /tmp/scry54p3/final/scry.log: Playwright + system Chrome, desktop 1440x900 + phone 390x844 touch + desktop JS/no-JS sentence-length reviews; 106/106 checks PASS, 0 console/page/request/CSP/5xx problems",
+    "build": "make build (bin/scry, build_sha 2f0557c)",
+    "run": "SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,close,right SCRY_DB=/tmp/scry54p4/final/demo.db PORT=18095 ./bin/scry > /tmp/scry54p4/final/scry.log",
+    "healthz": "200 status ok database ok build_sha 2f0557c mode test",
+    "walkthrough": "node scripts/verify-slice54.mjs --url http://127.0.0.1:18095 --sha 2f0557c --evidence ~/chief-evidence/media --server-log /tmp/scry54p4/final/scry.log: Playwright + system Chrome, desktop 1440x900 + phone 390x844 touch + desktop JS/no-JS sentence-length reviews + held-before-Scry proxy + no-JS Settings + phone long-question review; 119/119 checks PASS, 0 console/page/request/CSP/5xx problems",
     "pass3": "Cold Critic pass-2 findings fixed and reproduced on the built binary: (1) leaving Settings for Library while Dark's save is held keeps Light (keepalive flush, server log shows exactly Dark + one Light POST); (2) no-JS sentence-length Incorrect review opens at scrollY 0 with the question in view (was 1126 on 7d943f2 in this sandbox); (3) '/' at 390x844 opens the phone idea picker and focuses #q-picker; (4) a typed sentence keeps the phone Study page 390 px wide (was 929). The same verifier run against the unfixed 7d943f2 binary failed exactly these 6 checks.",
-    "media": "10 files, 1,218,398 bytes in ~/chief-evidence/media (<= 1.8 MiB); sign-in happens in an unrecorded context, so no demo-login hint is in any frame"
+    "media": "17 files, 1,326,804 bytes in ~/chief-evidence/media (<= 1.8 MiB); sign-in and sign-up happen in unrecorded contexts, so no demo-login hint or password is in any frame",
+    "pass4": "Cold Critic pass-3 findings fixed and reproduced on the built binary: (1) a loopback reverse proxy held the Dark theme POST before it reached Scry; the Light keepalive flush reached Scry first (303), the held Dark reached Scry second (303), and Settings still shows Light (theme_seq: dark dark#1795473527497 < light light#1795473527579; server log 2 POSTs); a no-JS Save (no theme_seq) still applies after scripted saves; (2) at 390x844 touch with JS, a fresh learner's 448-character question: focusing the answer scrolls the waiting page to scrollY 396, tapping Check opens the review at scrollY 0 with the question top at 178 px and 'Finish session' focused; Ask Why after a manual scroll keeps the learner's place. The same Pass 4 checks against the unfixed d6f15a1 binary failed exactly these two (kept Dark; review scrollY 396, question top -218 px): media/regression-unfixed-d6f15a1.txt.",
+    "goTests": "go build ./... && go vet ./... pass; go test -count=1 ./... passes every package with TMPDIR on tmpfs; on this sandbox's disk-backed /tmp only TestReserveRacingPlanEnd fails (SQLITE_BUSY after the 5 s busy_timeout under synchronous=FULL), identically on the unchanged d6f15a1, so it is environmental and pre-existing"
   },
   "entries": [
     {
       "requirementId": "PRODUCT.newcomer-glance-specimen-homescreen",
       "source": "PRODUCT.md :: User stories (newcomer)",
       "intent": "Understand at a glance that Scry is an AI-judged active-recall instrument, see one real judged card on the landing page, add Scry to the home screen to launch into daily recall.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -58,8 +60,8 @@
       "requirementId": "PRODUCT.forgot-password-two-step",
       "source": "PRODUCT.md :: User stories (forgot password); DESIGN.md :: Sign-up and trial",
       "intent": "Enter email on Sign in, choose \"Forgot password\" on the password step, reset by email.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": false,
       "tests": [
@@ -80,8 +82,8 @@
       "requirementId": "PRODUCT.create-starter-examples",
       "source": "PRODUCT.md :: User stories (Study vs Create); DESIGN.md :: Create",
       "intent": "Tap a concrete starter topic or book example under the field; the draft outline does not repeat the idea on every row; the field scales on phones.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -113,20 +115,25 @@
       "requirementId": "PRODUCT.review-stays-framed",
       "source": "PRODUCT.md :: User stories (post-answer review); DESIGN.md :: Post-answer review",
       "intent": "The review stays framed at the question and judgment (Next card focused with preventScroll); Ask Why? explanation set off by a 2 px line rule.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
         "TestStory_Review_StaysFramedAtTheQuestionAndJudgment",
-        "TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts"
+        "TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts",
+        "TestStory_Review_AnswerSubmitReframesALongQuestionAtTheTop",
+        "TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet"
       ],
       "walkthroughChecks": [
         "review: question and judgment in view, Next card focused without scrolling",
         "review: Ask Why explanation set off by a 2px left rule",
         "review: a freshly opened review stays framed at the question, Next card focused",
         "desktop JS review: sentence-length Incorrect answer opens at scrollY 0, question in view, Next card focused",
-        "desktop no-JS review: sentence-length Incorrect answer opens at scrollY 0, question in view"
+        "desktop no-JS review: sentence-length Incorrect answer opens at scrollY 0, question in view",
+        "phone long question: focusing the answer scrolls the waiting page down (scrollY > 0)",
+        "phone long question: tapping Check opens the review at scrollY 0, question top on screen, Next/Finish focused",
+        "phone long question: after scrolling down, Ask Why does not jump back to the top"
       ],
       "evidence": [
         {
@@ -148,6 +155,22 @@
         {
           "localPath": "media/walkthrough-checks.log.txt",
           "mediaType": "text/plain"
+        },
+        {
+          "localPath": "media/phone-long-question-answer-focused.png",
+          "mediaType": "image/png"
+        },
+        {
+          "localPath": "media/phone-long-question-review-top.png",
+          "mediaType": "image/png"
+        },
+        {
+          "localPath": "media/walkthrough-phone-long-question-review.webm",
+          "mediaType": "video/webm"
+        },
+        {
+          "localPath": "media/regression-unfixed-d6f15a1.txt",
+          "mediaType": "text/plain"
         }
       ],
       "note": "Next card has no HTML autofocus; app.js focuses [data-autofocus-no-scroll] with preventScroll. With a sentence-length Incorrect answer (struck at Judgment size) the verdict line can sit below the 900 px fold; the review opens at the top with the question in view, layout unchanged. A full reload after the learner has scrolled keeps the browser's restored scroll."
@@ -156,8 +179,8 @@
       "requirementId": "PRODUCT.library-phone-idea-first",
       "source": "PRODUCT.md :: User stories (ideas); DESIGN.md :: Library and concept links",
       "intent": "On phones the opened idea and its cards come first, with a compact collapsible idea picker; tabular outline numbers.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -190,8 +213,8 @@
       "requirementId": "DESIGN.brand-mark-and-wordmark",
       "source": "DESIGN.md :: Brand mark and wordmark",
       "intent": "Scrying-lens mark (24 px grid, 1.75 stroke, accent focal r 2.25) 20 px beside 'scry' with an 8 px gap; adaptive vector icon and dark-ground app icon.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -217,8 +240,8 @@
       "requirementId": "DESIGN.landing",
       "source": "DESIGN.md :: Landing",
       "intent": "Two-column hero (1.15fr/1fr), lede naming active recall and spaced repetition, one accent action beside a quiet Sign in, trial terms, Study Specimen on the dot grid, four ruled rows, quiet public footer.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -251,8 +274,8 @@
       "requirementId": "DESIGN.controls-inputs-hover",
       "source": "DESIGN.md :: Color (controls)",
       "intent": "Inputs carry a 1 px line hairline at rest (ink on focus); hover fills only on hover-capable pointers.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -277,8 +300,8 @@
       "requirementId": "DESIGN.signup-trial-clerk",
       "source": "DESIGN.md :: Sign-up and trial",
       "intent": "Both sign-up pages keep '7-day trial · no card needed' above the heading; Clerk panels inherit Scry tokens with no shadows or gradients.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": false,
       "tests": [
@@ -299,8 +322,8 @@
       "requirementId": "DESIGN.study-session-margin",
       "source": "DESIGN.md :: Study session",
       "intent": "196 px left margin, top-aligned with the prompt/review flow; the waiting screen fits 1440x900 without vertical scroll.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -336,8 +359,8 @@
       "requirementId": "DESIGN.navigation-underline",
       "source": "DESIGN.md :: Every destination says what it is for",
       "intent": "Active navigation underlines the label only, never under the Inbox count.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -362,8 +385,8 @@
       "requirementId": "DESIGN.inbox-purpose",
       "source": "DESIGN.md :: Inbox",
       "intent": "The purpose line is always on its own row beneath the title, including when empty.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": false,
       "tests": [
@@ -377,12 +400,14 @@
       "requirementId": "DESIGN.settings",
       "source": "DESIGN.md :: Settings",
       "intent": "Selecting a mode applies immediately as well as saving; saves are serialized and the last choice survives leaving the page at once; section buttons are content-sized on desktop.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
-        "TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized"
+        "TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized",
+        "TestStory_Settings_AnOlderThemeSaveArrivingLateNeverOverwritesANewerOne",
+        "TestThemeSeqCompareAndSet"
       ],
       "walkthroughChecks": [
         "desktop settings: section buttons content-sized",
@@ -391,7 +416,10 @@
         "settings: tapped switches coalesce (fewer POSTs than changes) and the last POST carries the latest choice",
         "settings: a burst of 4 switches during one save sends exactly 2 POSTs, serialized, the last = latest",
         "settings: latest mode persisted after reload",
-        "settings: leaving during an in-flight save keeps the last choice (Light), sent once"
+        "settings: leaving during an in-flight save keeps the last choice (Light), sent once",
+        "desktop settings: an older Dark POST held before Scry and arriving after the Light keepalive flush does not overwrite Light",
+        "desktop no-JS settings: Save applies dark after scripted saves (no theme_seq)",
+        "desktop no-JS settings: Save applies system after scripted saves (no theme_seq)"
       ],
       "evidence": [
         {
@@ -409,6 +437,18 @@
         {
           "localPath": "media/walkthrough-checks.log.txt",
           "mediaType": "text/plain"
+        },
+        {
+          "localPath": "media/desktop-settings-light-kept-after-held-dark.png",
+          "mediaType": "image/png"
+        },
+        {
+          "localPath": "media/walkthrough-desktop-theme-held-before-scry.webm",
+          "mediaType": "video/webm"
+        },
+        {
+          "localPath": "media/regression-unfixed-d6f15a1.txt",
+          "mediaType": "text/plain"
         }
       ],
       "note": "Theme-save checks are gated on held responses released on cue (no fixed waits). The keepalive flush is not visible to Playwright routing during unload, so it is counted in the server's request log (--server-log)."
@@ -417,8 +457,8 @@
       "requirementId": "DESIGN.phones-and-safe-area",
       "source": "DESIGN.md :: Phones; Starter shelf",
       "intent": "Signed-out header one 56 px row; signed-in brand row over a single-row 44 px scrolling nav; compact study spacing; safe-area clearance for the study controls and the shelf bar; nothing scrolls sideways at 390 px.",
-      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
-      "verifiedAt": "2026-11-23T21:25:45Z",
+      "verifiedSha": "2f0557c42378e861df6d1fdaeff278676cf41581",
+      "verifiedAt": "2026-11-23T22:39:03Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
