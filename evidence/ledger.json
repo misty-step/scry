@@ -6,23 +6,25 @@
     "PRODUCT.md",
     "DESIGN.md"
   ],
-  "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-  "verifiedAt": "2026-11-23T20:59:05Z",
+  "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+  "verifiedAt": "2026-11-23T21:25:45Z",
   "criticVerdict": "PENDING",
   "evidenceRoot": "Builder evidence bundle (media/ collected from ~/chief-evidence/media)",
   "realPath": {
-    "build": "make build (bin/scry, build_sha 406fefc)",
-    "run": "SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,close,right SCRY_DB=/tmp/scrydata4/demo.db PORT=18095 ./bin/scry",
-    "healthz": "200 status ok database ok build_sha 406fefc mode test",
-    "walkthrough": "node scripts/verify-slice54.mjs --url http://127.0.0.1:18095 --sha 406fefc --evidence ~/chief-evidence/media: Playwright + system Chrome, desktop 1440x900 + phone 390x844 touch; 93/93 checks PASS, 0 console/page/request/CSP/5xx problems"
+    "build": "make build (bin/scry, build_sha 2af6671)",
+    "run": "SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,close,right SCRY_DB=/tmp/scry54p3/final/demo.db PORT=18095 ./bin/scry > /tmp/scry54p3/final/scry.log",
+    "healthz": "200 status ok database ok build_sha 2af6671 mode test",
+    "walkthrough": "node scripts/verify-slice54.mjs --url http://127.0.0.1:18095 --sha 2af6671 --evidence ~/chief-evidence/media --server-log /tmp/scry54p3/final/scry.log: Playwright + system Chrome, desktop 1440x900 + phone 390x844 touch + desktop JS/no-JS sentence-length reviews; 106/106 checks PASS, 0 console/page/request/CSP/5xx problems",
+    "pass3": "Cold Critic pass-2 findings fixed and reproduced on the built binary: (1) leaving Settings for Library while Dark's save is held keeps Light (keepalive flush, server log shows exactly Dark + one Light POST); (2) no-JS sentence-length Incorrect review opens at scrollY 0 with the question in view (was 1126 on 7d943f2 in this sandbox); (3) '/' at 390x844 opens the phone idea picker and focuses #q-picker; (4) a typed sentence keeps the phone Study page 390 px wide (was 929). The same verifier run against the unfixed 7d943f2 binary failed exactly these 6 checks.",
+    "media": "10 files, 1,218,398 bytes in ~/chief-evidence/media (<= 1.8 MiB); sign-in happens in an unrecorded context, so no demo-login hint is in any frame"
   },
   "entries": [
     {
       "requirementId": "PRODUCT.newcomer-glance-specimen-homescreen",
       "source": "PRODUCT.md :: User stories (newcomer)",
       "intent": "Understand at a glance that Scry is an AI-judged active-recall instrument, see one real judged card on the landing page, add Scry to the home screen to launch into daily recall.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -33,24 +35,12 @@
         "desktop landing: two columns, specimen right of copy",
         "landing: Study Specimen shows a verdict in words, a reason and the schedule",
         "landing: favicon, apple-touch icon and manifest linked",
-        "icons and manifest are served (start_url /study, standalone)",
+        "icons and manifest are served",
         "landing: '$5 a month' unbroken"
       ],
       "evidence": [
         {
-          "localPath": "media/walkthrough-desktop-1440x900.webm",
-          "mediaType": "video/webm"
-        },
-        {
-          "localPath": "media/walkthrough-phone-390x844.webm",
-          "mediaType": "video/webm"
-        },
-        {
           "localPath": "media/desktop-landing.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-landing.png",
           "mediaType": "image/png"
         },
         {
@@ -58,22 +48,18 @@
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/brand-app-icon-512.png",
-          "mediaType": "image/png"
-        },
-        {
           "localPath": "media/walkthrough-checks.log.txt",
           "mediaType": "text/plain"
         }
       ],
-      "note": "Home-screen install itself (OS prompt) was not exercised; the manifest (start_url /study, standalone), icons and apple-touch-icon are served and checked by test."
+      "note": "Home-screen install itself (OS prompt) was not exercised; the manifest (start_url /study, standalone), icons and apple-touch-icon are served and checked. Landing is checked signed out in an unrecorded context (screenshots, no video)."
     },
     {
       "requirementId": "PRODUCT.forgot-password-two-step",
       "source": "PRODUCT.md :: User stories (forgot password); DESIGN.md :: Sign-up and trial",
       "intent": "Enter email on Sign in, choose \"Forgot password\" on the password step, reset by email.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": false,
       "tests": [
@@ -94,8 +80,8 @@
       "requirementId": "PRODUCT.create-starter-examples",
       "source": "PRODUCT.md :: User stories (Study vs Create); DESIGN.md :: Create",
       "intent": "Tap a concrete starter topic or book example under the field; the draft outline does not repeat the idea on every row; the field scales on phones.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -118,27 +104,7 @@
           "mediaType": "video/webm"
         },
         {
-          "localPath": "media/desktop-create.png",
-          "mediaType": "image/png"
-        },
-        {
           "localPath": "media/desktop-create-example-filled.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/desktop-create-draft.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-create.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-create-example-filled.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-create-draft.png",
           "mediaType": "image/png"
         }
       ]
@@ -147,17 +113,20 @@
       "requirementId": "PRODUCT.review-stays-framed",
       "source": "PRODUCT.md :: User stories (post-answer review); DESIGN.md :: Post-answer review",
       "intent": "The review stays framed at the question and judgment (Next card focused with preventScroll); Ask Why? explanation set off by a 2 px line rule.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
-        "TestStory_Review_StaysFramedAtTheQuestionAndJudgment"
+        "TestStory_Review_StaysFramedAtTheQuestionAndJudgment",
+        "TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts"
       ],
       "walkthroughChecks": [
         "review: question and judgment in view, Next card focused without scrolling",
         "review: Ask Why explanation set off by a 2px left rule",
-        "review: a freshly opened review stays framed at the question, Next card focused"
+        "review: a freshly opened review stays framed at the question, Next card focused",
+        "desktop JS review: sentence-length Incorrect answer opens at scrollY 0, question in view, Next card focused",
+        "desktop no-JS review: sentence-length Incorrect answer opens at scrollY 0, question in view"
       ],
       "evidence": [
         {
@@ -173,26 +142,22 @@
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/desktop-study-review-explained.png",
+          "localPath": "media/desktop-review-nojs-sentence.png",
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/phone-study-review.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-study-review-explained.png",
-          "mediaType": "image/png"
+          "localPath": "media/walkthrough-checks.log.txt",
+          "mediaType": "text/plain"
         }
       ],
-      "note": "A full reload after the learner has scrolled (e.g. down to Ask Why on an Incorrect card at 1440x900, where Ask Why sits below the fold) keeps the browser's restored scroll; per NOTES.md nothing scrolls the window programmatically. A fresh open is always framed."
+      "note": "Next card has no HTML autofocus; app.js focuses [data-autofocus-no-scroll] with preventScroll. With a sentence-length Incorrect answer (struck at Judgment size) the verdict line can sit below the 900 px fold; the review opens at the top with the question in view, layout unchanged. A full reload after the learner has scrolled keeps the browser's restored scroll."
     },
     {
       "requirementId": "PRODUCT.library-phone-idea-first",
       "source": "PRODUCT.md :: User stories (ideas); DESIGN.md :: Library and concept links",
       "intent": "On phones the opened idea and its cards come first, with a compact collapsible idea picker; tabular outline numbers.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -201,7 +166,9 @@
       "walkthroughChecks": [
         "phone library: collapsed idea picker above the open idea, full outline hidden",
         "phone library: tapping an idea lands on it, title in view, picker collapsed above",
-        "phone library: 0 px sideways scroll"
+        "phone library: 0 px sideways scroll",
+        "phone library: '/' opens the idea picker and focuses its search",
+        "desktop library: '/' focuses the outline search"
       ],
       "evidence": [
         {
@@ -209,16 +176,12 @@
           "mediaType": "video/webm"
         },
         {
-          "localPath": "media/phone-library.png",
+          "localPath": "media/phone-library-slash-picker.png",
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/phone-library-picker-open.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-library-idea.png",
-          "mediaType": "image/png"
+          "localPath": "media/walkthrough-checks.log.txt",
+          "mediaType": "text/plain"
         }
       ],
       "note": "PRODUCT.md (idea above the outline) and DESIGN.md (idea beneath the picker) read differently; resolved per NOTES.md Slice 54."
@@ -227,8 +190,8 @@
       "requirementId": "DESIGN.brand-mark-and-wordmark",
       "source": "DESIGN.md :: Brand mark and wordmark",
       "intent": "Scrying-lens mark (24 px grid, 1.75 stroke, accent focal r 2.25) 20 px beside 'scry' with an 8 px gap; adaptive vector icon and dark-ground app icon.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -245,11 +208,7 @@
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/phone-landing.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/brand-app-icon-512.png",
+          "localPath": "media/phone-landing-specimen.png",
           "mediaType": "image/png"
         }
       ]
@@ -258,8 +217,8 @@
       "requirementId": "DESIGN.landing",
       "source": "DESIGN.md :: Landing",
       "intent": "Two-column hero (1.15fr/1fr), lede naming active recall and spaced repetition, one accent action beside a quiet Sign in, trial terms, Study Specimen on the dot grid, four ruled rows, quiet public footer.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -275,20 +234,16 @@
       ],
       "evidence": [
         {
-          "localPath": "media/walkthrough-desktop-1440x900.webm",
-          "mediaType": "video/webm"
-        },
-        {
           "localPath": "media/desktop-landing.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-landing.png",
           "mediaType": "image/png"
         },
         {
           "localPath": "media/phone-landing-specimen.png",
           "mediaType": "image/png"
+        },
+        {
+          "localPath": "media/walkthrough-checks.log.txt",
+          "mediaType": "text/plain"
         }
       ]
     },
@@ -296,8 +251,8 @@
       "requirementId": "DESIGN.controls-inputs-hover",
       "source": "DESIGN.md :: Color (controls)",
       "intent": "Inputs carry a 1 px line hairline at rest (ink on focus); hover fills only on hover-capable pointers.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -308,8 +263,8 @@
       ],
       "evidence": [
         {
-          "localPath": "media/walkthrough-phone-390x844.webm",
-          "mediaType": "video/webm"
+          "localPath": "media/desktop-create-example-filled.png",
+          "mediaType": "image/png"
         },
         {
           "localPath": "media/walkthrough-checks.log.txt",
@@ -322,8 +277,8 @@
       "requirementId": "DESIGN.signup-trial-clerk",
       "source": "DESIGN.md :: Sign-up and trial",
       "intent": "Both sign-up pages keep '7-day trial · no card needed' above the heading; Clerk panels inherit Scry tokens with no shadows or gradients.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": false,
       "tests": [
@@ -344,8 +299,8 @@
       "requirementId": "DESIGN.study-session-margin",
       "source": "DESIGN.md :: Study session",
       "intent": "196 px left margin, top-aligned with the prompt/review flow; the waiting screen fits 1440x900 without vertical scroll.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -355,7 +310,8 @@
         "desktop study: margin column is 196px",
         "desktop study: margin top-aligned with the flow",
         "desktop study: waiting screen fits 1440x900 without vertical scroll",
-        "study: session sits on the 22px dot grid"
+        "study: session sits on the 22px dot grid",
+        "phone study: a sentence-length answer keeps the page 390px wide, Check on screen"
       ],
       "evidence": [
         {
@@ -363,11 +319,11 @@
           "mediaType": "video/webm"
         },
         {
-          "localPath": "media/desktop-study-waiting.png",
+          "localPath": "media/desktop-study-review.png",
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/phone-study-waiting.png",
+          "localPath": "media/phone-study-long-answer.png",
           "mediaType": "image/png"
         },
         {
@@ -380,8 +336,8 @@
       "requirementId": "DESIGN.navigation-underline",
       "source": "DESIGN.md :: Every destination says what it is for",
       "intent": "Active navigation underlines the label only, never under the Inbox count.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -393,11 +349,11 @@
       ],
       "evidence": [
         {
-          "localPath": "media/desktop-library.png",
+          "localPath": "media/desktop-settings-dark.png",
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/phone-library.png",
+          "localPath": "media/phone-library-slash-picker.png",
           "mediaType": "image/png"
         }
       ]
@@ -406,8 +362,8 @@
       "requirementId": "DESIGN.inbox-purpose",
       "source": "DESIGN.md :: Inbox",
       "intent": "The purpose line is always on its own row beneath the title, including when empty.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": false,
       "tests": [
@@ -420,9 +376,9 @@
     {
       "requirementId": "DESIGN.settings",
       "source": "DESIGN.md :: Settings",
-      "intent": "Selecting a mode applies immediately as well as saving; section buttons are content-sized on desktop.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "intent": "Selecting a mode applies immediately as well as saving; saves are serialized and the last choice survives leaving the page at once; section buttons are content-sized on desktop.",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -434,7 +390,8 @@
         "settings: rapid tapped switches save one POST at a time (never two in flight)",
         "settings: tapped switches coalesce (fewer POSTs than changes) and the last POST carries the latest choice",
         "settings: a burst of 4 switches during one save sends exactly 2 POSTs, serialized, the last = latest",
-        "settings: latest mode persisted after reload"
+        "settings: latest mode persisted after reload",
+        "settings: leaving during an in-flight save keeps the last choice (Light), sent once"
       ],
       "evidence": [
         {
@@ -446,37 +403,22 @@
           "mediaType": "video/webm"
         },
         {
-          "localPath": "media/desktop-settings-dark-applied.png",
-          "mediaType": "image/png"
-        },
-        {
           "localPath": "media/desktop-settings-dark.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/desktop-settings.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-settings-dark-applied.png",
-          "mediaType": "image/png"
-        },
-        {
-          "localPath": "media/phone-settings.png",
           "mediaType": "image/png"
         },
         {
           "localPath": "media/walkthrough-checks.log.txt",
           "mediaType": "text/plain"
         }
-      ]
+      ],
+      "note": "Theme-save checks are gated on held responses released on cue (no fixed waits). The keepalive flush is not visible to Playwright routing during unload, so it is counted in the server's request log (--server-log)."
     },
     {
       "requirementId": "DESIGN.phones-and-safe-area",
       "source": "DESIGN.md :: Phones; Starter shelf",
       "intent": "Signed-out header one 56 px row; signed-in brand row over a single-row 44 px scrolling nav; compact study spacing; safe-area clearance for the study controls and the shelf bar; nothing scrolls sideways at 390 px.",
-      "verifiedSha": "406fefc5d1459efe12a4d91ddeec64659a4d05c9",
-      "verifiedAt": "2026-11-23T20:59:05Z",
+      "verifiedSha": "2af66710ccb9fcb6ff5fcd36eac0144ae0ffe69b",
+      "verifiedAt": "2026-11-23T21:25:45Z",
       "criticVerdict": "PENDING",
       "realPathVerified": true,
       "tests": [
@@ -485,7 +427,11 @@
       "walkthroughChecks": [
         "phone landing: signed-out header is one 56px row with Sign in",
         "phone nav: one 44px row that scrolls sideways",
-        "phone: 0 px sideways scroll on every screen"
+        "landing: 0 px sideways scroll",
+        "phone study: a sentence-length answer keeps the page 390px wide, Check on screen",
+        "study waiting: 0 px sideways scroll",
+        "library picker: 0 px sideways scroll",
+        "settings: 0 px sideways scroll"
       ],
       "evidence": [
         {
@@ -493,15 +439,15 @@
           "mediaType": "video/webm"
         },
         {
-          "localPath": "media/phone-landing.png",
+          "localPath": "media/phone-landing-specimen.png",
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/phone-study-waiting.png",
+          "localPath": "media/phone-study-long-answer.png",
           "mediaType": "image/png"
         },
         {
-          "localPath": "media/phone-settings.png",
+          "localPath": "media/phone-library-slash-picker.png",
           "mediaType": "image/png"
         }
       ],
