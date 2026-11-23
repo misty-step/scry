@@ -53,13 +53,14 @@ import { spawnSync } from "node:child_process";
 import { chromium } from "playwright-core";
 
 const args = process.argv.slice(2);
-const opt = { url: "", evidence: "", sha: "", serverLog: "" };
+const opt = { url: "", evidence: "", sha: "", serverLog: "", only: "" };
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--url") opt.url = args[++i];
   else if (args[i] === "--server-log") opt.serverLog = path.resolve(args[++i]);
   else if (args[i] === "--evidence") opt.evidence = path.resolve(args[++i]);
   else if (args[i] === "--sha") opt.sha = args[++i];
-  else { console.error("usage: verify-slice54.mjs --url <base-url> [--evidence dir] [--sha short-sha] [--server-log scry.log]"); process.exit(2); }
+  else if (args[i] === "--only") opt.only = args[++i]; // "pass4": only the Pass 4 checks (development)
+  else { console.error("usage: verify-slice54.mjs --url <base-url> [--evidence dir] [--sha short-sha] [--server-log scry.log] [--only pass4]"); process.exit(2); }
 }
 if (!opt.url) { console.error("--url is required"); process.exit(2); }
 const base = opt.url.replace(/\/+$/, "");
@@ -78,7 +79,8 @@ const CONFIGS = [
 const DEMO = { email: "phaedrus@example.com", password: "know-thyself" };
 const LONG_ANSWER = "I think it is the word that pilots use for this letter of the alphabet";
 
-function watch(page, label) {
+// origin: another origin that is Scry too (the Pass 4 loopback proxy).
+function watch(page, label, origin) {
   const push = s => summary.problems.push(label + " " + s);
   page.on("console", m => { if (m.type() === "error") push("console.error: " + m.text().slice(0, 200)); });
   page.on("pageerror", e => push("pageerror: " + String(e.message).slice(0, 200)));
@@ -88,7 +90,7 @@ function watch(page, label) {
     push("request failed: " + r.method() + " " + new URL(r.url()).pathname + " " + err);
   });
   page.on("response", r => { if (r.status() >= 500) push("http " + r.status() + " " + r.request().method() + " " + new URL(r.url()).pathname); });
-  page.on("request", r => { if (!r.url().startsWith(base) && !r.url().startsWith("data:") && !r.url().startsWith("blob:")) push("external request: " + r.url().slice(0, 120)); });
+  page.on("request", r => { if (!r.url().startsWith(base) && !(origin && r.url().startsWith(origin + "/")) && !r.url().startsWith("data:") && !r.url().startsWith("blob:")) push("external request: " + r.url().slice(0, 120)); });
 }
 
 async function settle(page) {
@@ -607,7 +609,7 @@ async function heldBeforeScry(browser, c, state) {
   }));
   await instrument(context);
   const page = await context.newPage();
-  watch(page, c.name + " proxy");
+  watch(page, c.name + " proxy", p.url);
   const ev = kind => p.events.filter(e => e.kind === kind);
   const radio = v => "input[name=theme][value=" + v + "]";
   const saved = async () => page.evaluate(() => ({ checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme") }));
@@ -652,13 +654,6 @@ async function heldBeforeScry(browser, c, state) {
     await common(page, c, "settings after held proxy");
     await shot(page, "desktop-settings-light-kept-after-held-dark.png");
 
-    // Restore "Follow my system" for later runs (a plain form submit, which
-    // always applies and clears the stored sequence).
-    await page.evaluate(() => { const f = document.querySelector("[data-theme-form]"); f.querySelector("input[value=system]").checked = true; HTMLFormElement.prototype.submit.call(f); });
-    await page.waitForLoadState("load");
-    await page.waitForURL(u => new URL(u).pathname === "/settings");
-    const restored = (await saved()).checked;
-    check(c.name + " settings: plain form submit (no theme_seq) after scripted saves applies", restored === "system", restored);
   } finally {
     const video = page.video();
     await context.close();
@@ -671,6 +666,30 @@ async function heldBeforeScry(browser, c, state) {
     }
     fs.rmSync(videoDir, { recursive: true, force: true });
     await p.close();
+  }
+  await noJsThemeSave(browser, c, state);
+}
+
+// Without JavaScript the Settings form posts the plain way, with no
+// theme_seq: it always applies, even though the scripted saves before it
+// stored a large sequence number. It restores "Follow my system" too.
+async function noJsThemeSave(browser, c, state) {
+  const context = await browser.newContext(Object.assign(contextOptions(c), { storageState: state, javaScriptEnabled: false }));
+  await instrument(context);
+  const page = await context.newPage();
+  watch(page, c.name + " no-JS settings");
+  try {
+    await page.goto(base + "/settings", { waitUntil: "load" });
+    const before = await page.evaluate(() => document.querySelector("input[name=theme]:checked")?.value);
+    for (const v of ["dark", "system"]) {
+      await page.check("[data-theme-form] input[name=theme][value=" + v + "]");
+      await Promise.all([page.waitForNavigation({ waitUntil: "load" }), page.locator("[data-theme-form] button").first().click()]);
+      const now = await page.evaluate(() => ({ checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme") }));
+      check(c.name + " no-JS settings: Save applies " + v + " after scripted saves (no theme_seq)", now.checked === v && (v === "system" ? now.attr === null : now.attr === v), { before, now });
+    }
+    await common(page, c, "no-JS settings");
+  } finally {
+    await context.close();
   }
 }
 
@@ -703,10 +722,10 @@ async function longQuestionPhone(browser, c) {
   await s.evaluate(() => { document.querySelector("#add").open = true; });
   await s.fill("#add #prompt", LONG_QUESTION);
   await s.fill("#add #answer", "Chlorophyll");
-  await Promise.all([s.waitForURL(u => /ok=added/.test(u)), s.locator("#add form button").first().tap()]);
+  await Promise.all([s.waitForNavigation({ waitUntil: "load" }), s.locator("#add form button").first().tap()]);
   for (const href of placeholders) {
     await s.goto(base + href, { waitUntil: "load" });
-    await Promise.all([s.waitForURL(u => /ok=removed/.test(u)), s.locator("form[action$='/remove'] button").first().tap()]);
+    await Promise.all([s.waitForNavigation({ waitUntil: "load" }), s.locator("form[action$='/remove'] button").first().tap()]);
   }
   await s.goto(ideaURL, { waitUntil: "load" });
   const cards = await s.$$eval(".pane-idea a[href^='/library/items/'] .item-q, main a[href^='/library/items/'] .item-q", els => [...new Set(els.map(e => e.textContent.trim()))]);
@@ -726,11 +745,11 @@ async function longQuestionPhone(browser, c) {
     await page.goto(base + "/study", { waitUntil: "load" });
     await page.waitForSelector("[data-answer-form]");
     await settle(page);
-    const prompt = (await page.textContent("[data-prompt]")).trim();
+    const prompt = (await page.textContent("main h1#prompt")).trim(); // the waiting prompt
     await page.locator("#answer").tap(); // focus the field below the long prompt
     await page.locator("#answer").pressSequentially("chlorophyll");
     await settle(page);
-    const waiting = await page.evaluate(() => ({ scrollY, promptTop: Math.round(document.querySelector("[data-prompt]").getBoundingClientRect().top), focused: document.activeElement?.id }));
+    const waiting = await page.evaluate(() => ({ scrollY, promptTop: Math.round(document.querySelector("main h1#prompt").getBoundingClientRect().top), focused: document.activeElement?.id }));
     check("phone long question: focusing the answer scrolls the waiting page down (scrollY > 0)", prompt === LONG_QUESTION && waiting.focused === "answer" && waiting.scrollY > 0, Object.assign({ promptLen: prompt.length }, waiting));
     await shot(page, "phone-long-question-answer-focused.png");
     await page.locator("[data-check]").tap();
@@ -793,9 +812,9 @@ function compactVideo(raw, dest, c) {
     for (const c of CONFIGS) {
       try {
         const state = await setup(browser, c);
-        await run(browser, c, state);
+        if (opt.only !== "pass4") await run(browser, c, state);
         if (!c.mobile) {
-          await longReview(browser, c, state, true); await longReview(browser, c, state, false);
+          if (opt.only !== "pass4") { await longReview(browser, c, state, true); await longReview(browser, c, state, false); }
           await heldBeforeScry(browser, c, state);
         } else {
           await longQuestionPhone(browser, c);
