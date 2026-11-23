@@ -609,18 +609,32 @@
   // ---- Settings: appearance applies at once ------------------------------
 
   // Choosing a mode changes the page immediately, and saves it as well.
+  // Saves are serialized: one POST is in flight at a time, and changes made
+  // while it runs coalesce into a single follow-up carrying the latest
+  // selection, so rapid switching always persists the mode last chosen.
   function initTheme() {
     var form = $("[data-theme-form]");
     if (!form) return;
+    var saving = false, pending = false;
+    function saveTheme() {
+      if (saving) { pending = true; return; }
+      saving = true;
+      pending = false;
+      fetch(form.action, {
+        method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
+        headers: { "X-Requested-With": "fetch" }
+      }).catch(function () { /* the Save button still posts the plain way */ })
+        .then(function () {
+          saving = false;
+          if (pending) saveTheme();
+        });
+    }
     $$("input[name=theme]", form).forEach(function (radio) {
       radio.addEventListener("change", function () {
         if (!radio.checked) return;
         if (radio.value === "system") doc.documentElement.removeAttribute("data-theme");
         else doc.documentElement.setAttribute("data-theme", radio.value);
-        fetch(form.action, {
-          method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
-          headers: { "X-Requested-With": "fetch" }
-        }).catch(function () { /* the Save button still posts the plain way */ });
+        saveTheme();
       });
     });
   }

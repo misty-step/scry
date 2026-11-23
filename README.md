@@ -273,7 +273,7 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | --- | --- |
 | Operator story: continuous monitoring, incident triage, fix proposal and fault drill | `TestStory_ContinuousMonitoringFaultDrillRestartRecovery`, `TestMonitoringDedupTriageFixQuietDurability` (internal/watch) |
 | Story: signup, trial and study within a minute; understand Scry at a glance, see one judged card on the landing page, add Scry to the home screen | TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen; TestDesign_BrandMarkBesideTheWordmark; internal/web.TestBrand_MarkIsOneDrawingEverywhere |
-| Story: forgot password: email on Sign in, then "Forgot password" on the password step | TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep; TestClerkFrontendStandIn |
+| Story: forgot password: email on Sign in, then "Forgot password" on the password step | TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep; TestClerkFrontendStandIn (these cover the Sign in guidance and Scry's "Reset your password" copy on Clerk's forgot/reset-password routes; Clerk itself completes the emailed reset and the sign-in with the new password, which stay outside automated test coverage — the stand-in simulates no reset) |
 | Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
 | Story: any topic shaped to learner, or tap a starter example under the field | TestStory_AskForAnyTopic_AndGetItShapedToMe; TestStory_Create_TapAStarterExampleUnderTheField |
 | Story: favorite book core ideas | TestStory_TurnAFavoriteBookIntoASetOfItsCoreIdeas |

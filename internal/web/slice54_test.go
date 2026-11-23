@@ -257,6 +257,9 @@ func TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized(t *test
 	has(t, page, `<form method="post" action="/settings/theme" class="form" data-theme-form>`)
 	js, _ := staticAsset(t, w, "/static/app.js")
 	has(t, js, "function initTheme()", `doc.documentElement.setAttribute("data-theme", radio.value)`, `doc.documentElement.removeAttribute("data-theme")`)
+	// Saves are serialized: one POST in flight, later changes coalesce into a
+	// single follow-up that reads the form (the latest choice) when it is sent.
+	has(t, js, "if (saving) { pending = true; return; }", "if (pending) saveTheme();")
 	css, _ := staticAsset(t, w, "/static/app.css")
 	has(t, css, ".setting .form > .btn { justify-self: start; }")
 }
