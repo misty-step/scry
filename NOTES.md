@@ -1410,7 +1410,10 @@ Choices where the Folio left room:
   where they put it.
 - **Settings appearance** applies the mode to the page on change and posts
   the same form in the background; "Save appearance" still works without
-  script.
+  script. Background saves are serialized: one POST is in flight at a time,
+  and changes made meanwhile coalesce into a single follow-up that reads the
+  form when it is sent, so rapid switching always persists the last choice
+  (the server's write path is unchanged).
 - **Hover** rules (fills and colour changes) now live in one
   `@media (hover: hover)` block; focus styles are unchanged.
 - **Password reset in test mode.** The reset flow is Clerk's (live and
