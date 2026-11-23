@@ -540,10 +540,11 @@ async function longReview(browser, c, state, js) {
 }
 
 // compactVideo re-encodes Playwright's VP8 recording as a small VP9 file
-// (no audio). Without ffmpeg the recording is kept as it is.
+// (no audio) played at half speed, since the gated walkthrough runs faster
+// than a person can follow. Without ffmpeg the recording is kept as it is.
 function compactVideo(raw, dest, c) {
   const scale = c.mobile ? "360:-2" : "960:-2";
-  const r = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-an", "-vf", "fps=12,scale=" + scale,
+  const r = spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-an", "-vf", "setpts=2.0*PTS,fps=10,scale=" + scale,
     "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", c.mobile ? "46" : "44", "-deadline", "good", "-cpu-used", "4", "-row-mt", "1", dest], { encoding: "utf8" });
   if (r.status !== 0) { fs.copyFileSync(raw, dest); summary.videoNote = "ffmpeg unavailable or failed; raw recording kept"; }
 }
