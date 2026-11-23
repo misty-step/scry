@@ -110,7 +110,13 @@
 
   // ---- Swap <main> from a fetched page -----------------------------------
 
-  function swap(html, url) {
+  // opts.top: this swap is the answer-submit -> review transition. Focusing
+  // the answer field below a long question scrolls the waiting page down (a
+  // phone keyboard does), and swapping <main> in place would keep that
+  // offset and clip the question off the top; the review is reframed at
+  // the top instead. Every other swap (Ask Why, Edit card, ...) keeps the
+  // learner's own scroll position.
+  function swap(html, url, opts) {
     var next = new DOMParser().parseFromString(html, "text/html");
     var main = $("main", next);
     if (!main) { location.href = url; return; }
@@ -121,6 +127,7 @@
     if (nav && here) here.innerHTML = nav.innerHTML;
     if (url && url !== location.href) history.replaceState(null, "", url);
     init();
+    if (opts && opts.top && $("[data-review]")) window.scrollTo(0, 0);
     if (frameReview()) return;
     var focus = $("main [autofocus]");
     if (focus) focus.focus();
@@ -376,7 +383,7 @@
         var slow = setTimeout(function () { say("checking"); }, 400);
         post(form).then(function (r) {
           clearTimeout(slow);
-          swap(r.html, r.url);
+          swap(r.html, r.url, { top: true });
         }).catch(function () {
           clearTimeout(slow);
           busy = false;
@@ -622,19 +629,40 @@
   // If the learner leaves (or hides) the page while that follow-up is still
   // waiting, it is sent at once as a keepalive request, which outlives the
   // page, so the last choice is never lost to a quick navigation.
-  var themeFlush = null;
+  //
+  // Each choice is numbered when it is made: theme_seq is strictly
+  // increasing for the tab (max(last + 1, now), kept in sessionStorage so
+  // coming back to Settings keeps counting up) and frozen into that
+  // choice's POST. The server applies a numbered save only when it is newer
+  // than the one it stored, so an older POST held up on the way and
+  // overtaken by the keepalive flush cannot overwrite the newer mode.
+  var themeFlush = null, themeSeqLast = 0;
+  function nextThemeSeq() {
+    var last = themeSeqLast;
+    try { last = Math.max(last, Number(sessionStorage.getItem("scry.theme_seq")) || 0); } catch (err) { /* storage off */ }
+    var seq = Math.max(last + 1, Date.now());
+    themeSeqLast = seq;
+    try { sessionStorage.setItem("scry.theme_seq", String(seq)); } catch (err) { /* storage off */ }
+    return seq;
+  }
   function initTheme() {
     var form = $("[data-theme-form]");
     themeFlush = null;
     if (!form) return;
-    var saving = false, pending = false;
-    function body() { return new URLSearchParams(new FormData(form)); }
+    var saving = false, pending = false, latest = null;
+    // The body is built when the POST is sent, from the choice it carries.
+    function body(choice) {
+      var b = new URLSearchParams(new FormData(form));
+      b.set("theme", choice.theme);
+      b.set("theme_seq", String(choice.seq));
+      return b;
+    }
     function saveTheme() {
       if (saving) { pending = true; return; }
       saving = true;
       pending = false;
       fetch(form.action, {
-        method: "POST", body: body(), credentials: "same-origin",
+        method: "POST", body: body(latest), credentials: "same-origin",
         headers: { "X-Requested-With": "fetch" }
       }).catch(function () { /* the Save button still posts the plain way */ })
         .then(function () {
@@ -647,7 +675,7 @@
       pending = false; // sent once: the in-flight save's follow-up is now moot
       try {
         fetch(form.action, {
-          method: "POST", body: body(), keepalive: true, credentials: "same-origin",
+          method: "POST", body: body(latest), keepalive: true, credentials: "same-origin",
           headers: { "X-Requested-With": "fetch" }
         }).catch(function () {});
       } catch (err) { /* nothing else to try */ }
@@ -657,6 +685,7 @@
         if (!radio.checked) return;
         if (radio.value === "system") doc.documentElement.removeAttribute("data-theme");
         else doc.documentElement.setAttribute("data-theme", radio.value);
+        latest = { theme: radio.value, seq: nextThemeSeq() };
         saveTheme();
       });
     });

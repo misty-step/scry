@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"scry/internal/app"
@@ -43,7 +44,14 @@ func (s *Server) settingsTheme(w http.ResponseWriter, r *http.Request, c *rc) er
 	if theme != "light" && theme != "dark" {
 		theme = "system"
 	}
-	if err := c.us.SetTheme(r.Context(), theme); err != nil {
+	// Scripted saves carry theme_seq, the page's strictly increasing number
+	// for each choice; a save older than the stored one is ignored (and
+	// answered as usual). A plain form submit carries none and always applies.
+	seq, err := strconv.ParseInt(r.FormValue("theme_seq"), 10, 64)
+	if err != nil || seq < 0 {
+		seq = 0
+	}
+	if _, err := c.us.SetThemeSeq(r.Context(), theme, seq); err != nil {
 		return err
 	}
 	return back(w, r, "/settings?ok=theme")

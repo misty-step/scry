@@ -101,6 +101,11 @@ func (s *Store) migrateAdded() error {
 	if err := s.addColumn("reservations", "created_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	// Slice 54 pass 4: the last scripted theme save's sequence number, so
+	// an older save arriving late never overwrites a newer one.
+	if err := s.addColumn("users", "theme_seq", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	// Slice 36 pass 2: a plan's period overage (Settle's write-off).
 	if err := s.addColumn("subscriptions", "period_overage_micros", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err

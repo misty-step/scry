@@ -415,8 +415,18 @@ func TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet(t *testing.T) {
 			t.Errorf("app.js is missing %q", want)
 		}
 	}
-	for _, bad := range []string{"location.reload", "scrollTo(0", "window.scroll("} {
-		if strings.Contains(string(js), bad) {
+	// The page never jumps on its own (the shelf adds in place, Ask Why and
+	// Edit card keep the learner's scroll). The one exception is the
+	// answer-submit -> review transition, which reframes the review at the
+	// question (PRODUCT.md: the review never scrolls the question out of
+	// view): exactly one scroll reset, gated on that swap.
+	src := string(js)
+	const reframe = `if (opts && opts.top && $("[data-review]")) window.scrollTo(0, 0);`
+	if n := strings.Count(src, "scrollTo("); n != 1 || strings.Count(src, reframe) != 1 {
+		t.Errorf("app.js has %d scrollTo calls; want only the review reframe %q", n, reframe)
+	}
+	for _, bad := range []string{"location.reload", "window.scroll(", "scrollTop ="} {
+		if strings.Contains(src, bad) {
 			t.Errorf("app.js contains %q", bad)
 		}
 	}

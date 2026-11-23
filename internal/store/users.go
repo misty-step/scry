@@ -180,10 +180,30 @@ func (s *Store) For(userID int64) *UserStore { return &UserStore{s: s, uid: user
 // UserID is the learner this store is scoped to.
 func (u *UserStore) UserID() int64 { return u.uid }
 
-// SetTheme stores the learner's colour mode.
+// SetTheme stores the learner's colour mode unconditionally (a plain form
+// submit) and clears the save sequence, so the next scripted save applies.
 func (u *UserStore) SetTheme(ctx context.Context, theme string) error {
-	_, err := u.s.db.ExecContext(ctx, `UPDATE users SET theme = ? WHERE id = ?`, theme, u.uid)
+	_, err := u.s.db.ExecContext(ctx, `UPDATE users SET theme = ?, theme_seq = 0 WHERE id = ?`, theme, u.uid)
 	return err
+}
+
+// SetThemeSeq stores the learner's colour mode from a scripted save that
+// carries the page's strictly increasing sequence number. seq <= 0 is a
+// plain save (SetTheme). Otherwise the write is a single compare-and-set:
+// it applies only when seq is newer than the stored one, so an older save
+// that reaches Scry after a newer one (a request held up on the way, then
+// overtaken by the keepalive flush of a later choice) cannot overwrite it.
+// It reports whether the mode was written.
+func (u *UserStore) SetThemeSeq(ctx context.Context, theme string, seq int64) (bool, error) {
+	if seq <= 0 {
+		return true, u.SetTheme(ctx, theme)
+	}
+	res, err := u.s.db.ExecContext(ctx, `UPDATE users SET theme = ?, theme_seq = ? WHERE id = ? AND theme_seq < ?`, theme, seq, u.uid, seq)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // SetAbout stores what the learner told Scry about themself.

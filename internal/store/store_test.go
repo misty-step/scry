@@ -66,3 +66,54 @@ func TestRule_Durability_BackupsInSameClockTickDoNotCollide(t *testing.T) {
 		}
 	}
 }
+
+// The theme save sequence: an older scripted save never overwrites a newer
+// one; a plain save always applies and clears the number; the column is
+// added idempotently on open.
+func TestThemeSeqCompareAndSet(t *testing.T) {
+	path := t.TempDir() + "/seq.db"
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	res, err := st.DB().Exec(`INSERT INTO users(email, auth_subject, created_at) VALUES ('seq@example.com', 'seq', 0)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := res.LastInsertId()
+	us := st.For(id)
+	read := func() (theme string, seq int64) {
+		t.Helper()
+		if err := st.DB().QueryRow(`SELECT theme, theme_seq FROM users WHERE id = ?`, id).Scan(&theme, &seq); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	step := func(theme string, seq int64, wantApplied bool, wantTheme string, wantSeq int64) {
+		t.Helper()
+		applied, err := us.SetThemeSeq(ctx, theme, seq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotTheme, gotSeq := read()
+		if applied != wantApplied || gotTheme != wantTheme || gotSeq != wantSeq {
+			t.Fatalf("SetThemeSeq(%q, %d) = %v, stored (%q, %d); want %v, (%q, %d)", theme, seq, applied, gotTheme, gotSeq, wantApplied, wantTheme, wantSeq)
+		}
+	}
+	step("light", 20, true, "light", 20)
+	step("dark", 10, false, "light", 20) // older, arriving late
+	step("dark", 20, false, "light", 20) // not newer
+	step("dark", 21, true, "dark", 21)
+	step("system", 0, true, "system", 0) // plain submit
+	step("light", 1, true, "light", 1)
+	st.Close()
+	st, err = Open(path) // the migration is idempotent
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if theme, seq := read(); theme != "light" || seq != 1 {
+		t.Fatalf("after reopen: %q %d", theme, seq)
+	}
+}

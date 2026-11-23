@@ -28,6 +28,16 @@
 // widens the page. Theme-save checks are gated on request events (a held
 // response released on cue), not on fixed waits.
 //
+// Pass 4 adds: a loopback reverse proxy holds the Dark theme POST before it
+// reaches Scry, the Light keepalive flush reaches Scry first, the held Dark
+// arrives second, and Settings still shows Light (theme_seq); a plain form
+// submit still applies after scripted saves; at 390x844 touch, a fresh
+// learner's ~450-character question scrolls the waiting page when the answer
+// is focused, and tapping Check opens its review at scrollY 0 with the
+// question top on screen and Next/Finish focused, while Ask Why after a
+// manual scroll keeps the learner's place. All are gated on request or DOM
+// events.
+//
 // Signing in happens in an unrecorded setup context; the recorded
 // walkthrough reuses its storageState, so the test-mode demo hint on the
 // sign-in page is never in a video. With --evidence it writes a compact set
@@ -36,6 +46,7 @@
 // check passes.
 
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -539,6 +550,229 @@ async function longReview(browser, c, state, js) {
   await context.close();
 }
 
+// ---- Pass 4: an older theme save that reaches Scry after a newer one ------
+//
+// A loopback reverse proxy sits between the page and Scry. It holds the Dark
+// POST *before* forwarding it (the request itself is late, not just its
+// response). Light, chosen next, waits behind Dark in the page and is sent as
+// the keepalive flush when the learner goes straight to Library; it reaches
+// Scry first. Only then is the held Dark request forwarded. Scry must keep
+// Light: every scripted save carries theme_seq, and the older Dark is ignored.
+function startHoldingProxy() {
+  const target = new URL(base);
+  const p = { events: [], armed: "", held: null, w: waiter() };
+  const note = e => { p.events.push(Object.assign({ t: Date.now() }, e)); p.w.notify(); };
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", ch => chunks.push(ch));
+    req.on("end", () => {
+      const body = Buffer.concat(chunks);
+      const isTheme = req.method === "POST" && req.url.split("?")[0] === "/settings/theme";
+      const form = isTheme ? new URLSearchParams(body.toString("utf8")) : null;
+      const theme = form ? form.get("theme") : "", seq = form ? Number(form.get("theme_seq") || 0) : 0;
+      const forward = () => {
+        // A fresh upstream request from the buffered body: once the proxy has
+        // the request, it reaches Scry even if the page that sent it is gone.
+        const up = http.request({ hostname: target.hostname, port: target.port, method: req.method, path: req.url, headers: req.headers }, ur => {
+          if (isTheme) note({ kind: "scry-answered", theme, seq, status: ur.statusCode });
+          if (!res.destroyed && !res.headersSent) { res.writeHead(ur.statusCode, ur.headers); ur.pipe(res); } else ur.resume();
+        });
+        up.on("error", err => { if (isTheme) note({ kind: "upstream-error", theme, err: String(err) }); if (!res.headersSent) { res.writeHead(502); res.end(); } });
+        if (isTheme) note({ kind: "forwarded", theme, seq });
+        up.end(body);
+      };
+      if (isTheme) note({ kind: "received", theme, seq });
+      if (isTheme && p.armed && theme === p.armed) {
+        p.armed = "";
+        p.held = forward;
+        note({ kind: "held", theme, seq });
+        return;
+      }
+      forward();
+    });
+  });
+  return new Promise(resolve => server.listen(0, "127.0.0.1", () => {
+    p.url = "http://127.0.0.1:" + server.address().port;
+    p.close = () => new Promise(r => { server.closeAllConnections(); server.close(() => r()); });
+    resolve(p);
+  }));
+}
+
+async function heldBeforeScry(browser, c, state) {
+  const p = await startHoldingProxy();
+  const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), "scry54-video-"));
+  const context = await browser.newContext(Object.assign(contextOptions(c), {
+    storageState: state, // its cookie is scoped to the host, so it holds on the proxy's port too
+    recordVideo: opt.evidence ? { dir: videoDir, size: { width: 1280, height: 800 } } : undefined,
+  }));
+  await instrument(context);
+  const page = await context.newPage();
+  watch(page, c.name + " proxy");
+  const ev = kind => p.events.filter(e => e.kind === kind);
+  const radio = v => "input[name=theme][value=" + v + "]";
+  const saved = async () => page.evaluate(() => ({ checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme") }));
+  try {
+    // Start from "Follow my system", saved.
+    await page.goto(p.url + "/settings", { waitUntil: "load" });
+    if ((await saved()).checked !== "system") {
+      const n = ev("scry-answered").length;
+      await press(page, c, radio("system"));
+      await p.w.until(() => ev("scry-answered").length > n, "the system save");
+      await page.reload({ waitUntil: "load" });
+    }
+    const start = await saved();
+    p.events.length = 0;
+    const logBefore = themePosts();
+
+    p.armed = "dark";
+    await press(page, c, radio("dark"));
+    await p.w.until(() => ev("held").length === 1, "the Dark POST to be held before Scry");
+    await press(page, c, radio("light"));
+    const leftWith = await page.evaluate(() => document.documentElement.getAttribute("data-theme"));
+    await Promise.all([page.waitForURL(u => new URL(u).pathname === "/library"), press(page, c, ".nav a[href='/library']")]);
+    // The keepalive Light POST reaches Scry and is answered first ...
+    await p.w.until(() => ev("scry-answered").some(e => e.theme === "light"), "the Light keepalive to reach Scry");
+    const scryBeforeRelease = ev("forwarded").map(e => e.theme);
+    // ... and only then does the held Dark request reach Scry.
+    p.held();
+    await p.w.until(() => ev("scry-answered").some(e => e.theme === "dark"), "the held Dark POST to reach Scry");
+    await page.goto(p.url + "/settings", { waitUntil: "load" });
+    const kept = await saved();
+    const order = ev("forwarded").map(e => e.theme + "#" + e.seq);
+    const answered = ev("scry-answered").map(e => e.theme + " " + e.status);
+    const dark = ev("forwarded").find(e => e.theme === "dark"), light = ev("forwarded").find(e => e.theme === "light");
+    const serverPosts = opt.serverLog ? themePosts() - logBefore : null;
+    check(c.name + " settings: an older Dark POST held before Scry and arriving after the Light keepalive flush does not overwrite Light",
+      start.checked === "system" && leftWith === "light" && scryBeforeRelease.join() === "light" &&
+      ev("forwarded").map(e => e.theme).join() === "light,dark" && answered.join() === "light 303,dark 303" &&
+      dark.seq > 0 && light.seq > dark.seq && kept.checked === "light" && kept.attr === "light" &&
+      (serverPosts === null || serverPosts === 2),
+      { start: start.checked, leftWith, scryBeforeRelease, order, answered, serverPosts, kept });
+    summary.heldProxy = { order, answered, kept: kept.checked, serverPosts };
+    await common(page, c, "settings after held proxy");
+    await shot(page, "desktop-settings-light-kept-after-held-dark.png");
+
+    // Restore "Follow my system" for later runs (a plain form submit, which
+    // always applies and clears the stored sequence).
+    await page.evaluate(() => { const f = document.querySelector("[data-theme-form]"); f.querySelector("input[value=system]").checked = true; HTMLFormElement.prototype.submit.call(f); });
+    await page.waitForLoadState("load");
+    await page.waitForURL(u => new URL(u).pathname === "/settings");
+    const restored = (await saved()).checked;
+    check(c.name + " settings: plain form submit (no theme_seq) after scripted saves applies", restored === "system", restored);
+  } finally {
+    const video = page.video();
+    await context.close();
+    if (video && opt.evidence) {
+      const raw = path.join(videoDir, "raw.webm");
+      await video.saveAs(raw);
+      const dest = path.join(opt.evidence, "walkthrough-desktop-theme-held-before-scry.webm");
+      compactVideo(raw, dest, c);
+      summary.videos.push(path.basename(dest));
+    }
+    fs.rmSync(videoDir, { recursive: true, force: true });
+    await p.close();
+  }
+}
+
+// ---- Pass 4: a long question's review on a phone opens framed at the top ---
+//
+// A fresh learner (signed up in an unrecorded context) with exactly one card,
+// a ~450-character question. On a 390x844 touch phone with JavaScript, the
+// answer field below the long prompt is focused, which scrolls the waiting
+// page down; tapping Check must open the review at scrollY 0 with the
+// question's top on screen and Next card focused. Scrolling down in the
+// review afterwards and pressing Ask Why must not jump back up.
+const LONG_QUESTION = "In the light-dependent reactions of photosynthesis, which take place across the thylakoid membranes inside the chloroplast, the energy of absorbed sunlight is used to split water molecules, releasing oxygen as a by-product and producing the energy carriers that later drive the Calvin cycle in the stroma, where carbon dioxide is fixed into sugar. What is the name of the green pigment, embedded in those membranes, that absorbs most of that light?";
+
+async function longQuestionPhone(browser, c) {
+  // Setup: a new learner and their single long card (never recorded).
+  const setupCtx = await browser.newContext(contextOptions(c));
+  await instrument(setupCtx);
+  const s = await setupCtx.newPage();
+  watch(s, c.name + " long-question setup");
+  await s.goto(base + "/signup", { waitUntil: "load" });
+  await s.fill("#email", "long-question-" + Date.now() + "@example.com");
+  await s.fill("#password", "long-question-check");
+  await Promise.all([s.waitForURL(u => new URL(u).pathname !== "/signup"), s.locator("main form button.btn-accent").first().tap()]);
+  await s.goto(base + "/library/texts/new", { waitUntil: "load" });
+  await s.fill("#title", "Plant biology");
+  await s.fill("#text", "Placeholder line");
+  await Promise.all([s.waitForURL(/\/library\/ideas\/\d+/), s.locator("main form button.btn-accent").first().tap()]);
+  const ideaURL = s.url().split("?")[0];
+  const placeholders = await s.$$eval("a[href^='/library/items/']", as => as.map(a => a.getAttribute("href")));
+  await s.evaluate(() => { document.querySelector("#add").open = true; });
+  await s.fill("#add #prompt", LONG_QUESTION);
+  await s.fill("#add #answer", "Chlorophyll");
+  await Promise.all([s.waitForURL(u => /ok=added/.test(u)), s.locator("#add form button").first().tap()]);
+  for (const href of placeholders) {
+    await s.goto(base + href, { waitUntil: "load" });
+    await Promise.all([s.waitForURL(u => /ok=removed/.test(u)), s.locator("form[action$='/remove'] button").first().tap()]);
+  }
+  await s.goto(ideaURL, { waitUntil: "load" });
+  const cards = await s.$$eval(".pane-idea a[href^='/library/items/'] .item-q, main a[href^='/library/items/'] .item-q", els => [...new Set(els.map(e => e.textContent.trim()))]);
+  const state = await setupCtx.storageState();
+  await setupCtx.close();
+  check(c.name + " long question: the fresh learner has exactly one card, a ~450-character question", cards.length === 1 && cards[0] === LONG_QUESTION && LONG_QUESTION.length >= 440 && LONG_QUESTION.length <= 460, { cards: cards.map(q => q.length), len: LONG_QUESTION.length });
+
+  // The recorded part: study that card.
+  const videoDir = fs.mkdtempSync(path.join(os.tmpdir(), "scry54-video-"));
+  const context = await browser.newContext(Object.assign(contextOptions(c), {
+    storageState: state, recordVideo: opt.evidence ? { dir: videoDir, size: { width: 390, height: 844 } } : undefined,
+  }));
+  await instrument(context);
+  const page = await context.newPage();
+  watch(page, c.name + " long-question");
+  try {
+    await page.goto(base + "/study", { waitUntil: "load" });
+    await page.waitForSelector("[data-answer-form]");
+    await settle(page);
+    const prompt = (await page.textContent("[data-prompt]")).trim();
+    await page.locator("#answer").tap(); // focus the field below the long prompt
+    await page.locator("#answer").pressSequentially("chlorophyll");
+    await settle(page);
+    const waiting = await page.evaluate(() => ({ scrollY, promptTop: Math.round(document.querySelector("[data-prompt]").getBoundingClientRect().top), focused: document.activeElement?.id }));
+    check("phone long question: focusing the answer scrolls the waiting page down (scrollY > 0)", prompt === LONG_QUESTION && waiting.focused === "answer" && waiting.scrollY > 0, Object.assign({ promptLen: prompt.length }, waiting));
+    await shot(page, "phone-long-question-answer-focused.png");
+    await page.locator("[data-check]").tap();
+    await page.waitForSelector("[data-review]");
+    await settle(page);
+    const rev = await page.evaluate(() => {
+      const p = document.querySelector("[data-prompt]").getBoundingClientRect(), n = document.querySelector("[data-next]");
+      return { scrollY, promptTop: Math.round(p.top), topBar: Math.round(document.querySelector("header.top").getBoundingClientRect().top),
+        nextFocused: !!n && document.activeElement === n, nextLabel: n?.textContent.trim(), label: document.querySelector("[data-verdict-label]")?.textContent.trim(),
+        docHeight: document.documentElement.scrollHeight };
+    });
+    check("phone long question: tapping Check opens the review at scrollY 0, question top on screen, Next/Finish focused",
+      rev.scrollY === 0 && rev.promptTop >= 0 && rev.topBar >= 0 && rev.nextFocused && /^(Correct|Almost Correct|Incorrect)$/.test(rev.label || ""), Object.assign({ waitingScrollY: waiting.scrollY }, rev));
+    summary.longQuestion = { waitingScrollY: waiting.scrollY, reviewScrollY: rev.scrollY, promptTop: rev.promptTop, verdict: rev.label, next: rev.nextLabel };
+    await common(page, c, "long-question review");
+    await shot(page, "phone-long-question-review-top.png");
+    // Scrolled down by hand, Ask Why stays where the learner is.
+    if (await page.$("[data-explain]")) {
+      await page.locator("[data-explain]").scrollIntoViewIfNeeded();
+      const before = await page.evaluate(() => scrollY);
+      await page.locator("[data-explain]").tap();
+      await page.waitForSelector(".explanation:not([hidden])");
+      await settle(page);
+      const after = await page.evaluate(() => scrollY);
+      check("phone long question: after scrolling down, Ask Why does not jump back to the top", before > 0 && after > 0, { before, after, docHeight: rev.docHeight });
+    } else check("phone long question: Ask Why offered", false, "no [data-explain]");
+    await page.locator("[data-next]").tap();
+    await page.waitForURL(u => new URL(u).pathname.startsWith("/study"));
+  } finally {
+    const video = page.video();
+    await context.close();
+    if (video && opt.evidence) {
+      const raw = path.join(videoDir, "raw.webm");
+      await video.saveAs(raw);
+      const dest = path.join(opt.evidence, "walkthrough-phone-long-question-review.webm");
+      compactVideo(raw, dest, c);
+      summary.videos.push(path.basename(dest));
+    }
+    fs.rmSync(videoDir, { recursive: true, force: true });
+  }
+}
+
 // compactVideo re-encodes Playwright's VP8 recording as a small VP9 file
 // (no audio) played at half speed, since the gated walkthrough runs faster
 // than a person can follow. Without ffmpeg the recording is kept as it is.
@@ -560,7 +794,12 @@ function compactVideo(raw, dest, c) {
       try {
         const state = await setup(browser, c);
         await run(browser, c, state);
-        if (!c.mobile) { await longReview(browser, c, state, true); await longReview(browser, c, state, false); }
+        if (!c.mobile) {
+          await longReview(browser, c, state, true); await longReview(browser, c, state, false);
+          await heldBeforeScry(browser, c, state);
+        } else {
+          await longQuestionPhone(browser, c);
+        }
       } catch (err) { check(c.name + " walkthrough ran to the end", false, String(err.stack || err).split("\n").slice(0, 3).join(" | ")); }
     }
   } finally { await browser.close(); }
