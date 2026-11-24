@@ -41,6 +41,7 @@ One family of inline SVG line icons, drawn on a 24 px grid: `stroke="currentColo
 - **Starter tiles:** each set has an icon for its subject in ink-muted beside its title (a radio mast for the NATO phonetic alphabet, layers for mental models, a ruler for kitchen numbers, a globe for geography, a beaker for chemistry, an atom for physics, a scroll for the Creeds, and so on). A tile stays a typographic hairline tile; the icon is a glyph on the title line, not a picture or a filled badge.
 - **Counts:** an item count is a compact card-stack icon and the number in tabular figures ("26 cards").
 - **Actions and verdicts:** Add (plus), Added (check), Start studying and Next card (arrow), Ask Why? (question mark), Edit card (pencil); Correct (check in a circle), Almost Correct (a tilde in a circle), Incorrect (a cross in a circle).
+- **Bridge cards:** Repeated miss and Build bridge cards (a bridge: a deck on two piers over an arch), Held by N bridges (a pause mark in a circle), Release hold (a play mark in a circle), Remove a drafted bridge (a cross). 16 px beside their words, in the words' color.
 - **Schedule facts:** Next review (calendar), Interval (a span between two stops), Stability (an anchor), Difficulty (a gauge), Reviews (a clock with a turning arrow). Rendered at 14 px in ink-muted beside their mono label.
 
 ## Color
@@ -161,6 +162,14 @@ The review reads top to bottom:
 7. **Next card**, the review's one filled action ("Finish session" on the last card), with an arrow. It is filled in archival ink, not the electric accent: an `ink` ground with `page` text in both modes (hover underlines the label). The accent is kept for due facts, the focal point and the keyboard focus ring. Next card is focused by script when the review opens, without a ring unless the learner is navigating by keyboard. For an exact text, "Again" sits beside it as a text button (a practice attempt that does not move the schedule).
 
 Keys: Enter or Space for Next card whenever focus is not in a field or on another control; A for Again where offered. Hint line: "enter or space for next card".
+
+### Struggling cards and bridge cards
+
+A card the learner keeps missing (3 or more lapses, or its latest two graded answers both Incorrect) gets one calm line, never an alarm: the 16 px bridge icon and "Repeated miss — scaffold prerequisite bridges?" in body text, inside a hairline panel (1 px `line`, radius 0, no fill, no shadow) with a bordered mono "Build bridge cards" button. It appears only once the answer is in: in the post-answer review (between Ask Why? and the schedule), on the card's own page under its title, and in deck rows as a Meta mono line under the question. While a card waits for its answer nothing hints at it. On phones the panel runs 8 px into the page gutter, so it is at least 366 px wide at 390 px. Pressing Build reads "building" in mono and is disabled (no spinner).
+
+**Preview.** "Build bridge cards" title, one plain line on what happens, then "Leads up to" and the card's question (never its answer) set off by a 2 px left `line` rule. Each drafted bridge is a hairline card ("Bridge 1" in Meta mono, a quiet "Remove" with a cross at the right, then Question and Correct answer fields). Remove takes the card out in place and renumbers the rest; the last card cannot be removed (Cancel instead). The one accent action is "Add bridges & hold parent", with a quiet Cancel beside it and a Meta note that nothing is added until it is pressed. Failure states say so in words ("Scry couldn't build bridge cards just now. Nothing was added. Try again in a moment.", or the allowance sentence with its link).
+
+**Held.** The same panel reads "Held by 2 bridges" (pause icon) in ink, a Meta line saying the card is out of reviews until each bridge is answered Correct or Almost Correct once and that its schedule does not change, the bridges as quiet links on the card's page, and a bordered "Release hold" (play icon). Deck rows say "Held by 2 bridges" under the question and "held" in place of the due label; the card's page says "held · in 6 days on its own schedule". A bridge card's page and review say "Bridge card · leads up to …"; the review of the answer that clears a bridge says "Bridge cleared · 1 bridge still holds the card it leads to." or "Bridge cleared · the card it leads to is back in your reviews, on its own schedule." No counts of progress, no celebration.
 
 ### Session end
 

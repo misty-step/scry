@@ -1548,3 +1548,78 @@ the code follows them. Choices where the brief or the Folio left room:
   outside screenshots. The policy is right; the verifier sets those aside as
   tooling.
 
+
+## Slice 75: the Strugglometer (bridge cards for repeated misses)
+
+Owner brief (2026-11-24). Choices where the brief left room:
+
+- **Detection.** Deterministic, from stored state only: FSRS `lapses >= 3`,
+  or the latest two graded reviews (practice attempts on exact texts left
+  out) both Incorrect (`missed`). Almost Correct breaks a run of misses.
+  `app.Struggling` holds the rule; tests pin both boundaries.
+- **Where the cue shows.** "Cards detail/deck list" are Scry's card page
+  (/library/items/{id}) and the idea's item rows in the Library (and the same
+  rows in search results). The post-answer review shows it after the answer
+  that made the card struggle; the waiting Study screen never does (no
+  spoilers, no nudge before answering).
+- **Not offered.** Exact texts (word-for-word lines have no prerequisites;
+  "Again" is their remedy), a card already held, and an active bridge card
+  (bridges do not nest). `Struggle.Offer` holds the rule; the routes refuse
+  the rest (a crafted POST cannot spend allowance on a calm card).
+- **Generation.** `ai.Bridger`. In production it is the same drafting client
+  as Create (`*ai.Claude`; on OpenRouter the Slice 36 empirical winner
+  `openai/gpt-6.2-sol`, `SCRY_DRAFT_MODEL` overrides; or the direct Anthropic
+  drafting model), one bounded non-streaming call (45 s, 1,200 output tokens,
+  6,000 input characters) with the parent's question and answer and up to
+  three recent Incorrect answers as untrusted data. The reply is a JSON
+  object of 2–3 `{q, a}` cards; repeats, empty or over-long cards are dropped
+  and fewer than two is an error. It is reserved and settled as `draft`
+  usage, with the same G2 rule (an outcome unknown after the call keeps the
+  hold). In `SCRY_MODE=test` it is `ai.FakeBridger`: three fixed, labelled
+  fixture cards built from the parent's question only, no network;
+  `SCRY_TEST_BRIDGES=fail` shows the failure state. `SCRY_AI_MODE=live` on a
+  test build uses the real client, like the other surfaces.
+- **Preview state.** The drafted cards are not stored: they ride in the
+  preview form, which carries a random accept key. Reloading the preview
+  drafts again (and is metered again); the learner's edits are the cards.
+- **Persistence.** One additive table, `item_bridges` (created with
+  `CREATE TABLE IF NOT EXISTS` on every open, plus one index; no existing
+  table or column is altered, so a pre-slice database opens with its rows and
+  schema unchanged). One row per bridge: parent, bridge item, accept key and
+  position (unique per learner), `ended_at` and `end_reason`
+  (`mastered`, `released`, `removed`). It is a learner table
+  (`store.userTables`: export, per-user restore and the privacy walk include
+  it). Accepting runs in one `BEGIN IMMEDIATE` transaction: it checks the
+  parent is the learner's own live card, replays an already-applied key as a
+  duplicate (nothing written), refuses a second set for a held card or a
+  bridge-of-a-bridge, then inserts the items and rows. Concurrent accepts of
+  one preview write it once; of two previews, one wins.
+- **Hold.** A card is held while it has an active row whose bridge item and
+  its idea are not removed. Every due path applies the same `notHeld` SQL:
+  `DueItems`, `StartSession`, an open session's entries (so a hold made
+  mid-session takes the card out of it), the answer guard, the due count and
+  `NextDue`. The parent's row in `items` is never written by a hold or its
+  end, so it is due exactly when its schedule says.
+- **Release.** Each bridge's first non-practice Correct or Almost Correct
+  ends its row (`mastered`) in the same transaction that records the review;
+  the parent is free when none is left. "Release hold" ends all its rows
+  (`released`); the bridges stay as ordinary cards. Removing a bridge card
+  ends its row (`removed`); removing a held parent ends its hold. Trashing
+  the idea (which holds both) pauses the hold, since a trashed bridge does
+  not count; restoring it restores the hold of bridges not yet mastered.
+- **Bridges' place.** Bridge cards join the parent's idea (so ownership,
+  outline, export and Trash all follow it) with source `bridge`; as new
+  cards they are due at once and come after reviews in the queue, oldest
+  first, like any new card.
+- **Mobile width.** The brief's ">= 366 px card width at 390 px" is met by
+  the bridge panels and cards running 8 px into the 16 px phone gutter (374
+  px wide at 390 px); the page column itself stays 358 px like every other
+  page.
+- **Verification data.** `scripts/verify-slice75-strugglometer.mjs` starts
+  its own test-mode server per configuration on a fresh SQLite file with a
+  minimal environment (no keys), signs up through the UI and seeds two cards'
+  history with `node:sqlite` (a synthetic past); "time travel" moves a card's
+  last review, due date and review times back together.
+- **Pre-existing test flake.** `TestReserveRacingPlanEnd` (internal/store)
+  fails with SQLITE_BUSY on this sandbox's disk on master as well as here;
+  with `TMPDIR=/dev/shm` the whole suite passes. Not changed by this slice.
