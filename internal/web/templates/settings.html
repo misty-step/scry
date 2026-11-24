@@ -6,7 +6,7 @@
 
   <section class="setting">
     <h2 class="title">Appearance</h2>
-    <form method="post" action="/settings/theme" class="form" data-theme-form>
+    <form method="post" action="/settings/theme" class="form" data-theme-form data-theme-seq="{{.ThemeSeq}}">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <fieldset class="choices">
         <legend class="label">Mode</legend>

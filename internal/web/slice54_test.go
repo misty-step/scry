@@ -271,7 +271,7 @@ func TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized(t *test
 	b := w.browser()
 	b.signUp("settings@example.com")
 	page := b.mustGet("/settings")
-	has(t, page, `<form method="post" action="/settings/theme" class="form" data-theme-form>`)
+	has(t, page, `<form method="post" action="/settings/theme" class="form" data-theme-form data-theme-seq="0">`)
 	js, _ := staticAsset(t, w, "/static/app.js")
 	has(t, js, "function initTheme()", `doc.documentElement.setAttribute("data-theme", radio.value)`, `doc.documentElement.removeAttribute("data-theme")`)
 	// Saves are serialized: one POST in flight, later changes coalesce into a

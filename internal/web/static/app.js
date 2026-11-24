@@ -630,26 +630,21 @@
   // waiting, it is sent at once as a keepalive request, which outlives the
   // page, so the last choice is never lost to a quick navigation.
   //
-  // Each choice is numbered when it is made: theme_seq is strictly
-  // increasing for the tab (max(last + 1, now), kept in sessionStorage so
-  // coming back to Settings keeps counting up) and frozen into that
-  // choice's POST. The server applies a numbered save only when it is newer
-  // than the one it stored, so an older POST held up on the way and
-  // overtaken by the keepalive flush cannot overwrite the newer mode.
-  var themeFlush = null, themeSeqLast = 0;
-  function nextThemeSeq() {
-    var last = themeSeqLast;
-    try { last = Math.max(last, Number(sessionStorage.getItem("scry.theme_seq")) || 0); } catch (err) { /* storage off */ }
-    var seq = Math.max(last + 1, Date.now());
-    themeSeqLast = seq;
-    try { sessionStorage.setItem("scry.theme_seq", String(seq)); } catch (err) { /* storage off */ }
-    return seq;
-  }
+  // Each choice is numbered when it is made, with no clock involved: the
+  // page starts from the stored sequence the server rendered it with
+  // (data-theme-seq), adds one per choice, and freezes that number into
+  // the choice's POST. The server applies a numbered save only when it is
+  // newer than the one it stored, so an older POST held up on the way and
+  // overtaken by the keepalive flush (or by a plain Save, which advances
+  // the stored sequence) cannot overwrite the newer mode, and a device
+  // whose clock is behind numbers its saves as well as any other.
+  var themeFlush = null;
   function initTheme() {
     var form = $("[data-theme-form]");
     themeFlush = null;
     if (!form) return;
     var saving = false, pending = false, latest = null;
+    var seq = parseInt(form.dataset.themeSeq || "0", 10) || 0;
     // The body is built when the POST is sent, from the choice it carries.
     function body(choice) {
       var b = new URLSearchParams(new FormData(form));
@@ -685,7 +680,8 @@
         if (!radio.checked) return;
         if (radio.value === "system") doc.documentElement.removeAttribute("data-theme");
         else doc.documentElement.setAttribute("data-theme", radio.value);
-        latest = { theme: radio.value, seq: nextThemeSeq() };
+        seq += 1;
+        latest = { theme: radio.value, seq: seq };
         saveTheme();
       });
     });

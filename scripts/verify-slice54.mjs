@@ -38,6 +38,14 @@
 // manual scroll keeps the learner's place. All are gated on request or DOM
 // events.
 //
+// Pass 5 adds: theme_seq counts from the server (data-theme-seq), never from
+// a clock. Context 1 saves Dark; a fresh context 2 whose browser clock is 3
+// minutes behind picks Light, and Light persists. A JS Dark POST held before
+// Scry is released after an explicit no-JS Light Save (which advances the
+// sequence by 1000), and Light persists. With --evidence the verifier writes
+// its own summary (walkthrough-checks.log.txt) into the bundle and checks the
+// whole bundle is <= 1,750,000 bytes.
+//
 // Signing in happens in an unrecorded setup context; the recorded
 // walkthrough reuses its storageState, so the test-mode demo hint on the
 // sign-in page is never in a video. With --evidence it writes a compact set
@@ -59,8 +67,8 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === "--server-log") opt.serverLog = path.resolve(args[++i]);
   else if (args[i] === "--evidence") opt.evidence = path.resolve(args[++i]);
   else if (args[i] === "--sha") opt.sha = args[++i];
-  else if (args[i] === "--only") opt.only = args[++i]; // "pass4": only the Pass 4 checks (development)
-  else { console.error("usage: verify-slice54.mjs --url <base-url> [--evidence dir] [--sha short-sha] [--server-log scry.log] [--only pass4]"); process.exit(2); }
+  else if (args[i] === "--only") opt.only = args[++i]; // "pass4" / "pass5": only those checks (development, regression runs)
+  else { console.error("usage: verify-slice54.mjs --url <base-url> [--evidence dir] [--sha short-sha] [--server-log scry.log] [--only pass4|pass5]"); process.exit(2); }
 }
 if (!opt.url) { console.error("--url is required"); process.exit(2); }
 const base = opt.url.replace(/\/+$/, "");
@@ -76,6 +84,10 @@ const CONFIGS = [
   { name: "desktop", width: 1440, height: 900 },
   { name: "phone", width: 390, height: 844, mobile: true },
 ];
+// With --evidence the verifier writes its own JSON summary into the bundle
+// and keeps the whole bundle within MEDIA_BUDGET bytes.
+const CHECKS_LOG = "walkthrough-checks.log.txt";
+const MEDIA_BUDGET = 1750000;
 const DEMO = { email: "phaedrus@example.com", password: "know-thyself" };
 const LONG_ANSWER = "I think it is the word that pilots use for this letter of the alphabet";
 
@@ -693,6 +705,135 @@ async function noJsThemeSave(browser, c, state) {
   }
 }
 
+// ---- Pass 5: theme_seq counts from the server, never from a clock ---------
+//
+// Settings renders the stored theme save sequence (data-theme-seq); the page
+// numbers each choice from it (+1 per choice), and a plain no-JS Save
+// advances it by 1000. Two Pass 4b repros, both through the loopback proxy
+// so every step is gated on Scry having answered:
+//  1. Clock skew: context 1 (real clock) saves Dark; a fresh context 2 whose
+//     browser clock is 3 minutes behind opens Settings, picks Light, reloads:
+//     Light persists.
+//  2. Held JS POST vs an explicit no-JS Save: JS context 1 picks Dark, held
+//     by the proxy before Scry; no-JS context 2 picks Light and clicks Save
+//     appearance (303); the held Dark is released (303); no-JS Settings
+//     reloaded shows Light.
+async function settingsNow(page) {
+  return page.evaluate(() => {
+    const f = document.querySelector("[data-theme-form]");
+    return { checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme"),
+      seq: f && f.hasAttribute("data-theme-seq") ? Number(f.getAttribute("data-theme-seq")) : null,
+      seqField: !!document.querySelector("[data-theme-form] input[name=theme_seq]") };
+  });
+}
+
+async function pass5Theme(browser, c, state) {
+  const p = await startHoldingProxy();
+  const ev = kind => p.events.filter(e => e.kind === kind);
+  const radio = v => "input[name=theme][value=" + v + "]";
+  const contexts = [];
+  const open = async (label, extra, initScript) => {
+    const context = await browser.newContext(Object.assign(contextOptions(c), { storageState: state }, extra || {}));
+    contexts.push(context);
+    await instrument(context);
+    if (initScript) await initScript(context);
+    const page = await context.newPage();
+    watch(page, c.name + " " + label, p.url);
+    return page;
+  };
+  // pick taps a mode on a JS page and waits for Scry to answer its save.
+  const pick = async (page, v) => {
+    const n = ev("scry-answered").length;
+    await press(page, c, radio(v));
+    await p.w.until(() => ev("scry-answered").length > n, "the " + v + " save to be answered");
+    return ev("scry-answered").slice(-1)[0];
+  };
+  try {
+    // ---- 1. Clock skew -------------------------------------------------
+    const one = await open("pass5 clock ctx1");
+    await one.goto(p.url + "/settings", { waitUntil: "load" });
+    if ((await settingsNow(one)).checked !== "system") { await pick(one, "system"); await one.reload({ waitUntil: "load" }); }
+    const one0 = await settingsNow(one);
+    const darkSave = await pick(one, "dark");
+    const SKEW = 3 * 60 * 1000;
+    const skewedAt = Date.now() - SKEW;
+    const two = await open("pass5 clock ctx2 (-3 min)", null, async ctx => { await ctx.clock.install({ time: new Date(skewedAt) }); });
+    await two.goto(p.url + "/settings", { waitUntil: "load" });
+    const skew = await two.evaluate(() => Date.now());
+    const two0 = await settingsNow(two);
+    const lightSave = await pick(two, "light");
+    await two.reload({ waitUntil: "load" });
+    const two1 = await settingsNow(two);
+    const behindMs = Date.now() - skew;
+    check(c.name + " pass5 clock skew: context 2 with its browser clock 3 min behind picks Light after context 1 saved Dark; reload shows Light",
+      one0.checked === "system" && one0.seqField === false && darkSave.theme === "dark" && darkSave.status === 303 && darkSave.seq === one0.seq + 1 &&
+      behindMs >= SKEW - 5000 && two0.checked === "dark" && two0.seq === darkSave.seq &&
+      lightSave.theme === "light" && lightSave.status === 303 && lightSave.seq === two0.seq + 1 &&
+      two1.checked === "light" && two1.attr === "light" && two1.seq === lightSave.seq,
+      { ctx1Start: one0, darkSave, ctx2ClockBehindMs: behindMs, ctx2Loaded: two0, lightSave, ctx2Reloaded: two1 });
+    summary.pass5ClockSkew = { ctx2ClockBehindMs: behindMs, dark: "dark#" + darkSave.seq + " " + darkSave.status, light: "light#" + lightSave.seq + " " + lightSave.status, reloaded: two1 };
+    await common(two, c, "pass5 clock skew settings");
+    await shot(two, "desktop-settings-light-after-clock-skew.png");
+
+    // Reset to "Follow my system" for repro 2 with a plain no-JS Save, which
+    // applies whatever the stored sequence is.
+    const reset = await open("pass5 no-JS reset", { javaScriptEnabled: false });
+    await reset.goto(p.url + "/settings", { waitUntil: "load" });
+    await reset.check("[data-theme-form] " + radio("system"));
+    await Promise.all([reset.waitForNavigation({ waitUntil: "load" }), reset.locator("[data-theme-form] button").first().click()]);
+    check(c.name + " pass5 no-JS Save resets to system", (await settingsNow(reset)).checked === "system", await settingsNow(reset));
+
+    // ---- 2. Held JS Dark vs explicit no-JS Light Save --------------------
+    const js = await open("pass5 held JS ctx1");
+    await js.goto(p.url + "/settings", { waitUntil: "load" });
+    const js0 = await settingsNow(js);
+    p.events.length = 0;
+    const logBefore = themePosts();
+    p.armed = "dark";
+    await press(js, c, radio("dark"));
+    await p.w.until(() => ev("held").length === 1, "the JS Dark POST to be held before Scry");
+    const held = ev("held")[0];
+    const nojs = await open("pass5 no-JS ctx2", { javaScriptEnabled: false });
+    await nojs.goto(p.url + "/settings", { waitUntil: "load" });
+    const nojs0 = await settingsNow(nojs);
+    await nojs.check("[data-theme-form] " + radio("light"));
+    await Promise.all([nojs.waitForNavigation({ waitUntil: "load" }), nojs.locator("[data-theme-form] button").first().click()]);
+    const nojsSave = ev("scry-answered").find(e => e.theme === "light");
+    const nojs1 = await settingsNow(nojs);
+    const darkAnsweredBefore = ev("scry-answered").some(e => e.theme === "dark");
+    p.held();
+    await p.w.until(() => ev("scry-answered").some(e => e.theme === "dark"), "the held JS Dark POST to reach Scry");
+    const heldAnswer = ev("scry-answered").find(e => e.theme === "dark");
+    await nojs.reload({ waitUntil: "load" });
+    const nojs2 = await settingsNow(nojs);
+    const order = ev("forwarded").map(e => e.theme + "#" + e.seq);
+    const serverPosts = opt.serverLog ? themePosts() - logBefore : null;
+    check(c.name + " pass5 held JS Dark (before Scry) + explicit no-JS Light Save + release Dark: reload shows Light",
+      js0.checked === "system" && held.seq === js0.seq + 1 && nojs0.seqField === false && nojs0.seq === js0.seq &&
+      !!nojsSave && nojsSave.seq === 0 && nojsSave.status === 303 && nojs1.checked === "light" && nojs1.seq === js0.seq + 1000 &&
+      !darkAnsweredBefore && heldAnswer.status === 303 && order.join() === "light#0,dark#" + held.seq &&
+      nojs2.checked === "light" && nojs2.attr === "light" && nojs2.seq === js0.seq + 1000 && (serverPosts === null || serverPosts === 2),
+      { jsLoaded: js0, held: "dark#" + held.seq, noJsLoaded: nojs0, noJsSave: nojsSave, afterNoJsSave: nojs1, heldAnswer, order, serverPosts, reloaded: nojs2 });
+    summary.pass5HeldVsNoJs = { order, answered: ev("scry-answered").map(e => e.theme + "#" + e.seq + " " + e.status), reloaded: nojs2, serverPosts };
+    await common(nojs, c, "pass5 no-JS settings after held Dark");
+    await shot(nojs, "desktop-settings-nojs-light-kept-after-held-dark.png");
+
+    // The JS page that sent the held Dark reads the new sequence on its next
+    // load and its next choice applies; restore "Follow my system".
+    await js.reload({ waitUntil: "load" });
+    const js1 = await settingsNow(js);
+    const restore = await pick(js, "system");
+    await js.reload({ waitUntil: "load" });
+    const js2 = await settingsNow(js);
+    check(c.name + " pass5 a JS page loaded after the no-JS Save counts up from the new sequence and its save applies",
+      js1.checked === "light" && js1.seq === nojs2.seq && restore.seq === js1.seq + 1 && restore.status === 303 && js2.checked === "system" && js2.seq === restore.seq,
+      { loaded: js1, restore, reloaded: js2 });
+  } finally {
+    for (const ctx of contexts) await ctx.close().catch(() => {});
+    await p.close();
+  }
+}
+
 // ---- Pass 4: a long question's review on a phone opens framed at the top ---
 //
 // A fresh learner (signed up in an unrecorded context) with exactly one card,
@@ -812,10 +953,12 @@ function compactVideo(raw, dest, c) {
     for (const c of CONFIGS) {
       try {
         const state = await setup(browser, c);
+        if (opt.only === "pass5") { if (!c.mobile) await pass5Theme(browser, c, state); continue; }
         if (opt.only !== "pass4") await run(browser, c, state);
         if (!c.mobile) {
           if (opt.only !== "pass4") { await longReview(browser, c, state, true); await longReview(browser, c, state, false); }
           await heldBeforeScry(browser, c, state);
+          await pass5Theme(browser, c, state);
         } else {
           await longQuestionPhone(browser, c);
         }
@@ -823,10 +966,38 @@ function compactVideo(raw, dest, c) {
     }
   } finally { await browser.close(); }
   check("0 console errors, page errors, failed or external requests, HTTP >= 500", summary.problems.length === 0, summary.problems);
-  summary.ok = summary.failures.length === 0;
-  summary.passed = summary.checks.filter(c => c.ok).length;
-  summary.total = summary.checks.length;
+  const finish = () => {
+    summary.ok = summary.failures.length === 0;
+    summary.passed = summary.checks.filter(c => c.ok).length;
+    summary.total = summary.checks.length;
+  };
   summary.finishedAt = new Date().toISOString();
-  console.log(JSON.stringify(summary, null, 2));
+  let text;
+  if (opt.evidence) {
+    // The verifier writes this summary into the bundle itself, and checks
+    // the whole bundle (every file in the evidence dir, this log included)
+    // against the media budget, so what it emits is what is delivered.
+    const files = fs.readdirSync(opt.evidence).filter(f => f !== CHECKS_LOG && fs.statSync(path.join(opt.evidence, f)).isFile());
+    const otherBytes = files.reduce((n, f) => n + fs.statSync(path.join(opt.evidence, f)).size, 0);
+    summary.media = { dir: path.basename(opt.evidence), files: files.concat(CHECKS_LOG).sort(), budgetBytes: MEDIA_BUDGET, bytes: 0 };
+    const name = "evidence bundle <= " + MEDIA_BUDGET + " bytes (all files, this log included)";
+    const rec = { name, ok: true };
+    summary.checks.push(rec);
+    for (let i = 0; i < 4; i++) {
+      finish();
+      text = JSON.stringify(summary, null, 2) + "\n";
+      const bytes = otherBytes + Buffer.byteLength(text);
+      if (bytes === summary.media.bytes) break;
+      summary.media.bytes = bytes;
+      rec.ok = bytes <= MEDIA_BUDGET;
+      summary.failures = summary.failures.filter(f => !f.startsWith(name));
+      if (!rec.ok) { rec.detail = bytes; summary.failures.push(name + ": " + bytes); } else delete rec.detail;
+    }
+    fs.writeFileSync(path.join(opt.evidence, CHECKS_LOG), text);
+  } else {
+    finish();
+    text = JSON.stringify(summary, null, 2) + "\n";
+  }
+  process.stdout.write(text);
   process.exit(summary.ok ? 0 : 1);
 })();

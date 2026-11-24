@@ -26,6 +26,9 @@ func (s *Server) settingsData(r *http.Request, c *rc) (map[string]any, error) {
 	}
 	return map[string]any{
 		"Title": "Settings", "Nav": "settings", "Tokens": tokens, "Removed": removed, "Origin": scheme + "://" + r.Host,
+		// The stored theme save sequence, read fresh for this request: the
+		// page numbers its scripted saves from it (data-theme-seq).
+		"ThemeSeq": c.user.ThemeSeq,
 		"Flash": map[string]string{"theme": "Appearance saved.", "about": "Study profile saved.",
 			"revoked": "That token no longer works.", "restored": "Restored to your library."}[r.URL.Query().Get("ok")],
 	}, nil
@@ -44,9 +47,11 @@ func (s *Server) settingsTheme(w http.ResponseWriter, r *http.Request, c *rc) er
 	if theme != "light" && theme != "dark" {
 		theme = "system"
 	}
-	// Scripted saves carry theme_seq, the page's strictly increasing number
-	// for each choice; a save older than the stored one is ignored (and
-	// answered as usual). A plain form submit carries none and always applies.
+	// Scripted saves carry theme_seq: the stored sequence the Settings page
+	// was rendered with (data-theme-seq) plus one per choice made on it. A
+	// save not newer than the stored one is ignored (and answered as usual).
+	// A plain form submit carries none, always applies, and advances the
+	// stored sequence past any earlier scripted save still on the way.
 	seq, err := strconv.ParseInt(r.FormValue("theme_seq"), 10, 64)
 	if err != nil || seq < 0 {
 		seq = 0

@@ -68,8 +68,9 @@ func TestRule_Durability_BackupsInSameClockTickDoNotCollide(t *testing.T) {
 }
 
 // The theme save sequence: an older scripted save never overwrites a newer
-// one; a plain save always applies and clears the number; the column is
-// added idempotently on open.
+// one; a plain save always applies and advances the number past any earlier
+// scripted save still on the way; the number is loaded with the user; the
+// column is added idempotently on open.
 func TestThemeSeqCompareAndSet(t *testing.T) {
 	path := t.TempDir() + "/seq.db"
 	st, err := Open(path)
@@ -105,15 +106,21 @@ func TestThemeSeqCompareAndSet(t *testing.T) {
 	step("dark", 10, false, "light", 20) // older, arriving late
 	step("dark", 20, false, "light", 20) // not newer
 	step("dark", 21, true, "dark", 21)
-	step("system", 0, true, "system", 0) // plain submit
-	step("light", 1, true, "light", 1)
+	step("system", 0, true, "system", 21+ThemeSeqPlainStep)  // plain submit advances
+	step("dark", 22, false, "system", 21+ThemeSeqPlainStep)  // earlier scripted save, held: ignored
+	step("dark", 999, false, "system", 21+ThemeSeqPlainStep) // a burst of them too
+	step("system", -1, true, "system", 21+2*ThemeSeqPlainStep)
+	if u, err := st.UserByID(ctx, id); err != nil || u.ThemeSeq != 21+2*ThemeSeqPlainStep || u.Theme != "system" {
+		t.Fatalf("UserByID = %+v, %v; want ThemeSeq %d", u, err, 21+2*ThemeSeqPlainStep)
+	}
+	step("light", 21+2*ThemeSeqPlainStep+1, true, "light", 21+2*ThemeSeqPlainStep+1) // next page: rendered seq + 1
 	st.Close()
 	st, err = Open(path) // the migration is idempotent
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if theme, seq := read(); theme != "light" || seq != 1 {
+	if theme, seq := read(); theme != "light" || seq != 21+2*ThemeSeqPlainStep+1 {
 		t.Fatalf("after reopen: %q %d", theme, seq)
 	}
 }

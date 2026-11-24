@@ -17,6 +17,7 @@ type User struct {
 	TZ        string
 	Theme     string // system, light or dark
 	About     string // what the learner told Scry about themself
+	ThemeSeq  int64  // the stored theme save sequence (see SetThemeSeq)
 	CreatedAt time.Time
 }
 
@@ -28,12 +29,12 @@ func (u User) Location() *time.Location {
 	return time.UTC
 }
 
-const userCols = `id, email, auth_subject, tz, theme, about, created_at`
+const userCols = `id, email, auth_subject, tz, theme, about, theme_seq, created_at`
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var u User
 	var created int64
-	err := row.Scan(&u.ID, &u.Email, &u.Subject, &u.TZ, &u.Theme, &u.About, &created)
+	err := row.Scan(&u.ID, &u.Email, &u.Subject, &u.TZ, &u.Theme, &u.About, &u.ThemeSeq, &created)
 	u.CreatedAt = tm(created)
 	return u, notFound(err)
 }
@@ -180,19 +181,31 @@ func (s *Store) For(userID int64) *UserStore { return &UserStore{s: s, uid: user
 // UserID is the learner this store is scoped to.
 func (u *UserStore) UserID() int64 { return u.uid }
 
+// ThemeSeqPlainStep is how far a plain (no-script) save advances the
+// stored theme sequence. A page numbers its scripted saves from the
+// sequence it was rendered with, one per choice, so a burst of earlier
+// scripted saves still held up on the way stays at or below the advanced
+// number and is ignored, while a Settings page loaded afterwards reads the
+// new number and counts up from it.
+const ThemeSeqPlainStep = 1000
+
 // SetTheme stores the learner's colour mode unconditionally (a plain form
-// submit) and clears the save sequence, so the next scripted save applies.
+// submit) and advances the save sequence by ThemeSeqPlainStep, so an
+// earlier scripted save arriving after it cannot overwrite it.
 func (u *UserStore) SetTheme(ctx context.Context, theme string) error {
-	_, err := u.s.db.ExecContext(ctx, `UPDATE users SET theme = ?, theme_seq = 0 WHERE id = ?`, theme, u.uid)
+	_, err := u.s.db.ExecContext(ctx, `UPDATE users SET theme = ?, theme_seq = theme_seq + ? WHERE id = ?`, theme, ThemeSeqPlainStep, u.uid)
 	return err
 }
 
 // SetThemeSeq stores the learner's colour mode from a scripted save that
-// carries the page's strictly increasing sequence number. seq <= 0 is a
-// plain save (SetTheme). Otherwise the write is a single compare-and-set:
-// it applies only when seq is newer than the stored one, so an older save
-// that reaches Scry after a newer one (a request held up on the way, then
-// overtaken by the keepalive flush of a later choice) cannot overwrite it.
+// carries the page's sequence number: the stored sequence Settings was
+// rendered with (User.ThemeSeq), plus one for each choice made on it.
+// seq <= 0 is a plain save (SetTheme). Otherwise the write is a single
+// compare-and-set: it applies only when seq is newer than the stored one,
+// so an older save that reaches Scry after a newer one (a request held up
+// on the way, then overtaken by the keepalive flush of a later choice, or
+// by a plain save) cannot overwrite it. No clock is involved, so a device
+// whose clock is behind numbers its saves as well as any other.
 // It reports whether the mode was written.
 func (u *UserStore) SetThemeSeq(ctx context.Context, theme string, seq int64) (bool, error) {
 	if seq <= 0 {
