@@ -1590,6 +1590,12 @@ Owner brief (2026-11-24). Choices where the brief left room:
   "B is Bravo." but not in "Bravos"). Partial overlaps stay: a bridge may
   share a word with the card it leads to. Fewer than two safe cards is the
   plain failure, never a spoiler. The learner's own edits are not filtered.
+  An answer with no letter or digit (a code or math operator: "!=", "->",
+  "≠") has no words to compare, so it is matched literally instead (pass 3):
+  the trimmed answer, inner spacing collapsed, anywhere in the bridge's
+  question or answer is a spoiler, so "Which programming languages use != to
+  mean not equal?" is dropped for a parent whose answer is "!=". Answers with
+  any letter or digit keep whole-word matching unchanged.
 - **Long text.** A bridge question may be 400 characters with no space in
   it; every surface showing one (bridge links, the bridge's page title, deck
   rows, Study) wraps it in place (`overflow-wrap: anywhere`, `minmax(0, 1fr)`

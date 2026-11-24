@@ -210,3 +210,112 @@ func TestSlice75_Spoils(t *testing.T) {
 		t.Fatal("empty parent")
 	}
 }
+
+// Slice 75 (pass 3): a symbol-only parent answer, such as a code or math
+// operator, has no words to compare, so it is matched literally. The
+// production adapter, on both drafting routes, drops a bridge whose
+// question or answer contains it, keeps the safe ones, and fails safely
+// when fewer than two are left; word answers still match as before.
+func TestSlice75_Bridge_RealAdapterDropsSymbolOnlyAnswerLeaks(t *testing.T) {
+	parent := BridgeInput{Question: "In C, which operator tests that two values are not equal?", Answer: " != ", Misses: []string{"=/="}}
+	safe1 := [2]string{"In C, what does the == operator test?", "That two values are equal"}
+	safe2 := [2]string{"In C, what value does a false comparison produce?", "0"}
+	safe3 := [2]string{"In C, which operator negates a boolean value?", "!"}
+	leakQ := [2]string{"Which programming languages use != to mean not equal?", "C, Java, Python and many others"}
+	leakA := [2]string{"In C, what is the inequality operator written as?", "It is written !=."}
+	cases := []struct {
+		name  string
+		reply string
+		want  []string // kept questions; nil means ErrNoBridges
+	}{
+		{"two safe plus the operator in the question", bridgeReply(safe1, leakQ, safe2), []string{safe1[0], safe2[0]}},
+		{"two safe plus the operator in the answer", bridgeReply(leakA, safe1, safe2), []string{safe1[0], safe2[0]}},
+		{"three safe cards are all kept", bridgeReply(safe1, safe2, safe3), []string{safe1[0], safe2[0], safe3[0]}},
+		{"one safe card left is a safe failure", bridgeReply(safe1, leakQ, leakA), nil},
+	}
+	routes := map[string]func(t *testing.T, reply string) *Claude{
+		"openrouter": func(t *testing.T, reply string) *Claude {
+			c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(map[string]any{"model": DefaultOpenRouterDraftModel,
+					"usage":   map[string]any{"prompt_tokens": 300, "completion_tokens": 90},
+					"choices": []map[string]any{{"message": map[string]any{"content": reply}, "finish_reason": "stop"}}})
+			})
+			return c
+		},
+		"anthropic": func(t *testing.T, reply string) *Claude {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(map[string]any{"model": DefaultDraftModel, "stop_reason": "end_turn",
+					"usage":   map[string]any{"input_tokens": 300, "output_tokens": 90},
+					"content": []map[string]any{{"type": "text", "text": reply}}})
+			}))
+			t.Cleanup(srv.Close)
+			c := NewClaude("ant-standin", "")
+			c.BaseURL, c.HTTP = srv.URL, srv.Client()
+			return c
+		},
+	}
+	for route, mk := range routes {
+		for _, tc := range cases {
+			t.Run(route+"/"+tc.name, func(t *testing.T) {
+				cards, _, err := mk(t, tc.reply).Bridge(context.Background(), parent)
+				if tc.want == nil {
+					if err != ErrNoBridges || cards != nil {
+						t.Fatalf("cards %+v, err %v; want ErrNoBridges", cards, err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				var got []string
+				for _, c := range cards {
+					got = append(got, c.Question)
+					if strings.Contains(c.Question+" "+c.Answer, "!=") {
+						t.Fatalf("spoiler kept: %+v", c)
+					}
+				}
+				if strings.Join(got, "|") != strings.Join(tc.want, "|") {
+					t.Fatalf("kept %q, want %q", got, tc.want)
+				}
+			})
+		}
+	}
+}
+
+// Slice 75 (pass 3): symbol-only answers are matched literally, after
+// trimming; answers with any letter or digit keep whole-word matching.
+func TestSlice75_Spoils_SymbolOnlyAnswers(t *testing.T) {
+	for _, tc := range []struct {
+		answer, q, a string
+		spoil        bool
+	}{
+		{"!=", "Which languages use != for not equal?", "C and Java", true},
+		{"  !=\n", "What is the inequality operator in C?", "!=", true},
+		{"!=", "What does the == operator test in C?", "Equality", false},
+		{"!=", "Which operator negates a boolean in C?", "!", false},
+		{"->", "In C, what does p->x read?", "A struct field via a pointer", true},
+		{"->", "In C, what does p.x read?", "A field of a struct value", false},
+		{"&&", "What does && do in C?", "Logical and", true},
+		{"≠", "Which symbol means not equal in maths?", "≠", true},
+		{"≠", "Which symbol means equal in maths?", "=", false},
+		{"%", "Which operator gives a remainder in C?", "% (modulo)", true},
+		{"< >", "Which SQL pair of brackets means not equal?", "< >", true},
+	} {
+		parent := BridgeInput{Question: "Which operator?", Answer: tc.answer}
+		if got := Spoils(BridgeCard{Question: tc.q, Answer: tc.a}, parent); got != tc.spoil {
+			t.Errorf("answer %q: Spoils(%q, %q) = %v, want %v", tc.answer, tc.q, tc.a, got, tc.spoil)
+		}
+	}
+	// Word matching is unchanged: a letter-bearing answer is whole words.
+	word := BridgeInput{Question: "In C, how is not-equal spelled in prose?", Answer: "not equal"}
+	if !Spoils(BridgeCard{Question: "What does != mean? Not equal?", Answer: "x"}, word) {
+		t.Fatal("word answer should still match as whole words")
+	}
+	if Spoils(BridgeCard{Question: "What does nothing equalize?", Answer: "x"}, word) {
+		t.Fatal("partial words are still not spoilers")
+	}
+	// A whitespace-only answer spoils nothing.
+	if Spoils(BridgeCard{Question: "q", Answer: "a"}, BridgeInput{Question: "p", Answer: "   "}) {
+		t.Fatal("blank answer")
+	}
+}

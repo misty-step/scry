@@ -3,6 +3,7 @@ package app_test
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -364,6 +365,59 @@ func TestSlice75_Generation_RealAdapterDropsSpoilers(t *testing.T) {
 		t.Fatalf("cards %+v, want the two safe ones", cards)
 	}
 	reply = `{"cards":[{"q":"What is the first safe bridge?","a":"Safe one"},{"q":"question 0","a":"x"},{"q":"What is it?","a":"answer number 0."}]}`
+	if cards, err := w.app.DraftBridges(w.ctx, w.user, p); !errors.Is(err, app.ErrBridgesUnavailable) || cards != nil {
+		t.Fatalf("one safe card left = %+v, %v; want ErrBridgesUnavailable", cards, err)
+	}
+}
+
+// Slice 75 (pass 3): a parent whose answer is only symbols ("!=") has no
+// words to match, so the production OpenRouter adapter matches it
+// literally: the bridge asking which languages use != never reaches the
+// preview, the two safe bridges do, and safe bridges alone are all kept.
+func TestSlice75_Generation_RealAdapterDropsSymbolOnlyAnswerLeak(t *testing.T) {
+	w, _, ids := struggleWorld(t)
+	p := ids[0]
+	if err := w.us.UpdateItem(w.ctx, p, "In C, which operator tests that two values are not equal?", "!=", false); err != nil {
+		t.Fatal(err)
+	}
+	reply := ""
+	var asked string
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		asked = string(raw)
+		json.NewEncoder(rw).Encode(map[string]any{"model": ai.DefaultOpenRouterDraftModel,
+			"usage":   map[string]any{"prompt_tokens": 300, "completion_tokens": 90},
+			"choices": []map[string]any{{"message": map[string]any{"content": reply}, "finish_reason": "stop"}}})
+	}))
+	t.Cleanup(srv.Close)
+	c, err := ai.NewClaudeWithRouter("", "sk-or-v1-standin", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.BaseURL, c.HTTP = srv.URL, srv.Client()
+	w.app.Bridger = c
+	w.answerOnce(t, p, srs.Missed, "=/=")
+	w.advance(25 * time.Hour)
+	w.answerOnce(t, p, srs.Missed, "<>")
+
+	reply = `{"cards":[{"q":"In C, what does the == operator test?","a":"That two values are equal"},{"q":"Which programming languages use != to mean not equal?","a":"C, Java, Python and many others"},{"q":"In C, what value does a false comparison produce?","a":"0"}]}`
+	cards, err := w.app.DraftBridges(w.ctx, w.user, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req struct{ Messages []struct{ Content string } }
+	json.Unmarshal([]byte(asked), &req)
+	if len(req.Messages) != 2 || !strings.Contains(req.Messages[1].Content, "<parent_answer>!=</parent_answer>") {
+		t.Fatalf("the parent's answer was not sent: %s", asked)
+	}
+	if len(cards) != 2 || cards[0].Answer != "That two values are equal" || cards[1].Answer != "0" {
+		t.Fatalf("cards %+v, want the two safe ones", cards)
+	}
+	reply = `{"cards":[{"q":"In C, what does the == operator test?","a":"That two values are equal"},{"q":"In C, what value does a false comparison produce?","a":"0"},{"q":"In C, which operator negates a boolean value?","a":"!"}]}`
+	if cards, err := w.app.DraftBridges(w.ctx, w.user, p); err != nil || len(cards) != 3 {
+		t.Fatalf("three safe bridges = %+v, %v; want all three", cards, err)
+	}
+	reply = `{"cards":[{"q":"In C, what does the == operator test?","a":"That two values are equal"},{"q":"Which programming languages use != to mean not equal?","a":"C and Java"},{"q":"How is inequality written in C?","a":"!="}]}`
 	if cards, err := w.app.DraftBridges(w.ctx, w.user, p); !errors.Is(err, app.ErrBridgesUnavailable) || cards != nil {
 		t.Fatalf("one safe card left = %+v, %v; want ErrBridgesUnavailable", cards, err)
 	}
