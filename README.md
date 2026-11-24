@@ -430,7 +430,10 @@ waiting card), the deterministic fixture preview, edit and remove in place,
 "Add bridges & hold parent", the held card absent from the next session, an
 Incorrect bridge keeping the hold, Correct and Almost Correct releasing it
 with the schedule unchanged, automatic reentry, bridge removal and manual
-release; and on every page no sideways scroll, bridge panels at least 366 px
+release, an active bridge's post-answer review saying "Bridge card · leads
+up to …" with the parent's page linked (absent while the bridge waits; the
+link is pressed and opens the held parent; a second learner gets a 404 for
+it); and on every page no sideways scroll, bridge panels at least 366 px
 wide on the phone, 16 px `stroke="currentColor"` cue icons, Geist only (no
 Inter), no game copy, and zero console, page, request, 5xx or CSP errors.
 One of the bridges is edited, key by key, to a valid 400-character question

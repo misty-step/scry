@@ -42,7 +42,13 @@
 //      never B (held). B's bridge 1 Incorrect -> B stays held by 2; bridge 2
 //      Correct -> held by 1; later bridge 1 Almost Correct -> B is released
 //      automatically with its schedule unchanged, and the next Study
-//      session opens on B.
+//      session opens on B. While B's first bridge waits nothing names B;
+//      its Incorrect review says "Bridge card · leads up to NATO alphabet:
+//      B" with B's page linked (never B's answer). The link is pressed and
+//      opens B's page ("Held by 2 bridges"); a second learner, in a fresh
+//      browser context, gets a 404 for that page and no link on their
+//      Study; back on Study the same review still links B. A cleared
+//      bridge's review says what clearing it changed instead.
 //   One of B's bridges is edited to a valid 400-character question with no
 //   spaces, typed key by key, and accepted; every surface that shows it
 //   (the preview, the held review's bridge list, the parent's card page,
@@ -437,6 +443,47 @@ async function buildFormState(page) {
 }
 const buildFormReady = st => st.form && !st.sent && !st.disabled && st.busy === null && st.label === "Build bridge cards";
 
+// The bridge note on the page and its link to the parent card.
+async function parentLinkFacts(page, parentId) {
+  return page.evaluate((pid) => {
+    const notes = [...document.querySelectorAll("[data-bridge-note]")];
+    const links = notes.flatMap(n => [...n.querySelectorAll(`a[href="/library/items/${pid}"]`)]);
+    const main = document.querySelector("main");
+    return {
+      notes: notes.length, links: links.length, linkText: links[0] ? links[0].textContent.trim() : null,
+      note: notes[0] ? notes[0].innerText.replace(/\s+/g, " ").trim() : null,
+      noteHasAnswer: notes.some(n => /\bBravo\b/.test(n.innerText)),
+      anyLink: !!document.querySelector(`main a[href="/library/items/${pid}"]`),
+      leadsUp: !!main && main.innerText.includes("leads up to"),
+    };
+  }, parentId);
+}
+
+// A second, disposable learner in a fresh browser context: B's page is a
+// 404 for them and their Study never links it. Requests go through the
+// context's own API client (its cookies), so a 404 adds no console noise.
+async function otherLearner(browser, c, base, parentId) {
+  const ctx = await browser.newContext(contextOptions(c));
+  try {
+    const page = await ctx.newPage();
+    page.__base = base;
+    await signUp(page, { ...c, name: c.name + "-other" });
+    const item = await ctx.request.get(`${base}/library/items/${parentId}`, { maxRedirects: 0 });
+    const body404 = await item.text();
+    const study = await ctx.request.get(`${base}/study`);
+    const html = await study.text();
+    return {
+      status: item.status(), studyStatus: study.status(),
+      studyLinks: html.split(`href="/library/items/${parentId}"`).length - 1,
+      leadsUp: html.includes("leads up to"),
+      parentPrompt404: body404.includes("Held by") || body404.includes("data-hold"),
+    };
+  } finally {
+    for (const k of await ctx.cookies().catch(() => [])) if (k.value) SECRETS.values.add(k.value);
+    await ctx.close().catch(() => {});
+  }
+}
+
 async function clickNav(page, c, locator) {
   await Promise.all([page.waitForNavigation({ waitUntil: "load" }), press(c, locator)]);
   await settle(page);
@@ -635,12 +682,44 @@ async function runConfig(c, port) {
     await next(page, c);
     p = await currentPrompt(page);
     check(`${tag}: B's first bridge is up`, p === "What is a phonetic alphabet for?", p);
+    out.bridgeWaiting = await parentLinkFacts(page, s.B.id);
+    check(`${tag}: a waiting bridge names no parent: no note, no link to B, no "leads up to"`,
+      !out.bridgeWaiting.notes && !out.bridgeWaiting.links && !out.bridgeWaiting.leadsUp, out.bridgeWaiting);
     await answer(page, c, "Talking"); // missed
     f = await facts(page);
     check(`${tag}: bridge Incorrect: B stays held by 2, the review says the card stays held`, (await verdictOf(page)) === "Incorrect" && heldBy(db, s.B.id) === 2 &&
       f.text.includes("stays held until this is answered Correct or Almost Correct"), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
+    // DESIGN.md (Held): an active bridge's review says "Bridge card · leads
+    // up to …" with the card it leads to linked, its question only.
+    out.bridgeReview = await parentLinkFacts(page, s.B.id);
+    check(`${tag}: active bridge review: "Bridge card · leads up to NATO alphabet: B", linked to B's page`,
+      out.bridgeReview.notes === 1 && out.bridgeReview.links === 1 && out.bridgeReview.linkText === "NATO alphabet: B" &&
+      /^Bridge card · leads up to NATO alphabet: B\. The card it leads to stays held until this is answered Correct or Almost Correct\.$/.test(out.bridgeReview.note), out.bridgeReview);
+    check(`${tag}: active bridge review never shows the parent's answer`, !/\bBravo\b/.test(f.text) && !out.bridgeReview.noteHasAnswer, f.text.slice(0, 300));
+    layoutChecks(tag, f, c, "active bridge review with its parent link");
     await inView(page, tag, "[data-bridge-note]", "bridge Incorrect review");
     if (c.journeyShots) await shot(page, c, "bridge-incorrect-still-held", { fullPage: false });
+    await shot(page, c, "bridge-review-parent-link", { fullPage: false });
+    // Real navigation: the link opens B's own page, which says it is held.
+    // (Without the link there is nothing to press: that is its own failure.)
+    if (out.bridgeReview.links === 1) {
+      await clickNav(page, c, page.locator(`[data-bridge-note] a[href="/library/items/${s.B.id}"]`));
+      f = await facts(page);
+      check(`${tag}: the parent link opens B's page (held by 2)`,
+        new URL(page.url()).pathname === `/library/items/${s.B.id}` && f.text.includes("Held by 2 bridges") && f.text.includes("NATO alphabet: B"),
+        { path: maskPath(page.url()), text: f.text.slice(0, 200) });
+      if (c.journeyShots) await shot(page, c, "bridge-parent-page-from-review", { fullPage: false });
+    } else {
+      check(`${tag}: the parent link opens B's page (held by 2)`, false, "no parent link to press");
+    }
+    // Another learner, in their own browser context, never reaches it.
+    out.otherLearner = await otherLearner(browser, c, base, s.B.id);
+    check(`${tag}: another learner gets 404 for B's page and sees no link to it on Study`,
+      out.otherLearner.status === 404 && !out.otherLearner.studyLinks && !out.otherLearner.leadsUp && !out.otherLearner.parentPrompt404, out.otherLearner);
+    // Back to Study: the same review, the same line, and on to the next card.
+    await go(page, `${base}/study`);
+    const again = await parentLinkFacts(page, s.B.id);
+    check(`${tag}: back on Study the same bridge review still links B`, (await verdictOf(page)) === "Incorrect" && again.links === 1 && again.linkText === "NATO alphabet: B", again);
     await next(page, c);
     p = await currentPrompt(page);
     f = await facts(page);
@@ -650,6 +729,8 @@ async function runConfig(c, port) {
     await answer(page, c, "A fixed script"); // right
     f = await facts(page);
     layoutChecks(tag, f, c, "review of the 400-character bridge");
+    out.clearedReview = await parentLinkFacts(page, s.B.id);
+    check(`${tag}: a cleared bridge's review says what it changed, not "leads up to"`, !out.clearedReview.leadsUp && !out.clearedReview.notes, out.clearedReview);
     check(`${tag}: bridge Correct: B held by 1, the review says one bridge still holds it`, (await verdictOf(page)) === "Correct" && heldBy(db, s.B.id) === 1 &&
       f.text.includes("Bridge cleared · 1 bridge still holds the card it leads to."), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
     await inView(page, tag, "[data-bridge-cleared]", "bridge Correct review");
