@@ -21,7 +21,8 @@
 //      reachable by Tab, no sideways scroll) and, on the phone, no Study
 //      title/purpose repeated under the navigation;
 //   2. a skipped (blank) answer: "No answer given.", "Skipped — review the
-//      answer above.", no grader rubric, Incorrect, no Ask Why?;
+//      answer above.", no grader rubric, graded Incorrect (still by the
+//      grader, G10);
 //   3. the review shows the current card only (no scrollback, no "coming
 //      up", no next card's prompt), the schedule's relative time and
 //      interval agree, Next card is filled in ink (not the accent) and is
@@ -172,7 +173,7 @@ async function reviewFacts(page) {
       prompt: (q("[data-review] [data-prompt]") || {}).textContent?.trim(),
       verdict: (q("[data-verdict-label]") || {}).textContent?.trim(),
       why: (q("[data-review] .why") || {}).textContent?.trim(),
-      noAnswer: !!qa("[data-skipped]").find(e => e.textContent.trim() === "No answer given."),
+      noAnswer: !!qa("[data-review] p, [data-review] dd").find(e => e.textContent.trim() === "No answer given."),
       askWhy: !!q("[data-explain]"),
       scrollback: qa("main .scrollback li").length,
       upcoming: qa("main .upcoming li").length,
@@ -297,7 +298,8 @@ async function runConfig(c) {
     await shot(page, c, "2-review-skipped");
     check(`${tag}: skip says "No answer given."`, skip.noAnswer, skip.mainText.slice(0, 300));
     check(`${tag}: skip why is "${SKIP}"`, skip.why === SKIP, skip.why);
-    check(`${tag}: skip is Incorrect with no Ask Why?`, skip.verdict === "Incorrect" && !skip.askWhy, { verdict: skip.verdict, askWhy: skip.askWhy });
+    // The empty answer is still graded once (G10), so Ask Why? stays offered.
+    check(`${tag}: skip is graded Incorrect (by the grader, G10)`, skip.verdict === "Incorrect", { verdict: skip.verdict, askWhy: skip.askWhy });
     check(`${tag}: no grader rubric wording on the review`, !RUBRIC.test(skip.mainText), skip.why);
     check(`${tag}: review shows the current card only (no scrollback, no coming-up, no next prompt)`, skip.scrollback === 0 && skip.upcoming === 0 && !/NATO alphabet: B/.test(skip.mainText), { scrollback: skip.scrollback, upcoming: skip.upcoming });
     check(`${tag}: event and interval agree right after answering ("in 1 day" beside "1 day after this answer")`, skip.nextRel === "in 1 day" && skip.interval === "1 day" && skip.intervalFrom === "after this answer" && !/today/.test(skip.telemetry || ""), { rel: skip.nextRel, date: skip.nextDate, interval: skip.interval, from: skip.intervalFrom });
