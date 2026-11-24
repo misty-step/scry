@@ -282,9 +282,9 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |
 | Story: connected ideas; each item belongs to an idea; on phones the opened idea comes first with a compact collapsible outline | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea; TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline |
 | Story: every answer stops on a review that stays framed at the question and judgment | TestStory_Review_StaysFramedAtTheQuestionAndJudgment (plus the real-browser walkthrough below) |
-| Story: the review shows only the current card; an empty answer says "No answer given." and "Skipped — review the answer above." (still graded, G10); the why is in plain words, never the grader's rubric | TestSlice70_Review_ShowsTheCurrentCardOnly; TestSlice70_Review_SkipSaysNoAnswerGivenInPlainWords; TestSlice70_Review_GradedWhyIsPlainNeverTheRubric; TestG10_EmptyAnswerCallsJudgeOnce; internal/ai.TestWhy_PlainSentencesReplaceTheGraderRubric; `scripts/verify-slice70.mjs` |
-| Story: the review's schedule (event and interval on one clock, icons, verdict trail; dates in the learner's stored zone, never rewritten by a page view) | TestSlice70_Review_EventAndIntervalAgreeOnTheRunningPath; TestSlice70_Review_ScheduleIconsAndVerdictTrail; TestSlice70_NoPageViewChangesTheTimeZoneOrTheQueue; internal/web.TestSlice70_Telemetry_EventAndIntervalShareOneClock; internal/web.TestSlice70_Telemetry_TrailIsTheLastEightGradedVerdicts; internal/web.TestSlice41_Telemetry_IsFormattedFromTheStoredSchedule |
-| Story: on phones every destination is in view in one compact row and Study does not repeat itself; Next card in ink with a keyboard-only focus ring | TestSlice70_Design_InkNextCardKeyboardRingCompactNav; TestDesign_Slice54_CraftRulesHoldInTheStyleSheet; `scripts/verify-slice70.mjs` (WebKit iPhone 390x844 and Chromium 1440x900, light and dark) |
+| Story: the review shows only the current card; an empty answer says "No answer given." and "Skipped — review the answer above." (still graded, G10); the why is in plain words, never the grader's rubric | TestSlice70_Review_ShowsTheCurrentCardOnly; TestSlice70_Review_SkipSaysNoAnswerGivenInPlainWords; TestSlice70_Review_GradedWhyIsPlainNeverTheRubric; TestG10_EmptyAnswerCallsJudgeOnce; internal/ai.TestWhy_PlainSentencesReplaceTheGraderRubric; `scripts/verify-slice70.mjs`; `scripts/verify-slice70-folio.mjs` (all three plain whys, the restrained badge, card history, an exact text answered with nothing) |
+| Story: the review's schedule (event and interval on one clock, icons, verdict trail; dates in the learner's stored zone, never rewritten by a page view) | TestSlice70_Review_EventAndIntervalAgreeOnTheRunningPath; TestSlice70_Review_ScheduleIconsAndVerdictTrail; TestSlice70_NoPageViewChangesTheTimeZoneOrTheQueue; internal/web.TestSlice70_Telemetry_EventAndIntervalShareOneClock; internal/web.TestSlice70_Telemetry_TrailIsTheLastEightGradedVerdicts; internal/web.TestSlice41_Telemetry_IsFormattedFromTheStoredSchedule; `scripts/verify-slice70-folio.mjs` (the table layout, and "due now" once the due instant has passed) |
+| Story: on phones every destination is in view in one compact row and Study does not repeat itself; Next card in ink with a keyboard-only focus ring | TestSlice70_Design_InkNextCardKeyboardRingCompactNav; TestDesign_Slice54_CraftRulesHoldInTheStyleSheet; `scripts/verify-slice70.mjs` (WebKit iPhone 390x844 and Chromium 1440x900, light and dark); `scripts/verify-slice70-folio.mjs` (48 px brand row, 52 px nav of six equal columns, no accent ring on the focused answer field) |
 | Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
 | Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
 | Rule: no free tier, 7-day no-card trial with a capped allowance | TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance; TestRule_CardAddedDuringTheTrialKeepsItsEnd; TestRule_NoCardTrialNeverChargesATopup; internal/app.TestSlice36_NoCardTrialExpiresAtPeriodEnd; internal/app.TestSlice36_ConcurrentReservationsCannotPassTheCapOrTheEnd; internal/app.TestSlice36_UpgradeFromTheNoCardTrial; TestSlice36_StaleCardStepConfirmsBeforeChargingAndADeclineKeepsTheTrial; TestSlice36_CardStepWithoutTermsIsNeverCharged; internal/app.TestSlice36_StaleTrialTermsNeverChargeSilently; internal/app.TestSlice36_DeclineInTheLastHourKeepsTheTrial; internal/app.TestSlice36_ConfirmedUpgradeInTheLastHour; internal/app.TestSlice36_SpeechHoldsKeepTheTrialInsideItsCap; internal/app.TestSlice36_OverageNeverStarvesAConcurrentHoldAndStopsTheTrial |
@@ -416,6 +416,20 @@ reports raised during a screenshot are listed as "tooling", not app errors.
     node scripts/verify-slice70.mjs --url http://127.0.0.1:18071 --label candidate --shots /tmp/s70-shots --state-dir /tmp --video
     # stop it, then: SCRY_TEST_CLOCK=$(date -u -d '+20 hours' +%Y-%m-%dT%H:%M:%SZ) ... ./bin/scry &
     node scripts/verify-slice70.mjs --url http://127.0.0.1:18071 --label candidate --stale --state-dir /tmp --shots /tmp/s70-shots
+
+`scripts/verify-slice70-folio.mjs` covers the Slice 70 Folio lines the
+verifier above does not measure, on WebKit (iPhone 390x844) and Chromium
+(1440x900), and records a video of each: the phone header's 48 px brand row
+over one 52 px row of six equal nav columns, the focused answer field with no
+accent ring, the plain why and the restrained badge for each of Correct,
+Almost Correct and Incorrect, the schedule table's layout, a card's history,
+and an exact text answered with nothing. It leaves the phone's last review
+pending; `--stale`, run after the same database is restarted with
+`SCRY_TEST_CLOCK` 3 days on, checks the event then reads "due now".
+
+    node scripts/verify-slice70-folio.mjs --url http://127.0.0.1:18071 --out /tmp/s70f --state /tmp/s70f-state.json
+    # stop it, then: SCRY_TEST_CLOCK=$(date -u -d '+3 days' +%Y-%m-%dT%H:%M:%SZ) ... ./bin/scry &
+    node scripts/verify-slice70-folio.mjs --url http://127.0.0.1:18071 --out /tmp/s70f --state /tmp/s70f-state.json --stale
 
 The smoke blocks external requests, uses synthetic microphone input and test
 adapters, measures Check contrast in both modes and at desktop/phone widths,
