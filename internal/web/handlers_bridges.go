@@ -186,9 +186,8 @@ func (s *Server) bridgesRelease(w http.ResponseWriter, r *http.Request, c *rc) e
 }
 
 // bridgeViewFor builds the cue/hold view of one card for a page.
-func (s *Server) bridgeViewFor(r *http.Request, c *rc, it store.Item, st app.Struggle, from string) bridgeView {
+func (s *Server) bridgeViewFor(ctx context.Context, c *rc, it store.Item, st app.Struggle, from string) bridgeView {
 	v := bridgeView{Struggle: st, ItemID: it.ID, CSRF: c.sess.CSRF, From: from}
-	ctx := r.Context()
 	if st.BridgeFor != 0 {
 		if p, err := c.us.Item(ctx, st.BridgeFor); err == nil {
 			v.Parent = &p

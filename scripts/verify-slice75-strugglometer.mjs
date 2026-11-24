@@ -660,6 +660,10 @@ async function runConfig(c, port) {
     f = await facts(page);
     check(`${tag}: bridge Incorrect: B stays held by 2, the review says the card stays held`, (await verdictOf(page)) === "Incorrect" && heldBy(db, s.B.id) === 2 &&
       f.text.includes("stays held until this is answered Correct or Almost Correct"), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
+    const parentLink = page.locator("[data-bridge-note] a");
+    check(`${tag}: bridge Incorrect review names and links to its parent`,
+      f.text.includes("Bridge card · leads up to NATO alphabet: B") &&
+      (await parentLink.count()) === 1 && (await parentLink.getAttribute("href")) === `/library/items/${s.B.id}`);
     await inView(page, tag, "[data-bridge-note]", "bridge Incorrect review");
     if (c.journeyShots) await shot(page, c, "bridge-incorrect-still-held", { fullPage: false });
     await next(page, c);

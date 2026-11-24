@@ -366,7 +366,7 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 			// it waits); a held or bridge card says so.
 			if bs, err := c.us.BridgeState(ctx, shown.Item.ID); err == nil {
 				if it, err := c.us.Item(ctx, shown.Item.ID); err == nil {
-					bv := bridgeView{Struggle: app.StruggleOf(it, history, bs), ItemID: it.ID, CSRF: c.sess.CSRF, From: "study"}
+					bv := s.bridgeViewFor(ctx, c, it, app.StruggleOf(it, history, bs), "study")
 					bv.Cleared = clearedLine(ctx, c, *pendingReview)
 					data["Bridge"] = bv
 				}
