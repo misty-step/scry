@@ -46,6 +46,15 @@
 // its own summary (walkthrough-checks.log.txt) into the bundle and checks the
 // whole bundle is <= 1,750,000 bytes.
 //
+// Pass 6 replaces Pass 5's server-seeded sequence with a per-tab pair: each
+// Settings page load makes its own tab token and numbers its choices 1, 2, …
+// (theme_tab, theme_seq). Within one tab an older save is ignored; across
+// tabs the last save to arrive wins. The held-JS-vs-no-JS check is replaced
+// by two already-open tabs: Tab A and Tab B open Settings at System, Tab A
+// saves Dark (reload confirms), then Tab B, never reloaded, picks Light, and
+// reloading Tab B shows Light. The clock-skew check now asserts the skewed
+// context's own tab token and number.
+//
 // Signing in happens in an unrecorded setup context; the recorded
 // walkthrough reuses its storageState, so the test-mode demo hint on the
 // sign-in page is never in a video. With --evidence it writes a compact set
@@ -585,23 +594,23 @@ function startHoldingProxy() {
       const body = Buffer.concat(chunks);
       const isTheme = req.method === "POST" && req.url.split("?")[0] === "/settings/theme";
       const form = isTheme ? new URLSearchParams(body.toString("utf8")) : null;
-      const theme = form ? form.get("theme") : "", seq = form ? Number(form.get("theme_seq") || 0) : 0;
+      const theme = form ? form.get("theme") : "", seq = form ? Number(form.get("theme_seq") || 0) : 0, tab = form ? form.get("theme_tab") || "" : "";
       const forward = () => {
         // A fresh upstream request from the buffered body: once the proxy has
         // the request, it reaches Scry even if the page that sent it is gone.
         const up = http.request({ hostname: target.hostname, port: target.port, method: req.method, path: req.url, headers: req.headers }, ur => {
-          if (isTheme) note({ kind: "scry-answered", theme, seq, status: ur.statusCode });
+          if (isTheme) note({ kind: "scry-answered", theme, seq, tab, status: ur.statusCode });
           if (!res.destroyed && !res.headersSent) { res.writeHead(ur.statusCode, ur.headers); ur.pipe(res); } else ur.resume();
         });
         up.on("error", err => { if (isTheme) note({ kind: "upstream-error", theme, err: String(err) }); if (!res.headersSent) { res.writeHead(502); res.end(); } });
-        if (isTheme) note({ kind: "forwarded", theme, seq });
+        if (isTheme) note({ kind: "forwarded", theme, seq, tab });
         up.end(body);
       };
-      if (isTheme) note({ kind: "received", theme, seq });
+      if (isTheme) note({ kind: "received", theme, seq, tab });
       if (isTheme && p.armed && theme === p.armed) {
         p.armed = "";
         p.held = forward;
-        note({ kind: "held", theme, seq });
+        note({ kind: "held", theme, seq, tab });
         return;
       }
       forward();
@@ -661,7 +670,7 @@ async function heldBeforeScry(browser, c, state) {
     check(c.name + " settings: an older Dark POST held before Scry and arriving after the Light keepalive flush does not overwrite Light",
       start.checked === "system" && leftWith === "light" && scryBeforeRelease.join() === "light" &&
       ev("forwarded").map(e => e.theme).join() === "light,dark" && answered.join() === "light 303,dark 303" &&
-      dark.seq > 0 && light.seq > dark.seq && kept.checked === "light" && kept.attr === "light" &&
+      dark.seq > 0 && light.seq > dark.seq && !!dark.tab && light.tab === dark.tab && kept.checked === "light" && kept.attr === "light" &&
       (serverPosts === null || serverPosts === 2),
       { start: start.checked, leftWith, scryBeforeRelease, order, answered, serverPosts, kept });
     summary.heldProxy = { order, answered, kept: kept.checked, serverPosts };
@@ -685,8 +694,8 @@ async function heldBeforeScry(browser, c, state) {
 }
 
 // Without JavaScript the Settings form posts the plain way, with no
-// theme_seq: it always applies, even though the scripted saves before it
-// stored a large sequence number. It restores "Follow my system" too.
+// theme_tab or theme_seq: it always applies, whatever scripted saves came
+// before it. It restores "Follow my system" too.
 async function noJsThemeSave(browser, c, state) {
   const context = await browser.newContext(Object.assign(contextOptions(c), { storageState: state, javaScriptEnabled: false }));
   await instrument(context);
@@ -707,26 +716,24 @@ async function noJsThemeSave(browser, c, state) {
   }
 }
 
-// ---- Pass 5: theme_seq counts from the server, never from a clock ---------
+// ---- Pass 5/6: per-tab (theme_tab, theme_seq), never a clock ------------
 //
-// Settings renders the stored theme save sequence (data-theme-seq); the page
-// numbers each choice from it (+1 per choice), and a plain no-JS Save
-// advances it by 1000. Two Pass 4b repros, both through the loopback proxy
-// so every step is gated on Scry having answered:
+// Each Settings page load makes its own tab token and numbers its choices
+// 1, 2, … Within one tab an older save is ignored; across tabs (and devices,
+// whatever their clocks) the last save to arrive wins, and a plain no-JS
+// Save always applies. Both repros go through the loopback proxy so every
+// step is gated on Scry having answered:
 //  1. Clock skew: context 1 (real clock) saves Dark; a fresh context 2 whose
 //     browser clock is 3 minutes behind opens Settings, picks Light, reloads:
 //     Light persists.
-//  2. Held JS POST vs an explicit no-JS Save: JS context 1 picks Dark, held
-//     by the proxy before Scry; no-JS context 2 picks Light and clicks Save
-//     appearance (303); the held Dark is released (303); no-JS Settings
-//     reloaded shows Light.
+//  2. Two already-open tabs: Tab A and Tab B open Settings at System; Tab A
+//     picks Dark (303; reloading A shows Dark); Tab B, never reloaded, picks
+//     Light (303); reloading Tab B shows Light.
 async function settingsNow(page) {
-  return page.evaluate(() => {
-    const f = document.querySelector("[data-theme-form]");
-    return { checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme"),
-      seq: f && f.hasAttribute("data-theme-seq") ? Number(f.getAttribute("data-theme-seq")) : null,
-      seqField: !!document.querySelector("[data-theme-form] input[name=theme_seq]") };
-  });
+  return page.evaluate(() => ({
+    checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme"),
+    seqAttr: !!document.querySelector("[data-theme-form][data-theme-seq]"),
+    seqField: !!document.querySelector("[data-theme-form] input[name=theme_seq], [data-theme-form] input[name=theme_tab]") }));
 }
 
 async function pass5Theme(browser, c, state) {
@@ -750,6 +757,11 @@ async function pass5Theme(browser, c, state) {
     await p.w.until(() => ev("scry-answered").length > n, "the " + v + " save to be answered");
     return ev("scry-answered").slice(-1)[0];
   };
+  // plainSave posts a mode the no-JS way (Save appearance).
+  const plainSave = async (page, v) => {
+    await page.check("[data-theme-form] " + radio(v));
+    await Promise.all([page.waitForNavigation({ waitUntil: "load" }), page.locator("[data-theme-form] button").first().click()]);
+  };
   try {
     // ---- 1. Clock skew -------------------------------------------------
     const one = await open("pass5 clock ctx1");
@@ -768,69 +780,61 @@ async function pass5Theme(browser, c, state) {
     const two1 = await settingsNow(two);
     const behindMs = Date.now() - skew;
     check(c.name + " pass5 clock skew: context 2 with its browser clock 3 min behind picks Light after context 1 saved Dark; reload shows Light",
-      one0.checked === "system" && one0.seqField === false && darkSave.theme === "dark" && darkSave.status === 303 && darkSave.seq === one0.seq + 1 &&
-      behindMs >= SKEW - 5000 && two0.checked === "dark" && two0.seq === darkSave.seq &&
-      lightSave.theme === "light" && lightSave.status === 303 && lightSave.seq === two0.seq + 1 &&
-      two1.checked === "light" && two1.attr === "light" && two1.seq === lightSave.seq,
+      one0.checked === "system" && !one0.seqField && !one0.seqAttr && darkSave.theme === "dark" && darkSave.status === 303 && darkSave.seq === 1 && !!darkSave.tab &&
+      behindMs >= SKEW - 5000 && two0.checked === "dark" &&
+      lightSave.theme === "light" && lightSave.status === 303 && lightSave.seq === 1 && !!lightSave.tab && lightSave.tab !== darkSave.tab &&
+      two1.checked === "light" && two1.attr === "light",
       { ctx1Start: one0, darkSave, ctx2ClockBehindMs: behindMs, ctx2Loaded: two0, lightSave, ctx2Reloaded: two1 });
-    summary.pass5ClockSkew = { ctx2ClockBehindMs: behindMs, dark: "dark#" + darkSave.seq + " " + darkSave.status, light: "light#" + lightSave.seq + " " + lightSave.status, reloaded: two1 };
+    summary.pass5ClockSkew = { ctx2ClockBehindMs: behindMs, dark: "dark#" + darkSave.seq + " " + darkSave.status, light: "light#" + lightSave.seq + " " + lightSave.status, distinctTabs: lightSave.tab !== darkSave.tab, reloaded: two1 };
     await common(two, c, "pass5 clock skew settings");
     // No screenshot here: the frame is identical to the Pass 4 "Light kept"
-    // picture; the check's detail (both seqs, the 3-minute skew) is the proof.
+    // picture; the check's detail (tabs, numbers, the 3-minute skew) is the proof.
 
-    // Reset to "Follow my system" for repro 2 with a plain no-JS Save, which
-    // applies whatever the stored sequence is.
-    const reset = await open("pass5 no-JS reset", { javaScriptEnabled: false });
+    // Reset to "Follow my system" with a plain no-JS Save, which always applies.
+    const reset = await open("pass6 no-JS reset", { javaScriptEnabled: false });
     await reset.goto(p.url + "/settings", { waitUntil: "load" });
-    await reset.check("[data-theme-form] " + radio("system"));
-    await Promise.all([reset.waitForNavigation({ waitUntil: "load" }), reset.locator("[data-theme-form] button").first().click()]);
-    check(c.name + " pass5 no-JS Save resets to system", (await settingsNow(reset)).checked === "system", await settingsNow(reset));
+    await plainSave(reset, "system");
+    check(c.name + " pass6 no-JS Save resets to system", (await settingsNow(reset)).checked === "system", await settingsNow(reset));
 
-    // ---- 2. Held JS Dark vs explicit no-JS Light Save --------------------
-    const js = await open("pass5 held JS ctx1");
-    await js.goto(p.url + "/settings", { waitUntil: "load" });
-    const js0 = await settingsNow(js);
+    // ---- 2. Two already-open Settings tabs -------------------------------
+    // Two tabs (pages) of one browser, both opened before either saves.
+    const tabA = await open("pass6 Tab A");
+    const tabB = await tabA.context().newPage();
+    watch(tabB, c.name + " pass6 Tab B", p.url);
+    await tabA.goto(p.url + "/settings", { waitUntil: "load" });
+    await tabB.goto(p.url + "/settings", { waitUntil: "load" });
+    const a0 = await settingsNow(tabA), b0 = await settingsNow(tabB);
     p.events.length = 0;
     const logBefore = themePosts();
-    p.armed = "dark";
-    await press(js, c, radio("dark"));
-    await p.w.until(() => ev("held").length === 1, "the JS Dark POST to be held before Scry");
-    const held = ev("held")[0];
-    const nojs = await open("pass5 no-JS ctx2", { javaScriptEnabled: false });
-    await nojs.goto(p.url + "/settings", { waitUntil: "load" });
-    const nojs0 = await settingsNow(nojs);
-    await nojs.check("[data-theme-form] " + radio("light"));
-    await Promise.all([nojs.waitForNavigation({ waitUntil: "load" }), nojs.locator("[data-theme-form] button").first().click()]);
-    const nojsSave = ev("scry-answered").find(e => e.theme === "light");
-    const nojs1 = await settingsNow(nojs);
-    const darkAnsweredBefore = ev("scry-answered").some(e => e.theme === "dark");
-    p.held();
-    await p.w.until(() => ev("scry-answered").some(e => e.theme === "dark"), "the held JS Dark POST to reach Scry");
-    const heldAnswer = ev("scry-answered").find(e => e.theme === "dark");
-    await nojs.reload({ waitUntil: "load" });
-    const nojs2 = await settingsNow(nojs);
-    const order = ev("forwarded").map(e => e.theme + "#" + e.seq);
+    const aDark = await pick(tabA, "dark");
+    await tabA.reload({ waitUntil: "load" });
+    const a1 = await settingsNow(tabA);
+    const bBefore = await settingsNow(tabB); // not reloaded: still shows System
+    await tabB.bringToFront();
+    const bLight = await pick(tabB, "light");
+    await tabB.reload({ waitUntil: "load" });
+    const b1 = await settingsNow(tabB);
+    const order = ev("scry-answered").map(e => e.theme + "#" + e.seq + " " + e.status);
     const serverPosts = opt.serverLog ? themePosts() - logBefore : null;
-    check(c.name + " pass5 held JS Dark (before Scry) + explicit no-JS Light Save + release Dark: reload shows Light",
-      js0.checked === "system" && held.seq === js0.seq + 1 && nojs0.seqField === false && nojs0.seq === js0.seq &&
-      !!nojsSave && nojsSave.seq === 0 && nojsSave.status === 303 && nojs1.checked === "light" && nojs1.seq === js0.seq + 1000 &&
-      !darkAnsweredBefore && heldAnswer.status === 303 && order.join() === "light#0,dark#" + held.seq &&
-      nojs2.checked === "light" && nojs2.attr === "light" && nojs2.seq === js0.seq + 1000 && (serverPosts === null || serverPosts === 2),
-      { jsLoaded: js0, held: "dark#" + held.seq, noJsLoaded: nojs0, noJsSave: nojsSave, afterNoJsSave: nojs1, heldAnswer, order, serverPosts, reloaded: nojs2 });
-    summary.pass5HeldVsNoJs = { order, answered: ev("scry-answered").map(e => e.theme + "#" + e.seq + " " + e.status), reloaded: nojs2, serverPosts };
-    await common(nojs, c, "pass5 no-JS settings after held Dark");
-    await shot(nojs, "desktop-settings-nojs-light-kept-after-held-dark.png");
+    check(c.name + " pass6 two already-open tabs: Tab A saves Dark, then Tab B (never reloaded) picks Light; reloading Tab B shows Light",
+      a0.checked === "system" && b0.checked === "system" && !a0.seqAttr && !b0.seqField &&
+      aDark.theme === "dark" && aDark.status === 303 && aDark.seq === 1 && !!aDark.tab && a1.checked === "dark" && a1.attr === "dark" &&
+      bBefore.checked === "system" && bLight.theme === "light" && bLight.status === 303 && bLight.seq === 1 && !!bLight.tab && bLight.tab !== aDark.tab &&
+      b1.checked === "light" && b1.attr === "light" && order.join() === "dark#1 303,light#1 303" && (serverPosts === null || serverPosts === 2),
+      { tabALoaded: a0, tabBLoaded: b0, tabADark: aDark, tabAReloaded: a1, tabBBeforePick: bBefore, tabBLight: bLight, tabBReloaded: b1, order, serverPosts });
+    summary.pass6TwoTabs = { order, distinctTabs: bLight.tab !== aDark.tab, tabAReloaded: a1.checked, tabBReloaded: b1.checked, serverPosts };
+    await common(tabB, c, "pass6 Tab B settings after Light");
+    await shot(tabB, "desktop-settings-tab-b-light-kept.png");
 
-    // The JS page that sent the held Dark reads the new sequence on its next
-    // load and its next choice applies; restore "Follow my system".
-    await js.reload({ waitUntil: "load" });
-    const js1 = await settingsNow(js);
-    const restore = await pick(js, "system");
-    await js.reload({ waitUntil: "load" });
-    const js2 = await settingsNow(js);
-    check(c.name + " pass5 a JS page loaded after the no-JS Save counts up from the new sequence and its save applies",
-      js1.checked === "light" && js1.seq === nojs2.seq && restore.seq === js1.seq + 1 && restore.status === 303 && js2.checked === "system" && js2.seq === restore.seq,
-      { loaded: js1, restore, reloaded: js2 });
+    // Tab A, reloaded earlier and now stale (it shows Dark), picks System:
+    // a different tab from the last save, so it applies too.
+    await tabA.bringToFront();
+    const restore = await pick(tabA, "system");
+    await tabA.reload({ waitUntil: "load" });
+    const a2 = await settingsNow(tabA);
+    check(c.name + " pass6 Tab A, after Tab B's save, picks System and it applies (across tabs the last save wins)",
+      restore.status === 303 && restore.theme === "system" && restore.tab !== bLight.tab && a2.checked === "system" && a2.attr === null,
+      { restore, reloaded: a2 });
   } finally {
     for (const ctx of contexts) await ctx.close().catch(() => {});
     await p.close();

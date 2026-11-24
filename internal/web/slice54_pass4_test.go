@@ -2,49 +2,39 @@ package web_test
 
 import (
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
-
-	"scry/internal/store"
 )
 
 // PRODUCT.md / DESIGN.md (Settings, mode follows the system with a toggle):
-// the mode last chosen is the mode kept. Settings renders the stored theme
-// save sequence (data-theme-seq); scripted saves carry theme_seq, that
-// number plus one per choice, with no clock involved. An older save that
-// reaches Scry after a newer one (held up on the way, overtaken by the
-// keepalive flush of a later choice or by a plain Save) is answered as usual
-// but does not overwrite the newer mode. A plain form submit carries no
-// theme_seq, always applies, and advances the stored sequence past any
-// earlier scripted save still on the way.
+// the mode last chosen is the mode kept. Each Settings page load makes its
+// own tab token and numbers its scripted saves 1, 2, … (theme_tab,
+// theme_seq), with no clock involved. Within one tab an older save that
+// reaches Scry after a newer one (held up on the way and overtaken by the
+// same page's keepalive flush of a later choice) is answered as usual but
+// does not overwrite the newer mode. Saves from different tabs (two
+// already-open Settings pages, a device whose clock is behind) are
+// last-writer-wins, and a plain form submit carries neither field and
+// always applies.
 func TestStory_Settings_AnOlderThemeSaveArrivingLateNeverOverwritesANewerOne(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 	b.signUp("theme-seq@example.com")
-	// state reads Settings as a fresh page would: the checked mode and the
-	// sequence the page numbers its saves from.
-	state := func() (string, int64) {
+	mode := func() string {
 		t.Helper()
 		page := b.mustGet("/settings")
-		mode := ""
 		for _, v := range []string{"system", "light", "dark"} {
 			if strings.Contains(page, `value="`+v+`" checked`) {
-				mode = v
+				return v
 			}
 		}
-		m := regexp.MustCompile(`data-theme-form data-theme-seq="(\d+)"`).FindStringSubmatch(page)
-		if m == nil {
-			t.Fatalf("Settings renders no data-theme-seq on the appearance form")
-		}
-		seq, _ := strconv.ParseInt(m[1], 10, 64)
-		return mode, seq
+		return ""
 	}
-	want := func(label, mode string, seq int64) {
+	want := func(label, m string) {
 		t.Helper()
-		if m, q := state(); m != mode || q != seq {
-			t.Fatalf("%s: Settings shows (%q, data-theme-seq=%d); want (%q, %d)", label, m, q, mode, seq)
+		if got := mode(); got != m {
+			t.Fatalf("%s: Settings shows %q; want %q", label, got, m)
 		}
 	}
 	post := func(kv ...string) {
@@ -53,69 +43,82 @@ func TestStory_Settings_AnOlderThemeSaveArrivingLateNeverOverwritesANewerOne(t *
 			t.Fatalf("POST /settings/theme %v = %d", kv, st)
 		}
 	}
-	n := func(v int64) string { return strconv.FormatInt(v, 10) }
-
-	// A new account renders sequence 0, and the plain form has no
-	// theme_seq field, so a submit without script takes the plain path.
-	want("new account", "system", 0)
-	if page := b.mustGet("/settings"); strings.Contains(page, `name="theme_seq"`) {
-		t.Fatal("the appearance form carries a theme_seq field; plain submits must omit it")
+	scripted := func(theme, tab string, seq int) {
+		t.Helper()
+		post("theme", theme, "theme_tab", tab, "theme_seq", strconv.Itoa(seq))
 	}
 
-	// Same tab: Dark (seq 1) is held, Light (seq 2) is the keepalive flush
-	// and arrives first; the held Dark arrives after it and is ignored.
-	post("theme", "light", "theme_seq", "2")
-	want("after Light (seq 2)", "light", 2)
-	post("theme", "dark", "theme_seq", "1")
-	want("held Dark (seq 1) after Light (seq 2)", "light", 2)
-	post("theme", "dark", "theme_seq", "2") // the same number is not newer
-	want("replayed seq 2", "light", 2)
-
-	// Clock skew cannot matter: a fresh page (any clock) reads seq 2 and
-	// numbers its next choice 3, which applies.
-	post("theme", "dark", "theme_seq", "3")
-	want("fresh page, Dark (seq 3)", "dark", 3)
-
-	// A JS page loaded now numbers its next choice 4; it is held. A plain
-	// no-JS Save of Light applies and advances the sequence by 1000; the
-	// held Dark (and any burst of earlier choices) then arrives and is ignored.
-	post("theme", "light")
-	want("plain Save after scripted saves", "light", 3+store.ThemeSeqPlainStep)
-	for _, held := range []int64{4, 5, 3 + store.ThemeSeqPlainStep} {
-		post("theme", "dark", "theme_seq", n(held))
-		want("held Dark (seq "+n(held)+") after a plain Save", "light", 3+store.ThemeSeqPlainStep)
+	// The plain form has no tab or number fields, so a submit without
+	// script takes the plain path.
+	want("new account", "system")
+	page := b.mustGet("/settings")
+	for _, f := range []string{`name="theme_tab"`, `name="theme_seq"`, `data-theme-seq`} {
+		if strings.Contains(page, f) {
+			t.Fatalf("the appearance form carries %s; plain submits must send neither field", f)
+		}
 	}
-	// The next Settings page counts up from the rendered number and applies.
-	_, seq := state()
-	post("theme", "dark", "theme_seq", n(seq+1))
-	want("next page's first choice", "dark", seq+1)
+	post("theme", "light") // plain Save before any scripted save
+	want("plain Save first", "light")
 
-	// Junk or negative numbers are treated as a plain submit (and advance).
-	post("theme", "system", "theme_seq", "-9")
-	want("theme_seq=-9", "system", seq+1+store.ThemeSeqPlainStep)
-	post("theme", "light", "theme_seq", "abc")
-	want("theme_seq=abc", "light", seq+1+2*store.ThemeSeqPlainStep)
+	// 1. Same tab: Dark (seq 1) is held, Light (seq 2) is the keepalive
+	// flush and arrives first; the held Dark arrives after it and is ignored,
+	// as is a replay of the same number.
+	scripted("light", "tab-a", 2)
+	want("Light (A, 2)", "light")
+	scripted("dark", "tab-a", 1)
+	want("held Dark (A, 1) after Light (A, 2)", "light")
+	scripted("dark", "tab-a", 2)
+	want("replayed (A, 2)", "light")
+	scripted("dark", "tab-a", 3)
+	want("Dark (A, 3)", "dark")
 
-	// Another learner's numbers never touch this one's mode.
-	_, mine := state()
+	// 2. Two already-open tabs: B was loaded with A and numbers its first
+	// choice 1, lower than A's 3; it applies. So does a device whose clock
+	// is behind (its numbers know nothing of clocks), and A again after B.
+	scripted("light", "tab-b", 1)
+	want("already-open Tab B, Light (B, 1)", "light")
+	scripted("dark", "skewed-device", 1)
+	want("skewed-clock device, Dark", "dark")
+	scripted("system", "tab-a", 4)
+	want("Tab A again", "system")
+
+	// 3. A plain Save after scripted saves applies, and scripted saves after
+	// it apply too.
+	post("theme", "dark")
+	want("plain Save after scripted saves", "dark")
+	scripted("light", "tab-a", 1)
+	want("Tab A after a plain Save", "light")
+
+	// Junk numbers or tokens take the plain path, which always applies.
+	post("theme", "system", "theme_tab", "tab-a", "theme_seq", "-9")
+	want("theme_seq=-9", "system")
+	post("theme", "dark", "theme_tab", "tab-a", "theme_seq", "abc")
+	want("theme_seq=abc", "dark")
+	post("theme", "light", "theme_tab", strings.Repeat("x", 65), "theme_seq", "1")
+	want("overlong theme_tab", "light")
+	post("theme", "dark", "theme_tab", "tab\x01", "theme_seq", "1")
+	want("unprintable theme_tab", "dark")
+
+	// Another learner's saves never touch this one's mode.
 	o := w.browser()
 	o.signUp("theme-seq-other@example.com")
-	if st, _ := o.post("/settings/theme", "theme", "dark", "theme_seq", "9999999999999"); st != http.StatusOK {
+	if st, _ := o.post("/settings/theme", "theme", "light", "theme_tab", "tab-a", "theme_seq", "9999999999999"); st != http.StatusOK {
 		t.Fatalf("other learner POST = %d", st)
 	}
-	post("theme", "dark", "theme_seq", n(mine+1))
-	want("after another learner's large seq", "dark", mine+1)
+	want("after another learner's save", "dark")
 
-	// The page numbers its saves from data-theme-seq, one per choice, and
-	// sends that number with every scripted save, the keepalive flush
-	// included. No clock and no tab storage are involved.
+	// 4. The page makes one tab token per load and numbers its saves from 0,
+	// one per choice, and sends both with every scripted save, the keepalive
+	// flush included. No clock and no tab storage are involved.
 	js, _ := staticAsset(t, w, "/static/app.js")
-	has(t, js, `var seq = parseInt(form.dataset.themeSeq || "0", 10) || 0;`, "seq += 1;", `b.set("theme_seq", String(choice.seq))`)
+	has(t, js, `const tabId = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + "-" + String(Math.random()).slice(2));`,
+		"let seq = 0;", "seq += 1;", `latest = { theme: radio.value, tabId: tabId, seq: seq };`,
+		`b.set("theme_tab", choice.tabId);`, `b.set("theme_seq", String(choice.seq))`)
 	theme := js[strings.Index(js, "function initTheme()"):]
 	theme = theme[:strings.Index(theme, "function init()")]
-	for _, banned := range []string{"Date.now", "Date(", "performance.now", "sessionStorage", "localStorage"} {
+	for _, banned := range []string{"Date.now", "Date(", "performance.now", "sessionStorage", "localStorage", "dataset.themeSeq"} {
 		if strings.Contains(theme, banned) {
-			t.Fatalf("initTheme numbers saves with %s; it must count from data-theme-seq only", banned)
+			t.Fatalf("initTheme numbers saves with %s; it must count per page load only", banned)
 		}
 	}
 }

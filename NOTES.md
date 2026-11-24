@@ -1419,13 +1419,32 @@ Choices where the Folio left room:
   script. Background saves are serialized: one POST is in flight at a time,
   and changes made meanwhile coalesce into a single follow-up that reads the
   form when it is sent, so rapid switching always persists the last choice
-  (the server's write path is unchanged). A follow-up still waiting when the
-  learner leaves or hides the page (`pagehide`, or `visibilitychange` to
-  hidden) is sent at once as a url-encoded `keepalive` fetch (a few dozen
-  bytes, far under the 64 KiB keepalive budget) and cleared, so it is sent
-  exactly once. It can reach the server while the earlier save is still
-  being handled; the observed case (the earlier save already accepted, its
-  response still on the way) always ends on the last choice.
+  A follow-up still waiting when the learner leaves or hides the page
+  (`pagehide`, or `visibilitychange` to hidden) is sent at once as a
+  url-encoded `keepalive` fetch (a few dozen bytes, far under the 64 KiB
+  keepalive budget) and cleared, so it is sent exactly once.
+- **Theme save ordering: per-tab `(theme_tab, theme_seq)`.** The keepalive
+  flush can reach Scry before the same page's earlier save (that request held
+  up on the way). Each Settings page load makes one tab token
+  (`crypto.randomUUID()`, with a random fallback) and counts its choices from
+  1; every scripted save, the keepalive flush included, carries the pair
+  frozen when the choice was made. `users.theme_tab` / `users.theme_seq`
+  store the last scripted save's pair, and `SetUserTheme` applies a scripted
+  save only when it comes from a different tab or carries a strictly higher
+  number than that tab's stored one, so within one tab an older or replayed
+  save is ignored (and answered with the usual 303). A plain no-JS Save sends
+  neither field, always applies and clears the pair. Nothing uses a clock,
+  `sessionStorage` or `localStorage`, so devices with skewed clocks number
+  their saves as well as any other.
+  Why per tab, not account-wide (Pass 5 used a server-seeded account-wide
+  sequence): two Settings tabs opened at the same time are, on the wire,
+  indistinguishable from one delayed request, so an account-wide number
+  rejected the second tab's later, genuine choice (Tab A saves Dark, Tab B,
+  already open, picks Light: Dark was kept). The ordering we must protect is
+  within a tab (a page's own `fetch` vs its own `keepalive` flush); across
+  tabs, devices and no-JS saves Scry uses ordinary HTTP last-writer-wins, so
+  a request from one tab held up behind another tab's later save can still
+  land last. That is the accepted boundary.
 - **"/" on phones.** The Library outline (and its search) is hidden on
   phones, so "/" opens the idea picker and focuses the picker's own search.
 - **Long answers on phones.** The block caret's hidden measuring ruler is

@@ -630,25 +630,27 @@
   // waiting, it is sent at once as a keepalive request, which outlives the
   // page, so the last choice is never lost to a quick navigation.
   //
-  // Each choice is numbered when it is made, with no clock involved: the
-  // page starts from the stored sequence the server rendered it with
-  // (data-theme-seq), adds one per choice, and freezes that number into
-  // the choice's POST. The server applies a numbered save only when it is
-  // newer than the one it stored, so an older POST held up on the way and
-  // overtaken by the keepalive flush (or by a plain Save, which advances
-  // the stored sequence) cannot overwrite the newer mode, and a device
-  // whose clock is behind numbers its saves as well as any other.
+  // Each choice is numbered when it is made, with no clock involved: every
+  // page load makes its own tab token and counts its choices from 1, and
+  // each choice's POST freezes { theme, tab, number }. Within one tab the
+  // server applies a save only when it is newer than that tab's stored one,
+  // so an earlier POST held up on the way and overtaken by this page's own
+  // keepalive flush cannot overwrite the later mode. Saves from other tabs,
+  // other devices (whatever their clocks) and plain Saves always apply:
+  // across tabs the last save to arrive wins.
   var themeFlush = null;
   function initTheme() {
     var form = $("[data-theme-form]");
     themeFlush = null;
     if (!form) return;
     var saving = false, pending = false, latest = null;
-    var seq = parseInt(form.dataset.themeSeq || "0", 10) || 0;
+    const tabId = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + "-" + String(Math.random()).slice(2));
+    let seq = 0;
     // The body is built when the POST is sent, from the choice it carries.
     function body(choice) {
       var b = new URLSearchParams(new FormData(form));
       b.set("theme", choice.theme);
+      b.set("theme_tab", choice.tabId);
       b.set("theme_seq", String(choice.seq));
       return b;
     }
@@ -681,7 +683,7 @@
         if (radio.value === "system") doc.documentElement.removeAttribute("data-theme");
         else doc.documentElement.setAttribute("data-theme", radio.value);
         seq += 1;
-        latest = { theme: radio.value, seq: seq };
+        latest = { theme: radio.value, tabId: tabId, seq: seq };
         saveTheme();
       });
     });
