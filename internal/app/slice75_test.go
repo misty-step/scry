@@ -1,7 +1,10 @@
 package app_test
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -325,5 +328,43 @@ func TestSlice75_Detection_ThreeLapsesThroughTheStore(t *testing.T) {
 	w.us.RecordReview(w.ctx, store.Review{ItemID: p, At: sched.Last.Add(time.Minute), Answer: "a", Verdict: srs.Right, Reason: "r"}, sched, false)
 	if _, st, _ := w.app.StruggleFor(w.ctx, w.user, p); st.Struggling {
 		t.Fatalf("two lapses and a Correct: %+v", st)
+	}
+}
+
+// Slice 75 (pass 2): through the real drafting adapter on a loopback
+// provider, a spoiler among the drafted cards never reaches the preview:
+// two safe cards plus one quoting the parent's answer is a two-card
+// preview, and one safe card left is the plain "unavailable" failure.
+func TestSlice75_Generation_RealAdapterDropsSpoilers(t *testing.T) {
+	w, _, ids := struggleWorld(t)
+	p := ids[0]
+	reply := ""
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(rw).Encode(map[string]any{"model": ai.DefaultOpenRouterDraftModel,
+			"usage":   map[string]any{"prompt_tokens": 300, "completion_tokens": 90},
+			"choices": []map[string]any{{"message": map[string]any{"content": reply}, "finish_reason": "stop"}}})
+	}))
+	t.Cleanup(srv.Close)
+	c, err := ai.NewClaudeWithRouter("", "sk-or-v1-standin", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.BaseURL, c.HTTP = srv.URL, srv.Client()
+	w.app.Bridger = c
+	w.answerOnce(t, p, srs.Missed, "first wrong try")
+	w.advance(25 * time.Hour)
+	w.answerOnce(t, p, srs.Missed, "second wrong try")
+
+	reply = `{"cards":[{"q":"What is the first safe bridge?","a":"Safe one"},{"q":"Is it Answer Number 0?","a":"Yes"},{"q":"What is the second safe bridge?","a":"Safe two"}]}`
+	cards, err := w.app.DraftBridges(w.ctx, w.user, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 2 || cards[0].Answer != "Safe one" || cards[1].Answer != "Safe two" {
+		t.Fatalf("cards %+v, want the two safe ones", cards)
+	}
+	reply = `{"cards":[{"q":"What is the first safe bridge?","a":"Safe one"},{"q":"question 0","a":"x"},{"q":"What is it?","a":"answer number 0."}]}`
+	if cards, err := w.app.DraftBridges(w.ctx, w.user, p); !errors.Is(err, app.ErrBridgesUnavailable) || cards != nil {
+		t.Fatalf("one safe card left = %+v, %v; want ErrBridgesUnavailable", cards, err)
 	}
 }

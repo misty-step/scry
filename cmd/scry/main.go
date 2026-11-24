@@ -286,8 +286,10 @@ func build(log *slog.Logger) (*app.App, error) {
 		a.Model = model
 		// SCRY_TEST_EXPLAIN=fail or slow exercises the explanation fallback.
 		a.Explainer = &ai.FakeExplainer{Mode: env("SCRY_TEST_EXPLAIN", "")}
-		// Bridge cards in test mode are a deterministic fixture with no
-		// network call; SCRY_TEST_BRIDGES=fail exercises the error state.
+		// Bridge cards in test mode are always a deterministic fixture with
+		// no network call, whatever SCRY_AI_MODE or SCRY_JUDGE_MODE says
+		// (Slice 75); SCRY_TEST_BRIDGES=fail exercises the error state.
+		// The live overrides below never touch a.Bridger.
 		a.Bridger = &ai.FakeBridger{Mode: env("SCRY_TEST_BRIDGES", "")}
 		a.Speech = speech.Fake{Phrase: env("SCRY_TEST_SPEECH", "")}
 		if aiMode == "live" {
@@ -298,7 +300,7 @@ func build(log *slog.Logger) (*app.App, error) {
 				return nil, bootProblems("SCRY_AI_MODE=live needs", aiMissing, "", invalid)
 			}
 			a.Model = ai.Split{JudgeProvider: judge, DraftProvider: claude}
-			a.Explainer, a.Bridger, a.Speech = claude, claude, ear
+			a.Explainer, a.Speech = claude, ear
 			log.Warn("test mode is calling real AI providers (SCRY_AI_MODE=live)", "model", a.Model.Name(), "speech", ear.Name())
 		} else if judgeMode == "live" {
 			// Explicitly asked for: grade with real Jev, keep drafting fake.

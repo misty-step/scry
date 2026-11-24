@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"scry/internal/safeerr"
@@ -89,11 +90,12 @@ func bridgeUser(in BridgeInput) (string, error) {
 	return b.String(), nil
 }
 
-// ParseBridges reads the model's reply: the first JSON object in it with a
-// "cards" list. Cards without both fields, over-long ones and repeats are
-// dropped, at most MaxBridges are kept, and fewer than MinBridges is
-// ErrNoBridges.
-func ParseBridges(text string) ([]BridgeCard, error) {
+// ParseBridges reads the model's reply for one parent card: the first JSON
+// object in it with a "cards" list. Cards without both fields, over-long
+// ones, repeats and spoilers (Spoils) are dropped before any is kept, at
+// most MaxBridges are kept, and fewer than MinBridges is ErrNoBridges: a
+// preview never shows a card that gives the parent away.
+func ParseBridges(text string, parent BridgeInput) ([]BridgeCard, error) {
 	start, end := strings.Index(text, "{"), strings.LastIndex(text, "}")
 	if start < 0 || end <= start {
 		return nil, ErrNoBridges
@@ -112,6 +114,9 @@ func ParseBridges(text string) ([]BridgeCard, error) {
 	for _, c := range obj.Cards {
 		q, a := oneLine(c.Q), oneLine(c.A)
 		if q == "" || a == "" || utf8.RuneCountInString(q) > bridgeFieldChars || utf8.RuneCountInString(a) > bridgeFieldChars {
+			continue
+		}
+		if Spoils(BridgeCard{Question: q, Answer: a}, parent) {
 			continue
 		}
 		if k := strings.ToLower(q); !seen[k] {
@@ -142,7 +147,7 @@ func (c *Claude) Bridge(ctx context.Context, in BridgeInput) (retC []BridgeCard,
 		return nil, Usage{}, err
 	}
 	if c.OpenRouter {
-		return c.bridgeOpenRouter(ctx, user)
+		return c.bridgeOpenRouter(ctx, user, in)
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"model": c.DraftModel, "max_tokens": BridgeMaxTokens, "system": bridgeSystem,
@@ -206,11 +211,11 @@ func (c *Claude) Bridge(ctx context.Context, in BridgeInput) (retC []BridgeCard,
 	if use.Model == "" {
 		use.Model = c.DraftModel
 	}
-	cards, err := ParseBridges(text.String())
+	cards, err := ParseBridges(text.String(), in)
 	return cards, use, err
 }
 
-func (c *Claude) bridgeOpenRouter(ctx context.Context, user string) ([]BridgeCard, Usage, error) {
+func (c *Claude) bridgeOpenRouter(ctx context.Context, user string, in BridgeInput) ([]BridgeCard, Usage, error) {
 	model := c.DraftModel
 	payload, _ := json.Marshal(map[string]any{
 		"model": model, "max_tokens": BridgeMaxTokens,
@@ -272,8 +277,51 @@ func (c *Claude) bridgeOpenRouter(ctx context.Context, user string) ([]BridgeCar
 	if out.Choices[0].Message.Content != nil {
 		text = *out.Choices[0].Message.Content
 	}
-	cards, err := ParseBridges(text)
+	cards, err := ParseBridges(text, in)
 	return cards, use, err
+}
+
+// Spoils reports whether a drafted bridge card obviously gives its parent
+// away: its question repeats the parent's question, or its question or
+// answer contains the parent's whole answer. Both are compared as
+// normalized words (case folded, punctuation and spacing ignored), and the
+// answer must appear as whole words in order, so "Bravo" is found in
+// "B is Bravo." but not in "Bravos". Partial overlaps are not spoilers:
+// a bridge may share a word or two with the card it leads up to.
+func Spoils(c BridgeCard, parent BridgeInput) bool {
+	pq, pa := normWords(parent.Question), normWords(parent.Answer)
+	q, a := normWords(c.Question), normWords(c.Answer)
+	if len(pq) > 0 && equalWords(q, pq) {
+		return true
+	}
+	return len(pa) > 0 && (containsWords(q, pa) || containsWords(a, pa))
+}
+
+// normWords is text as lower-case words of letters and digits only.
+func normWords(s string) []string {
+	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+}
+
+func equalWords(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// containsWords reports whether needle appears in hay as a run of whole words.
+func containsWords(hay, needle []string) bool {
+	for i := 0; i+len(needle) <= len(hay); i++ {
+		if equalWords(hay[i:i+len(needle)], needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // FakeBridger is the test-mode bridge writer (SCRY_MODE=test). It needs no
