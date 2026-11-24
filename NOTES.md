@@ -1480,7 +1480,8 @@ the code follows them. Choices where the brief or the Folio left room:
   A skip keeps Ask Why? (it was model-graded), as PRODUCT.md promises for
   every model-graded answer.
 - **Plain whys, stored criteria.** The grader still returns, and Scry still
-  stores, its criterion sentence (the explainer and history keep it). The
+  stores, its criterion sentence on the review (the explainer is sent the
+  question, expected answer, answer and verdict, not the criterion). The
   review, the Ask Why? fallback, the card history and the landing specimen
   show a fixed plain sentence per verdict (`ai.PlainWhy`), chosen in
   DESIGN.md's table. A stored reason that is not a criterion (an exact text's
@@ -1493,16 +1494,25 @@ the code follows them. Choices where the brief or the Folio left room:
   day" came from mixing a calendar-day relative label with an elapsed-time
   interval (most likely a review left open and reopened the next day, or a
   learner whose stored zone was UTC: Clerk sign-ups never stored one). Both
-  are now measured from the stored instants on one clock (`spanLabel`):
-  minutes under half an hour, hours under 22 hours, whole days (rounded)
-  above. The event reads "Tue, Nov 24 · in 1 day" (or "in 4 hours", "due
+  are now measured from the stored instants on one clock (`spanLabel`),
+  rounded to the nearest hour first: minutes under half an hour, hours from
+  1 to 21 rounded hours, whole days (rounded) from 22 rounded hours, that
+  is from 21 h 30 min. The event reads "Tue, Nov 24 · in 1 day" (or "in 4 hours", "due
   now"); the interval reads "1 day after this answer" ("after the last graded
   answer" after a practice attempt). `<time datetime>` now carries the full
   RFC 3339 instant.
-- **Time zone follows the browser.** Signed-in pages carry the stored zone
-  (`data-tz`); app.js posts the browser's zone to `POST /settings/tz`
-  (CSRF-checked; unknown zones ignored) when they differ, once per page load,
-  so Clerk learners get local dates too.
+- **The stored time zone stays the basis; no page view writes it.** The
+  first pass added a background `POST /settings/tz` from every signed-in
+  page whose browser zone differed. The Cold Critic showed it rewrote the
+  account-wide zone from whichever device viewed a page last, flipping the
+  review's date and the Study queue (`app.EndOfDay`) between a Chicago and
+  a Tokyo browser. It is removed (route, handler, layout attributes and
+  script). The dates use the zone stored at sign-up or when the study
+  profile is saved, as before; the elapsed labels need no zone at all.
+  TestSlice70_NoPageViewChangesTheTimeZoneOrTheQueue pins it. A learner
+  with no stored zone (Clerk sign-ups) sees UTC dates until they save the
+  study profile; a display-only or explicit zone setting would be its own
+  slice.
 - **"Review streak".** PRODUCT.md rules out streaks, so the "review streak"
   telemetry is the card's factual verdict trail: up to its last eight graded
   verdicts, oldest first, as 14 px verdict icons with their words for screen
@@ -1524,7 +1534,10 @@ the code follows them. Choices where the brief or the Folio left room:
   (16 px icon over an 11 px mono label), under a 48 px brand row: 101 px in
   all, about the same as before, with nothing off-screen. On the study
   session the rail's "Study / Recall what's due today" is hidden on phones
-  (the nav already says Study); the place line and count stay. Desktop keeps
+  (the nav already says Study); the place line and count stay. Empty
+  Study's "Study · Recall what's due today" kicker is visually hidden on
+  phones too (kept for screen readers); its h1 "No cards to study yet."
+  stays visible. Desktop keeps
   its 196 px rail unchanged.
 - **Bar clearance.** The phone's pinned Check / Next card bar is 77 px plus
   the safe-area inset; the session page now pads its body by that plus 24 px

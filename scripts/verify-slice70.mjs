@@ -31,7 +31,15 @@
 //   4. a graded answer: the why is one of the plain sentences;
 //   5. a long answer: the end of the review scrolls clear of the pinned
 //      Next card bar (phone);
-//   6. progression: Next card moves to the next card (position + 1).
+//   6. progression: Next card moves to the next card (position + 1);
+//   7. time zones: the same learner signed in from a second context on
+//      another clock (Asia/Tokyo) views Study, Settings and Library; no
+//      request writes the time zone (no POST /settings/tz, no POST at all),
+//      and the Chicago context's pending review keeps the same due instant
+//      and position.
+// Before adding the set it also opens the empty Study page: on the phone the
+// "Study · Recall what's due today" kicker is not shown under the nav (it
+// stays for screen readers) and the h1 "No cards to study yet." is visible.
 // It leaves the last review pending and saves the learner's storage state,
 // so --stale can reopen that review after the server's clock has moved on
 // and check that the event and the interval still agree.
@@ -218,12 +226,13 @@ async function navFacts(page) {
   });
 }
 
-async function signUp(page, c) {
+async function signUp(page, c, onEmpty) {
   const email = `s70-${opt.label}-${c.name}-${Date.now()}@example.com`;
   await page.goto(base + "/signup", { waitUntil: "load" });
   await page.fill("#email", email);
   await page.fill("#password", "slice70-disposable-pass");
   await Promise.all([page.waitForURL(u => new URL(u).pathname !== "/signup"), press(page, c, page.locator("main form button.btn-accent").first())]);
+  if (onEmpty) await onEmpty();
   // Add the NATO phonetic alphabet (the first tile).
   if (new URL(page.url()).pathname !== "/shelf") await page.goto(base + "/shelf", { waitUntil: "load" });
   const add = page.locator("form[data-add]").first().locator("button");
@@ -257,7 +266,24 @@ async function runConfig(c) {
   const tag = `${opt.label} ${c.name}`;
   const out = { config: c.name };
   try {
-    out.email = await signUp(page, c);
+    out.email = await signUp(page, c, async () => {
+      // 0. Empty Study (the library is still empty).
+      await page.goto(base + "/study", { waitUntil: "load" });
+      await settle(page);
+      const e = await page.evaluate(() => {
+        const k = document.querySelector("[data-study-kicker]"), h = document.querySelector("main h1");
+        const r = el => el.getBoundingClientRect();
+        const shown = el => !!el && getComputedStyle(el).display !== "none" && r(el).width > 2 && r(el).height > 2;
+        return { empty: !!document.querySelector("[data-study-empty]"), kickerText: k && k.textContent.trim(), kickerShown: shown(k),
+          h1: h && h.textContent.trim(), h1Shown: shown(h), h1Count: document.querySelectorAll("main h1").length,
+          current: (document.querySelector("header nav a[aria-current=page]") || {}).innerText?.trim() };
+      });
+      out.empty = e;
+      await shot(page, c, "0-study-empty");
+      check(`${tag}: empty Study keeps one visible h1 "No cards to study yet."`, e.empty && e.h1 === "No cards to study yet." && e.h1Shown && e.h1Count === 1, e);
+      if (c.mobile) check(`${tag}: phone empty Study does not show "Study · Recall what's due today" under the nav (kept for screen readers)`, !e.kickerShown && /Study · Recall what's due today/.test(e.kickerText || "") && e.current === "Study", e);
+      else check(`${tag}: desktop empty Study keeps its kicker`, e.kickerShown, e);
+    });
     await page.goto(base + "/study", { waitUntil: "load" });
     await settle(page);
 
@@ -355,6 +381,38 @@ async function runConfig(c) {
       check(`${tag}: desktop Next card sits in the flow (not pinned)`, !clear.fixed, clear);
     }
     check(`${tag}: long review still shows the current card only`, long.scrollback === 0 && long.upcoming === 0, { scrollback: long.scrollback, upcoming: long.upcoming });
+
+    // 7. The same learner on another clock: nothing writes the time zone.
+    const pending = () => page.evaluate(() => ({
+      iso: (document.querySelector("[data-next-review] time") || { getAttribute: () => null }).getAttribute("datetime"),
+      date: (document.querySelector("[data-next-review] time") || {}).textContent?.trim(),
+      position: (document.querySelector(".margin-count") || {}).textContent?.trim(),
+      bodyTZ: document.body.hasAttribute("data-tz") || document.body.hasAttribute("data-csrf"),
+    }));
+    const chicagoBefore = await pending();
+    const state = await context.storageState();
+    const tokyo = await browser.newContext(Object.assign(contextOptions(c), { timezoneId: "Asia/Tokyo", storageState: state }));
+    const writes = [];
+    tokyo.on("request", r => { if (r.method() !== "GET" || /\/settings\/tz/.test(r.url())) writes.push(r.method() + " " + new URL(r.url()).pathname); });
+    page.on("request", r => { if (/\/settings\/tz/.test(r.url())) writes.push("chicago " + r.method() + " " + new URL(r.url()).pathname); });
+    const tp = await tokyo.newPage();
+    const tokyoZone = await tp.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const tokyoSeen = [];
+    for (const p of ["/study", "/settings", "/library", "/study"]) {
+      await tp.goto(base + p, { waitUntil: "networkidle" });
+      await tp.waitForTimeout(300);
+      if (p === "/study") tokyoSeen.push(await tp.evaluate(() => (document.querySelector("[data-next-review] time") || { getAttribute: () => null }).getAttribute("datetime")));
+    }
+    await tokyo.close();
+    await page.reload({ waitUntil: "networkidle" });
+    await settle(page);
+    const chicagoAfter = await pending();
+    out.zones = { tokyoZone, chicagoBefore, chicagoAfter, tokyoSeen, writes };
+    check(`${tag}: a second context in ${tokyoZone} sends no time-zone or other write while viewing Study, Settings, Library`, tokyoZone === "Asia/Tokyo" && writes.length === 0, out.zones);
+    check(`${tag}: no page carries the old data-tz/data-csrf body attributes`, !chicagoBefore.bodyTZ && !chicagoAfter.bodyTZ, out.zones);
+    check(`${tag}: both contexts render the stored zone's due instant, and Chicago's review is unchanged after the Tokyo views`,
+      /-06:00$/.test(chicagoBefore.iso || "") && chicagoAfter.iso === chicagoBefore.iso && chicagoAfter.date === chicagoBefore.date &&
+      chicagoAfter.position === chicagoBefore.position && tokyoSeen.length === 2 && tokyoSeen.every(x => x === chicagoBefore.iso), out.zones);
 
     // Leave this review pending for --stale; keep the learner's state.
     fs.writeFileSync(path.join(opt.stateDir, `state-${opt.label}-${c.name}.json`), JSON.stringify(await context.storageState()));

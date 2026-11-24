@@ -308,8 +308,11 @@ func TestSlice70_Telemetry_EventAndIntervalShareOneClock(t *testing.T) {
 	if got := telemetry(u, it, store.ReviewCounts{Total: 1, Missed: 1, Practice: 1}, nil, true, answered); got.After != "after the last graded answer" {
 		t.Errorf("practice: %+v", got)
 	}
+	// The hours are rounded first: from 21 h 30 min (22 rounded hours) a
+	// span reads in days.
 	for d, want := range map[time.Duration]string{
-		10 * time.Minute: "10 minutes", 40 * time.Minute: "1 hour", 21*time.Hour + 20*time.Minute: "21 hours",
+		10 * time.Minute: "10 minutes", 29 * time.Minute: "29 minutes", 30 * time.Minute: "1 hour", 40 * time.Minute: "1 hour",
+		21*time.Hour + 20*time.Minute: "21 hours", 21*time.Hour + 29*time.Minute: "21 hours", 21*time.Hour + 30*time.Minute: "1 day",
 		22 * time.Hour: "1 day", 24*time.Hour - time.Second: "1 day", 36 * time.Hour: "2 days", 4 * 24 * time.Hour: "4 days",
 	} {
 		if got := spanLabel(d); got != want {

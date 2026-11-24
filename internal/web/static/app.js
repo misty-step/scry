@@ -234,24 +234,6 @@
     $$("[data-tz-form] input[name=tz]").forEach(function (el) { el.value = tz; });
   }
 
-  // Signed in, the learner's stored time zone follows the browser's, so
-  // the review's dates are on their own clock. Sent once per page load,
-  // and only when the two differ.
-  function syncTZ() {
-    var body = doc.body;
-    if (!body || !body.getAttribute) return;
-    var stored = body.getAttribute("data-tz"), csrf = body.getAttribute("data-csrf");
-    if (stored === null || !csrf || !window.fetch || !window.URLSearchParams) return;
-    var tz = "";
-    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (err) { return; }
-    if (!tz || tz === stored) return;
-    body.setAttribute("data-tz", tz);
-    fetch("/settings/tz", {
-      method: "POST", credentials: "same-origin", body: new URLSearchParams({ csrf: csrf, tz: tz }),
-      headers: { "X-Requested-With": "fetch", "X-CSRF-Token": csrf }
-    }).catch(function () {});
-  }
-
   // ---- Starter shelf: the adding state -----------------------------------
 
   // Adding a set confirms in place: "+ Add" becomes "Adding…" and then
@@ -745,5 +727,4 @@
 
   init();
   frameReview();
-  syncTZ();
 })();

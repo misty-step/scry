@@ -175,7 +175,6 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.Handle("GET /settings", s.authed(s.settings))
 	mux.Handle("POST /settings/theme", s.authed(s.settingsTheme))
 	mux.Handle("POST /settings/about", s.authed(s.settingsAbout))
-	mux.Handle("POST /settings/tz", s.authed(s.settingsTZ))
 	mux.Handle("POST /settings/tokens", s.authed(s.settingsToken))
 	mux.Handle("POST /settings/tokens/{id}/revoke", s.authed(s.settingsRevoke))
 	mux.Handle("POST /settings/restore/{id}", s.authed(s.settingsRestore))

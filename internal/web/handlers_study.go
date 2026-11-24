@@ -186,8 +186,9 @@ const trailLen = 8
 func daysLabel(n int) string { return plural(n, "day", "days") }
 
 // spanLabel says how long a stretch of time is, on the schedule's one
-// clock: whole days (rounded) from 22 hours up, hours below that, minutes
-// under half an hour.
+// clock. The span is rounded to the nearest hour first: under half an hour
+// it reads in minutes, from 1 to 21 rounded hours in hours, and from 22
+// rounded hours (21 h 30 min) up in whole days, rounded.
 func spanLabel(d time.Duration) string {
 	if d < 0 {
 		d = 0

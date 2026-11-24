@@ -90,21 +90,6 @@ func (s *Server) settingsAbout(w http.ResponseWriter, r *http.Request, c *rc) er
 	return back(w, r, "/settings?ok=about")
 }
 
-// settingsTZ keeps the learner's time zone in step with their browser, so
-// review dates are on their own clock (DESIGN.md, Post-answer review).
-// The page's script posts it when the browser's zone differs from the
-// stored one; an unknown or empty zone changes nothing.
-func (s *Server) settingsTZ(w http.ResponseWriter, r *http.Request, c *rc) error {
-	if err := c.us.SetTZ(r.Context(), strings.TrimSpace(r.FormValue("tz"))); err != nil {
-		return err
-	}
-	if r.Header.Get("X-Requested-With") == "fetch" || wantsJSON(r) {
-		w.WriteHeader(http.StatusNoContent)
-		return nil
-	}
-	return back(w, r, "/settings")
-}
-
 func (s *Server) settingsToken(w http.ResponseWriter, r *http.Request, c *rc) error {
 	name := r.FormValue("name")
 	// A new token always suggests through the inbox. Settings no longer

@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"scry/internal/ai"
+	"scry/internal/app"
 	"scry/internal/srs"
+	"scry/internal/store"
 )
 
 // Slice 70: iPhone dogfooding polish on the Study review flow.
@@ -175,31 +177,101 @@ func TestSlice70_Design_InkNextCardKeyboardRingCompactNav(t *testing.T) {
 	hasNot(t, phone, "overflow-x: auto;")
 	js, _ := staticAsset(t, w, "/static/app.js")
 	has(t, js, `root.classList.add("js-focus")`, `root.classList.add("kbd-nav")`, `root.classList.remove("kbd-nav")`,
-		"next.focus({ preventScroll: true });", `fetch("/settings/tz"`)
+		"next.focus({ preventScroll: true });")
+	// No page view writes the learner's time zone (see
+	// TestSlice70_NoPageViewChangesTheTimeZoneOrTheQueue).
+	hasNot(t, js, "/settings/tz", "data-tz\"", "syncTZ")
+	// Empty Study on phones: the kicker is visually hidden (kept for screen
+	// readers); the visible heading stays.
+	has(t, phone, ".study-kicker {\n    position: absolute; width: 1px; height: 1px;")
+	empty := w.browser()
+	empty.signUp("empty70@example.com")
+	has(t, empty.mustGet("/study"), `<p class="meta page-kicker study-kicker" data-study-kicker>`,
+		`<h1 class="display" data-study-empty-heading>No cards to study yet.</h1>`)
 }
 
-// The learner's time zone follows the browser on signed-in pages, so the
-// review's dates are on their own clock. CSRF-checked; an unknown zone
-// changes nothing.
-func TestSlice70_TimeZoneFollowsTheBrowser(t *testing.T) {
+// The pass-1 blocker: viewing a page in a browser on another clock must
+// not rewrite the learner's account-wide time zone, which is the basis of
+// both the review's dates and the Study queue (app.EndOfDay). One learner
+// in Chicago, the same learner signed in from a second browser "in Tokyo":
+// whatever that browser views, the stored zone, the rendered due instant
+// and the due count stay on Chicago's clock. The zone changes only where
+// it always did: at sign-up and when the study profile is saved.
+func TestSlice70_NoPageViewChangesTheTimeZoneOrTheQueue(t *testing.T) {
 	w := newWorld(t)
-	b := w.browser()
-	b.signUp("tz70@example.com")
-	page := b.mustGet("/study")
-	has(t, page, `data-tz="`, `data-csrf="`)
-	if status, _ := b.post("/settings/tz", "tz", "America/Chicago"); status != http.StatusOK {
-		t.Fatalf("POST /settings/tz = %d", status)
+	const email = "zones70@example.com"
+	chicago := w.browser()
+	chicago.get("/signup")
+	if status, _ := chicago.post("/signup", "email", email, "password", "correct horse", "tz", "America/Chicago"); status != http.StatusOK {
+		t.Fatalf("sign-up: %d", status)
 	}
-	if got := w.user("tz70@example.com").TZ; got != "America/Chicago" {
-		t.Fatalf("tz = %q", got)
+	chicago.post("/signup/card", "number", goodCard, "expiry", "12/30", "cvc", "123")
+	chicago.addSet("nato-alphabet")
+	it, _ := chicago.current(chicago.mustGet("/study"))
+	w.model.script = []ai.Judgment{{Verdict: srs.Missed, Reason: ai.CriterionSentence(srs.Missed)}}
+	chicago.answer(it, "wrong") // due one day on: Nov 18, 09:00 UTC
+
+	// Nov 17, 22:00 UTC: still Nov 17 in Chicago, already Nov 18 in Tokyo.
+	// The answered card is due before Tokyo's midnight, not Chicago's, so
+	// the queue would gain it if the account's zone became Tokyo's.
+	w.advance(13 * time.Hour)
+	queue := func() (string, int) {
+		u := w.user(email)
+		_, due, err := w.store.For(u.ID).Counts(ctx, app.EndOfDay(u, w.now()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u.TZ, due
 	}
-	b.post("/settings/tz", "tz", "Not/AZone")
-	if got := w.user("tz70@example.com").TZ; got != "America/Chicago" {
-		t.Fatalf("an unknown zone changed tz to %q", got)
+	tz, due := queue()
+	if tz != "America/Chicago" {
+		t.Fatalf("stored zone after sign-up = %q", tz)
 	}
-	b.csrf = "forged"
-	if status, _ := b.post("/settings/tz", "tz", "Europe/Paris"); status == http.StatusOK && w.user("tz70@example.com").TZ == "Europe/Paris" {
-		t.Fatal("a forged CSRF token changed the time zone")
+	_, tokyoDue, _ := w.store.For(w.user(email).ID).Counts(ctx, app.EndOfDay(store.User{TZ: "Asia/Tokyo"}, w.now()))
+	if tokyoDue != due+1 {
+		t.Fatalf("fixture: Tokyo's day would queue %d, Chicago's %d; want one more in Tokyo", tokyoDue, due)
+	}
+	instant := func(page string) string {
+		m := regexp.MustCompile(`data-next-review><time datetime="([^"]+)"`).FindStringSubmatch(page)
+		if m == nil {
+			t.Fatal("no pending review on the page")
+		}
+		return m[1]
+	}
+	before := instant(chicago.mustGet("/study"))
+	if !strings.HasSuffix(before, "-06:00") {
+		t.Fatalf("Chicago review instant = %q, want Chicago's offset", before)
+	}
+
+	tokyo := w.browser()
+	tokyo.get("/signin")
+	if status, _ := tokyo.post("/signin", "email", email, "password", "correct horse"); status != http.StatusOK {
+		t.Fatalf("sign-in: %d", status)
+	}
+	for _, path := range []string{"/study", "/settings", "/library", "/inbox", "/learn", "/billing", "/study"} {
+		page := tokyo.mustGet(path)
+		hasNot(t, page, "data-tz=", "/settings/tz")
+		if path == "/study" && instant(page) != before {
+			t.Fatalf("the Tokyo browser rendered %q, want the stored zone's %q", instant(page), before)
+		}
+	}
+	// The background write path is gone: posting a zone directly is not a
+	// route, and changes nothing.
+	if status, _ := tokyo.post("/settings/tz", "tz", "Asia/Tokyo"); status < 400 {
+		t.Fatalf("POST /settings/tz = %d, want no such route", status)
+	}
+	if gotTZ, gotDue := queue(); gotTZ != tz || gotDue != due {
+		t.Fatalf("after the Tokyo browser: zone %q, %d due; want %q, %d", gotTZ, gotDue, tz, due)
+	}
+	if after := instant(chicago.mustGet("/study")); after != before {
+		t.Fatalf("Chicago review instant moved from %q to %q", before, after)
+	}
+	// The explicit save still sets it: the study profile form carries the
+	// browser's zone, as before this slice.
+	tokyo.mustGet("/settings")
+	tokyo.post("/settings/about", "about", "", "tz", "Asia/Tokyo")
+	if gotTZ, _ := queue(); gotTZ != "Asia/Tokyo" {
+		t.Fatalf("saving the study profile set the zone to %q, want Asia/Tokyo", gotTZ)
 	}
 }
 
