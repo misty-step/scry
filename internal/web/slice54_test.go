@@ -262,7 +262,9 @@ func TestDesign_InboxPurposeLineOnItsOwnRowEvenWhenEmpty(t *testing.T) {
 	page := b.mustGet("/inbox")
 	has(t, page, "Nothing waiting.", `<p class="purpose list-purpose">Cards suggested by external scripts or tools wait here until you approve them.</p>`)
 	css, _ := staticAsset(t, w, "/static/app.css")
-	has(t, css, ".list-purpose { order: 1; flex-basis: 100%; }")
+	// The 100% basis must not be capped by .purpose's max-width (the measure),
+	// or the line fits beside the title at 1440 px (seen on the real path).
+	has(t, css, ".list-purpose { order: 1; flex-basis: 100%; max-width: none; }")
 }
 
 // DESIGN.md, Settings: choosing a mode applies at once as well as saving;

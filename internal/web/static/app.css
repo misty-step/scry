@@ -732,7 +732,10 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 /* ---- Inbox and drafts -------------------------------------------------- */
 
 .list-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); margin-bottom: var(--s4); }
-.list-purpose { order: 1; flex-basis: 100%; }
+/* .purpose caps its width at the measure; on a flex item that cap also caps
+   the 100% basis, which then fits beside the title on wide screens. Lift it
+   so the purpose line always takes its own row beneath the title. */
+.list-purpose { order: 1; flex-basis: 100%; max-width: none; }
 .list-count { flex: 1; }
 .list-action { margin-left: auto; }
 .sug { position: relative; align-items: flex-start; gap: var(--s4); padding: var(--s3); outline-offset: -2px; }

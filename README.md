@@ -468,6 +468,14 @@ sent while it is in Trash changes nothing, Restore brings the hold back, and
 
     node scripts/verify-slice75-edges.mjs --bin ./bin/scry [--shots /tmp/s75-shots]
 
+`scripts/verify-inbox-purpose.mjs` checks DESIGN.md's Inbox header on the
+rendered page (its own test-mode server, fresh SQLite, system Chrome at
+1440x900 and 390x844): the purpose line sits on its own row beneath the
+title, aligned with it, both when the Inbox is empty and with suggestions,
+and "Approve all" stays at the right of the title row.
+
+    node scripts/verify-inbox-purpose.mjs --bin ./bin/scry [--shots /tmp/inbox-shots]
+
 The smoke blocks external requests, uses synthetic microphone input and test
 adapters, measures Check contrast in both modes and at desktop/phone widths,
 and verifies one transcription upload at stop, visible reasons and wrapping
