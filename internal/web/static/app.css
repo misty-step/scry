@@ -644,6 +644,9 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .bridge-links li { min-width: 0; }
 .bridge-links .link { min-height: 32px; max-width: 100%; overflow-wrap: anywhere; }
 .bridge-note { max-width: var(--measure); }
+/* The parent's question is a link inside the note's sentence: it runs
+   inline with the Meta line, not as a 44 px block that spreads the lines. */
+.bridge-note .link { display: inline; min-height: 0; }
 /* A deck row's cue sits under its question in Meta mono. */
 .row-cue { display: flex; align-items: flex-start; gap: 6px; min-width: 0; color: var(--ink-muted); overflow-wrap: anywhere; }
 .row-cue .icon { width: 16px; height: 16px; flex: none; margin-top: 0.05em; }

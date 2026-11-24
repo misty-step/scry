@@ -287,6 +287,22 @@ async function shot(page, c, name, opts = {}) {
   shotCount++;
 }
 
+// Brings a Strugglometer panel into view and checks the learner can see
+// it: each of its corners' insides is the panel itself, not the pinned
+// Next card bar or anything else on top.
+async function inView(page, tag, sel, where) {
+  const loc = page.locator(sel).first();
+  await loc.evaluate(e => e.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(250);
+  const r = await loc.evaluate(e => {
+    const b = e.getBoundingClientRect(), vh = window.innerHeight;
+    const pts = [[b.left + 4, b.top + 4], [b.right - 4, b.top + 4], [b.left + 4, b.bottom - 4], [b.right - 4, b.bottom - 4]];
+    const hits = pts.map(([x, y]) => { const t = document.elementFromPoint(x, y); return !!t && (t === e || e.contains(t)); });
+    return { top: Math.round(b.top), bottom: Math.round(b.bottom), vh, hits };
+  });
+  check(`${tag}: ${where}: ${sel} is in view and not covered`, r.top >= 0 && r.bottom <= r.vh && r.hits.every(Boolean), r);
+}
+
 async function press(c, locator) {
   if (c.mobile) await locator.tap(); else await locator.click();
 }
@@ -462,8 +478,8 @@ async function runConfig(c, port) {
     }
     check(`${tag}: post-answer review: cue "${CUE}" and "Build bridge cards"`, f.text.includes(CUE) && (await page.locator("[data-review] [data-build-bridges]").count()) === 1, f.text.slice(0, 400));
     layoutChecks(tag, f, c, "post-answer review");
-    await page.locator("[data-struggle]").scrollIntoViewIfNeeded();
-    await shot(page, c, "review-second-miss");
+    await inView(page, tag, "[data-struggle]", "post-answer review");
+    await shot(page, c, "review-second-miss", { fullPage: false });
 
     // 3. Generation, edit, remove, accept.
     await clickNav(page, c, page.locator("[data-review] [data-build-bridges]"));
@@ -498,8 +514,8 @@ async function runConfig(c, port) {
       bB[1].prompt === LONG_Q && heldBy(db, s.B.id) === 2, bB.map(b => ({ id: b.id, len: b.prompt.length })));
     check(`${tag}: back on the review: "Held by 2 bridges" and "Release hold"`, new URL(page.url()).pathname === "/study" && f.text.includes("Held by 2 bridges") && f.text.includes("Release hold"), f.text.slice(0, 400));
     layoutChecks(tag, f, c, "review after accepting");
-    await page.locator("[data-hold]").scrollIntoViewIfNeeded();
-    await shot(page, c, "review-held-by-2");
+    await inView(page, tag, "[data-hold]", "review after accepting");
+    await shot(page, c, "review-held-by-2", { fullPage: false });
     await next(page, c); // finish the one-card session
     check(`${tag}: session finished`, /Done\./.test((await facts(page)).text), new URL(page.url()).pathname);
 
@@ -567,7 +583,8 @@ async function runConfig(c, port) {
     f = await facts(page);
     check(`${tag}: bridge Incorrect: B stays held by 2, the review says the card stays held`, (await verdictOf(page)) === "Incorrect" && heldBy(db, s.B.id) === 2 &&
       f.text.includes("stays held until this is answered Correct or Almost Correct"), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
-    if (c.journeyShots) { await page.locator("[data-bridge-note]").scrollIntoViewIfNeeded(); await shot(page, c, "bridge-incorrect-still-held"); }
+    await inView(page, tag, "[data-bridge-note]", "bridge Incorrect review");
+    if (c.journeyShots) await shot(page, c, "bridge-incorrect-still-held", { fullPage: false });
     await next(page, c);
     p = await currentPrompt(page);
     f = await facts(page);
@@ -579,7 +596,8 @@ async function runConfig(c, port) {
     layoutChecks(tag, f, c, "review of the 400-character bridge");
     check(`${tag}: bridge Correct: B held by 1, the review says one bridge still holds it`, (await verdictOf(page)) === "Correct" && heldBy(db, s.B.id) === 1 &&
       f.text.includes("Bridge cleared · 1 bridge still holds the card it leads to."), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
-    if (c.journeyShots) { await page.locator("[data-bridge-cleared]").scrollIntoViewIfNeeded(); await shot(page, c, "bridge-correct-held-by-1"); }
+    await inView(page, tag, "[data-bridge-cleared]", "bridge Correct review");
+    if (c.journeyShots) await shot(page, c, "bridge-correct-held-by-1", { fullPage: false });
     await next(page, c);
     await answer(page, c, "x"); // close (A's bridge, an ordinary card now)
     await next(page, c);
@@ -600,8 +618,8 @@ async function runConfig(c, port) {
       JSON.stringify(sched(db, s.B.id)) === JSON.stringify(bBefore) && f.text.includes("Bridge cleared · the card it leads to is back in your reviews, on its own schedule."),
       { before: bBefore, after: sched(db, s.B.id), text: f.text.slice(0, 300) });
     layoutChecks(tag, f, c, "bridge cleared review");
-    await page.locator("[data-bridge-cleared]").scrollIntoViewIfNeeded();
-    await shot(page, c, "bridge-cleared-parent-back");
+    await inView(page, tag, "[data-bridge-cleared]", "bridge Almost Correct review");
+    await shot(page, c, "bridge-cleared-parent-back", { fullPage: false });
     await next(page, c);
     await go(page, `${base}/study`);
     p = await currentPrompt(page);
