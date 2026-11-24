@@ -6,7 +6,11 @@
 //   make build        # or: go build -o bin/scry ./cmd/scry
 //   node scripts/verify-slice75-strugglometer.mjs --bin ./bin/scry --label after \
 //        [--shots DIR] [--traces DIR] [--only desktop-light,...] \
-//        [--expect pass|observe] [--baseline] [--keep]
+//        [--expect pass|observe] [--baseline] [--keep] [--video DIR]
+//
+// --video DIR records the journey configs (iphone-light, desktop-light) after
+// sign-up, in a second context that reuses the session (sign-up is never on
+// camera), and writes one small VP9 .webm per config (needs ffmpeg).
 //
 // For every config the script starts its own Scry (the --bin binary) in
 // SCRY_MODE=test on a fresh SQLite file in a new temporary directory, with a
@@ -82,12 +86,12 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { chromium, webkit, devices } from "playwright-core";
 
 const args = process.argv.slice(2);
-const opt = { bin: "./bin/scry", label: "run", shots: "", traces: "", expect: "pass", baseline: false, only: null, keep: false, port: 18750 };
+const opt = { bin: "./bin/scry", label: "run", shots: "", traces: "", video: "", expect: "pass", baseline: false, only: null, keep: false, port: 18750 };
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   const v = () => args[++i];
@@ -95,6 +99,7 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--label") opt.label = v();
   else if (a === "--shots") opt.shots = v();
   else if (a === "--traces") opt.traces = v();
+  else if (a === "--video") opt.video = v();
   else if (a === "--expect") opt.expect = v();
   else if (a === "--baseline") opt.baseline = true;
   else if (a === "--only") {
@@ -107,7 +112,7 @@ for (let i = 0; i < args.length; i++) {
 }
 opt.bin = path.resolve(opt.bin);
 if (!fs.existsSync(opt.bin)) { console.error("no binary at " + opt.bin); process.exit(2); }
-for (const d of [opt.shots, opt.traces]) if (d) fs.mkdirSync(d, { recursive: true });
+for (const d of [opt.shots, opt.traces, opt.video]) if (d) fs.mkdirSync(d, { recursive: true });
 
 const CONFIGS = [
   { name: "iphone-light", engine: "webkit", scheme: "light", mobile: true, journeyShots: true },
@@ -449,7 +454,7 @@ async function runConfig(c, port) {
   const cspEnforced = !(opt.shots && c.engine === "webkit");
   const tag = `${opt.label} ${c.name}`;
   const out = { config: c.name };
-  let server, db, browser, context;
+  let server, db, browser, context, videoDir = "";
   try {
     server = await startServer(c, port);
     out.healthz = { status: server.health.status, mode: server.health.mode, build_sha: server.health.build_sha };
@@ -457,12 +462,28 @@ async function runConfig(c, port) {
     browser = await launch(c.engine);
     context = await browser.newContext(contextOptions(c));
     await instrument(context);
-    const page = await context.newPage();
+    let page = await context.newPage();
     page.__base = server.url;
     watch(page, health);
     const base = server.url;
 
     const email = await signUp(page, c);
+    // --video: the journey configs record the rest of the walkthrough in a
+    // second context that reuses the signed-up session, so sign-up (the
+    // run's email and password field) is never on camera.
+    if (opt.video && c.journeyShots) {
+      const state = await context.storageState();
+      for (const k of state.cookies) if (k.value) SECRETS.values.add(k.value);
+      await context.close();
+      videoDir = fs.mkdtempSync(path.join(os.tmpdir(), "s75-video-"));
+      context = await browser.newContext({ ...contextOptions(c), storageState: state,
+        recordVideo: { dir: videoDir, size: c.mobile ? { width: 390, height: 844 } : { width: 1280, height: 800 } } });
+      await instrument(context);
+      page = await context.newPage();
+      page.__base = server.url;
+      watch(page, health);
+      await go(page, `${base}/library`);
+    }
     db = openDB(server.db);
     const s = seed(db, email);
     out.seed = { A: s.A.id, B: s.B.id, idea: s.ideaId };
@@ -689,7 +710,16 @@ async function runConfig(c, port) {
   } finally {
     // Cookie values are secrets of this run: collected only to be kept out.
     if (context) for (const k of await context.cookies().catch(() => [])) if (k.value) SECRETS.values.add(k.value);
+    const video = videoDir && context && context.pages()[0] ? context.pages()[0].video() : null;
     if (context) await context.close().catch(() => {});
+    if (video) {
+      // Re-encode the raw capture small (VP9, 12 fps) for the evidence budget.
+      const raw = await video.path().catch(() => "");
+      const dest = path.join(opt.video, `s75-${opt.label}-${c.name}-walkthrough.webm`);
+      const r = raw ? spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-r", "12", "-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "42", "-row-mt", "1", "-deadline", "realtime", "-cpu-used", "8", "-an", dest]) : { status: 1 };
+      check(`${tag}: walkthrough video written`, r.status === 0 && fs.existsSync(dest), { file: path.basename(dest) });
+      fs.rmSync(videoDir, { recursive: true, force: true });
+    }
     if (browser) await browser.close().catch(() => {});
     if (db) db.close();
     await stopServer(server);

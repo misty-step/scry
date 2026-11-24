@@ -451,7 +451,22 @@ Playwright archive.
     TMPDIR=/dev/shm node scripts/verify-slice75-strugglometer.mjs --bin ./bin/scry --label after --shots /tmp/s75-shots     # the media run
 
 `--only iphone-light,desktop-dark` runs a subset; an unknown name is refused
-(exit 2), never a run of zero checks.
+(exit 2), never a run of zero checks. `--video DIR` also records the journey
+configs (iphone-light, desktop-light) as small VP9 `.webm` walkthroughs
+(needs `ffmpeg`); recording starts after sign-up in a second context that
+reuses the session, so the sign-up form is never on camera.
+
+`scripts/verify-slice75-edges.mjs` covers the Slice 75 edges the journey does
+not walk, the same way (its own test-mode server per part, fresh SQLite, no
+keys, system Chrome 1440x900): `SCRY_TEST_BRIDGES=fail` shows "Scry couldn't
+build bridge cards just now. Nothing was added. Try again in a moment." and
+stores nothing; an exact text with 3 lapses gets no cue and a crafted draft
+POST for it is refused; Remove renumbers in place and the last card cannot be
+removed; trashing a held card's idea pauses the hold, a stale "Release hold"
+sent while it is in Trash changes nothing, Restore brings the hold back, and
+"Release hold" then ends every row as `released` with the bridges kept.
+
+    node scripts/verify-slice75-edges.mjs --bin ./bin/scry [--shots /tmp/s75-shots]
 
 The smoke blocks external requests, uses synthetic microphone input and test
 adapters, measures Check contrast in both modes and at desktop/phone widths,
