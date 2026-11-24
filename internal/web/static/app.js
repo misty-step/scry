@@ -714,6 +714,78 @@
     if (doc.visibilityState === "hidden" && themeFlush) themeFlush();
   });
 
+  // ---- Bridge cards (Slice 75) --------------------------------------------
+
+  // "Build bridge cards" waits on the model: the button says "building" in
+  // mono and is disabled once the form is sent, so a second press does
+  // nothing (like "explaining" on Ask Why?; no spinner, nothing loops).
+  // In the preview, "Remove" takes a drafted bridge out in place; without
+  // script it posts and the preview comes back without that row. The last
+  // row cannot be removed: cancel instead.
+  function initBridges() {
+    $$("form[data-bridge-build]").forEach(function (form) {
+      form.addEventListener("submit", function (e) {
+        var button = $("[data-build-bridges]", form), label = $("[data-build-label]", form);
+        if (form.dataset.sent === "1") { e.preventDefault(); return; }
+        form.dataset.sent = "1";
+        if (button) {
+          button.setAttribute("aria-busy", "true");
+          setTimeout(function () { if (form.dataset.sent === "1") button.disabled = true; }, 0);
+        }
+        if (label) {
+          if (!label.dataset.idle) label.dataset.idle = label.textContent;
+          label.textContent = "building";
+        }
+      });
+    });
+    var list = $("[data-bridge-list]");
+    if (!list) return;
+    function renumber() {
+      var cards = $$("[data-bridge-card]", list);
+      cards.forEach(function (card, i) {
+        var n = String(i + 1);
+        var num = $("[data-bridge-num]", card);
+        if (num) num.textContent = "Bridge " + n;
+        var name = $("[data-bridge-remove-name]", card);
+        if (name) name.textContent = " bridge " + n;
+        var drop = $("[data-bridge-remove]", card);
+        if (drop) { drop.value = String(i); drop.hidden = cards.length < 2; }
+        var q = $("[data-bridge-q]", card), a = $("[data-bridge-a]", card);
+        var ql = $("[data-bridge-q-label]", card), al = $("[data-bridge-a-label]", card);
+        if (q && ql) { q.id = "bridge-q-" + i; ql.htmlFor = q.id; }
+        if (a && al) { a.id = "bridge-a-" + i; al.htmlFor = a.id; }
+      });
+    }
+    $$("[data-bridge-remove]", list).forEach(function (button) {
+      button.addEventListener("click", function (e) {
+        e.preventDefault();
+        var cards = $$("[data-bridge-card]", list);
+        if (cards.length < 2) return;
+        var card = button.closest("[data-bridge-card]");
+        var index = cards.indexOf(card);
+        card.parentNode.removeChild(card);
+        renumber();
+        var left = $$("[data-bridge-card]", list);
+        var focus = left[Math.min(index, left.length - 1)];
+        var target = focus && ($("[data-bridge-remove]:not([hidden])", focus) || $("[data-bridge-q]", focus));
+        if (target) target.focus();
+      });
+    });
+    renumber();
+  }
+
+  // A page restored from the back/forward cache comes back as it was left:
+  // give a sent bridge form back, like the busy forms above.
+  function bridgeBuildReset(form) {
+    var button = $("[data-build-bridges]", form), label = $("[data-build-label]", form);
+    form.removeAttribute("data-sent");
+    if (button) { button.disabled = false; button.removeAttribute("aria-busy"); }
+    if (label && label.dataset.idle) label.textContent = label.dataset.idle;
+  }
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted) $$("form[data-bridge-build][data-sent]").forEach(bridgeBuildReset);
+  });
+
   function init() {
     initTZ();
     initExamples();
@@ -723,6 +795,7 @@
     initStudy();
     initRows();
     initDraft();
+    initBridges();
   }
 
   init();

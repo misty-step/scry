@@ -35,6 +35,15 @@ var iconPaths = map[string]string{
 	"calendar": `<rect x="4" y="5.5" width="16" height="14.5" rx="1.5"/><path d="M4 10h16M8 3.5v4M16 3.5v4"/>`,
 	"spinner":  `<path d="M21 12a9 9 0 1 1-9-9"/>`,
 
+	// Bridge cards (Slice 75): a bridge (a deck on two piers over an arch)
+	// for the struggle cue and bridge cards, a pause in a circle for a held
+	// card, a play mark in a circle for releasing it, and a cross to remove
+	// a drafted bridge.
+	"bridge":  `<path d="M3 8.5h18M5.5 8.5V19M18.5 8.5V19M5.5 19a6.5 6.5 0 0 1 13 0M9 8.5v4M12 8.5v3.5M15 8.5v4"/>`,
+	"hold":    `<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>`,
+	"release": `<circle cx="12" cy="12" r="9"/><path d="M10 8.75l5 3.25-5 3.25z"/>`,
+	"remove":  `<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>`,
+
 	// Verdicts
 	"verdict-right":  `<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>`,
 	"verdict-close":  `<circle cx="12" cy="12" r="9"/><path d="M8 12.5c1.3-1.6 2.7-1.6 4 0s2.7 1.6 4 0"/>`,

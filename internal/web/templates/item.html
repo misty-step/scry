@@ -3,6 +3,7 @@
 <section class="reading">
   <p class="meta"><a class="link quiet" href="/library/ideas/{{.Item.IdeaID}}">{{.Item.IdeaTitle}}</a> · {{.Due}}</p>
   <h1 class="title">{{.Item.Prompt}}</h1>
+  {{template "struggle" .Bridge}}
   <form method="post" action="/library/items/{{.Item.ID}}" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <div class="field{{if .Error}} has-error{{end}}">

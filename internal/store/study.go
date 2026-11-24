@@ -239,10 +239,11 @@ func (s *StudySession) Reviewed() int {
 }
 
 // DueItems lists items due before the given moment: reviews first, most
-// overdue first, then items never seen, oldest first.
+// overdue first, then items never seen, oldest first. A card held by
+// bridge cards is left out until its hold ends (see bridges.go).
 func (u *UserStore) DueItems(ctx context.Context, before time.Time, limit int) ([]Item, error) {
 	return scanItems(u.s.db.QueryContext(ctx, `SELECT `+itemCols+itemFrom+`
-		WHERE t.user_id = ? AND t.deleted_at = 0 AND i.deleted_at = 0 AND t.due_at < ?
+		WHERE t.user_id = ? AND t.deleted_at = 0 AND i.deleted_at = 0 AND t.due_at < ? AND`+notHeld+`
 		ORDER BY (t.reps = 0), CASE WHEN t.reps = 0 THEN t.id ELSE t.due_at END, t.id LIMIT ?`, u.uid, ts(before), limit))
 }
 
@@ -265,7 +266,7 @@ func (u *UserStore) StartSession(ctx context.Context, itemIDs []int64, now time.
 			// The SELECT keeps other learners' items out of the session.
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO session_items (user_id, session_id, position, item_id)
-				SELECT ?1, ?2, ?3, id FROM items WHERE id = ?4 AND user_id = ?1 AND deleted_at = 0`, u.uid, id, pos+1, item); err != nil {
+				SELECT ?1, ?2, ?3, t.id FROM items t WHERE t.id = ?4 AND t.user_id = ?1 AND t.deleted_at = 0 AND`+notHeld, u.uid, id, pos+1, item); err != nil {
 				return err
 			}
 		}
@@ -304,7 +305,7 @@ func (u *UserStore) session(ctx context.Context, where string) (*StudySession, e
 	rows, err := u.s.db.QueryContext(ctx, `SELECT si.position, si.review_id, `+itemCols+`
 		FROM session_items si JOIN items t ON t.id = si.item_id AND t.user_id = si.user_id
 		JOIN ideas i ON i.id = t.idea_id AND i.user_id = t.user_id
-		WHERE si.session_id = ? AND si.user_id = ? AND (t.deleted_at = 0 OR si.review_id != 0)
+		WHERE si.session_id = ? AND si.user_id = ? AND ((t.deleted_at = 0 AND`+notHeld+`) OR si.review_id != 0)
 		ORDER BY si.position`, s.ID, u.uid)
 	if err != nil {
 		return nil, err
@@ -456,7 +457,7 @@ func (u *UserStore) guardAnswer(ctx context.Context, tx *sql.Tx, r Review, hold 
 	err = tx.QueryRowContext(ctx, `
 		SELECT si.item_id FROM session_items si JOIN items t ON t.id = si.item_id AND t.user_id = si.user_id
 		JOIN ideas i ON i.id = t.idea_id AND i.user_id = t.user_id
-		WHERE si.session_id = ? AND si.user_id = ? AND si.review_id = 0 AND t.deleted_at = 0
+		WHERE si.session_id = ? AND si.user_id = ? AND si.review_id = 0 AND t.deleted_at = 0 AND`+notHeld+`
 		ORDER BY si.position LIMIT 1`,
 		r.SessionID, u.uid).Scan(&current)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -498,6 +499,13 @@ func (u *UserStore) RecordReview(ctx context.Context, r Review, next srs.State, 
 			return ErrNotFound
 		}
 		id, _ = res.LastInsertId()
+		if !r.Practice && (r.Verdict == srs.Right || r.Verdict == srs.Close) {
+			// A bridge card's first Correct or Almost Correct ends its
+			// bridge; the parent it held is released once none is left.
+			if err := u.masterBridge(ctx, tx, r.ItemID, r.At); err != nil {
+				return err
+			}
+		}
 		if !r.Practice {
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE items SET due_at = ?, stability = ?, difficulty = ?, reps = ?, lapses = ?, last_review = ?

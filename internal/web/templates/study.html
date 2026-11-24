@@ -14,6 +14,7 @@
 
 {{define "review"}}
         {{template "explain" .}}
+        {{with .Bridge}}{{template "struggle" .}}{{end}}
         {{with .Telemetry}}
         <section class="schedule" aria-label="This card's schedule">
         <dl class="telemetry" data-telemetry>

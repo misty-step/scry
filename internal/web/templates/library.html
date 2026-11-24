@@ -41,7 +41,7 @@
       {{if .Results}}
       <ul class="rows">
         {{range .Results}}
-        <li class="row item-row"><a class="row-main" href="/library/items/{{.Item.ID}}"><span class="item-q">{{.Prompt}}</span><span class="item-a">{{.Answer}}</span></a><span class="meta item-idea">{{.Item.IdeaTitle}}</span><span class="meta due">{{.Due}}</span></li>
+        <li class="row item-row"><a class="row-main" href="/library/items/{{.Item.ID}}"><span class="item-q">{{.Prompt}}</span><span class="item-a">{{.Answer}}</span>{{template "rowcue" .Struggle}}</a><span class="meta item-idea">{{.Item.IdeaTitle}}</span><span class="meta due">{{.Due}}</span></li>
         {{end}}
       </ul>
       {{else}}<p class="lede">Nothing in your library matches that.</p>{{end}}
@@ -65,7 +65,7 @@
       {{if .Items}}
       <ul class="rows">
         {{range .Items}}
-        <li class="row item-row"><a class="row-main" href="/library/items/{{.Item.ID}}"><span class="item-q">{{.Item.Prompt}}</span></a>{{if .Item.Exact}}<span class="meta item-idea">exact</span>{{end}}<span class="meta due{{if eq .Due "due today"}} is-due{{end}}">{{.Due}}</span></li>
+        <li class="row item-row"><a class="row-main" href="/library/items/{{.Item.ID}}"><span class="item-q">{{.Item.Prompt}}</span>{{template "rowcue" .Struggle}}</a>{{if .Item.Exact}}<span class="meta item-idea">exact</span>{{end}}<span class="meta due{{if eq .Due "due today"}} is-due{{end}}{{if eq .Due "held"}} is-held{{end}}">{{.Due}}</span></li>
         {{end}}
       </ul>
       {{else}}<p class="lede">No items here yet.</p>{{end}}

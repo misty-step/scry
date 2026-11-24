@@ -285,6 +285,7 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: the review shows only the current card; an empty answer says "No answer given." and "Skipped — review the answer above." (still graded, G10); the why is in plain words, never the grader's rubric | TestSlice70_Review_ShowsTheCurrentCardOnly; TestSlice70_Review_SkipSaysNoAnswerGivenInPlainWords; TestSlice70_Review_GradedWhyIsPlainNeverTheRubric; TestG10_EmptyAnswerCallsJudgeOnce; internal/ai.TestWhy_PlainSentencesReplaceTheGraderRubric; `scripts/verify-slice70.mjs` |
 | Story: the review's schedule (event and interval on one clock, icons, verdict trail; dates in the learner's stored zone, never rewritten by a page view) | TestSlice70_Review_EventAndIntervalAgreeOnTheRunningPath; TestSlice70_Review_ScheduleIconsAndVerdictTrail; TestSlice70_NoPageViewChangesTheTimeZoneOrTheQueue; internal/web.TestSlice70_Telemetry_EventAndIntervalShareOneClock; internal/web.TestSlice70_Telemetry_TrailIsTheLastEightGradedVerdicts; internal/web.TestSlice41_Telemetry_IsFormattedFromTheStoredSchedule |
 | Story: on phones every destination is in view in one compact row and Study does not repeat itself; Next card in ink with a keyboard-only focus ring | TestSlice70_Design_InkNextCardKeyboardRingCompactNav; TestDesign_Slice54_CraftRulesHoldInTheStyleSheet; `scripts/verify-slice70.mjs` (WebKit iPhone 390x844 and Chromium 1440x900, light and dark) |
+| Story: a card missed again and again is offered bridge cards (3+ lapses or the latest two graded answers Incorrect); bridges are drafted, edited, accepted atomically, hold the card out of every due queue until each is answered Correct or Almost Correct once, and can be released by hand (Slice 75) | internal/app.TestSlice75_Detection_Boundaries; internal/app.TestSlice75_Detection_IgnoresPracticeAttempts; internal/app.TestSlice75_Generation_UsesTheParentAndRecentMisses; internal/app.TestSlice75_Accept_ValidatesAndIsIdempotent; internal/app.TestSlice75_Journey_HoldBridgesAndAutomaticReentry; internal/store.TestSlice75_Store_*; internal/ai.TestSlice75_* (incl. TestSlice75_Bridge_RealAdapterDropsSpoilers, TestSlice75_Bridge_RealAdapterDropsSymbolOnlyAnswerLeaks, TestSlice75_ParseBridges_FirstCardsObjectOfSeveral, TestSlice75_Bridge_FallbackModelOnlyOnSuccess, TestSlice75_Bridge_InputIsFittedBeforeDispatch, TestSlice75_ParseBridges_ByteBoundsMatchAcceptance); internal/app.TestSlice75_Generation_OverCapInputNeverStrandsAReservation; internal/app.TestSlice75_Accept_BoundsMatchTheDraftParser; internal/store.TestSlice75_Store_StaleReleaseWhileTrashedIsANoOp; internal/app.TestSlice75_Generation_RealAdapterDropsSpoilers; internal/app.TestSlice75_Generation_RealAdapterDropsSymbolOnlyAnswerLeak; cmd/scry.TestSlice75_TestModeBridgerIsAlwaysTheFixture; TestSlice75_Web_*; `scripts/verify-slice75-strugglometer.mjs` (WebKit iPhone 390x844 and Chromium 1440x900, light and dark) |
 | Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
 | Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
 | Rule: no free tier, 7-day no-card trial with a capped allowance | TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance; TestRule_CardAddedDuringTheTrialKeepsItsEnd; TestRule_NoCardTrialNeverChargesATopup; internal/app.TestSlice36_NoCardTrialExpiresAtPeriodEnd; internal/app.TestSlice36_ConcurrentReservationsCannotPassTheCapOrTheEnd; internal/app.TestSlice36_UpgradeFromTheNoCardTrial; TestSlice36_StaleCardStepConfirmsBeforeChargingAndADeclineKeepsTheTrial; TestSlice36_CardStepWithoutTermsIsNeverCharged; internal/app.TestSlice36_StaleTrialTermsNeverChargeSilently; internal/app.TestSlice36_DeclineInTheLastHourKeepsTheTrial; internal/app.TestSlice36_ConfirmedUpgradeInTheLastHour; internal/app.TestSlice36_SpeechHoldsKeepTheTrialInsideItsCap; internal/app.TestSlice36_OverageNeverStarvesAConcurrentHoldAndStopsTheTrial |
@@ -416,6 +417,41 @@ reports raised during a screenshot are listed as "tooling", not app errors.
     node scripts/verify-slice70.mjs --url http://127.0.0.1:18071 --label candidate --shots /tmp/s70-shots --state-dir /tmp --video
     # stop it, then: SCRY_TEST_CLOCK=$(date -u -d '+20 hours' +%Y-%m-%dT%H:%M:%SZ) ... ./bin/scry &
     node scripts/verify-slice70.mjs --url http://127.0.0.1:18071 --label candidate --stale --state-dir /tmp --shots /tmp/s70-shots
+
+`scripts/verify-slice75-strugglometer.mjs` checks the Slice 75 Strugglometer
+end to end. It needs a built binary, not a running server: for each
+configuration (WebKit iPhone 390x844 and system Chrome 1440x900, light and
+dark) it starts that binary in `SCRY_MODE=test` on a fresh SQLite file in a
+new temporary directory with a minimal environment (no provider keys) and a
+fixed verdict script, signs up a disposable learner, adds the NATO set and
+seeds two cards' history with `node:sqlite`. It then checks the cue in the
+deck list, on the card page and in the post-answer review (never on the
+waiting card), the deterministic fixture preview, edit and remove in place,
+"Add bridges & hold parent", the held card absent from the next session, an
+Incorrect bridge keeping the hold, Correct and Almost Correct releasing it
+with the schedule unchanged, automatic reentry, bridge removal and manual
+release; and on every page no sideways scroll, bridge panels at least 366 px
+wide on the phone, 16 px `stroke="currentColor"` cue icons, Geist only (no
+Inter), no game copy, and zero console, page, request, 5xx or CSP errors.
+One of the bridges is edited, key by key, to a valid 400-character question
+with no spaces and accepted; every surface showing it must keep it inside its
+panel and the viewport. `--baseline` stops after the second miss (for
+"before" screenshots against a build without the slice; use with
+`--expect observe`). The CSP gate is the run without `--shots`: Playwright's
+WebKit screenshotter always inserts an inline style that Scry's CSP refuses,
+so a `--shots` run captures WebKit with `bypassCSP` (Chromium stays
+enforced). `--traces DIR` writes scoped JSON only (routes, statuses,
+timings, assertion results, counters), checked free of the run's email,
+random password, cookies, form tokens and auth field names; never a
+Playwright archive.
+
+    make build
+    TMPDIR=/dev/shm node scripts/verify-slice75-strugglometer.mjs --bin ./bin/scry --label after                            # the clean (CSP) run
+    TMPDIR=/dev/shm node scripts/verify-slice75-strugglometer.mjs --bin ./bin/scry --label after --traces /tmp/s75-traces   # the same, with scoped JSON traces
+    TMPDIR=/dev/shm node scripts/verify-slice75-strugglometer.mjs --bin ./bin/scry --label after --shots /tmp/s75-shots     # the media run
+
+`--only iphone-light,desktop-dark` runs a subset; an unknown name is refused
+(exit 2), never a run of zero checks.
 
 The smoke blocks external requests, uses synthetic microphone input and test
 adapters, measures Check contrast in both modes and at desktop/phone widths,

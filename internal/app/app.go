@@ -84,11 +84,14 @@ type App struct {
 	// Explainer writes on-demand explanations after a verdict; nil means
 	// the fixed criterion sentence is all there is.
 	Explainer ai.Explainer
-	Speech    speech.Transcriber
-	Alert     alert.Notifier
-	Log       *slog.Logger
-	Now       func() time.Time
-	Cfg       Config
+	// Bridger drafts bridge cards for a struggling card (Slice 75); nil
+	// means bridges cannot be drafted right now.
+	Bridger ai.Bridger
+	Speech  speech.Transcriber
+	Alert   alert.Notifier
+	Log     *slog.Logger
+	Now     func() time.Time
+	Cfg     Config
 
 	drafts sync.WaitGroup
 	// topupsInFlight holds the top-up keys being charged by this process.

@@ -171,7 +171,7 @@ main.frame { flex: 1; padding-top: var(--section); padding-bottom: var(--section
 
 .judgment { font: 600 var(--judgment)/1 var(--text); letter-spacing: -0.03em; color: var(--ink); }
 .display { font: 500 var(--display)/1.1 var(--text); letter-spacing: -0.02em; color: var(--ink); }
-.title { font: 500 var(--title)/1.25 var(--text); letter-spacing: -0.01em; color: var(--ink); }
+.title { font: 500 var(--title)/1.25 var(--text); letter-spacing: -0.01em; color: var(--ink); overflow-wrap: anywhere; }
 .meta, .label { font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); }
 .micro { font: 400 var(--micro)/1.4 var(--mono); letter-spacing: 0.04em; color: var(--ink-muted); }
 .mono { font-family: var(--mono); }
@@ -611,11 +611,64 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 }
 .row-main { flex: 1; min-width: 0; display: grid; gap: var(--s1); text-decoration: none; color: var(--ink-body); padding: var(--s1) 0; }
 .item-a { color: var(--ink-muted); }
+.item-q, .item-a { min-width: 0; overflow-wrap: anywhere; }
 .item-idea, .due { white-space: nowrap; }
 .due.is-due { color: var(--accent); }
 .section-label { margin: var(--s6) 0 var(--s2); }
 .history-row .history-why { flex: 1; min-width: 0; }
 .token-row > span:first-child { flex: 1; color: var(--ink); }
+
+/* ---- Bridge cards (Slice 75, the Strugglometer) ----------------------- */
+
+/* The cue beside a struggling card, a held card's hold, a bridge's note.
+   A calm hairline panel: no fill, no colour alarm; the 16 px line icon
+   takes the colour of its words. On phones it runs 8 px into the page
+   gutter so the panel is at least 366 px wide at 390 px. */
+.struggle {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s2); justify-items: start; max-width: var(--measure);
+  min-width: 0; padding: var(--s3); border: 1px solid var(--line); overflow-wrap: anywhere;
+}
+.struggle-line { display: flex; align-items: flex-start; gap: var(--s2); color: var(--ink-body); font-size: var(--reading); overflow-wrap: anywhere; }
+.struggle-line .icon { width: 16px; height: 16px; flex: none; margin-top: 0.22em; color: currentColor; }
+.struggle-line.meta { font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); }
+.struggle-line.meta .icon { margin-top: 0.05em; }
+.struggle.is-held .struggle-line { color: var(--ink); }
+.struggle-note { max-width: var(--measure); }
+.struggle-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.struggle-btn { font: 400 var(--meta)/1.4 var(--mono); }
+.struggle-btn .icon { width: 16px; height: 16px; }
+.struggle-btn[aria-busy="true"] { color: var(--ink-muted); cursor: progress; }
+/* A bridge's question is the learner's own text, up to 400 characters
+   with no break in it: every surface that shows one wraps it in place. */
+.bridge-links { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; width: 100%; min-width: 0; font-size: var(--meta); }
+.bridge-links li { min-width: 0; }
+.bridge-links .link { min-height: 32px; max-width: 100%; overflow-wrap: anywhere; }
+.bridge-note { max-width: var(--measure); }
+/* The parent's question is a link inside the note's sentence: it runs
+   inline with the Meta line, not as a 44 px block that spreads the lines. */
+.bridge-note .link { display: inline; min-height: 0; }
+/* A deck row's cue sits under its question in Meta mono. */
+.row-cue { display: flex; align-items: flex-start; gap: 6px; min-width: 0; color: var(--ink-muted); overflow-wrap: anywhere; }
+.row-cue .icon { width: 16px; height: 16px; flex: none; margin-top: 0.05em; }
+.due.is-held { color: var(--ink-muted); }
+
+/* The preview: editable drafted bridges, each a hairline card. */
+.bridges { max-width: 720px; }
+.bridges-kicker .link { gap: 6px; min-height: 32px; }
+.bridges-kicker .icon { width: 16px; height: 16px; }
+.bridge-parent { display: grid; gap: var(--s1); border-left: 2px solid var(--line); padding-left: var(--s3); }
+.bridge-parent dd { color: var(--ink); font-size: var(--reading); overflow-wrap: anywhere; }
+.bridge-form { display: grid; gap: var(--s4); margin-top: var(--s2); }
+.bridge-list { display: grid; gap: var(--s3); }
+.bridge-card { display: grid; gap: var(--s3); padding: var(--s3); border: 1px solid var(--line); background: transparent; }
+.bridge-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: 32px; }
+.bridge-num { color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.bridge-remove { gap: 6px; font: 400 var(--meta)/1.4 var(--mono); min-height: var(--touch); }
+.bridge-remove .icon { width: 16px; height: 16px; }
+.bridge-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4); }
+.bridge-actions .btn .icon { width: 18px; height: 18px; }
+.bridge-problem { display: grid; gap: var(--s3); padding: var(--s3); border: 1px solid var(--line); color: var(--ink); }
+.bridge-foot { max-width: var(--measure); }
 
 /* ---- Library ----------------------------------------------------------- */
 
@@ -860,6 +913,10 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .item-row { flex-wrap: wrap; }
   .item-row .row-main { flex-basis: 100%; }
   .history td { padding-right: var(--s2); }
+  /* Slice 75: bridge panels and cards run 8 px into the 16 px gutter, so
+     each is at least 366 px wide at 390 px. */
+  .struggle, .bridge-card, .bridge-problem { margin-inline: calc(-1 * var(--s2)); padding: 12px var(--s2); max-width: none; }
+  .bridge-actions .btn-accent { flex: 1 1 100%; }
 }
 
 /* ---- Hover: only where the pointer can hover --------------------------
