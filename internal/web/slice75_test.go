@@ -262,3 +262,81 @@ func TestSlice75_Web_BridgeReviewSaysWhenTheParentReturns(t *testing.T) {
 		t.Fatalf("held by %d after the last bridge", st.HeldBy)
 	}
 }
+
+// Slice 75 (DESIGN.md, Held): an active bridge's post-answer review says
+// "Bridge card · leads up to …" with the card it leads to linked, as the
+// bridge's own page does. While the bridge waits nothing names that card,
+// its answer is never shown, and the link is the learner's own card only:
+// another learner gets a 404 for it and never sees it.
+func TestSlice75_Web_BridgeReviewNamesTheCardItLeadsTo(t *testing.T) {
+	w, alice, p, _ := struggling(t)
+	pid := strconv.FormatInt(p.ID, 10)
+	link := `leads up to <a class="link quiet" href="/library/items/` + pid + `">` + p.Prompt + `</a>`
+	_, preview := alice.post("/library/items/"+pid+"/bridges/draft", "from", "study")
+	key := keyRE.FindStringSubmatch(preview)[1]
+	alice.postValues("/library/items/"+pid+"/bridges", url.Values{"key": {key}, "from": {"item"},
+		"prompt": {"First bridge q", "Second bridge q"}, "answer": {"First bridge a", "Second bridge a"}})
+	alice.finish(func(store.Item) string { return "x" })
+	// Up to the first bridge, which waits with no word of its parent.
+	var body string
+	var cur store.Item
+	for i := 0; i < 80; i++ {
+		body = alice.mustGet("/study")
+		it, ok := alice.current(body)
+		if !ok {
+			t.Fatal("ran out of cards before the bridge came up")
+		}
+		if it.Prompt == "First bridge q" || it.Prompt == "Second bridge q" {
+			cur = it
+			break
+		}
+		alice.answerNext(it, "x")
+	}
+	if cur.ID == 0 {
+		t.Fatal("no bridge came up")
+	}
+	hasNot(t, body, "leads up to", `href="/library/items/`+pid+`"`, "data-bridge-note")
+	// Incorrect: the review names the parent, which stays held.
+	w.model.mu.Lock()
+	w.model.script = []ai.Judgment{{Verdict: srs.Missed, Reason: ai.CriterionSentence(srs.Missed)}}
+	w.model.mu.Unlock()
+	review := alice.answer(cur, "wrong")
+	has(t, review, "data-review", "data-bridge-note", "Bridge card · "+link,
+		"The card it leads to stays held until this is answered Correct or Almost Correct.")
+	hasNot(t, review, ">"+p.Answer+"<", "data-bridge-cleared")
+	if st, _ := w.lib("alice@example.com").BridgeState(context.Background(), p.ID); st.HeldBy != 2 {
+		t.Fatalf("held by %d after a missed bridge, want 2", st.HeldBy)
+	}
+	// Reloading the review shows the same line.
+	has(t, alice.mustGet("/study"), "Bridge card · "+link)
+	// The link is the parent's own page, which still says it is held.
+	has(t, alice.mustGet("/library/items/"+pid), "Held by 2 bridges")
+	// Another learner never sees or reaches it.
+	bob := w.browser()
+	bob.signUp("bob@example.com")
+	bob.addSet("nato-alphabet")
+	if status, _ := bob.get("/library/items/" + pid); status != http.StatusNotFound {
+		t.Fatalf("bob GET alice's parent = %d, want 404", status)
+	}
+	hasNot(t, bob.mustGet("/study"), `href="/library/items/`+pid+`"`, "leads up to")
+	// Correct on the next bridge: it has done its work, so its review says
+	// what clearing it changed rather than naming its parent.
+	alice.next()
+	body = alice.mustGet("/study")
+	nxt, ok := alice.current(body)
+	for i := 0; ok && nxt.Prompt != "First bridge q" && nxt.Prompt != "Second bridge q" && i < 80; i++ {
+		alice.answerNext(nxt, "x")
+		body = alice.mustGet("/study")
+		nxt, ok = alice.current(body)
+	}
+	if !ok || nxt.ID == cur.ID {
+		t.Fatalf("the other bridge never came up (got %+v)", nxt)
+	}
+	hasNot(t, body, "leads up to", `href="/library/items/`+pid+`"`)
+	w.model.mu.Lock()
+	w.model.script = []ai.Judgment{{Verdict: srs.Right, Reason: ai.CriterionSentence(srs.Right)}}
+	w.model.mu.Unlock()
+	cleared := alice.answer(nxt, "right")
+	has(t, cleared, "Bridge cleared · 1 bridge still holds the card it leads to.")
+	hasNot(t, cleared, ">"+p.Answer+"<")
+}
