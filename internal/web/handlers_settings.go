@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"scry/internal/app"
@@ -43,10 +44,36 @@ func (s *Server) settingsTheme(w http.ResponseWriter, r *http.Request, c *rc) er
 	if theme != "light" && theme != "dark" {
 		theme = "system"
 	}
-	if err := c.us.SetTheme(r.Context(), theme); err != nil {
+	// Scripted saves carry the page's tab token (theme_tab) and its choice
+	// number on that page (theme_seq); within one tab an older save arriving
+	// late is ignored (and answered as usual), while saves from different
+	// tabs or devices are last-writer-wins. A plain form submit carries
+	// neither and always applies. An invalid token or number is dropped, so
+	// that save takes the plain path.
+	tab := themeTab(r.FormValue("theme_tab"))
+	seq, err := strconv.ParseInt(r.FormValue("theme_seq"), 10, 64)
+	if err != nil || seq < 0 {
+		seq = 0
+	}
+	if _, err := c.us.SetUserTheme(r.Context(), theme, tab, seq); err != nil {
 		return err
 	}
 	return back(w, r, "/settings?ok=theme")
+}
+
+// themeTab is a posted tab token, trimmed: at most 64 printable ASCII
+// characters, or "" when it is missing or invalid.
+func themeTab(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) > 64 {
+		return ""
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] < 0x20 || v[i] > 0x7e {
+			return ""
+		}
+	}
+	return v
 }
 
 func (s *Server) settingsAbout(w http.ResponseWriter, r *http.Request, c *rc) error {

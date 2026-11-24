@@ -1,17 +1,39 @@
 {{define "main"}}
 <section class="hero">
-  <h1 class="display">Keep what's worth knowing.</h1>
-  <p class="lede">Scry gets what's worth knowing into your head and keeps it there, for the fewest minutes a day.</p>
-  <p class="actions">
-    <a class="btn btn-accent" href="/signup">Start the {{.TrialDays}}-day trial</a>
-    <a class="link" href="/signin">Sign in</a>
-  </p>
-  <p class="meta">{{.TrialDays}} days free · no card needed · then {{money .Price}} a month if you keep it</p>
+  <div class="hero-copy">
+    <h1 class="display">Keep what's worth knowing.</h1>
+    <p class="lede">Scry is active recall with spaced repetition: each day it asks you what's due, you answer by typing or speaking, and every answer is judged at once, so what matters stays in your head for about five minutes a day.</p>
+    <p class="actions">
+      <a class="btn btn-accent" href="/signup">Start the {{.TrialDays}}-day trial</a>
+      <a class="btn" href="/signin">Sign in</a>
+    </p>
+    <p class="meta trial-terms-line">{{.TrialDays}} days free · no card needed · then <span class="nowrap">{{money .Price}} a month</span> if you keep it</p>
+  </div>
+  {{with .Specimen}}
+  <figure class="specimen" aria-label="An example of a card being judged">
+    <div class="specimen-frame">
+      <p class="micro specimen-place"><span>Study · {{.Place}}</span> <span class="specimen-count">4 / 11</span></p>
+      <p class="specimen-q">{{.Question}}</p>
+      <dl class="compare specimen-compare">
+        <div class="compare-cell"><dt class="meta">Your answer</dt><dd class="compare-answer">{{.Answer}}</dd></div>
+        <div class="compare-cell"><dt class="meta">Correct answer</dt><dd class="compare-answer">{{.Expected}}</dd></div>
+      </dl>
+      <p class="verdict"><span class="verdict-badge verdict-{{.Verdict}}">{{icon .Icon}}<span>{{.Badge}}</span></span> <span class="why">{{.Why}}</span></p>
+      <dl class="telemetry specimen-schedule" aria-label="This card's schedule">
+        <div class="fact fact-next"><dt>{{icon "calendar"}}Next review</dt><dd>in 3 days</dd></div>
+        <div class="fact"><dt>Interval</dt><dd>3 days</dd></div>
+        <div class="fact"><dt>Stability</dt><dd>3.4 days</dd></div>
+        <div class="fact"><dt>Difficulty</dt><dd>4.9 / 10</dd></div>
+      </dl>
+    </div>
+    <figcaption class="micro specimen-caption">One review, as Scry shows it after you answer.</figcaption>
+  </figure>
+  {{end}}
 </section>
 <section class="plain-list" aria-label="How Scry works">
   <div class="plain-row"><h2 class="title">Five minutes, then done.</h2><p>Open Scry, answer what's due by typing or speaking, and close it. It decides what you need to see today so you don't have to.</p></div>
-  <div class="plain-row"><h2 class="title">You never grade yourself.</h2><p>Every answer is judged at once, with one line saying why. Texts you want word for word are checked word for word.</p></div>
+  <div class="plain-row"><h2 class="title">You never grade yourself.</h2><p>An AI grader judges every answer on understanding, not on case or punctuation, with one line saying why. Texts you want word for word, like a creed or a poem, are checked word for word.</p></div>
   <div class="plain-row"><h2 class="title">Start with something good.</h2><p>Thirty starter sets, from the NATO alphabet to the core ideas of every major subject. Or ask for any topic, or the core ideas of a book you love.</p></div>
-  <div class="plain-row"><h2 class="title">Yours alone.</h2><p>Your library and history are private to you. Your own agents can suggest items from what you read; nothing is added until you approve it.</p></div>
+  <div class="plain-row"><h2 class="title">Yours alone.</h2><p>Your library and history are private to you. Your own scripts or tools can suggest cards from what you read; nothing is added until you approve it.</p></div>
 </section>
 {{end}}

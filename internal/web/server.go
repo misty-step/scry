@@ -87,6 +87,10 @@ func New(a *app.App, log *slog.Logger) *Server {
 	static, _ := fs.Sub(staticFS, "static")
 	fileServer := http.FileServer(http.FS(static))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".webmanifest") {
+			// Not in Go's built-in type table, and the image has no mime.types.
+			w.Header().Set("Content-Type", "application/manifest+json")
+		}
 		if strings.HasPrefix(r.URL.Path, "fonts/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		} else {
@@ -108,8 +112,11 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "User-agent: *\nAllow: /$\nAllow: /signup\nDisallow: /\n")
 	})
-	// The wordmark has no glyph for now, so there is no icon to serve.
-	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	// Browsers that ask for /favicon.ico get the brand mark (pages also
+	// link it as SVG and as a home-screen PNG).
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/icon.svg", http.StatusMovedPermanently)
+	})
 	mux.HandleFunc("POST /webhooks/stripe", s.webhook)
 	// Browser CSP reports and client error telemetry: public, CSRF-exempt,
 	// size- and rate-limited, sanitized before it reaches the logs.
@@ -394,6 +401,17 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, c *rc, status in
 	data["Path"] = r.URL.Path
 	data["Now"] = s.App.Now()
 	data["Theme"] = "system"
+	// Link previews need an absolute image URL: the configured external
+	// origin when there is one, else the origin this request came to.
+	origin := strings.TrimRight(s.BaseURL, "/")
+	if origin == "" {
+		scheme := "https"
+		if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+			scheme = "http"
+		}
+		origin = scheme + "://" + r.Host
+	}
+	data["SiteOrigin"] = origin
 	if c != nil && c.signedIn {
 		data["User"] = c.user
 		data["CSRF"] = c.sess.CSRF

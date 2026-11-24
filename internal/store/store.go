@@ -101,6 +101,15 @@ func (s *Store) migrateAdded() error {
 	if err := s.addColumn("reservations", "created_at", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
+	// Slice 54: the last scripted theme save's tab token and its number on
+	// that tab, so an older save from the same page arriving late never
+	// overwrites a newer one (see UserStore.SetUserTheme).
+	if err := s.addColumn("users", "theme_seq", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumn("users", "theme_tab", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	// Slice 36 pass 2: a plan's period overage (Settle's write-off).
 	if err := s.addColumn("subscriptions", "period_overage_micros", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err

@@ -1364,3 +1364,102 @@ Choices made where the brief, PRODUCT.md or DESIGN.md were silent or pulled two 
   page back: after the form is given back, the next submit confirms the card
   again. Otherwise a learner who changed the card after the timeout would post
   the earlier one.
+
+
+## Slice 54: brand mark, landing specimen and craft pass (Folio 8bf4475e)
+
+Reconciles PRODUCT.md and DESIGN.md as changed in 92350ed3..8bf4475e.
+Choices where the Folio left room:
+
+- **The mark's geometry.** DESIGN.md fixes the grid (24 px, stroke 1.75,
+  round caps/joins), the parts (four corner brackets, a centered lens ring in
+  ink, a solid accent focal point of r 2.25) and the sizes. The exact numbers
+  are ours: brackets `M3 8V3h5 …` (5 px arms from the 3 px inset) and a lens
+  ring of r 5.25. `internal/web/brand.go` is the one source; the static icons
+  repeat its paths and `TestBrand_MarkIsOneDrawingEverywhere` pins that.
+- **App icons.** `static/icon.svg` is the adaptive light/dark vector (favicon;
+  `/favicon.ico` redirects to it). `static/icon-dark.svg` is the dark-ground
+  icon (#12101A, white aperture, #4D8DFF focal point); the 180/192/512 PNGs are
+  rendered from it with `rsvg-convert -w N -h N icon-dark.svg -o icon-N.png`
+  and committed (no build step). The 512 PNG is the link-preview image
+  (`og:image`, absolute: SCRY_BASE_URL when set, else the request origin).
+- **Home screen.** `static/manifest.webmanifest` (served as
+  application/manifest+json) has `start_url` `/study` and `display`
+  standalone, so a home-screen launch opens daily recall (signed-out it
+  passes through Sign in, as any /study visit does).
+- **The Study Specimen** is static type, not a live session: a real starter
+  card (Mental models · The razors, "Hanlon's razor"), an answer that differs
+  only in case and punctuation, the verdict "Correct" and the grader's real
+  criterion sentence (`ai.CriterionSentence`). Its schedule shows relative
+  facts only ("in 3 days"), so the page never shows a stale date.
+- **Public footer.** "Made by Misty Step · Your library and history are yours
+  alone: nobody else can see them." on signed-out pages only; it restates the
+  PRODUCT.md privacy story and claims nothing further.
+- **Library on phones.** PRODUCT.md says the opened idea sits "immediately
+  above a compact collapsible outline"; DESIGN.md says it "renders first
+  beneath a compact collapsible idea picker". We follow DESIGN.md (it owns
+  layout) in a way that satisfies both readings of the goal: one collapsed
+  44 px picker row (naming the open idea) sits above the idea, and the full
+  outline lives inside it, so the idea and its cards come before any outline
+  rows. The picker is a separate phone-only `<details>` that repeats the
+  outline (desktop keeps its pane); one of the two is always `display: none`.
+- **Review framing.** "Next card" is focused with `preventScroll`, both after
+  an answer is swapped in and on a full page load. Nothing scrolls the window
+  programmatically (the slice-41 no-jump rule stands); a review the learner
+  scrolled stays where they put it. The button carries no HTML `autofocus`
+  (a browser without script scrolled a sentence-length Incorrect review down
+  to it, question out of view); it is marked `data-autofocus-no-scroll` and
+  focused by app.js only. Without script, Next card is therefore not focused
+  (Enter/Space shortcuts need script anyway). A sentence-length Incorrect
+  answer is struck at Judgment size, so on a 1440x900 window the verdict line
+  can sit below the fold; the review still opens at the top with the question
+  in view, and the layout is unchanged.
+- **Settings appearance** applies the mode to the page on change and posts
+  the same form in the background; "Save appearance" still works without
+  script. Background saves are serialized: one POST is in flight at a time,
+  and changes made meanwhile coalesce into a single follow-up that reads the
+  form when it is sent, so rapid switching always persists the last choice
+  A follow-up still waiting when the learner leaves or hides the page
+  (`pagehide`, or `visibilitychange` to hidden) is sent at once as a
+  url-encoded `keepalive` fetch (a few dozen bytes, far under the 64 KiB
+  keepalive budget) and cleared, so it is sent exactly once.
+- **Theme save ordering: per-tab `(theme_tab, theme_seq)`.** The keepalive
+  flush can reach Scry before the same page's earlier save (that request held
+  up on the way). Each Settings page load makes one tab token
+  (`crypto.randomUUID()`, with a random fallback) and counts its choices from
+  1; every scripted save, the keepalive flush included, carries the pair
+  frozen when the choice was made. `users.theme_tab` / `users.theme_seq`
+  store the last scripted save's pair, and `SetUserTheme` applies a scripted
+  save only when it comes from a different tab or carries a strictly higher
+  number than that tab's stored one, so within one tab an older or replayed
+  save is ignored (and answered with the usual 303). A plain no-JS Save sends
+  neither field, always applies and clears the pair. Nothing uses a clock,
+  `sessionStorage` or `localStorage`, so devices with skewed clocks number
+  their saves as well as any other.
+  Why per tab, not account-wide (Pass 5 used a server-seeded account-wide
+  sequence): two Settings tabs opened at the same time are, on the wire,
+  indistinguishable from one delayed request, so an account-wide number
+  rejected the second tab's later, genuine choice (Tab A saves Dark, Tab B,
+  already open, picks Light: Dark was kept). The ordering we must protect is
+  within a tab (a page's own `fetch` vs its own `keepalive` flush); across
+  tabs, devices and no-JS saves Scry uses ordinary HTTP last-writer-wins, so
+  a request from one tab held up behind another tab's later save can still
+  land last. That is the accepted boundary.
+- **"/" on phones.** The Library outline (and its search) is hidden on
+  phones, so "/" opens the idea picker and focuses the picker's own search.
+- **Long answers on phones.** The block caret's hidden measuring ruler is
+  clipped inside the answer line (`overflow: hidden`), so a typed sentence no
+  longer widens the page (it was ~929-1903 px) or pushes Check off screen.
+- **Hover** rules (fills and colour changes) now live in one
+  `@media (hover: hover)` block; focus styles are unchanged.
+- **Password reset in test mode.** The reset flow is Clerk's (live and
+  clerk-test auth). Local test-mode auth has no reset, as before; its Sign in
+  page is unchanged, and the new "email first, then Forgot password on the
+  password step" copy is on the Clerk page and in clerk.js.
+- **Clerk theming** reads Scry's resolved colour tokens at mount time (so dark
+  mode gets dark panels) and passes them as Clerk appearance variables and
+  elements, with shadows and background images turned off.
+- **Waiting screen at 1440×900.** The session no longer reserves a
+  viewport-tall minimum height on desktop and the study page's section padding
+  is 48 px; with the margin top-aligned there is nothing to centre. Measured
+  on the running app: scrollHeight 900 at a 900 px window (was 918).

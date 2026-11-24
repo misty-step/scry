@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
+	"scry/internal/ai"
 	"scry/internal/app"
 	"scry/internal/auth"
 	"scry/internal/billing"
+	"scry/internal/srs"
 	"scry/internal/store"
 )
 
@@ -23,13 +25,31 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, c *rc) error {
 	}
 	return s.render(w, r, c, http.StatusOK, "landing.html", map[string]any{
 		"Title": "Keep what's worth knowing", "Price": s.App.Cfg.PriceCents, "TrialDays": s.App.Cfg.TrialDays, "Bare": true,
+		"Specimen": landingSpecimen(),
 	})
+}
+
+// landingSpecimen is the landing page's Study Specimen (DESIGN.md, Landing):
+// one real recall review moment. The card is a real starter card, the typed
+// answer differs from it only in case and punctuation, and the one-line why
+// is the grader's own fixed criterion sentence for the verdict.
+func landingSpecimen() map[string]string {
+	return map[string]string{
+		"Place":    "Mental models · The razors",
+		"Question": "Which razor says never to attribute to malice what is adequately explained by carelessness or stupidity?",
+		"Answer":   "hanlons razor",
+		"Expected": "Hanlon's razor",
+		"Verdict":  string(srs.Right),
+		"Icon":     "verdict-right",
+		"Badge":    "Correct",
+		"Why":      ai.CriterionSentence(srs.Right),
+	}
 }
 
 // clerkForm keeps the server-rendered copy aligned with the mounted component.
 func (s *Server) clerkForm(w http.ResponseWriter, r *http.Request, c *rc, provider *auth.Clerk) error {
 	signup := r.URL.Path == "/signup"
-	title, lede := "Sign in", "Use your email and password. Forgotten your password? Choose “Forgot password” below to reset it by email."
+	title, lede := "Sign in", "Use your email and password: enter your email first, then your password. Forgotten your password? After you enter your email, choose “Forgot password” on the password step to reset it by email."
 	if signup {
 		title, lede = "Sign up", "Create your account with email and password. Verify your email before continuing to study or billing."
 	}
@@ -40,7 +60,7 @@ func (s *Server) clerkForm(w http.ResponseWriter, r *http.Request, c *rc, provid
 		}
 	}
 	return s.render(w, r, c, http.StatusOK, "clerk.html", map[string]any{
-		"Title": title, "Lede": lede, "Bare": true, "Configured": provider.Configured(), "SignUp": signup,
+		"Title": title, "Lede": lede, "Bare": true, "Configured": provider.Configured(), "SignUp": signup, "TrialDays": s.App.Cfg.TrialDays,
 	})
 }
 

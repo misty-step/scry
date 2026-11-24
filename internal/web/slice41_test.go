@@ -545,6 +545,10 @@ func TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts(t *testing.T) {
 			`icon-verdict-`+string(c.verdict), "Reason for "+c.kind+".",
 			"data-explain", "Ask Why?", "data-telemetry", "Next review", "Interval", "Stability", "Difficulty", "Reviews",
 			"data-edit-toggle", "Edit card", "data-next", "Next card", "enter or space for next card")
+		// Next card is focused by script without scrolling; plain HTML
+		// autofocus would scroll a long review down to it without script.
+		has(t, review, `<button class="btn btn-accent" data-autofocus-no-scroll data-next>`)
+		hasNot(t, review, "autofocus data-next", `data-next autofocus`)
 		if got := submittedRE.FindStringSubmatch(review); got == nil || got[1] != c.typed {
 			t.Errorf("%s: submitted answer shown as %v, want %q", c.kind, got, c.typed)
 		}
@@ -787,10 +791,10 @@ func TestSlice41_Nav_StudyAndCreateAreUnmistakable(t *testing.T) {
 		nav := page[strings.Index(page, `<nav class="nav"`):]
 		nav = nav[:strings.Index(nav, "</nav>")]
 		for _, want := range []string{
-			`<a href="/study"`, `icon-cards`, `<span>Study</span>`,
-			`icon-library`, `<span>Library</span>`, `icon-inbox`, `<span>Inbox</span>`,
-			`<a href="/learn"`, `icon-create`, `<span>Create</span>`,
-			`icon-billing`, `<span>Billing</span>`, `icon-settings`, `<span>Settings</span>`,
+			`<a href="/study"`, `icon-cards`, `<span class="nav-label">Study</span>`,
+			`icon-library`, `<span class="nav-label">Library</span>`, `icon-inbox`, `<span class="nav-label">Inbox</span>`,
+			`<a href="/learn"`, `icon-create`, `<span class="nav-label">Create</span>`,
+			`icon-billing`, `<span class="nav-label">Billing</span>`, `icon-settings`, `<span class="nav-label">Settings</span>`,
 		} {
 			if !strings.Contains(nav, want) {
 				t.Errorf("%s: the navigation is missing %s", path, want)

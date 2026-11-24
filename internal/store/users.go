@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 )
@@ -180,10 +181,35 @@ func (s *Store) For(userID int64) *UserStore { return &UserStore{s: s, uid: user
 // UserID is the learner this store is scoped to.
 func (u *UserStore) UserID() int64 { return u.uid }
 
-// SetTheme stores the learner's colour mode.
-func (u *UserStore) SetTheme(ctx context.Context, theme string) error {
-	_, err := u.s.db.ExecContext(ctx, `UPDATE users SET theme = ? WHERE id = ?`, theme, u.uid)
-	return err
+// SetUserTheme stores the learner's colour mode. A scripted save from the
+// Settings page carries the page's own tab token (themeTab, made fresh on
+// every page load) and its choice number on that page (themeSeq, 1, 2, …).
+// Within one tab the write is a compare-and-set: it applies only when it is
+// newer than the save stored from that same tab, so a save held up on the
+// way and overtaken by the same page's keepalive flush of a later choice
+// cannot overwrite it. A save from any other tab (another already-open
+// Settings page, another device) always applies: across tabs the last save
+// to arrive wins, as for any HTTP form. No clock is involved.
+//
+// A plain form submit (no script) carries no tab or number (themeTab == ""
+// or themeSeq <= 0); it always applies and clears the stored pair.
+// It reports whether the mode was written.
+func (u *UserStore) SetUserTheme(ctx context.Context, theme, themeTab string, themeSeq int64) (bool, error) {
+	var (
+		res sql.Result
+		err error
+	)
+	if themeTab == "" || themeSeq <= 0 {
+		res, err = u.s.db.ExecContext(ctx, `UPDATE users SET theme = ?, theme_tab = '', theme_seq = 0 WHERE id = ?`, theme, u.uid)
+	} else {
+		res, err = u.s.db.ExecContext(ctx, `UPDATE users SET theme = ?, theme_tab = ?, theme_seq = ? WHERE id = ? AND (theme_tab != ? OR theme_seq < ?)`,
+			theme, themeTab, themeSeq, u.uid, themeTab, themeSeq)
+	}
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
 }
 
 // SetAbout stores what the learner told Scry about themself.

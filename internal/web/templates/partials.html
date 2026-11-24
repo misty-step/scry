@@ -40,7 +40,7 @@
     <p class="sug-a">{{.S.Answer}}</p>
     <p class="meta">{{if .S.DraftID}}drafted by Scry{{if .S.Source}} · {{.S.Source}}{{end}}{{else}}{{.S.SourceLine}}{{end}}{{if .S.Exact}} · exact{{end}}</p>
   </div>
-  <p class="sug-idea meta">{{if .S.Joins}}joins{{else}}new idea{{end}} <span class="sug-idea-name">{{.S.IdeaTitle}}</span></p>
+  {{if not .S.DraftID}}<p class="sug-idea meta">{{if .S.Joins}}joins{{else}}new idea{{end}} <span class="sug-idea-name">{{.S.IdeaTitle}}</span></p>{{end}}
   <div class="sug-actions">
     <form method="post" action="/suggestions/{{.S.ID}}/approve" data-approve>
       <input type="hidden" name="csrf" value="{{.CSRF}}">

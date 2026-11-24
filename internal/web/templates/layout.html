@@ -2,10 +2,23 @@
 <html lang="en"{{if ne .Theme "system"}} data-theme="{{.Theme}}"{{end}}>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="description" content="Scry gets what's worth knowing into your head and keeps it there, for the fewest minutes a day.">
 <title>{{if .Title}}{{.Title}} · {{end}}scry</title>
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12101A" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icon-180.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="scry">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta property="og:site_name" content="scry">
+<meta property="og:title" content="{{if .Title}}{{.Title}} · {{end}}scry">
+<meta property="og:description" content="Scry gets what's worth knowing into your head and keeps it there, for the fewest minutes a day.">
+<meta property="og:image" content="{{.SiteOrigin}}/static/icon-512.png">
+<meta name="twitter:card" content="summary">
 <link rel="preload" href="/static/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/GeistMono-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/app.css">
@@ -15,16 +28,16 @@
 </head>
 <body{{if .Session}} class="in-session"{{end}}>
 <a class="skip" href="#main">Skip to content</a>
-<header class="top frame">
-  <span class="brand"><a class="wordmark" href="/" aria-label="scry, home">scry</a>{{if and .Trial (not .Bare)}}<a class="trial-chip" href="/signup/card" data-trial>{{.Trial.Label}} · <span class="trial-act">{{.Trial.Action}}</span></a>{{end}}</span>
+<header class="top frame{{if and .User (not .Bare)}} top-app{{end}}">
+  <span class="brand"><a class="wordmark" href="/" aria-label="scry, home">{{mark}}<span class="wordmark-text">scry</span></a>{{if and .Trial (not .Bare)}}<a class="trial-chip" href="/signup/card" data-trial>{{.Trial.Label}} · <span class="trial-act">{{.Trial.Action}}</span></a>{{end}}</span>
   {{if and .User (not .Bare)}}
   <nav class="nav" aria-label="Main">
-    <a href="/study"{{if eq .Nav "study"}} aria-current="page"{{end}} title="Study: recall what's due today">{{icon "cards"}}<span>Study</span></a>
-    <a href="/library"{{if eq .Nav "library"}} aria-current="page"{{end}}>{{icon "library"}}<span>Library</span></a>
-    <a href="/inbox"{{if eq .Nav "inbox"}} aria-current="page"{{end}}>{{icon "inbox"}}<span>Inbox</span>{{if .InboxCount}} <span class="count">{{.InboxCount}}</span>{{end}}</a>
-    <a href="/learn"{{if eq .Nav "learn"}} aria-current="page"{{end}} title="Create: generate cards with AI">{{icon "create"}}<span>Create</span></a>
-    <a href="/billing"{{if eq .Nav "billing"}} aria-current="page"{{end}}>{{icon "billing"}}<span>Billing</span></a>
-    <a href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>{{icon "settings"}}<span>Settings</span></a>
+    <a href="/study"{{if eq .Nav "study"}} aria-current="page"{{end}} title="Study: recall what's due today">{{icon "cards"}}<span class="nav-label">Study</span></a>
+    <a href="/library"{{if eq .Nav "library"}} aria-current="page"{{end}}>{{icon "library"}}<span class="nav-label">Library</span></a>
+    <a href="/inbox"{{if eq .Nav "inbox"}} aria-current="page"{{end}}>{{icon "inbox"}}<span class="nav-label">Inbox</span>{{if .InboxCount}} <span class="count">{{.InboxCount}}</span>{{end}}</a>
+    <a href="/learn"{{if eq .Nav "learn"}} aria-current="page"{{end}} title="Create: generate cards with AI">{{icon "create"}}<span class="nav-label">Create</span></a>
+    <a href="/billing"{{if eq .Nav "billing"}} aria-current="page"{{end}}>{{icon "billing"}}<span class="nav-label">Billing</span></a>
+    <a href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>{{icon "settings"}}<span class="nav-label">Settings</span></a>
   </nav>
   {{else if not .User}}
   <nav class="nav" aria-label="Account"><a href="/signin">Sign in</a></nav>
@@ -33,7 +46,8 @@
 <main id="main" class="frame" tabindex="-1">
 {{template "main" .}}
 </main>
-<footer class="foot frame">
+<footer class="foot frame{{if not .User}} foot-public{{end}}">
+  {{if not .User}}<p class="meta" data-public-foot>Made by Misty Step · Your library and history are yours alone: nobody else can see them.</p>{{end}}
   {{if and .User (not .Bare)}}<p class="micro keys" data-keys>g s study · g l library · g i inbox · g n create · g b billing · / search · esc leave field · tab/enter other actions</p>{{end}}
   {{if .TestMode}}<p class="meta">test mode · no real charges or model · speech is simulated</p>{{end}}
 </footer>

@@ -110,7 +110,13 @@
 
   // ---- Swap <main> from a fetched page -----------------------------------
 
-  function swap(html, url) {
+  // opts.top: this swap is the answer-submit -> review transition. Focusing
+  // the answer field below a long question scrolls the waiting page down (a
+  // phone keyboard does), and swapping <main> in place would keep that
+  // offset and clip the question off the top; the review is reframed at
+  // the top instead. Every other swap (Ask Why, Edit card, ...) keeps the
+  // learner's own scroll position.
+  function swap(html, url, opts) {
     var next = new DOMParser().parseFromString(html, "text/html");
     var main = $("main", next);
     if (!main) { location.href = url; return; }
@@ -121,8 +127,23 @@
     if (nav && here) here.innerHTML = nav.innerHTML;
     if (url && url !== location.href) history.replaceState(null, "", url);
     init();
+    if (opts && opts.top && $("[data-review]")) window.scrollTo(0, 0);
+    if (frameReview()) return;
     var focus = $("main [autofocus]");
     if (focus) focus.focus();
+  }
+
+  // The post-answer review stays framed at the question and its judgment
+  // (DESIGN.md, Post-answer review): "Next card" takes focus without
+  // scrolling, so loud Judgment type never pushes the question or the top
+  // bar out of view. The button carries no HTML autofocus (a browser
+  // without script would scroll a sentence-length review down to it); it
+  // is marked data-autofocus-no-scroll and focused only here.
+  function frameReview() {
+    var review = $("[data-review]"), next = $("[data-next][data-autofocus-no-scroll]");
+    if (!review || !next) return false;
+    next.focus({ preventScroll: true });
+    return true;
   }
 
   function post(form, extra) {
@@ -174,8 +195,14 @@
     }
     pendingG = e.key === "g" ? Date.now() : 0;
     if (e.key === "/") {
-      var search = $("[data-search]");
-      if (search) { e.preventDefault(); search.focus(); search.select(); }
+      // On phones the outline (and its search) is hidden; the collapsible
+      // idea picker holds the search instead, so open it and focus that.
+      var search = $("[data-search]"), picker = $("[data-idea-picker]");
+      if (search && search.offsetParent === null && picker && picker.offsetParent !== null) {
+        search = $("[data-picker-search]", picker);
+        if (search) picker.open = true;
+      }
+      if (search && search.offsetParent !== null) { e.preventDefault(); search.focus(); search.select(); }
     }
   });
 
@@ -356,7 +383,7 @@
         var slow = setTimeout(function () { say("checking"); }, 400);
         post(form).then(function (r) {
           clearTimeout(slow);
-          swap(r.html, r.url);
+          swap(r.html, r.url, { top: true });
         }).catch(function () {
           clearTimeout(slow);
           busy = false;
@@ -457,7 +484,7 @@
         if (note) note.hidden = !fallback;
         button.remove();
         var next = $("[data-next]");
-        if (next) next.focus();
+        if (next) next.focus({ preventScroll: true });
       };
       var why = $(".why");
       fetch(form.action, {
@@ -577,8 +604,100 @@
     }, 700);
   }
 
+  // ---- Create: example prompts -------------------------------------------
+
+  // Tapping an example fills the field (it is a plain link without script).
+  function initExamples() {
+    var input = $("#q.ask-input");
+    if (!input) return;
+    $$("[data-example]").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        input.value = a.getAttribute("data-example");
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      });
+    });
+  }
+
+  // ---- Settings: appearance applies at once ------------------------------
+
+  // Choosing a mode changes the page immediately, and saves it as well.
+  // Saves are serialized: one POST is in flight at a time, and changes made
+  // while it runs coalesce into a single follow-up carrying the latest
+  // selection, so rapid switching always persists the mode last chosen.
+  // If the learner leaves (or hides) the page while that follow-up is still
+  // waiting, it is sent at once as a keepalive request, which outlives the
+  // page, so the last choice is never lost to a quick navigation.
+  //
+  // Each choice is numbered when it is made, with no clock involved: every
+  // page load makes its own tab token and counts its choices from 1, and
+  // each choice's POST freezes { theme, tab, number }. Within one tab the
+  // server applies a save only when it is newer than that tab's stored one,
+  // so an earlier POST held up on the way and overtaken by this page's own
+  // keepalive flush cannot overwrite the later mode. Saves from other tabs,
+  // other devices (whatever their clocks) and plain Saves always apply:
+  // across tabs the last save to arrive wins.
+  var themeFlush = null;
+  function initTheme() {
+    var form = $("[data-theme-form]");
+    themeFlush = null;
+    if (!form) return;
+    var saving = false, pending = false, latest = null;
+    const tabId = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + "-" + String(Math.random()).slice(2));
+    let seq = 0;
+    // The body is built when the POST is sent, from the choice it carries.
+    function body(choice) {
+      var b = new URLSearchParams(new FormData(form));
+      b.set("theme", choice.theme);
+      b.set("theme_tab", choice.tabId);
+      b.set("theme_seq", String(choice.seq));
+      return b;
+    }
+    function saveTheme() {
+      if (saving) { pending = true; return; }
+      saving = true;
+      pending = false;
+      fetch(form.action, {
+        method: "POST", body: body(latest), credentials: "same-origin",
+        headers: { "X-Requested-With": "fetch" }
+      }).catch(function () { /* the Save button still posts the plain way */ })
+        .then(function () {
+          saving = false;
+          if (pending) saveTheme();
+        });
+    }
+    themeFlush = function () {
+      if (!pending) return;
+      pending = false; // sent once: the in-flight save's follow-up is now moot
+      try {
+        fetch(form.action, {
+          method: "POST", body: body(latest), keepalive: true, credentials: "same-origin",
+          headers: { "X-Requested-With": "fetch" }
+        }).catch(function () {});
+      } catch (err) { /* nothing else to try */ }
+    };
+    $$("input[name=theme]", form).forEach(function (radio) {
+      radio.addEventListener("change", function () {
+        if (!radio.checked) return;
+        if (radio.value === "system") doc.documentElement.removeAttribute("data-theme");
+        else doc.documentElement.setAttribute("data-theme", radio.value);
+        seq += 1;
+        latest = { theme: radio.value, tabId: tabId, seq: seq };
+        saveTheme();
+      });
+    });
+  }
+
+  window.addEventListener("pagehide", function () { if (themeFlush) themeFlush(); });
+  doc.addEventListener("visibilitychange", function () {
+    if (doc.visibilityState === "hidden" && themeFlush) themeFlush();
+  });
+
   function init() {
     initTZ();
+    initExamples();
+    initTheme();
     initShelf();
     initBusy();
     initStudy();
@@ -587,4 +706,5 @@
   }
 
   init();
+  frameReview();
 })();

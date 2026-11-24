@@ -310,7 +310,16 @@ func (s *Server) learn(w http.ResponseWriter, r *http.Request, c *rc) error {
 		}
 	}
 
-	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": r.URL.Query().Get("q"), "Error": hint})
+	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": r.URL.Query().Get("q"), "Error": hint, "Examples": learnExamples})
+}
+
+// learnExamples are Create's concrete starting points (DESIGN.md, Create):
+// a book's title, a mental model and a technical topic. Tapping one fills
+// the field; without script each is a link that opens Create with it filled.
+var learnExamples = []string{
+	"Meditations by Marcus Aurelius",
+	"Second-order thinking",
+	"How HTTPS keeps a connection private",
 }
 
 func (s *Server) learnAsk(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -318,7 +327,7 @@ func (s *Server) learnAsk(w http.ResponseWriter, r *http.Request, c *rc) error {
 	id, err := s.App.Learn(r.Context(), c.user, q)
 	var fe *app.FieldError
 	if errors.As(err, &fe) {
-		return s.render(w, r, c, http.StatusUnprocessableEntity, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": q, "Error": fe.Msg})
+		return s.render(w, r, c, http.StatusUnprocessableEntity, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": q, "Error": fe.Msg, "Examples": learnExamples})
 	}
 	if err != nil {
 		return err
