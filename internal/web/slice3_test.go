@@ -562,7 +562,10 @@ func explainWorld(t *testing.T, email string, v srs.Verdict) (*world, *browser, 
 	it, _ := b.current(b.mustGet("/study"))
 	w.model.script = []ai.Judgment{{Verdict: v, Reason: ai.CriterionSentence(v)}}
 	page := b.answer(it, "something else")
-	has(t, page, ai.CriterionSentence(v))
+	// Slice 70: the grader's criterion is stored, but the review shows its
+	// plain sentence, never the rubric wording.
+	has(t, page, ai.PlainWhy(v))
+	hasNot(t, page, ai.CriterionSentence(v))
 	if v != srs.Right {
 		has(t, page, `data-explain`, "Why?")
 	}
@@ -630,7 +633,7 @@ func TestExplain_OnDemandAfterTheVerdictNeverChangesIt(t *testing.T) {
 		if status != 200 {
 			t.Fatal(status)
 		}
-		has(t, page, "What differed: you answered “something else”", ai.CriterionSentence(v))
+		has(t, page, "What differed: you answered “something else”", ai.PlainWhy(v))
 		hasNot(t, page, "data-explain aria-controls")
 	}
 }
@@ -702,7 +705,8 @@ func TestExplain_NotOfferedOnExactTexts(t *testing.T) {
 }
 
 // Provider error, timeout, an unconfigured explainer and an exhausted
-// allowance all fall back to the fixed criterion sentence: never a 500.
+// allowance all fall back to the review's one-line why (the plain sentence
+// for the grader's criterion, Slice 70): never a 500.
 func TestExplain_FallsBackToTheCriterionSentence(t *testing.T) {
 	cases := map[string]func(w *world){
 		"error": func(w *world) { w.app.Explainer = &ai.FakeExplainer{Mode: "fail"} },
@@ -728,7 +732,7 @@ func TestExplain_FallsBackToTheCriterionSentence(t *testing.T) {
 			Fallback bool
 		}
 		_ = json.Unmarshal([]byte(body), &out)
-		if status != 200 || !out.Fallback || out.Text != ai.CriterionSentence(srs.Missed) {
+		if status != 200 || !out.Fallback || out.Text != ai.PlainWhy(srs.Missed) {
 			t.Errorf("%s: %d %s", name, status, body)
 		}
 		if time.Since(start) > 3*time.Second {

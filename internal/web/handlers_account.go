@@ -42,7 +42,7 @@ func landingSpecimen() map[string]string {
 		"Verdict":  string(srs.Right),
 		"Icon":     "verdict-right",
 		"Badge":    "Correct",
-		"Why":      ai.CriterionSentence(srs.Right),
+		"Why":      ai.PlainWhy(srs.Right),
 	}
 }
 

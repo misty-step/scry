@@ -272,7 +272,12 @@ async function run(browser, c, state) {
   });
   check(c.name + " nav: Study, Library, Inbox, Create, Billing, Settings in one row", nav.rows === 1 && nav.labels.join() === "Study,Library,Inbox,Create,Billing,Settings", nav);
   check(c.name + " nav: active underline on the label only", nav.underline === "underline" && nav.linkUnderline === "none", nav);
-  if (c.mobile) check("phone nav: one 44px row that scrolls sideways", Math.round(nav.h) === 44 && nav.scrolls === "auto", nav);
+  // Slice 70: the phone nav is one compact 52 px row holding all six
+  // destinations in view (it no longer scrolls sideways).
+  if (c.mobile) {
+    const inView = await page.evaluate(() => [...document.querySelectorAll(".nav a")].every(a => { const r = a.getBoundingClientRect(); return r.left >= 0 && r.right <= document.documentElement.clientWidth + 0.5; }));
+    check("phone nav: one compact 52px row with all six destinations in view", Math.round(nav.h) === 52 && nav.scrolls !== "auto" && inView, Object.assign({ inView }, nav));
+  }
 
   // ---- Library ---------------------------------------------------------
   const lib = await page.evaluate(() => ({ tabular: getComputedStyle(document.querySelector(".outline-num")).fontVariantNumeric, ideas: document.querySelectorAll(".pane-outline .outline-row").length }));

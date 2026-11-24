@@ -28,6 +28,10 @@ var iconPaths = map[string]string{
 	"arrow":    `<path d="M5 12h14M13 6l6 6-6 6"/>`,
 	"help":     `<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2-2.4 3.8M12 17h.01"/>`,
 	"pencil":   `<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/>`,
+	"interval": `<path d="M4 6v12M20 6v12M7.5 12h9M10 9.5L7.5 12l2.5 2.5M14 9.5l2.5 2.5-2.5 2.5"/>`,
+	"anchor":   `<circle cx="12" cy="5.5" r="2"/><path d="M12 7.5V21M8.5 11h7M4.5 13.5a7.5 7.5 0 0 0 15 0"/>`,
+	"gauge":    `<path d="M4.2 17.5a9 9 0 1 1 15.6 0"/><path d="M12 14l4.2-4.2"/><circle cx="12" cy="14" r="1.25"/>`,
+	"history":  `<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>`,
 	"calendar": `<rect x="4" y="5.5" width="16" height="14.5" rx="1.5"/><path d="M4 10h16M8 3.5v4M16 3.5v4"/>`,
 	"spinner":  `<path d="M21 12a9 9 0 1 1-9-9"/>`,
 

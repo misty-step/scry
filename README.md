@@ -282,6 +282,9 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |
 | Story: connected ideas; each item belongs to an idea; on phones the opened idea comes first with a compact collapsible outline | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea; TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline |
 | Story: every answer stops on a review that stays framed at the question and judgment | TestStory_Review_StaysFramedAtTheQuestionAndJudgment (plus the real-browser walkthrough below) |
+| Story: the review shows only the current card; an empty answer says "No answer given." and "Skipped — review the answer above." (still graded, G10); the why is in plain words, never the grader's rubric | TestSlice70_Review_ShowsTheCurrentCardOnly; TestSlice70_Review_SkipSaysNoAnswerGivenInPlainWords; TestSlice70_Review_GradedWhyIsPlainNeverTheRubric; TestG10_EmptyAnswerCallsJudgeOnce; internal/ai.TestWhy_PlainSentencesReplaceTheGraderRubric; `scripts/verify-slice70.mjs` |
+| Story: the review's schedule (event and interval on one clock, icons, verdict trail; dates in the learner's stored zone, never rewritten by a page view) | TestSlice70_Review_EventAndIntervalAgreeOnTheRunningPath; TestSlice70_Review_ScheduleIconsAndVerdictTrail; TestSlice70_NoPageViewChangesTheTimeZoneOrTheQueue; internal/web.TestSlice70_Telemetry_EventAndIntervalShareOneClock; internal/web.TestSlice70_Telemetry_TrailIsTheLastEightGradedVerdicts; internal/web.TestSlice41_Telemetry_IsFormattedFromTheStoredSchedule |
+| Story: on phones every destination is in view in one compact row and Study does not repeat itself; Next card in ink with a keyboard-only focus ring | TestSlice70_Design_InkNextCardKeyboardRingCompactNav; TestDesign_Slice54_CraftRulesHoldInTheStyleSheet; `scripts/verify-slice70.mjs` (WebKit iPhone 390x844 and Chromium 1440x900, light and dark) |
 | Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
 | Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
 | Rule: no free tier, 7-day no-card trial with a capped allowance | TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance; TestRule_CardAddedDuringTheTrialKeepsItsEnd; TestRule_NoCardTrialNeverChargesATopup; internal/app.TestSlice36_NoCardTrialExpiresAtPeriodEnd; internal/app.TestSlice36_ConcurrentReservationsCannotPassTheCapOrTheEnd; internal/app.TestSlice36_UpgradeFromTheNoCardTrial; TestSlice36_StaleCardStepConfirmsBeforeChargingAndADeclineKeepsTheTrial; TestSlice36_CardStepWithoutTermsIsNeverCharged; internal/app.TestSlice36_StaleTrialTermsNeverChargeSilently; internal/app.TestSlice36_DeclineInTheLastHourKeepsTheTrial; internal/app.TestSlice36_ConfirmedUpgradeInTheLastHour; internal/app.TestSlice36_SpeechHoldsKeepTheTrialInsideItsCap; internal/app.TestSlice36_OverageNeverStarvesAConcurrentHoldAndStopsTheTrial |
@@ -390,6 +393,29 @@ keepalive theme save in the server's request log.
     make build
     SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,close,right SCRY_DB=/tmp/s54/demo.db PORT=18095 ./bin/scry > /tmp/s54/scry.log 2>&1 &
     node scripts/verify-slice54.mjs --url http://127.0.0.1:18095 --sha "$(git rev-parse --short HEAD)" --evidence /tmp/slice54 --server-log /tmp/s54/scry.log
+
+`scripts/verify-slice70.mjs` checks the Slice 70 Study review polish with
+disposable learners (one fresh sign-up per configuration, studying the NATO
+phonetic alphabet) in Playwright's WebKit as an iPhone (390x844, touch) and in
+system Chrome at 1440x900, each in light and dark: all six destinations in one
+compact phone nav row reachable by Tab, no repeated Study title on the phone,
+a skipped answer ("No answer given.", "Skipped — review the answer above."),
+plain whys with no grader rubric, the review showing the current card only,
+"in 1 day" beside "1 day after this answer", Next card in ink focused without
+a ring after a tap/click and with one 2 px ring under keyboard navigation,
+progression to the next card, and a long review whose end clears the pinned
+Next card bar. It leaves the last review pending; `--stale`, run after the
+same database is restarted with `SCRY_TEST_CLOCK` 20 hours on, reopens it and
+checks the countdown is in hours beside the same 1-day interval. WebKit needs
+`npx playwright@1.65.1 install webkit` (and its system libraries); Playwright's
+WebKit screenshot injects an inline style that Scry's CSP refuses, so CSP
+reports raised during a screenshot are listed as "tooling", not app errors.
+
+    make build
+    SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,right,close SCRY_DB=/tmp/s70.db PORT=18071 ./bin/scry &
+    node scripts/verify-slice70.mjs --url http://127.0.0.1:18071 --label candidate --shots /tmp/s70-shots --state-dir /tmp --video
+    # stop it, then: SCRY_TEST_CLOCK=$(date -u -d '+20 hours' +%Y-%m-%dT%H:%M:%SZ) ... ./bin/scry &
+    node scripts/verify-slice70.mjs --url http://127.0.0.1:18071 --label candidate --stale --state-dir /tmp --shots /tmp/s70-shots
 
 The smoke blocks external requests, uses synthetic microphone input and test
 adapters, measures Check contrast in both modes and at desktop/phone widths,

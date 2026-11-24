@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/xml"
 	"io/fs"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -244,32 +245,100 @@ func TestSlice41_Spoiler_EveryStarterExactTextKeepsItsTitle(t *testing.T) {
 	}
 }
 
-// Slice 41, item 2: the review's facts are formatted from the stored
-// schedule and history, in the learner's own time zone.
+// Slice 41, item 2 (as refined by Slice 70): the review's facts are
+// formatted from the stored schedule and history, in the learner's own
+// time zone, with the event and the interval on one clock.
 func TestSlice41_Telemetry_IsFormattedFromTheStoredSchedule(t *testing.T) {
 	u := store.User{TZ: "America/New_York"}
 	now := time.Date(2026, 11, 22, 15, 0, 0, 0, time.UTC)
 	it := store.Item{Sched: srs.State{Stability: 3.7145, Difficulty: 5.1618, Reps: 3, Lapses: 1, Last: now, Due: now.Add(4 * 24 * time.Hour)}}
-	got := telemetry(u, it, store.ReviewCounts{Total: 3, Right: 2, Close: 0, Missed: 1, Practice: 1}, now)
-	want := telemetryView{NextDate: "Nov 26", NextRel: "in 4 days", NextISO: "2026-11-26", Interval: "4 days", Stability: "3.7 days",
-		Difficulty: "5.2 / 10", Reviews: "3 · 2 correct · 0 almost · 1 incorrect", Total: 3, Lapses: 1, Practice: 1}
-	if got != want {
+	history := []store.Review{{Verdict: srs.Right}, {Verdict: srs.Missed, Practice: true}, {Verdict: srs.Missed}, {Verdict: srs.Right}}
+	got := telemetry(u, it, store.ReviewCounts{Total: 3, Right: 2, Close: 0, Missed: 1, Practice: 1}, history, false, now)
+	want := telemetryView{NextDate: "Thu, Nov 26", NextRel: "in 4 days", NextISO: "2026-11-26T10:00:00-05:00", Interval: "4 days", After: "after this answer",
+		Stability: "3.7 days", Difficulty: "5.2 / 10", Reviews: "3 · 2 correct · 0 almost · 1 incorrect", Total: 3, Lapses: 1, Practice: 1,
+		Trail: []trailMark{{srs.Right, "Correct", "verdict-right"}, {srs.Missed, "Incorrect", "verdict-missed"}, {srs.Right, "Correct", "verdict-right"}}}
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("telemetry = %+v\nwant        %+v", got, want)
 	}
-	// A missed card comes back tomorrow, one day out.
+	// A missed card comes back one day out: "in 1 day" beside "1 day".
 	it.Sched.Due = now.Add(24 * time.Hour)
-	if got := telemetry(u, it, store.ReviewCounts{Total: 1, Missed: 1}, now); got.NextRel != "tomorrow" || got.Interval != "1 day" || got.NextDate != "Nov 23" {
+	if got := telemetry(u, it, store.ReviewCounts{Total: 1, Missed: 1}, nil, false, now); got.NextRel != "in 1 day" || got.Interval != "1 day" || got.NextDate != "Mon, Nov 23" {
 		t.Errorf("missed card: %+v", got)
 	}
 	// Across the new year the date carries its year.
 	it.Sched.Due = now.Add(60 * 24 * time.Hour)
-	if got := telemetry(u, it, store.ReviewCounts{Total: 1, Right: 1}, now); got.NextDate != "Jan 21, 2027" || got.NextRel != "in 60 days" {
+	if got := telemetry(u, it, store.ReviewCounts{Total: 1, Right: 1}, nil, false, now); got.NextDate != "Thu, Jan 21, 2027" || got.NextRel != "in 60 days" {
 		t.Errorf("next year: %+v", got)
 	}
 	for v, want := range map[srs.Verdict][2]string{srs.Right: {"Correct", "verdict-right"}, srs.Close: {"Almost Correct", "verdict-close"}, srs.Missed: {"Incorrect", "verdict-missed"}} {
 		if label, icon := verdictBadge(v); label != want[0] || icon != want[1] {
 			t.Errorf("verdictBadge(%s) = %q, %q", v, label, icon)
 		}
+	}
+}
+
+// Slice 70: the observed "Next review Nov 23 · today" beside "Interval 1
+// day". The event and the interval share one clock, so a review reopened
+// later counts down in hours while the interval stays the gap from the
+// graded answer, and "today" never sits beside "1 day".
+func TestSlice70_Telemetry_EventAndIntervalShareOneClock(t *testing.T) {
+	u := store.User{TZ: "America/Chicago"}
+	answered := time.Date(2026, 11, 22, 23, 30, 0, 0, time.UTC) // 5:30 PM in Chicago
+	it := store.Item{Sched: srs.State{Stability: 0.5, Difficulty: 7.6, Reps: 1, Last: answered, Due: answered.Add(srs.MinInterval)}}
+	cases := []struct {
+		at       time.Time
+		rel, day string
+	}{
+		{answered.Add(2 * time.Second), "in 1 day", "Mon, Nov 23"},
+		{answered.Add(3 * time.Hour), "in 21 hours", "Mon, Nov 23"},
+		{answered.Add(20 * time.Hour), "in 4 hours", "Mon, Nov 23"},
+		{answered.Add(23*time.Hour + 45*time.Minute), "in 15 minutes", "Mon, Nov 23"},
+		{answered.Add(25 * time.Hour), "due now", "Mon, Nov 23"},
+	}
+	for _, c := range cases {
+		got := telemetry(u, it, store.ReviewCounts{Total: 1, Missed: 1}, nil, false, c.at)
+		if got.NextRel != c.rel || got.Interval != "1 day" || got.After != "after this answer" || got.NextDate != c.day {
+			t.Errorf("at +%s: %q · %q, interval %q %q", c.at.Sub(answered), got.NextDate, got.NextRel, got.Interval, got.After)
+		}
+		if strings.Contains(got.NextRel, "today") {
+			t.Errorf("at +%s: %q says today beside a one-day interval", c.at.Sub(answered), got.NextRel)
+		}
+	}
+	// A practice attempt measures the interval from the last graded answer.
+	if got := telemetry(u, it, store.ReviewCounts{Total: 1, Missed: 1, Practice: 1}, nil, true, answered); got.After != "after the last graded answer" {
+		t.Errorf("practice: %+v", got)
+	}
+	// The hours are rounded first: from 21 h 30 min (22 rounded hours) a
+	// span reads in days.
+	for d, want := range map[time.Duration]string{
+		10 * time.Minute: "10 minutes", 29 * time.Minute: "29 minutes", 30 * time.Minute: "1 hour", 40 * time.Minute: "1 hour",
+		21*time.Hour + 20*time.Minute: "21 hours", 21*time.Hour + 29*time.Minute: "21 hours", 21*time.Hour + 30*time.Minute: "1 day",
+		22 * time.Hour: "1 day", 24*time.Hour - time.Second: "1 day", 36 * time.Hour: "2 days", 4 * 24 * time.Hour: "4 days",
+	} {
+		if got := spanLabel(d); got != want {
+			t.Errorf("spanLabel(%s) = %q, want %q", d, got, want)
+		}
+	}
+}
+
+// Slice 70: the trail holds at most eight graded verdicts, oldest first.
+func TestSlice70_Telemetry_TrailIsTheLastEightGradedVerdicts(t *testing.T) {
+	now := time.Date(2026, 11, 22, 15, 0, 0, 0, time.UTC)
+	it := store.Item{Sched: srs.State{Stability: 2, Difficulty: 5, Reps: 10, Last: now, Due: now.Add(48 * time.Hour)}}
+	var history []store.Review // newest first, as store.History returns it
+	for i := 0; i < 10; i++ {
+		v := srs.Right
+		if i == 0 {
+			v = srs.Close // the newest
+		}
+		if i == 9 {
+			v = srs.Missed // the oldest, beyond the eight shown
+		}
+		history = append(history, store.Review{Verdict: v})
+	}
+	got := telemetry(store.User{}, it, store.ReviewCounts{Total: 10}, history, false, now).Trail
+	if len(got) != trailLen || got[len(got)-1].Verdict != srs.Close || got[0].Verdict != srs.Right {
+		t.Errorf("trail = %+v", got)
 	}
 }
 

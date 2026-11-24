@@ -108,6 +108,26 @@
     return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
   };
 
+  // ---- Focus ring: for the keyboard only --------------------------------
+
+  // DESIGN.md (Color): the 2 px accent ring shows while the learner moves
+  // by keyboard (Tab, arrows, Enter or Space on a control). A control Scry
+  // focuses by script after a tap, a click or typing in a field ("Next
+  // card" when a review opens) shows no ring: on iPhone a tapped button
+  // never takes focus, so the browser's own :focus-visible carried the text
+  // field's keyboard state over to Next card and drew a ring around its
+  // fill. Without script, the browser's :focus-visible rule applies.
+  var root = doc.documentElement;
+  root.classList.add("js-focus");
+  var navKeys = { Tab: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Enter: 1, " ": 1 };
+  doc.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey || !navKeys[e.key]) return;
+    if (e.key === "Tab" || !typing(e.target)) root.classList.add("kbd-nav");
+  }, true);
+  ["pointerdown", "mousedown", "touchstart"].forEach(function (ev) {
+    doc.addEventListener(ev, function () { root.classList.remove("kbd-nav"); }, { capture: true, passive: true });
+  });
+
   // ---- Swap <main> from a fetched page -----------------------------------
 
   // opts.top: this swap is the answer-submit -> review transition. Focusing

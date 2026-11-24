@@ -39,12 +39,13 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	}
 
 	// The Study Specimen: one real review moment, a real starter card judged
-	// with the grader's own criterion sentence and its schedule.
+	// with the plain sentence for the grader's criterion (Slice 70: never
+	// the rubric wording) and its schedule.
 	spec := home[strings.Index(home, `<figure class="specimen"`):]
 	spec = spec[:strings.Index(spec, "</figure>")]
 	q := "Which razor says never to attribute to malice what is adequately explained by carelessness or stupidity?"
 	has(t, spec, q, "Your answer", "hanlons razor", "Correct answer", "Hanlon's razor",
-		`verdict-badge verdict-right`, ">Correct</span>", ai.CriterionSentence(srs.Right), "Next review", "Interval", "Stability", "Difficulty")
+		`verdict-badge verdict-right`, ">Correct</span>", ai.PlainWhy(srs.Right), "Next review", "Interval", "Stability", "Difficulty")
 	real := false
 	for _, set := range starter.All() {
 		for _, idea := range set.Ideas {
@@ -295,8 +296,9 @@ func TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized(t *test
 
 // DESIGN.md: inputs keep a line hairline at rest; hover fills only on
 // hover-capable pointers; the active nav underlines its label only; the
-// study margin is 196 px and top-aligned; phones get a 56 px brand row, a
-// 44 px single-row scrolling navigation and safe-area clearance.
+// study margin is 196 px and top-aligned; phones get a 56 px brand row, one
+// compact navigation row (Slice 70: all six destinations, no scrolling) and
+// safe-area clearance.
 func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 	w := newWorld(t)
 	css, _ := staticAsset(t, w, "/static/app.css")
@@ -305,7 +307,7 @@ func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 	has(t, css, "overflow: hidden;\n  border-bottom: 1px solid var(--ink-ghost);")
 	has(t, css,
 		"border: 1px solid var(--line); border-radius: var(--radius-control);",
-		".input:focus { border-color: var(--ink); }",
+		".input:focus { border-color: var(--ink);",
 		"@media (hover: hover) {",
 		".nav a[aria-current] .nav-label { text-decoration: underline;",
 		"grid-template-columns: 196px minmax(0, 1fr); align-items: start;",
@@ -329,8 +331,10 @@ func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 	}
 	phone := css[strings.Index(css, "@media (max-width: 760px)"):]
 	phone = phone[:strings.Index(phone, "\n}\n")]
-	has(t, phone, "min-height: 56px;", ".top-app .nav {", "flex-wrap: nowrap; height: var(--touch);", "overflow-x: auto;",
-		"calc(var(--s3) + env(safe-area-inset-bottom, 0px))", "calc(96px + env(safe-area-inset-bottom, 0px))",
+	// Slice 70: signed in, one compact 52 px row holds all six destinations
+	// (no sideways scroll), and the session clears the pinned bar.
+	has(t, phone, "min-height: 56px;", ".top-app .nav {", "grid-template-columns: repeat(6, minmax(0, 1fr));", "height: 52px;",
+		"calc(var(--s3) + env(safe-area-inset-bottom, 0px))", "body.in-session { padding-bottom: calc(var(--touch) + 2 * var(--s3) + 1px + var(--s4) + env(safe-area-inset-bottom, 0px)); }",
 		".ask-input { font-size: min(var(--display), 6.4vw); }")
 	page := w.browser().mustGet("/")
 	has(t, page, `content="width=device-width, initial-scale=1, viewport-fit=cover"`)
