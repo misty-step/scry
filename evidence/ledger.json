@@ -7,27 +7,29 @@
     "DESIGN.md",
     "NOTES.md"
   ],
-  "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-  "verifiedAt": "2026-11-24T13:16:13Z",
-  "criticVerdict": "PENDING_COLD_CRITIC",
+  "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+  "verifiedAt": "2026-11-24T13:25:37Z",
+  "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
   "evidenceRoot": "Cold Critic evidence bundle (media/ collected from ~/chief-evidence/media)",
   "realPath": {
-    "build": "make build BUILD_SHA=e4128884a5cf047628be7298dbc6d691cfc3ba4d (bin/scry); go build ./... exit 0; go vet ./... exit 0; TMPDIR=/dev/shm go test -count=1 ./... exit 0 (every package ok)",
-    "slice75": "node scripts/verify-slice75-strugglometer.mjs --bin ./bin/scry --label final --traces DIR: its own SCRY_MODE=test server per config on a fresh SQLite file, minimal environment (no keys), WebKit iPhone 390x844 touch and system Chrome 1440x900, light and dark; 462/462 PASS, 0 console/page/request/5xx/CSP problems, CSP enforced in every config; exit 0. Media run (--shots --video) 460/460 PASS (WebKit captured with bypassCSP, so its CSP is judged by the run without --shots) and wrote both walkthrough videos; exit 0. healthz build_sha e4128884a5cf in every config.",
-    "slice75Edges": "node scripts/verify-slice75-edges.mjs --bin ./bin/scry --shots DIR: 13/13 PASS, exit 0. SCRY_TEST_BRIDGES=fail shows the failure sentence and stores no item_bridges row; an exact text with 3 lapses gets no cue and a crafted draft POST is refused; Remove renumbers in place and the last card cannot be removed; trashing the held idea pauses the hold, a stale Release hold POST while trashed leaves all 3 rows active, Restore brings back \"Held by 3 bridges\", Release hold ends all rows as released and keeps the 3 bridge cards.",
-    "inboxPurpose": "node scripts/verify-inbox-purpose.mjs --bin ./bin/scry --shots DIR: 9/9 PASS, exit 0 (desktop 1440x900 and phone 390x844, empty and with 2 suggestions). On the unfixed 25e9611 build the desktop empty Inbox put the purpose line beside the title (purposeTop 146 < titleBottom 172.8, purposeLeft 534.7 vs titleLeft 184): 8/9, exit 1. Fixed in e412888 (.list-purpose max-width: none).",
-    "slice54": "SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=missed,close,right PORT=18095 ./bin/scry on a fresh temp database (env -i; healthz 200 status ok, database ok, build_sha e4128884a5cf, mode test); node scripts/verify-slice54.mjs --url http://127.0.0.1:18095 --sha e4128884a5cf047628be7298dbc6d691cfc3ba4d --evidence DIR --server-log LOG: 128/128 PASS, exit 0; server stopped afterwards.",
-    "media": "59 files in ~/chief-evidence/media (under 25 MiB and 64 files). Every localPath below names a delivered file. Sign-up is off camera in every video (the Slice 75 videos start in a second context reusing the session).",
-    "notCovered": "Live model drafting of bridges (ai.Claude / OpenRouter) was not exercised: it spends money, and test mode always uses the fixture (by design). Clerk-hosted pages (no Clerk keys here) stay harness-only, as before."
+    "build": "make build BUILD_SHA=43a0bbee6de316f04e539214d1e73effc44f4426; go build ./..., go vet ./..., and go test -count=1 ./... (tmpfs): exit 0.",
+    "slice75": "Independent Cold Critic run against 43a0bbee6de316f04e539214d1e73effc44f4426: 466/466 Playwright checks, Chromium desktop / WebKit iPhone, light and dark, enforced CSP and zero browser/CSP/5xx errors; 233/233 in light media runs with two videos (WebKit screenshot tooling bypasses CSP only in that media run).",
+    "slice75Edges": "13/13 on the final test-mode binary. Separate two-learner probe verified both card pages return 404 for the non-owner and removing one bridge marks it removed, preserves the other holds and does not write the parent item.",
+    "inboxPurpose": "9/9 on the final binary; independent origin/master run failed the desktop-empty geometry check (8/9).",
+    "slice54": "Fresh keyless SCRY_MODE=test with demo fixture and scripted judgments; /healthz returned the verified SHA and database ok. Final Playwright run passed 128/128. Initial run timed out at the phone two-theme-save check (116/117), not repeated.",
+    "media": "60 files under ~/chief-evidence/media. All ledger artifact paths resolve. Six decoded and inspected WebMs; main Slice 75 videos and affected stills recaptured independently.",
+    "notCovered": "No paid provider calls; production parser and adapter exercised locally with synthetic replies, browser uses the built-in fixture. The two Clerk-hosted entries remain harness-only; OS install and hardware notch not exercised.",
+    "slice70": "104/104 Playwright Study regression checks on the final build, plus 12/12 stale review checks after a +20 hour test clock restart.",
+    "coldCritic": "Fixed missing parent name/link on an Incorrect bridge review. Regression check fails against d148b08 and passes in all four final configs. See verdict.md and media/s75-and-inbox-checks.log.txt."
   },
   "entries": [
     {
       "requirementId": "PRODUCT.newcomer-glance-specimen-homescreen",
       "source": "PRODUCT.md :: User stories (newcomer)",
       "intent": "Understand at a glance that Scry is an AI-judged active-recall instrument, see one real judged card on the landing page, add Scry to the home screen to launch into daily recall.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen",
@@ -60,9 +62,9 @@
       "requirementId": "PRODUCT.forgot-password-two-step",
       "source": "PRODUCT.md :: User stories (forgot password); DESIGN.md :: Sign-up and trial",
       "intent": "Enter email on Sign in, choose \"Forgot password\" on the password step, reset by email.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": false,
       "tests": [
         "TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep",
@@ -72,7 +74,7 @@
       "walkthroughChecks": [],
       "evidence": [
         {
-          "localPath": "media/walkthrough-checks.log.txt",
+          "localPath": "media/clerk-harness-checks.log.txt",
           "mediaType": "text/plain"
         }
       ],
@@ -82,9 +84,9 @@
       "requirementId": "PRODUCT.create-starter-examples",
       "source": "PRODUCT.md :: User stories (Study vs Create); DESIGN.md :: Create",
       "intent": "Tap a concrete starter topic or book example under the field; the draft outline does not repeat the idea on every row; the field scales on phones.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestStory_Create_TapAStarterExampleUnderTheField",
@@ -115,9 +117,9 @@
       "requirementId": "PRODUCT.review-stays-framed",
       "source": "PRODUCT.md :: User stories (post-answer review); DESIGN.md :: Post-answer review",
       "intent": "The review stays framed at the question and judgment (Next card focused with preventScroll); Ask Why? explanation set off by a 2 px line rule.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestStory_Review_StaysFramedAtTheQuestionAndJudgment",
@@ -175,9 +177,9 @@
       "requirementId": "PRODUCT.library-phone-idea-first",
       "source": "PRODUCT.md :: User stories (ideas); DESIGN.md :: Library and concept links",
       "intent": "On phones the opened idea and its cards come first, with a compact collapsible idea picker; tabular outline numbers.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline"
@@ -209,9 +211,9 @@
       "requirementId": "DESIGN.brand-mark-and-wordmark",
       "source": "DESIGN.md :: Brand mark and wordmark",
       "intent": "Scrying-lens mark (24 px grid, 1.75 stroke, accent focal r 2.25) 20 px beside 'scry' with an 8 px gap; adaptive vector icon and dark-ground app icon.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestDesign_BrandMarkBesideTheWordmark",
@@ -236,9 +238,9 @@
       "requirementId": "DESIGN.landing",
       "source": "DESIGN.md :: Landing",
       "intent": "Two-column hero (1.15fr/1fr), lede naming active recall and spaced repetition, one accent action beside a quiet Sign in, trial terms, Study Specimen on the dot grid, four ruled rows, quiet public footer.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen",
@@ -270,9 +272,9 @@
       "requirementId": "DESIGN.controls-inputs-hover",
       "source": "DESIGN.md :: Color (controls)",
       "intent": "Inputs carry a 1 px line hairline at rest (ink on focus); hover fills only on hover-capable pointers.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestDesign_Slice54_CraftRulesHoldInTheStyleSheet"
@@ -296,9 +298,9 @@
       "requirementId": "DESIGN.signup-trial-clerk",
       "source": "DESIGN.md :: Sign-up and trial",
       "intent": "Both sign-up pages keep '7-day trial · no card needed' above the heading; Clerk panels inherit Scry tokens with no shadows or gradients.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": false,
       "tests": [
         "TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep",
@@ -308,7 +310,7 @@
       "walkthroughChecks": [],
       "evidence": [
         {
-          "localPath": "media/walkthrough-checks.log.txt",
+          "localPath": "media/clerk-harness-checks.log.txt",
           "mediaType": "text/plain"
         }
       ],
@@ -318,9 +320,9 @@
       "requirementId": "DESIGN.study-session-margin",
       "source": "DESIGN.md :: Study session",
       "intent": "196 px left margin, top-aligned with the prompt/review flow; the waiting screen fits 1440x900 without vertical scroll.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestDesign_Slice54_CraftRulesHoldInTheStyleSheet"
@@ -355,9 +357,9 @@
       "requirementId": "DESIGN.navigation-underline",
       "source": "DESIGN.md :: Every destination says what it is for",
       "intent": "Active navigation underlines the label only, never under the Inbox count.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestSlice41_Nav_StudyAndCreateAreUnmistakable",
@@ -381,9 +383,9 @@
       "requirementId": "DESIGN.inbox-purpose",
       "source": "DESIGN.md :: Inbox",
       "intent": "The purpose line is always on its own row beneath the title, including when empty.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestDesign_InboxPurposeLineOnItsOwnRowEvenWhenEmpty"
@@ -423,9 +425,9 @@
       "requirementId": "DESIGN.settings",
       "source": "DESIGN.md :: Settings",
       "intent": "Selecting a mode applies immediately as well as saving; saves are serialized and the last choice survives leaving the page at once; within one tab an older save never overwrites a newer one, while other already-open tabs, other devices and no-JS saves always apply (last writer wins); section buttons are content-sized on desktop.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized",
@@ -484,9 +486,9 @@
       "requirementId": "DESIGN.phones-and-safe-area",
       "source": "DESIGN.md :: Phones; Starter shelf",
       "intent": "Signed-out header one 56 px row; signed-in brand row over a single-row 44 px scrolling nav; compact study spacing; safe-area clearance for the study controls and the shelf bar; nothing scrolls sideways at 390 px.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "TestDesign_Slice54_CraftRulesHoldInTheStyleSheet"
@@ -524,9 +526,9 @@
       "requirementId": "PRODUCT.repeated-miss-bridge-cards",
       "source": "PRODUCT.md :: User stories (learner who keeps missing a card)",
       "intent": "A card with 3+ lapses or whose latest two graded answers were Incorrect says \"Repeated miss — scaffold prerequisite bridges?\" in its post-answer review, on its page and in its deck list (never while waiting); Build bridge cards drafts 2–3 editable prerequisite cards; \"Add bridges & hold parent\" holds the card out of every due queue until each bridge is answered Correct or Almost Correct once, then it returns on its own schedule; Incorrect keeps the hold; Release hold; removing a bridge ends it; Trash pauses the hold; exact texts are not offered; spoiler bridges are dropped; test mode uses a fixed fixture.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "internal/app.TestSlice75_Detection_Boundaries",
@@ -549,7 +551,9 @@
         "exact text with 3 lapses: no cue, no Build",
         "stale Release hold while trashed: rows unchanged (3 active)",
         "restored from Trash: hold restored (Held by 3 bridges)",
-        "automatic reentry: the next session opens on B"
+        "automatic reentry: the next session opens on B",
+        "separate learner cannot view either owner card",
+        "removing one bridge ends that bridge only, without changing the parent row"
       ],
       "evidence": [
         {
@@ -599,9 +603,9 @@
       "requirementId": "DESIGN.bridge-card-icons",
       "source": "DESIGN.md :: Icons (Bridge cards)",
       "intent": "Bridge (deck on two piers over an arch) for Repeated miss and Build bridge cards, pause-in-circle for Held by N bridges, play-in-circle for Release hold, a cross for Remove; 16 px beside their words, in the words' color.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "internal/web.TestSlice75_Web_* (6 tests)"
@@ -632,9 +636,9 @@
       "requirementId": "DESIGN.struggling-cards-cue",
       "source": "DESIGN.md :: Struggling cards and bridge cards",
       "intent": "One calm line in a hairline panel (no fill, no shadow) with a bordered mono \"Build bridge cards\"; only once the answer is in (post-answer review, card page, deck rows as a Meta line); on phones at least 366 px wide at 390 px; Build reads \"building\" and is disabled; Back restores the button.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "internal/web.TestSlice75_Web_* (6 tests)"
@@ -671,9 +675,9 @@
       "requirementId": "DESIGN.bridge-preview",
       "source": "DESIGN.md :: Struggling cards and bridge cards (Preview)",
       "intent": "\"Build bridge cards\" title, \"Leads up to\" the card's question (never its answer) under a 2 px rule; each bridge a hairline card with \"Bridge N\" and a quiet Remove; Remove renumbers in place; the last card cannot be removed; one accent \"Add bridges & hold parent\", quiet Cancel and a Meta note; failure states in words.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "internal/web.TestSlice75_Web_* (6 tests)"
@@ -715,9 +719,9 @@
       "requirementId": "DESIGN.bridge-held",
       "source": "DESIGN.md :: Struggling cards and bridge cards (Held)",
       "intent": "\"Held by N bridges\" with a Meta line, bridge links and a bordered Release hold; deck rows say \"Held by N bridges\" and \"held\"; the card page says \"held · in N days on its own schedule\"; bridge pages say \"Bridge card · leads up to …\"; \"Bridge cleared · …\" lines; a 400-character unbroken bridge question wraps in every surface.",
-      "verifiedSha": "e4128884a5cf047628be7298dbc6d691cfc3ba4d",
-      "verifiedAt": "2026-11-24T13:16:13Z",
-      "criticVerdict": "PENDING_COLD_CRITIC",
+      "verifiedSha": "43a0bbee6de316f04e539214d1e73effc44f4426",
+      "verifiedAt": "2026-11-24T13:25:37Z",
+      "criticVerdict": "PASS_WITH_MINOR_FINDINGS",
       "realPathVerified": true,
       "tests": [
         "internal/web.TestSlice75_Web_* (6 tests)"
@@ -728,7 +732,8 @@
         "held card page with a 400-character bridge: nothing runs past its panel or the viewport",
         "deck list says \"held\" for A, not \"due today\"",
         "bridge Correct: B held by 1, the review says one bridge still holds it",
-        "Release hold: A no longer held, flash says so, schedule untouched"
+        "Release hold: A no longer held, flash says so, schedule untouched",
+        "bridge Incorrect review names and links to its parent"
       ],
       "evidence": [
         {
@@ -766,8 +771,16 @@
         {
           "localPath": "media/s75-and-inbox-checks.log.txt",
           "mediaType": "text/plain"
+        },
+        {
+          "localPath": "media/s75-final-iphone-light-bridge-incorrect-still-held.png",
+          "mediaType": "image/png"
         }
       ]
     }
-  ]
+  ],
+  "criticEvidence": {
+    "localPath": "verdict.md",
+    "mediaType": "text/markdown"
+  }
 }
