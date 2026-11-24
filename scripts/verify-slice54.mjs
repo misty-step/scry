@@ -123,13 +123,13 @@ async function settle(page) {
   await page.waitForTimeout(250);
 }
 
-async function shot(page, name, full) {
+async function shot(page, name) {
   if (!opt.evidence) return;
   await settle(page);
   const file = path.join(opt.evidence, name);
   // CSS-pixel scale: the phone's 2x device pixels would double every side
   // of the picture (four times the bytes) without showing anything more.
-  await page.screenshot({ path: file, fullPage: !!full, scale: "css" });
+  await page.screenshot({ path: file, scale: "css" });
   summary.screenshots.push(path.basename(file));
 }
 
@@ -478,7 +478,8 @@ async function run(browser, c, state) {
   const persisted = await page.evaluate(() => ({ checked: document.querySelector("input[name=theme]:checked")?.value, attr: document.documentElement.getAttribute("data-theme") }));
   check(c.name + " settings: latest mode persisted after reload", persisted.checked === "dark" && persisted.attr === "dark", persisted);
   await common(page, c, "settings");
-  if (!c.mobile) await shot(page, "desktop-settings-dark.png", true);
+  // Capture Appearance, not the offscreen account identifier.
+  if (!c.mobile) await shot(page, "desktop-settings-dark.png");
 
   // Leaving at once: start from "Follow my system", select Dark and hold its
   // response after the server has stored it, select Light (applied at once,
