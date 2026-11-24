@@ -361,6 +361,16 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 		if err == nil {
 			history, _ := c.us.History(ctx, shown.Item.ID)
 			data["Telemetry"] = telemetry(c.user, shown.Item, counts, history, pendingReview.Practice, s.App.Now())
+			// The Strugglometer (Slice 75): a card missed again and again is
+			// offered bridge cards here, after its answer is in (never while
+			// it waits); a held or bridge card says so.
+			if bs, err := c.us.BridgeState(ctx, shown.Item.ID); err == nil {
+				if it, err := c.us.Item(ctx, shown.Item.ID); err == nil {
+					bv := bridgeView{Struggle: app.StruggleOf(it, history, bs), ItemID: it.ID, CSRF: c.sess.CSRF, From: "study"}
+					bv.Cleared = clearedLine(ctx, c, *pendingReview)
+					data["Bridge"] = bv
+				}
+			}
 		}
 		data["Last"] = remaining == 0
 		data["EditPrompt"], data["EditAnswer"] = shown.Item.Prompt, shown.Item.Answer

@@ -152,6 +152,11 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.Handle("GET /library/items/{id}", s.member(s.itemPage))
 	mux.Handle("POST /library/items/{id}", s.member(s.itemSave))
 	mux.Handle("POST /library/items/{id}/remove", s.member(s.itemRemove))
+	// Slice 75: bridge cards for a struggling card, and the hold they make.
+	mux.Handle("POST /library/items/{id}/bridges/draft", s.member(s.bridgesDraft))
+	mux.Handle("POST /library/items/{id}/bridges/preview", s.member(s.bridgesPreview))
+	mux.Handle("POST /library/items/{id}/bridges", s.member(s.bridgesAccept))
+	mux.Handle("POST /library/items/{id}/bridges/release", s.member(s.bridgesRelease))
 	mux.Handle("GET /library/texts/new", s.member(s.textForm))
 	mux.Handle("POST /library/texts", s.member(s.textSave))
 

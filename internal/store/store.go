@@ -91,6 +91,9 @@ func (s *Store) migrateAdded() error {
 		// Slice 36 pass 3: the durable claim on a learner's card step.
 		subscriptionAttemptsSchema,
 		subscriptionAttemptsIndex,
+		// Slice 75: bridge cards and the holds they put on a parent card.
+		bridgesSchema,
+		bridgesIndex,
 	} {
 		if _, err := s.db.Exec(q); err != nil {
 			return err
@@ -283,7 +286,7 @@ func LatestSnapshot(dir string) (string, time.Time) {
 // userTables lists every table holding learner-owned rows, parents first.
 // Export, per-user restore and the privacy tests all walk this list.
 var userTables = []string{
-	"subscriptions", "subscription_attempts", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items",
+	"subscriptions", "subscription_attempts", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items", "item_bridges",
 	"study_sessions", "session_items", "reviews", "drafts", "suggestions", "agent_tokens",
 }
 

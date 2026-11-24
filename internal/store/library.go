@@ -255,18 +255,19 @@ func (u *UserStore) Search(ctx context.Context, q string) ([]Item, error) {
 }
 
 // Counts reports how many items the library holds and how many are due
-// before the given moment.
+// before the given moment (a card held by bridges is not due).
 func (u *UserStore) Counts(ctx context.Context, dueBefore time.Time) (items, due int, err error) {
 	err = u.s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*), COALESCE(SUM(due_at < ?), 0) FROM items WHERE user_id = ? AND deleted_at = 0`,
+		SELECT COUNT(*), COALESCE(SUM(t.due_at < ? AND`+notHeld+`), 0) FROM items t WHERE t.user_id = ? AND t.deleted_at = 0`,
 		ts(dueBefore), u.uid).Scan(&items, &due)
 	return
 }
 
-// NextDue is when the next item falls due, or zero if the library is empty.
+// NextDue is when the next item falls due, or zero if the library is
+// empty. A card held by bridges is not counted until its hold ends.
 func (u *UserStore) NextDue(ctx context.Context) (time.Time, error) {
 	var v sql.NullInt64
-	err := u.s.db.QueryRowContext(ctx, `SELECT MIN(due_at) FROM items WHERE user_id = ? AND deleted_at = 0`, u.uid).Scan(&v)
+	err := u.s.db.QueryRowContext(ctx, `SELECT MIN(t.due_at) FROM items t WHERE t.user_id = ? AND t.deleted_at = 0 AND`+notHeld, u.uid).Scan(&v)
 	return tm(v.Int64), err
 }
 
@@ -416,10 +417,18 @@ func (u *UserStore) UpdateItem(ctx context.Context, id int64, prompt, answer str
 }
 
 // RemoveItem takes an item out of the library. It can be restored until
-// the sweep purges it.
+// the sweep purges it. Removing a bridge card ends its bridge (the parent
+// is released once no active bridge is left); removing a held parent ends
+// its hold. Either way the end is recorded as "removed", in the same
+// transaction.
 func (u *UserStore) RemoveItem(ctx context.Context, id int64, now time.Time) error {
-	return one(u.s.db.ExecContext(ctx,
-		`UPDATE items SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at = 0`, ts(now), id, u.uid))
+	return u.tx(ctx, func(tx *sql.Tx) error {
+		if err := one(tx.ExecContext(ctx,
+			`UPDATE items SET deleted_at = ? WHERE id = ? AND user_id = ? AND deleted_at = 0`, ts(now), id, u.uid)); err != nil {
+			return err
+		}
+		return u.endBridgesOf(ctx, tx, id, now)
+	})
 }
 
 // RemoveIdea takes an idea, the ideas inside it and all their items out of

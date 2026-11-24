@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"html/template"
 	"net/http"
@@ -13,17 +14,28 @@ import (
 )
 
 type itemRow struct {
-	Item   store.Item
-	Due    string
-	Prompt template.HTML
-	Answer template.HTML
+	Item     store.Item
+	Due      string
+	Prompt   template.HTML
+	Answer   template.HTML
+	Struggle app.Struggle // the Strugglometer's cue, hold or bridge note
 }
 
-func (s *Server) itemRows(c *rc, items []store.Item, words []string) []itemRow {
+func (s *Server) itemRows(ctx context.Context, c *rc, items []store.Item, words []string) []itemRow {
+	// A deck list without its cues is still a deck list: a failure to read
+	// them is logged and the rows are shown plain.
+	st, err := s.App.Struggles(ctx, c.user, items)
+	if err != nil {
+		s.Log.ErrorContext(ctx, "struggle cues unavailable", "err", err, "user", c.user.ID)
+	}
 	rows := make([]itemRow, 0, len(items))
 	for _, it := range items {
-		rows = append(rows, itemRow{Item: it, Due: dueLabel(c.user, it, s.App.Now()),
-			Prompt: markParts(it.Prompt, words), Answer: markParts(it.Answer, words)})
+		row := itemRow{Item: it, Due: dueLabel(c.user, it, s.App.Now()),
+			Prompt: markParts(it.Prompt, words), Answer: markParts(it.Answer, words), Struggle: st[it.ID]}
+		if row.Struggle.HeldBy > 0 {
+			row.Due = "held"
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }
@@ -33,6 +45,10 @@ var libraryFlash = map[string]string{
 	"saved":    "Saved.",
 	"added":    "Added.",
 	"approved": "Approved. It's in your library.",
+	// Slice 75: bridge cards.
+	"held":      "Bridges added. This card is held until each bridge is answered Correct or Almost Correct once.",
+	"released":  "Hold released. The card is due again on its own schedule; its bridges stay in your library.",
+	"nobridges": "This card isn't offered bridge cards right now.",
 }
 
 func (s *Server) library(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -50,7 +66,7 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, c *rc) error {
 		if err != nil {
 			return err
 		}
-		data["Query"], data["Results"] = q, s.itemRows(c, items, strings.Fields(q))
+		data["Query"], data["Results"] = q, s.itemRows(ctx, c, items, strings.Fields(q))
 		data["Title"] = "Search: " + q
 		return s.render(w, r, c, http.StatusOK, "library.html", data)
 	}
@@ -80,7 +96,7 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if err != nil {
 		return err
 	}
-	data["Title"], data["Idea"], data["Related"], data["Items"] = idea.Title, idea, related, s.itemRows(c, items, nil)
+	data["Title"], data["Idea"], data["Related"], data["Items"] = idea.Title, idea, related, s.itemRows(ctx, c, items, nil)
 	data["OpenParent"] = idea.ParentID
 	return s.render(w, r, c, http.StatusOK, "library.html", data)
 }
@@ -132,9 +148,19 @@ func (s *Server) itemPage(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if err != nil {
 		return err
 	}
+	bs, err := c.us.BridgeState(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	st := app.StruggleOf(it, history, bs)
+	due := dueLabel(c.user, it, s.App.Now())
+	if st.HeldBy > 0 {
+		due = "held · " + due + " on its own schedule"
+	}
 	return s.render(w, r, c, http.StatusOK, "item.html", map[string]any{
-		"Title": "Item", "Nav": "library", "Item": it, "Due": dueLabel(c.user, it, s.App.Now()), "History": history,
-		"Flash": libraryFlash[r.URL.Query().Get("ok")], "Error": map[string]string{"needboth": "An item needs both a question and an answer."}[r.URL.Query().Get("err")],
+		"Title": "Item", "Nav": "library", "Item": it, "Due": due, "History": history,
+		"Bridge": s.bridgeViewFor(r, c, it, st, "item"),
+		"Flash":  libraryFlash[r.URL.Query().Get("ok")], "Error": map[string]string{"needboth": "An item needs both a question and an answer."}[r.URL.Query().Get("err")],
 	})
 }
 

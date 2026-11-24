@@ -54,3 +54,36 @@
   <p class="micro row-keys" aria-hidden="true">A approve · D dismiss</p>
 </li>
 {{end}}
+
+{{/* The Strugglometer (Slice 75): the cue and "Build bridge cards" beside a
+     struggling card, "Held by N bridges" and "Release hold" on a held one,
+     and a note on a bridge card. Given a bridgeView. */}}
+{{define "struggle"}}
+{{if .Struggle.Offer}}
+<div class="struggle" data-struggle>
+  <p class="struggle-line" data-struggle-cue>{{icon "bridge"}}<span>Repeated miss — scaffold prerequisite bridges?</span></p>
+  <form method="post" action="/library/items/{{.ItemID}}/bridges/draft" class="struggle-form" data-bridge-build>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="from" value="{{.From}}">
+    <button class="btn struggle-btn" data-build-bridges>{{icon "bridge"}}<span data-build-label>Build bridge cards</span></button>
+  </form>
+</div>
+{{else if .Struggle.HeldBy}}
+<div class="struggle is-held" data-hold data-held-by="{{.Struggle.HeldBy}}">
+  <p class="struggle-line" data-hold-line>{{icon "hold"}}<span>Held by {{plural .Struggle.HeldBy "bridge" "bridges"}}</span></p>
+  <p class="meta struggle-note">Out of your reviews until each bridge is answered Correct or Almost Correct once. Its own schedule does not change.</p>
+  {{if .Bridges}}<ol class="bridge-links" aria-label="Bridges holding this card">{{range .Bridges}}<li><a class="link quiet" href="/library/items/{{.ID}}" data-bridge-link>{{.Prompt}}</a></li>{{end}}</ol>{{end}}
+  <form method="post" action="/library/items/{{.ItemID}}/bridges/release" class="struggle-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="from" value="{{.From}}">
+    <button class="btn struggle-btn" data-release-hold>{{icon "release"}}Release hold</button>
+  </form>
+</div>
+{{else if .Struggle.BridgeFor}}
+<p class="struggle-line bridge-note meta" data-bridge-note>{{icon "bridge"}}<span>Bridge card{{if .Parent}} · leads up to <a class="link quiet" href="/library/items/{{.Parent.ID}}">{{.Parent.Prompt}}</a>{{end}}. The card it leads to stays held until this is answered Correct or Almost Correct.</span></p>
+{{end}}
+{{if .Cleared}}<p class="struggle-line bridge-note meta" data-bridge-cleared role="status">{{icon "check"}}<span>{{.Cleared}}</span></p>{{end}}
+{{end}}
+
+{{/* A deck row's Strugglometer line: the cue, the hold, or "Bridge card". */}}
+{{define "rowcue"}}{{if .Offer}}<span class="row-cue meta" data-row-cue>{{icon "bridge"}}<span>Repeated miss — scaffold prerequisite bridges?</span></span>{{else if .HeldBy}}<span class="row-cue meta" data-row-hold>{{icon "hold"}}<span>Held by {{plural .HeldBy "bridge" "bridges"}}</span></span>{{else if .BridgeFor}}<span class="row-cue meta" data-row-bridge>{{icon "bridge"}}<span>Bridge card</span></span>{{end}}{{end}}

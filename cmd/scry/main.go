@@ -286,6 +286,9 @@ func build(log *slog.Logger) (*app.App, error) {
 		a.Model = model
 		// SCRY_TEST_EXPLAIN=fail or slow exercises the explanation fallback.
 		a.Explainer = &ai.FakeExplainer{Mode: env("SCRY_TEST_EXPLAIN", "")}
+		// Bridge cards in test mode are a deterministic fixture with no
+		// network call; SCRY_TEST_BRIDGES=fail exercises the error state.
+		a.Bridger = &ai.FakeBridger{Mode: env("SCRY_TEST_BRIDGES", "")}
 		a.Speech = speech.Fake{Phrase: env("SCRY_TEST_SPEECH", "")}
 		if aiMode == "live" {
 			// Explicitly asked for: all four real AI adapters on a test build.
@@ -295,7 +298,7 @@ func build(log *slog.Logger) (*app.App, error) {
 				return nil, bootProblems("SCRY_AI_MODE=live needs", aiMissing, "", invalid)
 			}
 			a.Model = ai.Split{JudgeProvider: judge, DraftProvider: claude}
-			a.Explainer, a.Speech = claude, ear
+			a.Explainer, a.Bridger, a.Speech = claude, claude, ear
 			log.Warn("test mode is calling real AI providers (SCRY_AI_MODE=live)", "model", a.Model.Name(), "speech", ear.Name())
 		} else if judgeMode == "live" {
 			// Explicitly asked for: grade with real Jev, keep drafting fake.
@@ -325,7 +328,9 @@ func build(log *slog.Logger) (*app.App, error) {
 		judge, claude, ear, aiMissing, invalid := realAI(log)
 		missing = append(missing, aiMissing...)
 		a.Model = ai.Split{JudgeProvider: judge, DraftProvider: claude}
-		a.Explainer, a.Speech = claude, ear
+		// Bridge cards use the same drafting client (Slice 36's empirical
+		// winner on OpenRouter) as Create.
+		a.Explainer, a.Bridger, a.Speech = claude, claude, ear
 		sk, pk, price, wh := need("STRIPE_SECRET_KEY"), need("STRIPE_PUBLISHABLE_KEY"), need("STRIPE_PRICE_ID"), need("STRIPE_WEBHOOK_SECRET")
 		if len(missing) > 0 || len(invalid) > 0 {
 			return nil, bootProblems("live mode needs these environment variables:", missing, " (or set SCRY_MODE=test)", invalid)

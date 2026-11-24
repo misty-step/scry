@@ -1,0 +1,55 @@
+{{define "main"}}
+<section class="reading bridges" data-bridges>
+  <p class="meta bridges-kicker"><a class="link quiet" href="/library/items/{{.Parent.ID}}">{{icon "bridge"}}Bridge cards</a></p>
+  <h1 class="title">Build bridge cards</h1>
+  <p class="lede">Smaller cards this one rests on. Edit or remove any, then add them: the card waits out of your reviews until each bridge is answered Correct or Almost Correct once.</p>
+  <dl class="bridge-parent">
+    <dt class="meta">Leads up to</dt>
+    <dd data-bridge-parent>{{.Parent.Prompt}}</dd>
+  </dl>
+
+  {{if .Problem}}
+  <div class="bridge-problem" role="alert" data-bridge-problem>
+    <p>{{.Problem}}{{if .ProblemLink}} <a class="link" href="{{.ProblemHref}}">{{.ProblemLink}}</a>{{end}}</p>
+    <div class="bridge-actions">
+      {{if .Retry}}<form method="post" action="/library/items/{{.Parent.ID}}/bridges/draft" data-bridge-build>
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="from" value="{{.From}}">
+        <button class="btn" data-build-bridges>{{icon "bridge"}}<span data-build-label>Try again</span></button>
+      </form>{{end}}
+      <a class="link quiet" href="{{.Back}}">Back</a>
+    </div>
+  </div>
+  {{else}}
+  <form method="post" action="/library/items/{{.Parent.ID}}/bridges" class="bridge-form" data-bridge-form>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="key" value="{{.Key}}">
+    <input type="hidden" name="from" value="{{.From}}">
+    <ol class="bridge-list" data-bridge-list>
+      {{range $i, $c := .Cards}}
+      <li class="bridge-card" data-bridge-card>
+        <div class="bridge-head">
+          <span class="meta bridge-num" data-bridge-num>Bridge {{add $i 1}}</span>
+          {{if $.CanRemove}}<button class="link quiet bridge-remove" name="remove" value="{{$i}}" formaction="/library/items/{{$.Parent.ID}}/bridges/preview" formnovalidate data-bridge-remove>{{icon "remove"}}Remove<span class="sr" data-bridge-remove-name> bridge {{add $i 1}}</span></button>{{end}}
+        </div>
+        <div class="field">
+          <label class="label" for="bridge-q-{{$i}}" data-bridge-q-label>Question</label>
+          <textarea class="input" id="bridge-q-{{$i}}" name="prompt" rows="2" maxlength="1000" required data-bridge-q>{{$c.Prompt}}</textarea>
+        </div>
+        <div class="field">
+          <label class="label" for="bridge-a-{{$i}}" data-bridge-a-label>Correct answer</label>
+          <textarea class="input" id="bridge-a-{{$i}}" name="answer" rows="2" maxlength="2000" required data-bridge-a>{{$c.Answer}}</textarea>
+        </div>
+      </li>
+      {{end}}
+    </ol>
+    {{if .Error}}<p class="field-error" role="alert" data-bridge-error>{{.Error}}</p>{{end}}
+    <div class="bridge-actions">
+      <button class="btn btn-accent" data-bridge-accept>{{icon "plus"}}Add bridges &amp; hold parent</button>
+      <a class="link quiet" href="{{.Back}}">Cancel</a>
+    </div>
+    <p class="meta bridge-foot">Nothing is added until you press it. The bridges join this card's idea; the card's own schedule does not change.</p>
+  </form>
+  {{end}}
+</section>
+{{end}}
