@@ -307,9 +307,12 @@ async function run(browser, c) {
       check(at + ": shows the submitted answer beside the correct one", r.submitted === r.typed && r.canonical.length > 0 && (wanted === "right" ? r.canonical === "Alfa" : r.canonical !== r.typed) && (wanted !== "missed" || r.struck), { submitted: r.submitted, canonical: r.canonical });
       check(at + ": the one-line why", r.why.length > 10, r.why);
       check(at + ": Ask Why?, Edit card and Next card are offered", r.ask === "Ask Why?" && r.edit === "Edit card" && r.next === "Next card", { ask: r.ask, edit: r.edit, next: r.next });
-      const shown = r.iso ? new Date(r.iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "?";
-      const days = Math.round((new Date(r.iso + "T00:00:00Z") - new Date(new Date().toISOString().slice(0, 10) + "T00:00:00Z")) / 864e5);
-      check(at + ": next review date and relative time (" + r.nextReview + ")", r.nextReview === shown + " · " + (days === 1 ? "tomorrow" : "in " + days + " days") && days >= 1, { nextReview: r.nextReview, iso: r.iso });
+      // Slice 70: the event is the instant in the learner's zone (its local
+      // date is the ISO's date part) and how long from now on the same
+      // clock as the interval ("in 1 day" beside "1 day", never "tomorrow"/"today").
+      const shown = r.iso ? new Date(r.iso.slice(0, 10) + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }) : "?";
+      const days = Math.round((new Date(r.iso) - Date.now()) / 864e5);
+      check(at + ": next review date and relative time (" + r.nextReview + ")", r.nextReview === shown + " · in " + days + (days === 1 ? " day" : " days") && days >= 1, { nextReview: r.nextReview, iso: r.iso });
       check(at + ": interval, stability and difficulty (" + [r.interval, r.stability, r.difficulty].join(", ") + ")", r.interval === (days === 1 ? "1 day" : days + " days") && /^\d+\.\d days$/.test(r.stability) && /^\d+\.\d \/ 10$/.test(r.difficulty));
       const split = { right: "1 · 1 correct · 0 almost · 0 incorrect", missed: "1 · 0 correct · 0 almost · 1 incorrect", close: "1 · 0 correct · 1 almost · 0 incorrect" }[wanted];
       check(at + ": review count and history (" + r.reviews + ")", r.reviews === split && r.total === "1", r.reviews);
@@ -464,7 +467,9 @@ async function exactSpoilers(browser, c) {
       await page.keyboard.press("Enter");
       await page.waitForSelector("[data-review]");
       const after = await waiting(page);
-      check(at + ": once \"Go\" is given, the cue that quotes it is shown", after.upcoming[0] === "Studio notes: what follows “Go”" && after.upcoming.length === 2, after.upcoming);
+      // Slice 70: the review is the current card only; the cue that quotes
+      // "Go" is the next card's own prompt.
+      check(at + ": once \"Go\" is given, the review shows only that card (no coming-up, no scrollback)", after.upcoming.length === 0 && after.scrollback.length === 0, after);
       await audit(page, c, "exact text review");
     } catch (err) {
       check(at + ": the walk completed", false, String(err.stack || err).split("\n").slice(0, 3).join(" | "));

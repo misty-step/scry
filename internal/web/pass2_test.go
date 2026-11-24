@@ -588,7 +588,7 @@ func TestExplain_LegacyReviewWithoutSnapshotFallsBack(t *testing.T) {
 		Fallback bool
 	}
 	_ = json.Unmarshal([]byte(body), &out)
-	if !out.Fallback || out.Text != ai.CriterionSentence(srs.Close) || ex.Calls() != 0 {
+	if !out.Fallback || out.Text != ai.PlainWhy(srs.Close) || ex.Calls() != 0 {
 		t.Fatalf("legacy review: %s, calls=%d", body, ex.Calls())
 	}
 }

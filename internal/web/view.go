@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"scry/internal/ai"
 	"scry/internal/store"
 )
 
@@ -35,6 +36,9 @@ var funcs = template.FuncMap{
 	"truncate": truncate,
 	"icon":     icon,
 	"mark":     brandMark,
+	// why is the one-line why a learner reads for a stored review: plain
+	// words, never the grader's rubric (DESIGN.md, Post-answer review).
+	"why": func(r store.Review) string { return ai.HistoryWhy(r.Verdict, r.Reason) },
 	"dict": func(kv ...any) map[string]any {
 		m := map[string]any{}
 		for i := 0; i+1 < len(kv); i += 2 {

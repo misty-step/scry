@@ -15,13 +15,15 @@
 {{define "review"}}
         {{template "explain" .}}
         {{with .Telemetry}}
-        <dl class="telemetry" data-telemetry aria-label="This card's schedule">
-          <div class="fact fact-next"><dt>{{icon "calendar"}}Next review</dt><dd data-next-review><time datetime="{{.NextISO}}">{{.NextDate}}</time> · {{.NextRel}}</dd></div>
-          {{if .Interval}}<div class="fact"><dt>Interval</dt><dd data-interval>{{.Interval}}</dd></div>{{end}}
-          {{if .Stability}}<div class="fact"><dt>Stability</dt><dd data-stability>{{.Stability}}</dd></div>
-          <div class="fact"><dt>Difficulty</dt><dd data-difficulty>{{.Difficulty}}</dd></div>{{end}}
-          <div class="fact fact-reviews"><dt>Reviews</dt><dd data-reviews data-review-total="{{.Total}}">{{.Reviews}}</dd></div>
+        <section class="schedule" aria-label="This card's schedule">
+        <dl class="telemetry" data-telemetry>
+          <div class="fact fact-next"><dt>{{icon "calendar"}}Next review</dt><dd data-next-review><time datetime="{{.NextISO}}">{{.NextDate}}</time><span class="fact-sep" aria-hidden="true"> · </span> <span class="fact-note fact-rel" data-next-rel>{{.NextRel}}</span></dd></div>
+          {{if .Interval}}<div class="fact fact-interval"><dt>{{icon "interval"}}Interval</dt><dd><span data-interval>{{.Interval}}</span> <span class="fact-note" data-interval-from>{{.After}}</span></dd></div>{{end}}
+          {{if .Stability}}<div class="fact"><dt>{{icon "anchor"}}Stability</dt><dd data-stability>{{.Stability}}</dd></div>
+          <div class="fact"><dt>{{icon "gauge"}}Difficulty</dt><dd data-difficulty>{{.Difficulty}}</dd></div>{{end}}
+          <div class="fact fact-reviews"><dt>{{icon "history"}}Reviews</dt><dd><span data-reviews data-review-total="{{.Total}}">{{.Reviews}}</span>{{if .Trail}}<span class="trail" data-trail role="img" aria-label="Recent verdicts, oldest first: {{range $i, $m := .Trail}}{{if $i}}, {{end}}{{$m.Label}}{{end}}">{{range .Trail}}<span class="trail-mark trail-{{.Verdict}}" data-trail-verdict="{{.Verdict}}">{{icon .Icon}}</span>{{end}}</span>{{end}}</dd></div>
         </dl>
+        </section>
         {{end}}
         {{if .Judged.Practice}}<p class="meta practice-note">Practice attempt: the schedule did not move.</p>{{end}}
         <div class="review-foot">
@@ -49,7 +51,7 @@
         <form method="post" action="/study/next" class="judged-actions" data-next-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           {{if eq .Judged.Kind "exact"}}<button class="link" name="again" value="1" data-again>Again</button>{{end}}
-          <button class="btn btn-accent" data-autofocus-no-scroll data-next>{{if .Last}}Finish session{{else}}Next card{{end}}{{icon "arrow"}}</button>
+          <button class="btn btn-ink" data-autofocus-no-scroll data-next>{{if .Last}}Finish session{{else}}Next card{{end}}{{icon "arrow"}}</button>
         </form>
         </div>
         <p class="hints micro">{{if eq .Judged.Kind "exact"}}a again · {{end}}enter or space for {{if .Last}}finish{{else}}next card{{end}}</p>
@@ -81,21 +83,22 @@
       {{if eq .Judged.Kind "exact"}}
         <p class="meta exact-label">{{.ExactLabel}}</p>
         <h1 class="prompt prompt-receded" data-prompt>{{.Item.Prompt}}</h1>
+        {{if .Judged.Skipped}}<p class="meta no-answer" data-skipped>No answer given.</p>{{end}}
         <p class="exact-line display" data-submitted>{{range .Judged.Ops}}{{if eq .Kind "same"}}<span class="x-same">{{.Word}}</span> {{else if eq .Kind "missing"}}<ins class="x-missing"><span class="sr">missing: </span>{{.Word}}</ins> {{else if eq .Kind "wrong"}}<del class="x-wrong"><span class="sr">you wrote: </span>{{.Word}}</del> <span class="x-fix"><span class="sr">the text has: </span>{{.Fix}}</span> {{else}}<del class="x-wrong"><span class="sr">not in the text: </span>{{.Word}}</del> {{end}}{{end}}</p>
         <p class="expected"><span class="meta">The text</span> <span data-canonical>{{.Judged.Expected}}</span></p>
         {{template "verdict" .}}
       {{else if eq .Judged.Kind "missed"}}
         <h1 class="prompt prompt-receded" data-prompt>{{.Item.Prompt}}</h1>
+        {{if .Judged.Skipped}}<p class="meta no-answer" data-submitted data-skipped>No answer given.</p>{{end}}
         <div class="judgment-pair">
-          {{if .Judged.Answer}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text" data-submitted>{{.Judged.Answer}}</span></span></p>{{end}}
+          {{if not .Judged.Skipped}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text" data-submitted>{{.Judged.Answer}}</span></span></p>{{end}}
           <p class="judgment judgment-right"><span class="sr">The correct answer: </span><span data-canonical>{{.Judged.Expected}}</span></p>
         </div>
-        {{if not .Judged.Answer}}<p class="meta" data-submitted>No answer given.</p>{{end}}
         {{template "verdict" .}}
       {{else}}
         <h1 class="prompt prompt-receded" data-prompt>{{.Item.Prompt}}</h1>
         <dl class="compare">
-          <div class="compare-cell"><dt class="meta">Your answer</dt><dd class="compare-answer" data-submitted>{{.Judged.Answer}}</dd></div>
+          <div class="compare-cell"><dt class="meta">Your answer</dt><dd class="compare-answer{{if .Judged.Skipped}} compare-empty{{end}}" data-submitted>{{if .Judged.Skipped}}No answer given.{{else}}{{.Judged.Answer}}{{end}}</dd></div>
           <div class="compare-cell"><dt class="meta">Correct answer</dt><dd class="compare-answer" data-canonical>{{.Judged.Expected}}</dd></div>
         </dl>
         {{template "verdict" .}}

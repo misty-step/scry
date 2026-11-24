@@ -233,11 +233,12 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     assert.equal(r.why, "Your answer expresses the same idea.");
     assert.equal(r.submitted, spoken); assert.equal(r.canonical, "Alfa"); assert.equal(r.prompt, "NATO alphabet: A");
     assert.equal(r.askWhy, "Ask Why?"); assert.equal(r.next, "Next card"); assert.equal(r.edit, "Edit card"); assert(!r.asking);
-    assert(/^[A-Z][a-z]{2} \d{1,2}(, \d{4})? · (in \d+ days|tomorrow)$/.test(r.nextReview), "next review: " + r.nextReview);
+    // Slice 70: the event ("Sat, Nov 21 · in 4 days") is on the interval's clock.
+    assert(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}(, \d{4})? · in \d+ days?$/.test(r.nextReview), "next review: " + r.nextReview);
     // The date, the relative time and the interval say the same thing (the
     // test server runs on its own clock, so only their agreement is checked).
-    assert(/^\d{4}-\d\d-\d\d$/.test(r.iso), "next review date: " + r.iso);
-    const shown = new Date(r.iso + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+    assert(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(Z|[+-]\d\d:\d\d)$/.test(r.iso), "next review instant: " + r.iso);
+    const shown = new Date(r.iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
     assert(r.nextReview.startsWith(shown + " · "), "date " + r.iso + " shown as " + r.nextReview);
     assert.equal(r.nextReview.split(" · ")[1], "in " + r.interval, "relative time and interval agree");
     assert(/^\d+ days?$/.test(r.interval), r.interval); assert(/^\d+\.\d days$/.test(r.stability), r.stability);
@@ -274,7 +275,7 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     assert.equal(r.kind, "missed"); assert.equal(r.label, "Incorrect"); assert(r.badgeIcon);
     assert.equal(r.why, "The expected answer is different."); assert.equal(r.canonical, "Bravo");
     assert(r.submitted.startsWith("This deliberately incorrect answer")); assert.equal(r.next, "Next card");
-    assert.equal(r.reviews, "1 · 0 correct · 0 almost · 1 incorrect"); assert(/· tomorrow$/.test(r.nextReview), r.nextReview);
+    assert.equal(r.reviews, "1 · 0 correct · 0 almost · 1 incorrect"); assert(/· in 1 day$/.test(r.nextReview), r.nextReview);
     assert.equal(r.interval, "1 day");
     for (const width of [1280, 900, 600, 390]) for (const theme of ["light", "dark"]) {
       await s.setViewportSize({ width, height: width === 390 ? 844 : 800 });

@@ -108,6 +108,26 @@
     return el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
   };
 
+  // ---- Focus ring: for the keyboard only --------------------------------
+
+  // DESIGN.md (Color): the 2 px accent ring shows while the learner moves
+  // by keyboard (Tab, arrows, Enter or Space on a control). A control Scry
+  // focuses by script after a tap, a click or typing in a field ("Next
+  // card" when a review opens) shows no ring: on iPhone a tapped button
+  // never takes focus, so the browser's own :focus-visible carried the text
+  // field's keyboard state over to Next card and drew a ring around its
+  // fill. Without script, the browser's :focus-visible rule applies.
+  var root = doc.documentElement;
+  root.classList.add("js-focus");
+  var navKeys = { Tab: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Enter: 1, " ": 1 };
+  doc.addEventListener("keydown", function (e) {
+    if (e.metaKey || e.ctrlKey || e.altKey || !navKeys[e.key]) return;
+    if (e.key === "Tab" || !typing(e.target)) root.classList.add("kbd-nav");
+  }, true);
+  ["pointerdown", "mousedown", "touchstart"].forEach(function (ev) {
+    doc.addEventListener(ev, function () { root.classList.remove("kbd-nav"); }, { capture: true, passive: true });
+  });
+
   // ---- Swap <main> from a fetched page -----------------------------------
 
   // opts.top: this swap is the answer-submit -> review transition. Focusing
@@ -212,6 +232,24 @@
     var tz = "";
     try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (err) { /* keep UTC */ }
     $$("[data-tz-form] input[name=tz]").forEach(function (el) { el.value = tz; });
+  }
+
+  // Signed in, the learner's stored time zone follows the browser's, so
+  // the review's dates are on their own clock. Sent once per page load,
+  // and only when the two differ.
+  function syncTZ() {
+    var body = doc.body;
+    if (!body || !body.getAttribute) return;
+    var stored = body.getAttribute("data-tz"), csrf = body.getAttribute("data-csrf");
+    if (stored === null || !csrf || !window.fetch || !window.URLSearchParams) return;
+    var tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (err) { return; }
+    if (!tz || tz === stored) return;
+    body.setAttribute("data-tz", tz);
+    fetch("/settings/tz", {
+      method: "POST", credentials: "same-origin", body: new URLSearchParams({ csrf: csrf, tz: tz }),
+      headers: { "X-Requested-With": "fetch", "X-CSRF-Token": csrf }
+    }).catch(function () {});
   }
 
   // ---- Starter shelf: the adding state -----------------------------------
@@ -707,4 +745,5 @@
 
   init();
   frameReview();
+  syncTZ();
 })();

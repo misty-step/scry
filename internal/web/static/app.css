@@ -144,7 +144,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
 table { border-collapse: collapse; width: 100%; }
 strong { font-weight: 500; color: var(--ink); }
 
+/* The focus ring is for the keyboard only (DESIGN.md, Color). Without
+   script the browser's :focus-visible rule decides; with script, app.js
+   marks keyboard navigation (html.kbd-nav), so a control focused by script
+   after a tap or click (Next card) never shows a ring. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.js-focus :focus-visible { outline: none; }
+.js-focus.kbd-nav :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 main:focus { outline: none; }
 
 .frame { width: 100%; max-width: var(--frame); margin: 0 auto; padding: 0 var(--s4); }
@@ -241,6 +247,9 @@ p { max-width: var(--measure); }
 }
 .btn:active { transform: translateY(1px); }
 .btn-accent { background: var(--accent); border-color: var(--accent); color: var(--on-accent); transition: none; }
+/* Next card: the review's one filled action, in archival ink rather than
+   the electric accent (DESIGN.md, Post-answer review). */
+.btn-ink { background: var(--ink); border-color: var(--ink); color: var(--page); transition: none; }
 .btn[aria-busy="true"] { cursor: progress; }
 .btn:disabled:active, .btn[aria-disabled="true"]:active { transform: none; }
 .btn:disabled, .btn[aria-disabled="true"] { color: var(--ink-muted); border-color: var(--line); background: transparent; cursor: default; }
@@ -264,8 +273,10 @@ p { max-width: var(--measure); }
 }
 textarea.input { line-height: 1.55; resize: vertical; }
 .input::placeholder { color: var(--ink-muted); }
-.input:focus { border-color: var(--ink); }
-.input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+/* A focused field shows one 2 px ink edge (its border plus a 1 px inset
+   line), never a border beside an accent ring. */
+.input:focus { border-color: var(--ink); outline: 1px solid var(--ink); outline-offset: -2px; }
+.input:focus-visible, .js-focus .input:focus-visible, .js-focus.kbd-nav .input:focus-visible { outline: 1px solid var(--ink); outline-offset: -2px; }
 .has-error .input { border-color: var(--ink); }
 .field-error { color: var(--ink); font-weight: 500; }
 .hint { color: var(--ink-muted); }
@@ -503,24 +514,49 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 }
 .compare-cell { display: grid; gap: var(--s1); align-content: start; min-width: 0; }
 .compare-answer { font: 500 var(--title)/1.25 var(--text); letter-spacing: -0.01em; color: var(--ink); overflow-wrap: anywhere; }
+/* The verdict badge, restrained: a 1 px hairline in the verdict's colour,
+   Meta mono, a 16 px icon; no fill but the Almost Correct highlighter. */
 .verdict-badge {
   display: inline-flex; align-items: center; gap: 6px; align-self: center;
-  padding: 5px 10px 5px 8px; border: 1px solid currentColor; border-radius: var(--radius-control);
+  padding: 3px 8px 3px 6px; border: 1px solid currentColor; border-radius: var(--radius-control);
   font: 500 var(--meta)/1.4 var(--mono); white-space: nowrap;
 }
-.verdict-badge .icon { width: 18px; height: 18px; }
+.verdict-badge .icon { width: 16px; height: 16px; }
+.no-answer { color: var(--ink-muted); }
+.compare-empty { color: var(--ink-muted); font-weight: 400; }
 .verdict-right { color: var(--right); }
 .verdict-close { color: var(--ink); background: var(--close-fill); border-color: var(--ink-ghost); }
 .verdict-missed { color: var(--missed); }
+/* This card's schedule: one hairline frame divided by 1 px rules, four
+   facts across and Reviews on its own row (two across on phones). Labels
+   are Meta mono in ink-muted with a 14 px line icon; values are ink with
+   tabular figures. No fills, meters or glows. */
 .telemetry {
-  display: flex; flex-wrap: wrap; gap: 0 var(--s5);
-  padding: var(--s1) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line); border-left: 1px solid var(--line);
   font: 400 var(--meta)/1.4 var(--mono);
 }
-.fact { display: grid; gap: 2px; padding: var(--s2) 0; }
+.fact {
+  display: grid; gap: var(--s1); align-content: start; min-width: 0;
+  padding: 12px var(--s3) var(--s3); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
 .fact dt { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); }
 .fact dt .icon { width: 14px; height: 14px; }
-.fact dd { color: var(--ink); font-variant-numeric: tabular-nums; }
+.fact dd { color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.fact-note { color: var(--ink-muted); }
+.fact-rel { color: var(--ink); }
+.fact-reviews { grid-column: 1 / -1; }
+.fact-reviews dd { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
+/* The event over its countdown, the gap over what it is measured from. */
+.fact-next dd > *, .fact-interval dd > * { display: block; }
+.fact-next dd > .fact-sep { display: none; }
+/* The trail of recent verdicts: a record, never a streak count. */
+.trail { display: inline-flex; align-items: center; gap: 6px; }
+.trail-mark { display: inline-flex; }
+.trail-mark .icon { width: 14px; height: 14px; }
+.trail-right { color: var(--right); }
+.trail-close { color: var(--ink); }
+.trail-missed { color: var(--missed); }
 .practice-note { color: var(--ink-muted); }
 /* Edit card and Next card share one row: the edit form opens under its
    toggle and Next card stays at the right (under the form when narrow). */
@@ -747,13 +783,24 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .top { flex-wrap: wrap; align-items: center; gap: 0 var(--s3); min-height: 56px; }
   .brand { min-height: 55px; flex-wrap: nowrap; gap: var(--s3); } /* + the 1 px hairline = 56 px */
   .nav { gap: 0 var(--s3); }
+  /* Signed in: a 48 px brand row over one compact 52 px row holding all six
+     destinations as equal columns (icon over its Micro label), so every
+     destination is in view: nothing scrolls sideways or wraps. */
+  .top-app .brand { min-height: 48px; }
   .top-app .nav {
-    flex: 1 0 100%; flex-wrap: nowrap; height: var(--touch); gap: 0 var(--s4);
-    overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain;
-    margin: 0 calc(-1 * var(--s3)); padding: 0 var(--s3);
+    flex: 1 0 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0;
+    height: 52px; margin: 0 calc(-1 * var(--s3)); padding: 0 var(--s1);
+    border-top: 1px solid var(--line);
   }
-  .top-app .nav::-webkit-scrollbar { display: none; }
-  .top-app .nav a { flex: none; white-space: nowrap; }
+  .top-app .nav a {
+    position: relative; flex-direction: column; justify-content: center; gap: 3px;
+    min-width: 0; min-height: 52px; padding: 0 2px;
+    font: 400 var(--micro)/1.2 var(--mono); letter-spacing: 0.02em; white-space: nowrap;
+  }
+  .top-app .nav .nav-label { max-width: 100%; }
+  .top-app .nav a[aria-current] .nav-label { text-underline-offset: 3px; }
+  .top-app .nav .count { position: absolute; top: 5px; left: calc(50% + 10px); font-size: 10px; line-height: 1; }
+  .js-focus.kbd-nav .top-app .nav a:focus-visible, .top-app .nav a:focus-visible { outline-offset: -3px; }
   .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s5); padding-top: var(--s4); }
   .specimen-frame { padding: var(--s4) var(--s4) var(--s3); }
   .setting .form > .btn { justify-self: stretch; }
@@ -765,13 +812,21 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .field-row { grid-template-columns: 1fr 1fr; }
 
   .in-session main.frame { padding-top: var(--s4); }
-  .session { grid-template-columns: 1fr; gap: var(--s3); min-height: calc(100dvh - 240px); padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .session { grid-template-columns: 1fr; gap: var(--s3); min-height: calc(100dvh - 240px); }
+  /* Everything in the session, the end of a long review included, scrolls
+     clear of the pinned Check / Next card bar: the bar's height (16 + 44 +
+     16 px and its 1 px rule) plus the safe-area inset plus 24 px. */
+  body.in-session { padding-bottom: calc(var(--touch) + 2 * var(--s3) + 1px + var(--s4) + env(safe-area-inset-bottom, 0px)); }
   .session-flow { gap: var(--s4); }
   .session-margin { flex-flow: row wrap; justify-content: space-between; gap: 2px var(--s3); padding: 0; align-self: start; }
-  .margin-purpose { flex: 1 0 calc(100% - 96px); margin-bottom: 0; }
+  /* The navigation already marks Study: the rail keeps only the place
+     and the count. */
+  .margin-mode, .margin-purpose { display: none; }
   .margin-idea { flex: 1 1 60%; min-width: 0; }
   .compare { grid-template-columns: minmax(0, 1fr); }
-  .telemetry { gap: 0 var(--s4); }
+  .telemetry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fact { padding: 10px 12px 12px; }
+
   .shelf-bar { padding: var(--s3) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom, 0px)); }
   .shelf-bar .btn { flex: 1; }
   .empty-state .actions .btn { flex: 1 1 100%; }
@@ -808,6 +863,7 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .nav a:hover { color: var(--ink); }
   .btn:hover { background: var(--sunken); border-color: var(--ink); }
   .btn-accent:hover { background: var(--accent); border-color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .btn-ink:hover { background: var(--ink); border-color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
   .link:hover { color: var(--ink); }
   .tile:hover { background: var(--sunken); }
   .tile:hover .tile-title .icon { color: var(--ink); }

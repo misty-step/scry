@@ -1463,3 +1463,75 @@ Choices where the Folio left room:
   viewport-tall minimum height on desktop and the study page's section padding
   is 48 px; with the margin top-aligned there is nothing to centre. Measured
   on the running app: scrollHeight 900 at a 900 px window (was 918).
+
+
+## Slice 70: iPhone dogfooding polish on the Study review (Folio 54beb48 → this PR)
+
+PRODUCT.md and DESIGN.md were updated first in this PR (the intent commit);
+the code follows them. Choices where the brief or the Folio left room:
+
+- **Skips stay graded (G10 kept).** The brief asked that blank cards say "No
+  answer given." with feedback such as "Skipped — review the answer above."
+  The G10/D3 remediation removed every local empty-answer verdict (AGENTS.md:
+  no heuristic decides correctness), so an empty answer still goes to the
+  grader once. Only the words change: "No answer given." where the answer
+  would be, and, when the verdict is Incorrect, "Skipped — review the answer
+  above." as the why (exact texts answered with nothing read the same way).
+  A skip keeps Ask Why? (it was model-graded), as PRODUCT.md promises for
+  every model-graded answer.
+- **Plain whys, stored criteria.** The grader still returns, and Scry still
+  stores, its criterion sentence (the explainer and history keep it). The
+  review, the Ask Why? fallback, the card history and the landing specimen
+  show a fixed plain sentence per verdict (`ai.PlainWhy`), chosen in
+  DESIGN.md's table. A stored reason that is not a criterion (an exact text's
+  word count, seeded or legacy reasons) is shown as before.
+- **Current card only.** In the review the scrollback and the "coming up"
+  list are not rendered at all (server-side), not hidden with CSS, so no
+  earlier or next prompt is in the page. While a card waits they are as
+  before, and the spoiler rules still apply to them.
+- **One clock for the schedule.** The observed "Nov 23 · today" beside "1
+  day" came from mixing a calendar-day relative label with an elapsed-time
+  interval (most likely a review left open and reopened the next day, or a
+  learner whose stored zone was UTC: Clerk sign-ups never stored one). Both
+  are now measured from the stored instants on one clock (`spanLabel`):
+  minutes under half an hour, hours under 22 hours, whole days (rounded)
+  above. The event reads "Tue, Nov 24 · in 1 day" (or "in 4 hours", "due
+  now"); the interval reads "1 day after this answer" ("after the last graded
+  answer" after a practice attempt). `<time datetime>` now carries the full
+  RFC 3339 instant.
+- **Time zone follows the browser.** Signed-in pages carry the stored zone
+  (`data-tz`); app.js posts the browser's zone to `POST /settings/tz`
+  (CSRF-checked; unknown zones ignored) when they differ, once per page load,
+  so Clerk learners get local dates too.
+- **"Review streak".** PRODUCT.md rules out streaks, so the "review streak"
+  telemetry is the card's factual verdict trail: up to its last eight graded
+  verdicts, oldest first, as 14 px verdict icons with their words for screen
+  readers, beside the existing counts. No run is counted.
+- **Next card in ink.** The electric blue (#2563eb as observed on the phone;
+  the accent token is #0562EF) is replaced on Next card by an ink-filled
+  control (`btn-ink`: ink ground, page text, both modes). Check keeps the
+  accent: it was not part of the report and stays the waiting screen's one
+  accent action.
+- **Focus ring.** iOS never focuses a tapped button, so the answer field's
+  keyboard-style focus state carried over to the programmatically focused
+  Next card and WebKit drew the accent ring around its fill (the "autofocus
+  double ring"). app.js now marks keyboard navigation (`html.kbd-nav`: Tab,
+  or arrows/Enter/Space outside a field; cleared by any pointer or touch) and
+  the ring is drawn only then; without script the browser's `:focus-visible`
+  rule applies. Text fields show one 2 px ink edge, never a border plus an
+  accent ring.
+- **Phone nav.** All six destinations sit in one 52 px row of equal columns
+  (16 px icon over an 11 px mono label), under a 48 px brand row: 101 px in
+  all, about the same as before, with nothing off-screen. On the study
+  session the rail's "Study / Recall what's due today" is hidden on phones
+  (the nav already says Study); the place line and count stay. Desktop keeps
+  its 196 px rail unchanged.
+- **Bar clearance.** The phone's pinned Check / Next card bar is 77 px plus
+  the safe-area inset; the session page now pads its body by that plus 24 px
+  (it padded `.session` by 96 px, which left the footer under the bar).
+- **WebKit CSP reports in automation.** Playwright's WebKit screenshot injects
+  an inline `<style>` (even with `caret: "initial"`), which Scry's
+  `style-src 'self'` refuses and reports; one report per screenshot, none
+  outside screenshots. The policy is right; the verifier sets those aside as
+  tooling.
+

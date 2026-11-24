@@ -26,7 +26,7 @@
 {{block "head" .}}{{end}}
 {{if .ClerkKey}}<script defer crossorigin="anonymous" data-clerk-publishable-key="{{.ClerkKey}}" src="{{.ClerkScript}}"></script><script defer src="/static/clerk.js"></script>{{end}}
 </head>
-<body{{if .Session}} class="in-session"{{end}}>
+<body{{if .Session}} class="in-session"{{end}}{{if and .User .CSRF}} data-tz="{{.User.TZ}}" data-csrf="{{.CSRF}}"{{end}}>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top frame{{if and .User (not .Bare)}} top-app{{end}}">
   <span class="brand"><a class="wordmark" href="/" aria-label="scry, home">{{mark}}<span class="wordmark-text">scry</span></a>{{if and .Trial (not .Bare)}}<a class="trial-chip" href="/signup/card" data-trial>{{.Trial.Label}} · <span class="trial-act">{{.Trial.Action}}</span></a>{{end}}</span>

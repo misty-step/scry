@@ -50,7 +50,7 @@ func (c *explainCache) put(id int64, s string) {
 // question and expected answer snapshotted on the review when it was
 // graded, never the item's current text, which may have been edited since. It is
 // bounded (reserved budget, timeout, output length) and falls back to the
-// review's fixed criterion sentence whenever the explainer is missing,
+// review's one-line why whenever the explainer is missing,
 // slow, failing or out of allowance; it never fails the learner outright.
 func (a *App) Explain(ctx context.Context, u store.User, reviewID int64) (Explanation, error) {
 	us := a.Store.For(u.ID)
@@ -61,10 +61,9 @@ func (a *App) Explain(ctx context.Context, u store.User, reviewID int64) (Explan
 	if !r.Explainable() {
 		return Explanation{}, ErrNotExplainable
 	}
-	fallback := Explanation{Text: r.Reason, Fallback: true}
-	if fallback.Text == "" {
-		fallback.Text = ai.CriterionSentence(r.Verdict)
-	}
+	// The fallback is the one-line why the review shows, in plain words;
+	// the grader's own criterion wording is never shown.
+	fallback := Explanation{Text: ai.ShownWhy(r.Verdict, r.Reason, r.Answer), Fallback: true}
 	if text, ok := a.explained.get(r.ID); ok {
 		return Explanation{Text: text}, nil
 	}

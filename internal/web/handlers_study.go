@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"scry/internal/ai"
 	"scry/internal/app"
 	"scry/internal/exact"
 	"scry/internal/speech"
@@ -134,6 +135,7 @@ type judgedView struct {
 	Practice    bool   // an "Again" attempt: it did not move the schedule
 	Explainable bool   // model-judged: offer "Ask Why?" on demand
 	Explanation string // filled in only after the learner asked (no-JS path)
+	Skipped     bool   // nothing was submitted: "No answer given."
 }
 
 // verdictBadge is the verdict in words, with its icon.
@@ -150,53 +152,93 @@ func verdictBadge(v srs.Verdict) (label, icon string) {
 // telemetryView is the card's schedule and history as the review shows
 // them. Every value is read from the stored schedule (srs.State on the
 // item) and the review history; nothing here is computed for effect.
+//
+// One basis (DESIGN.md, Post-answer review): the event ("Next review") and
+// the gap ("Interval") are both measured on the same clock from the stored
+// instants, so "today" can never sit beside "1 day". The event says how
+// long from now; the interval says how long after the graded answer.
 type telemetryView struct {
-	NextDate   string // "Nov 24"
-	NextRel    string // "in 2 days"
-	NextISO    string // 2026-11-24, for <time datetime>
-	Interval   string // "2 days": the gap from this review to the next
+	NextDate   string // "Tue, Nov 24", in the learner's time zone
+	NextRel    string // "in 1 day", "in 5 hours", "due now"
+	NextISO    string // RFC 3339 instant, for <time datetime>
+	Interval   string // "1 day": the gap from the last graded review to the next
+	After      string // "after this answer": what the interval is measured from
 	Stability  string // "3.7 days": FSRS stability
 	Difficulty string // "5.2 / 10": FSRS difficulty
 	Reviews    string // "3 · 2 correct · 0 almost · 1 incorrect"
+	Trail      []trailMark
 	Total      int
 	Lapses     int
 	Practice   int // practice attempts, which never move the schedule
 }
 
-func daysLabel(n int) string { return plural(n, "day", "days") }
-
-// relativeDay says how far off a day is, in the learner's own days.
-func relativeDay(u store.User, t, now time.Time) string {
-	loc := u.Location()
-	day := func(t time.Time) time.Time {
-		t = t.In(loc)
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-	}
-	switch days := int(day(t).Sub(day(now)).Hours() / 24); {
-	case days <= 0:
-		return "today"
-	case days == 1:
-		return "tomorrow"
-	default:
-		return fmt.Sprintf("in %d days", days)
-	}
+// trailMark is one recent verdict in the "Reviews" fact: a record of what
+// happened, oldest first, never a streak count.
+type trailMark struct {
+	Verdict srs.Verdict
+	Label   string // Correct, Almost Correct, Incorrect
+	Icon    string
 }
 
-func telemetry(u store.User, it store.Item, counts store.ReviewCounts, now time.Time) telemetryView {
+// trailLen is how many recent verdicts the review shows.
+const trailLen = 8
+
+func daysLabel(n int) string { return plural(n, "day", "days") }
+
+// spanLabel says how long a stretch of time is, on the schedule's one
+// clock: whole days (rounded) from 22 hours up, hours below that, minutes
+// under half an hour.
+func spanLabel(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch h := int(math.Round(d.Hours())); {
+	case h < 1:
+		return plural(max(int(math.Ceil(d.Minutes())), 1), "minute", "minutes")
+	case h < 22:
+		return plural(h, "hour", "hours")
+	}
+	return daysLabel(max(int(math.Round(d.Hours()/24)), 1))
+}
+
+// untilLabel is how long from now the next review is.
+func untilLabel(due, now time.Time) string {
+	if !due.After(now) {
+		return "due now"
+	}
+	return "in " + spanLabel(due.Sub(now))
+}
+
+func telemetry(u store.User, it store.Item, counts store.ReviewCounts, history []store.Review, practice bool, now time.Time) telemetryView {
 	due := it.Sched.Due.In(u.Location())
-	t := telemetryView{NextRel: relativeDay(u, it.Sched.Due, now), NextISO: due.Format("2006-01-02"), NextDate: due.Format("Jan 2"),
+	t := telemetryView{NextRel: untilLabel(it.Sched.Due, now), NextISO: due.Format(time.RFC3339), NextDate: due.Format("Mon, Jan 2"),
 		Total: counts.Total, Lapses: it.Sched.Lapses, Practice: counts.Practice}
 	if due.Year() != now.In(u.Location()).Year() {
-		t.NextDate = due.Format("Jan 2, 2006")
+		t.NextDate = due.Format("Mon, Jan 2, 2006")
 	}
 	if !it.Sched.Last.IsZero() && it.Sched.Due.After(it.Sched.Last) {
-		t.Interval = daysLabel(int(math.Round(it.Sched.Due.Sub(it.Sched.Last).Hours() / 24)))
+		t.Interval, t.After = spanLabel(it.Sched.Due.Sub(it.Sched.Last)), "after this answer"
+		if practice {
+			t.After = "after the last graded answer"
+		}
 	}
 	if it.Sched.Reps > 0 {
 		t.Stability = strconv.FormatFloat(it.Sched.Stability, 'f', 1, 64) + " days"
 		t.Difficulty = strconv.FormatFloat(it.Sched.Difficulty, 'f', 1, 64) + " / 10"
 	}
 	t.Reviews = fmt.Sprintf("%d · %d correct · %d almost · %d incorrect", counts.Total, counts.Right, counts.Close, counts.Missed)
+	// History is newest first; the trail reads oldest first, graded
+	// answers only (a practice attempt moves nothing).
+	for _, r := range history {
+		if r.Practice || !r.Verdict.Valid() {
+			continue
+		}
+		label, icon := verdictBadge(r.Verdict)
+		t.Trail = append([]trailMark{{Verdict: r.Verdict, Label: label, Icon: icon}}, t.Trail...)
+		if len(t.Trail) == trailLen {
+			break
+		}
+	}
 	return t
 }
 
@@ -295,7 +337,9 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 	judged := pendingReview != nil && shown != nil
 	if judged {
 		d := app.ParseDetail(*pendingReview)
-		j := judgedView{Verdict: pendingReview.Verdict, Why: pendingReview.Reason, Answer: pendingReview.Answer,
+		j := judgedView{Verdict: pendingReview.Verdict, Answer: pendingReview.Answer,
+			Why:      ai.ShownWhy(pendingReview.Verdict, pendingReview.Reason, pendingReview.Answer),
+			Skipped:  strings.TrimSpace(pendingReview.Answer) == "",
 			Expected: shown.Item.Answer, ReviewID: pendingReview.ID, Practice: pendingReview.Practice}
 		j.Badge, j.Icon = verdictBadge(pendingReview.Verdict)
 		switch {
@@ -314,7 +358,8 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 		// The schedule this answer left the card with, and its history.
 		counts, err := c.us.ReviewCounts(ctx, shown.Item.ID)
 		if err == nil {
-			data["Telemetry"] = telemetry(c.user, shown.Item, counts, s.App.Now())
+			history, _ := c.us.History(ctx, shown.Item.ID)
+			data["Telemetry"] = telemetry(c.user, shown.Item, counts, history, pendingReview.Practice, s.App.Now())
 		}
 		data["Last"] = remaining == 0
 		data["EditPrompt"], data["EditAnswer"] = shown.Item.Prompt, shown.Item.Answer
@@ -339,6 +384,11 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 	if n := len(rows); n > 6 {
 		rows = rows[n-6:]
 	}
+	// The post-answer review is the current card only: no earlier card
+	// above it and no next card below it (DESIGN.md, Post-answer review).
+	if judged {
+		rows = nil
+	}
 	data["Answered"] = rows
 	if cur != nil {
 		data["Item"] = cur.Item
@@ -353,6 +403,9 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 		data["Header"] = s.studyHeader(ctx, c, cur.Item, judged)
 		var up []string
 		for _, e := range sess.Entries {
+			if judged {
+				break
+			}
 			if e.Review == nil && e.Position > cur.Position && len(up) < 3 {
 				if prompt, ok := cue(e.Item); ok {
 					up = append(up, prompt)

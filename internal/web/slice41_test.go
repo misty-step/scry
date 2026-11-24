@@ -50,7 +50,7 @@ var (
 	tagRE        = regexp.MustCompile(`<[^>]+>`)
 	canonicalRE  = regexp.MustCompile(`(?s)data-canonical>(.*?)<`)
 	submittedRE  = regexp.MustCompile(`(?s)data-submitted>(.*?)<`)
-	nextReviewRE = regexp.MustCompile(`(?s)data-next-review><time datetime="([0-9-]+)">([^<]+)</time> · ([^<]+)<`)
+	nextReviewRE = regexp.MustCompile(`(?s)data-next-review><time datetime="([0-9TZ:+-]+)">([^<]+)</time>.*?data-next-rel>([^<]+)<`)
 )
 
 func studyHeader(t *testing.T, body string) string {
@@ -207,7 +207,10 @@ func TestSlice41_Spoiler_HandMadeTitlesAndExactTextsFallBackToNeutralLabels(t *t
 		t.Fatalf("line 1 = %+v", line1)
 	}
 	review = b.answer(line1, "Roses are red today")
-	has(t, review, "Coming up", "Short verse: what follows “Roses are red today”") // shown once answered
+	// Slice 70: the review is the current card only; the next cue waits
+	// for the next card, where it is shown once line 1 is answered.
+	hasNot(t, review, "Coming up", `<ol class="upcoming"`)
+	has(t, b.next(), "Short verse: what follows “Roses are red today”")
 }
 
 // Pass 2 (B1): a short line of an exact text ("Go") is quoted by the cue of
@@ -236,7 +239,8 @@ func TestSlice41_Spoiler_ShortExactAnswerIsNotShownInComingUp(t *testing.T) {
 	}
 	// Once "Go" is in, the cue that quotes it is shown.
 	review := b.answer(line1, "Go")
-	has(t, review, `data-verdict="right"`, "Coming up", "<li>Studio notes: what follows “Go”</li>")
+	has(t, review, `data-verdict="right"`)
+	hasNot(t, review, "Coming up", `<ol class="upcoming"`) // Slice 70: the current card only
 	// Line 2 waits: its own cue quotes line 1 (that is the cue), and line
 	// 3's cue, which quotes line 2, is held back in its turn.
 	body = b.next()
@@ -285,7 +289,8 @@ func TestSlice41_Spoiler_AnswerBearingExactTitleIsNeutralUntilAnswered(t *testin
 	// A wrong answer: the review names the text, and the next cue.
 	review := b.answer(line1, "Tulips")
 	has(t, review, `data-kind="exact"`, `<p class="meta exact-label">Exact text · Daffodils · line 1</p>`, "data-prompt>Daffodils: how does it begin?</h1>",
-		"data-canonical>Daffodils<", "<li>Daffodils: what follows “Daffodils”</li>")
+		"data-canonical>Daffodils<")
+	hasNot(t, review, "Coming up", `<ol class="upcoming"`) // Slice 70: the current card only
 	if got := studyHeader(t, review); got != "Daffodils" {
 		t.Errorf("rail in the review = %q", got)
 	}
@@ -547,7 +552,7 @@ func TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts(t *testing.T) {
 			"data-edit-toggle", "Edit card", "data-next", "Next card", "enter or space for next card")
 		// Next card is focused by script without scrolling; plain HTML
 		// autofocus would scroll a long review down to it without script.
-		has(t, review, `<button class="btn btn-accent" data-autofocus-no-scroll data-next>`)
+		has(t, review, `<button class="btn btn-ink" data-autofocus-no-scroll data-next>`) // Slice 70: archival ink, not the accent
 		hasNot(t, review, "autofocus data-next", `data-next autofocus`)
 		if got := submittedRE.FindStringSubmatch(review); got == nil || got[1] != c.typed {
 			t.Errorf("%s: submitted answer shown as %v, want %q", c.kind, got, c.typed)
@@ -569,11 +574,12 @@ func TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts(t *testing.T) {
 		}
 		due := stored.Sched.Due.In(user.Location())
 		days := int(stored.Sched.Due.Sub(stored.Sched.Last).Hours()/24 + 0.5)
-		wantRel := "tomorrow"
+		// Slice 70: the relative time is on the interval's clock.
+		wantRel := "in 1 day"
 		if days > 1 {
 			wantRel = fmt.Sprintf("in %d days", days)
 		}
-		if m[1] != due.Format("2006-01-02") || m[2] != due.Format("Jan 2") || m[3] != wantRel {
+		if m[1] != due.Format(time.RFC3339) || m[2] != due.Format("Mon, Jan 2") || m[3] != wantRel {
 			t.Errorf("%s: next review shown as %q %q %q; stored due %s", c.kind, m[1], m[2], m[3], due)
 		}
 		wantInterval := "1 day"
