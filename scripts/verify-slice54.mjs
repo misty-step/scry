@@ -118,7 +118,9 @@ async function shot(page, name, full) {
   if (!opt.evidence) return;
   await settle(page);
   const file = path.join(opt.evidence, name);
-  await page.screenshot({ path: file, fullPage: !!full });
+  // CSS-pixel scale: the phone's 2x device pixels would double every side
+  // of the picture (four times the bytes) without showing anything more.
+  await page.screenshot({ path: file, fullPage: !!full, scale: "css" });
   summary.screenshots.push(path.basename(file));
 }
 
@@ -773,7 +775,8 @@ async function pass5Theme(browser, c, state) {
       { ctx1Start: one0, darkSave, ctx2ClockBehindMs: behindMs, ctx2Loaded: two0, lightSave, ctx2Reloaded: two1 });
     summary.pass5ClockSkew = { ctx2ClockBehindMs: behindMs, dark: "dark#" + darkSave.seq + " " + darkSave.status, light: "light#" + lightSave.seq + " " + lightSave.status, reloaded: two1 };
     await common(two, c, "pass5 clock skew settings");
-    await shot(two, "desktop-settings-light-after-clock-skew.png");
+    // No screenshot here: the frame is identical to the Pass 4 "Light kept"
+    // picture; the check's detail (both seqs, the 3-minute skew) is the proof.
 
     // Reset to "Follow my system" for repro 2 with a plain no-JS Save, which
     // applies whatever the stored sequence is.
