@@ -1577,8 +1577,24 @@ Owner brief (2026-11-24). Choices where the brief left room:
   usage, with the same G2 rule (an outcome unknown after the call keeps the
   hold). In `SCRY_MODE=test` it is `ai.FakeBridger`: three fixed, labelled
   fixture cards built from the parent's question only, no network;
-  `SCRY_TEST_BRIDGES=fail` shows the failure state. `SCRY_AI_MODE=live` on a
-  test build uses the real client, like the other surfaces.
+  `SCRY_TEST_BRIDGES=fail` shows the failure state. The fixture is
+  unconditional in test mode: `SCRY_AI_MODE=live` (or `SCRY_JUDGE_MODE=live`)
+  on a test build moves grading, drafting, explanations and speech to the
+  real providers but never bridges (pass 2; `cmd/scry`
+  `TestSlice75_TestModeBridgerIsAlwaysTheFixture` traps the network).
+- **Spoilers.** The production parser (`ai.ParseBridges`, on both drafting
+  routes) drops, before the 2–3 card cut, any drafted card whose question
+  repeats the parent's question or whose question or answer contains the
+  parent's whole answer, both compared as normalized words (case folded,
+  punctuation and spacing ignored, whole words in order: "Bravo" is found in
+  "B is Bravo." but not in "Bravos"). Partial overlaps stay: a bridge may
+  share a word with the card it leads to. Fewer than two safe cards is the
+  plain failure, never a spoiler. The learner's own edits are not filtered.
+- **Long text.** A bridge question may be 400 characters with no space in
+  it; every surface showing one (bridge links, the bridge's page title, deck
+  rows, Study) wraps it in place (`overflow-wrap: anywhere`, `minmax(0, 1fr)`
+  tracks). `.title`, `.item-q` and `.item-a` wrap the same way everywhere,
+  which changes nothing for text with break opportunities.
 - **Preview state.** The drafted cards are not stored: they ride in the
   preview form, which carries a random accept key. Reloading the preview
   drafts again (and is metered again); the learner's edits are the cards.
@@ -1619,7 +1635,15 @@ Owner brief (2026-11-24). Choices where the brief left room:
   its own test-mode server per configuration on a fresh SQLite file with a
   minimal environment (no keys), signs up through the UI and seeds two cards'
   history with `node:sqlite` (a synthetic past); "time travel" moves a card's
-  last review, due date and review times back together.
+  last review, due date and review times back together. Its CSP gate is a
+  run without screenshots: Playwright's WebKit screenshotter always inserts
+  an inline `<style>` (its animation sync; no caret, animations, scale or
+  fullPage option avoids it), which Scry's CSP refuses. A media run
+  (`--shots`) captures Chromium under the enforced CSP (zero violations
+  required) and WebKit with Playwright's `bypassCSP`. `--traces` writes
+  scoped JSON only (routes, statuses, timings, assertion results, counters),
+  checked free of the run's email, random password, cookie values, form
+  tokens and auth field names before it is written; no Playwright archive.
 - **Pre-existing test flake.** `TestReserveRacingPlanEnd` (internal/store)
   fails with SQLITE_BUSY on this sandbox's disk on master as well as here;
   with `TMPDIR=/dev/shm` the whole suite passes. Not changed by this slice.

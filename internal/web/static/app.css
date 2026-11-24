@@ -171,7 +171,7 @@ main.frame { flex: 1; padding-top: var(--section); padding-bottom: var(--section
 
 .judgment { font: 600 var(--judgment)/1 var(--text); letter-spacing: -0.03em; color: var(--ink); }
 .display { font: 500 var(--display)/1.1 var(--text); letter-spacing: -0.02em; color: var(--ink); }
-.title { font: 500 var(--title)/1.25 var(--text); letter-spacing: -0.01em; color: var(--ink); }
+.title { font: 500 var(--title)/1.25 var(--text); letter-spacing: -0.01em; color: var(--ink); overflow-wrap: anywhere; }
 .meta, .label { font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); }
 .micro { font: 400 var(--micro)/1.4 var(--mono); letter-spacing: 0.04em; color: var(--ink-muted); }
 .mono { font-family: var(--mono); }
@@ -611,6 +611,7 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 }
 .row-main { flex: 1; min-width: 0; display: grid; gap: var(--s1); text-decoration: none; color: var(--ink-body); padding: var(--s1) 0; }
 .item-a { color: var(--ink-muted); }
+.item-q, .item-a { min-width: 0; overflow-wrap: anywhere; }
 .item-idea, .due { white-space: nowrap; }
 .due.is-due { color: var(--accent); }
 .section-label { margin: var(--s6) 0 var(--s2); }
@@ -624,8 +625,8 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
    takes the colour of its words. On phones it runs 8 px into the page
    gutter so the panel is at least 366 px wide at 390 px. */
 .struggle {
-  display: grid; gap: var(--s2); justify-items: start; max-width: var(--measure);
-  padding: var(--s3); border: 1px solid var(--line);
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s2); justify-items: start; max-width: var(--measure);
+  min-width: 0; padding: var(--s3); border: 1px solid var(--line); overflow-wrap: anywhere;
 }
 .struggle-line { display: flex; align-items: flex-start; gap: var(--s2); color: var(--ink-body); font-size: var(--reading); overflow-wrap: anywhere; }
 .struggle-line .icon { width: 16px; height: 16px; flex: none; margin-top: 0.22em; color: currentColor; }
@@ -637,11 +638,14 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .struggle-btn { font: 400 var(--meta)/1.4 var(--mono); }
 .struggle-btn .icon { width: 16px; height: 16px; }
 .struggle-btn[aria-busy="true"] { color: var(--ink-muted); cursor: progress; }
-.bridge-links { display: grid; gap: 0; font-size: var(--meta); }
-.bridge-links .link { min-height: 32px; }
+/* A bridge's question is the learner's own text, up to 400 characters
+   with no break in it: every surface that shows one wraps it in place. */
+.bridge-links { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; width: 100%; min-width: 0; font-size: var(--meta); }
+.bridge-links li { min-width: 0; }
+.bridge-links .link { min-height: 32px; max-width: 100%; overflow-wrap: anywhere; }
 .bridge-note { max-width: var(--measure); }
 /* A deck row's cue sits under its question in Meta mono. */
-.row-cue { display: flex; align-items: flex-start; gap: 6px; color: var(--ink-muted); }
+.row-cue { display: flex; align-items: flex-start; gap: 6px; min-width: 0; color: var(--ink-muted); overflow-wrap: anywhere; }
 .row-cue .icon { width: 16px; height: 16px; flex: none; margin-top: 0.05em; }
 .due.is-held { color: var(--ink-muted); }
 

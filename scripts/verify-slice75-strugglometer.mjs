@@ -43,11 +43,35 @@
 //      Correct -> held by 1; later bridge 1 Almost Correct -> B is released
 //      automatically with its schedule unchanged, and the next Study
 //      session opens on B.
-// Every page is checked for sideways scroll; on the phone each bridge panel
-// and card is at least 366 px wide. Console errors, page errors, failed
-// requests, HTTP >= 500 and CSP violations are counted per config (a
-// WebKit screenshot's own injected <style> is set aside as tooling, as in
-// verify-slice70.mjs). No Inter is loaded; only Scry's OFL Geist faces.
+//   One of B's bridges is edited to a valid 400-character question with no
+//   spaces, typed key by key, and accepted; every surface that shows it
+//   (the preview, the held review's bridge list, the parent's card page,
+//   the bridge's own page, the deck list, Study and its review) must keep
+//   it inside its panel and the viewport.
+// Every page is checked for sideways scroll and for any element running
+// past its bridge panel or the viewport; on the phone each bridge panel and
+// card is at least 366 px wide. Console errors, page errors, failed
+// requests, HTTP >= 500 and CSP violations are counted per config, with no
+// exemptions. No Inter is loaded; only Scry's OFL Geist faces.
+//
+// CSP and screenshots: Playwright's WebKit screenshotter always inserts an
+// inline <style> (its animation sync, whatever the caret, animations,
+// scale or fullPage options), which Scry's CSP rightly refuses. So the CSP
+// gate is a run WITHOUT --shots (nothing is captured; nothing is set
+// aside). With --shots, Chromium captures under the enforced CSP and must
+// still report none; WebKit captures in a context with Playwright's
+// bypassCSP, so its media run gives no CSP verdict of its own (the summary
+// says so) while every other error still counts.
+//
+// --traces DIR writes one uncompressed JSON file per config: route
+// (pathname, ids and tokens masked), method, status, resource type and
+// timing; each assertion's name and result; allowlisted /healthz fields;
+// sanitized counters (browser errors, server log levels). No Playwright
+// archive, request or response headers or bodies, cookies, form values or
+// server log lines are kept, and the file is written only after it is
+// checked to hold none of the run's email, password, cookie values or
+// CSRF tokens, nor any auth field name. The learner's password is random
+// per run and never printed.
 //
 // --baseline runs only steps 1-2 and records whether the cue is there (for
 // "before" screenshots against a build without the slice); with --expect
@@ -57,6 +81,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { chromium, webkit, devices } from "playwright-core";
@@ -89,13 +114,23 @@ const CONFIGS = [
 ].filter(c => !opt.only || opt.only.split(",").includes(c.name));
 
 const JUDGMENTS = "missed,right,missed,right,close,right,close";
+// A valid 400-character bridge question with no break opportunity in it.
+const LONG_Q = "Q" + "abcdefghij".repeat(39) + "klmnopqr?";
+if (LONG_Q.length !== 400) throw new Error("LONG_Q is " + LONG_Q.length);
+// Secrets of this run, kept out of every printed or written byte.
+const SECRETS = { password: crypto.randomBytes(18).toString("base64url"), emails: new Set(), values: new Set() };
+function redact(text) {
+  let t = String(text);
+  for (const v of [SECRETS.password, ...SECRETS.emails, ...SECRETS.values]) if (v && v.length >= 6) t = t.split(v).join("[redacted]");
+  return t;
+}
 const CUE = "Repeated miss — scaffold prerequisite bridges?";
 const GAME = /streak|points|level up|badge|confetti|🎉|🔥|achievement/i;
 
 const results = [];
 function check(name, ok, detail) {
   results.push({ name, ok: !!ok, detail });
-  console.error((ok ? "PASS " : "FAIL ") + name + (ok ? "" : "  " + JSON.stringify(detail).slice(0, 600)));
+  console.error((ok ? "PASS " : "FAIL ") + name + (ok ? "" : "  " + redact(JSON.stringify(detail)).slice(0, 600)));
 }
 
 // ---- the server ----------------------------------------------------------
@@ -185,6 +220,10 @@ function contextOptions(c) {
   } else {
     Object.assign(o, { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   }
+  // WebKit's screenshotter injects an inline <style> on every capture; in a
+  // media run (--shots) WebKit bypasses CSP so that is not refused. The CSP
+  // gate is the run without --shots.
+  if (opt.shots && c.engine === "webkit") o.bypassCSP = true;
   return o;
 }
 
@@ -209,6 +248,25 @@ function watch(page, health) {
     if (r.status() >= 500) health.http5xx.push(r.status() + " " + r.url());
     if (/\/static\/fonts\//.test(r.url())) health.fonts.add(new URL(r.url()).pathname);
   });
+  // The route log for --traces: method, masked path, status, type, timing.
+  const route = async (req, failed) => {
+    const resp = failed ? null : await req.response().catch(() => null);
+    const t = req.timing();
+    health.routes.push({ method: req.method(), path: maskPath(req.url()), status: resp ? resp.status() : 0, type: req.resourceType(),
+      ms: t && t.responseEnd >= 0 ? Math.round(t.responseEnd) : null, failed: !!failed });
+  };
+  page.on("requestfinished", req => { route(req, false); });
+  page.on("requestfailed", req => { route(req, true); });
+}
+
+// A URL as a route: the local pathname with numeric ids and long tokens
+// masked; the query, fragment and any other origin are dropped.
+function maskPath(raw) {
+  let u;
+  try { u = new URL(raw); } catch { return "(unparsed)"; }
+  if (u.protocol === "data:" || u.protocol === "blob:") return u.protocol;
+  if (u.hostname !== "127.0.0.1" && u.hostname !== "localhost") return "(external)";
+  return u.pathname.split("/").map(seg => /^\d+$/.test(seg) ? ":id" : /^[A-Za-z0-9_-]{16,}$/.test(seg) ? ":token" : seg).join("/");
 }
 
 async function instrument(context) {
@@ -223,12 +281,9 @@ let shotCount = 0;
 async function shot(page, c, name, opts = {}) {
   if (!opt.shots) return;
   const file = path.join(opt.shots, `s75-${opt.label}-${c.name}-${name}.png`);
-  const h = page.__health;
-  const n = { console: h.console.length, csp: h.csp.length };
+  // Nothing raised during a capture is set aside: it counts like any error.
   await page.screenshot({ path: file, caret: "initial", fullPage: opts.fullPage !== false, scale: "css" });
   await page.waitForTimeout(150);
-  h.tooling.push(...h.console.splice(n.console).map(x => "during screenshot " + name + ": " + x));
-  h.tooling.push(...h.csp.splice(n.csp).map(x => "during screenshot " + name + ": csp " + x));
   shotCount++;
 }
 
@@ -240,6 +295,9 @@ async function settle(page) {
   await page.waitForLoadState("load");
   await page.evaluate(() => document.fonts && document.fonts.ready);
   await page.waitForTimeout(350);
+  // Form tokens on the page are secrets of this run: never written out.
+  const tokens = await page.$$eval("input[type=hidden]", es => es.filter(e => /csrf|key|token/i.test(e.name)).map(e => e.value)).catch(() => []);
+  for (const t of tokens) if (t) SECRETS.values.add(t);
 }
 
 async function go(page, url) {
@@ -249,7 +307,7 @@ async function go(page, url) {
 
 // Layout and type facts measured in the page.
 async function facts(page) {
-  return page.evaluate(() => {
+  return page.evaluate((LONG) => {
     const r = e => e.getBoundingClientRect();
     const q = s => document.querySelector(s), qa = s => [...document.querySelectorAll(s)];
     const iconFacts = qa(".struggle-line .icon, .row-cue .icon").map(svg => ({
@@ -265,12 +323,35 @@ async function facts(page) {
       icons: iconFacts, fontFamily: fam, faces,
       text: q("main") ? q("main").innerText : "",
       cue: !!qa("[data-struggle-cue], [data-row-cue]").length,
+      overflow: (() => {
+        // Anything past the viewport, or past the panel it sits in.
+        const vw = document.documentElement.clientWidth, bad = [];
+        const name = e => e.tagName.toLowerCase() + (e.className && typeof e.className === "string" ? "." + e.className.trim().split(/\s+/).join(".") : "");
+        for (const e of qa("main *")) {
+          const b = r(e);
+          if (b.width && (b.right > vw + 0.5 || b.left < -0.5)) bad.push({ el: name(e), left: Math.round(b.left), right: Math.round(b.right), vw });
+        }
+        // Bridge surfaces only: Study's own panels let the pinned Next bar and
+        // the bridge panel run into the gutter on purpose (Slice 70, DESIGN).
+        for (const p of qa(".struggle, .bridge-card, .bridge-problem, .bridge-parent, .bridge-links, .bridge-note, .row-cue, .item-row, .row-main")) {
+          const pb = r(p);
+          if (!pb.width) continue;
+          if (p.scrollWidth > p.clientWidth + 1) bad.push({ panel: name(p), scrollW: p.scrollWidth, clientW: p.clientWidth });
+          for (const e of p.querySelectorAll("*")) {
+            const b = r(e);
+            if (b.width && b.right > pb.right + 0.5) bad.push({ panel: name(p), el: name(e), right: Math.round(b.right), panelRight: Math.round(pb.right) });
+          }
+        }
+        return bad.slice(0, 8);
+      })(),
+      long: document.body.innerText.includes(LONG),
     };
-  });
+  }, LONG_Q);
 }
 
 function layoutChecks(tag, f, c, where) {
   check(`${tag}: ${where}: no sideways scroll (${f.scrollW} <= ${f.vw})`, f.scrollW <= f.vw, { scrollW: f.scrollW, vw: f.vw });
+  check(`${tag}: ${where}: nothing runs past its panel or the viewport`, !f.overflow.length, f.overflow);
   if (c.mobile && f.panels.length) check(`${tag}: ${where}: every bridge panel/card is >= 366 px wide at 390 px`, f.panels.every(w => w >= 366), f.panels);
   if (f.icons.length) check(`${tag}: ${where}: cue icons are 16 px inline SVG, stroke=currentColor, no fill, in the color of their words`,
     f.icons.every(i => i.w === 16 && i.h === 16 && i.stroke === "currentColor" && i.fill === "none" && i.color === i.textColor), f.icons);
@@ -280,9 +361,10 @@ function layoutChecks(tag, f, c, where) {
 
 async function signUp(page, c) {
   const email = `s75-${opt.label}-${c.name}-${Date.now()}@example.com`;
+  SECRETS.emails.add(email);
   await go(page, page.__base + "/signup");
   await page.fill("#email", email);
-  await page.fill("#password", "slice75-disposable-pass");
+  await page.fill("#password", SECRETS.password);
   await Promise.all([page.waitForURL(u => new URL(u).pathname !== "/signup"), press(c, page.locator("main form button.btn-accent").first())]);
   if (new URL(page.url()).pathname !== "/shelf") await go(page, page.__base + "/shelf");
   await press(c, page.locator("form[data-add]").first().locator("button"));
@@ -320,7 +402,8 @@ async function clickNav(page, c, locator) {
 // ---- one config ------------------------------------------------------------
 
 async function runConfig(c, port) {
-  const health = { console: [], pageErrors: [], failed: [], http5xx: [], csp: [], tooling: [], aborted: [], fonts: new Set() };
+  const health = { console: [], pageErrors: [], failed: [], http5xx: [], csp: [], aborted: [], fonts: new Set(), routes: [] };
+  const cspEnforced = !(opt.shots && c.engine === "webkit");
   const tag = `${opt.label} ${c.name}`;
   const out = { config: c.name };
   let server, db, browser, context;
@@ -331,7 +414,6 @@ async function runConfig(c, port) {
     browser = await launch(c.engine);
     context = await browser.newContext(contextOptions(c));
     await instrument(context);
-    if (opt.traces) await context.tracing.start({ screenshots: true, snapshots: true });
     const page = await context.newPage();
     page.__base = server.url;
     watch(page, health);
@@ -395,6 +477,15 @@ async function runConfig(c, port) {
     const q1 = page.locator("[data-bridge-q]").first();
     await q1.fill("What is a phonetic alphabet for?");
     await page.locator("[data-bridge-a]").first().fill("Spelling letters clearly by voice");
+    // The second bridge: a valid 400-character question with no spaces,
+    // typed key by key.
+    const q2 = page.locator("[data-bridge-q]").nth(1);
+    await press(c, q2);
+    await q2.fill("");
+    await q2.pressSequentially(LONG_Q, { delay: 0 });
+    const typed = await q2.inputValue();
+    check(`${tag}: the second bridge's question is the typed 400-character text`, typed === LONG_Q, typed.length);
+    layoutChecks(tag, await facts(page), c, "preview with a 400-character question");
     await press(c, page.locator("[data-bridge-card]").nth(2).locator("[data-bridge-remove]"));
     await page.waitForTimeout(200);
     const nums = await page.locator("[data-bridge-num]").allInnerTexts();
@@ -403,13 +494,31 @@ async function runConfig(c, port) {
     await clickNav(page, c, page.locator("[data-bridge-accept]"));
     f = await facts(page);
     const bB = bridgesOf(db)(s.B.id);
-    check(`${tag}: "Add bridges & hold parent" adds the 2 edited bridges and holds B`, bB.length === 2 && bB[0].prompt === "What is a phonetic alphabet for?" && heldBy(db, s.B.id) === 2, bB);
+    check(`${tag}: "Add bridges & hold parent" adds the 2 edited bridges (one of 400 characters) and holds B`, bB.length === 2 && bB[0].prompt === "What is a phonetic alphabet for?" &&
+      bB[1].prompt === LONG_Q && heldBy(db, s.B.id) === 2, bB.map(b => ({ id: b.id, len: b.prompt.length })));
     check(`${tag}: back on the review: "Held by 2 bridges" and "Release hold"`, new URL(page.url()).pathname === "/study" && f.text.includes("Held by 2 bridges") && f.text.includes("Release hold"), f.text.slice(0, 400));
     layoutChecks(tag, f, c, "review after accepting");
     await page.locator("[data-hold]").scrollIntoViewIfNeeded();
     await shot(page, c, "review-held-by-2");
     await next(page, c); // finish the one-card session
     check(`${tag}: session finished`, /Done\./.test((await facts(page)).text), new URL(page.url()).pathname);
+
+    // 3b. Every other surface showing the 400-character bridge question.
+    await go(page, `${base}/library/items/${s.B.id}`);
+    f = await facts(page);
+    check(`${tag}: B's page lists its 400-character bridge under "Held by 2 bridges"`, f.long && f.text.includes("Held by 2 bridges") &&
+      (await page.locator("[data-bridge-link]").count()) === 2, f.text.slice(0, 200));
+    layoutChecks(tag, f, c, "held card page with a 400-character bridge");
+    if (c.journeyShots) { await page.locator("[data-hold]").scrollIntoViewIfNeeded(); await shot(page, c, "card-held-long-bridge"); }
+    await go(page, `${base}/library/items/${bB[1].id}`);
+    f = await facts(page);
+    check(`${tag}: the 400-character bridge's own page`, f.long && f.text.includes("Bridge card · leads up to"), f.text.slice(0, 120));
+    layoutChecks(tag, f, c, "400-character bridge's own page");
+    if (c.journeyShots) await shot(page, c, "long-bridge-page");
+    await go(page, `${base}/library/ideas/${s.ideaId}`);
+    f = await facts(page);
+    check(`${tag}: deck list shows the 400-character bridge`, f.long, null);
+    layoutChecks(tag, f, c, "deck list with a 400-character bridge");
 
     // 4. Card A: build from its page, accept all 3, remove one, release.
     await go(page, `${base}/library/items/${s.A.id}`);
@@ -460,8 +569,14 @@ async function runConfig(c, port) {
       f.text.includes("stays held until this is answered Correct or Almost Correct"), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
     if (c.journeyShots) { await page.locator("[data-bridge-note]").scrollIntoViewIfNeeded(); await shot(page, c, "bridge-incorrect-still-held"); }
     await next(page, c);
+    p = await currentPrompt(page);
+    f = await facts(page);
+    check(`${tag}: B's 400-character bridge is up`, p === LONG_Q, (p || "").length);
+    layoutChecks(tag, f, c, "Study: 400-character bridge waiting");
+    if (c.journeyShots) await shot(page, c, "study-long-bridge");
     await answer(page, c, "A fixed script"); // right
     f = await facts(page);
+    layoutChecks(tag, f, c, "review of the 400-character bridge");
     check(`${tag}: bridge Correct: B held by 1, the review says one bridge still holds it`, (await verdictOf(page)) === "Correct" && heldBy(db, s.B.id) === 1 &&
       f.text.includes("Bridge cleared · 1 bridge still holds the card it leads to."), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
     if (c.journeyShots) { await page.locator("[data-bridge-cleared]").scrollIntoViewIfNeeded(); await shot(page, c, "bridge-correct-held-by-1"); }
@@ -498,19 +613,74 @@ async function runConfig(c, port) {
   } catch (err) {
     check(`${tag}: walkthrough completed`, false, String(err && err.stack || err).slice(0, 600));
   } finally {
-    if (context && opt.traces) await context.tracing.stop({ path: path.join(opt.traces, `s75-${opt.label}-${c.name}-trace.zip`) }).catch(() => {});
+    // Cookie values are secrets of this run: collected only to be kept out.
+    if (context) for (const k of await context.cookies().catch(() => [])) if (k.value) SECRETS.values.add(k.value);
     if (context) await context.close().catch(() => {});
     if (browser) await browser.close().catch(() => {});
     if (db) db.close();
     await stopServer(server);
-    if (server && opt.traces) fs.copyFileSync(server.logPath, path.join(opt.traces, `s75-${opt.label}-${c.name}-server.log`));
+    if (server) out.serverLog = serverLogCounters(server.logPath);
     if (server && !opt.keep) fs.rmSync(server.dir, { recursive: true, force: true });
   }
-  out.health = { ...health, fonts: [...health.fonts] };
-  check(`${tag}: 0 console errors, page errors, failed requests, 5xx, CSP violations`,
+  const { routes, ...rest } = health;
+  out.health = { ...rest, fonts: [...health.fonts], cspEnforced, routes: routes.length };
+  const cspNote = cspEnforced ? "CSP violations" : "CSP not judged (WebKit media capture bypasses CSP; see the run without --shots)";
+  check(`${tag}: 0 console errors, page errors, failed requests, 5xx, ${cspNote}`,
     !health.console.length && !health.pageErrors.length && !health.failed.length && !health.http5xx.length && !health.csp.length, out.health);
   check(`${tag}: only Scry's own Geist font files were loaded`, [...health.fonts].every(f => /^\/static\/fonts\/Geist(Mono)?-Variable\.woff2$/.test(f)), [...health.fonts]);
+  if (out.serverLog) check(`${tag}: server logged no errors`, out.serverLog.levels.ERROR === undefined, out.serverLog);
+  if (opt.traces) writeTrace(c, tag, out, routes, cspEnforced);
   return out;
+}
+
+// Counters from the server's structured log: lines per level, and the
+// fixed message text of warnings and errors. No field values are kept.
+function serverLogCounters(file) {
+  const levels = {}, notable = {};
+  let unparsed = 0;
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    let e;
+    try { e = JSON.parse(line); } catch { unparsed++; continue; }
+    levels[e.level] = (levels[e.level] || 0) + 1;
+    if ((e.level === "WARN" || e.level === "ERROR") && typeof e.msg === "string") {
+      const m = /^[A-Za-z0-9 ,.:;()'-]{1,100}$/.test(e.msg) ? e.msg : "(message withheld)";
+      notable[e.level + " " + m] = (notable[e.level + " " + m] || 0) + 1;
+    }
+  }
+  return { levels, notable, unparsed };
+}
+
+// Names that must never appear in a collected trace.
+const AUTH_FIELDS = /password|passwd|cookie|set-cookie|authorization|bearer|csrf|x-api-key|session_token|secret/i;
+
+// The scoped trace of one config: written only once it is shown to hold
+// none of the run's secrets and no auth field.
+function writeTrace(c, tag, out, routes, cspEnforced) {
+  const hz = out.healthz || {};
+  const trace = {
+    kind: "scry-slice75-scoped-trace", version: 1, label: opt.label, config: c.name, engine: c.engine, scheme: c.scheme,
+    viewport: c.mobile ? "390x844" : "1440x900", screenshots: !!opt.shots, cspEnforced,
+    healthz: { status: hz.status, mode: hz.mode, build_sha: hz.build_sha },
+    routes,
+    assertions: results.filter(r => r.name.startsWith(tag + ": ")).map(r => ({ name: r.name.slice(tag.length + 2), ok: r.ok })),
+    counters: {
+      console: out.health.console.length, pageErrors: out.health.pageErrors.length, failed: out.health.failed.length,
+      http5xx: out.health.http5xx.length, csp: out.health.csp.length, aborted: out.health.aborted.length, fonts: out.health.fonts,
+      routes: routes.length, server: out.serverLog || null,
+    },
+  };
+  const text = JSON.stringify(trace, null, 2);
+  const leaks = [];
+  if (text.includes(SECRETS.password)) leaks.push("password");
+  for (const e of SECRETS.emails) if (text.includes(e)) leaks.push("email");
+  for (const v of SECRETS.values) if (v.length >= 6 && text.includes(v)) leaks.push("cookie or form token value");
+  const field = text.match(AUTH_FIELDS);
+  if (field) leaks.push("auth field name " + field[0]);
+  if (/@|\?/.test(routes.map(r => r.path).join(" "))) leaks.push("query or address in a route");
+  check(`${tag}: trace holds no email, password, cookie, form token or auth field (${SECRETS.values.size} secret values checked)`, !leaks.length, leaks);
+  if (leaks.length) return;
+  fs.writeFileSync(path.join(opt.traces, `s75-${opt.label}-${c.name}-trace.json`), text + "\n");
 }
 
 const runs = [];
@@ -518,5 +688,5 @@ let port = opt.port;
 for (const c of CONFIGS) runs.push(await runConfig(c, port++));
 const failed = results.filter(r => !r.ok);
 const summary = { label: opt.label, bin: opt.bin, baseline: opt.baseline, passed: results.length - failed.length, failed: failed.length, screenshots: shotCount, checks: results, runs };
-console.log(JSON.stringify(summary, null, 2));
+console.log(redact(JSON.stringify(summary, null, 2)));
 process.exit(opt.expect === "pass" && failed.length ? 1 : 0);
