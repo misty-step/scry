@@ -3,11 +3,13 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // Slice 75: in production, bridge cards are drafted by Scry's existing
@@ -317,5 +319,176 @@ func TestSlice75_Spoils_SymbolOnlyAnswers(t *testing.T) {
 	// A whitespace-only answer spoils nothing.
 	if Spoils(BridgeCard{Question: "q", Answer: "a"}, BridgeInput{Question: "p", Answer: "   "}) {
 		t.Fatal("blank answer")
+	}
+}
+
+// Slice 75 (pass 4): the reply is decoded one JSON object at a time, so a
+// valid cards object followed by another object parses, prose and objects
+// before it are skipped, and single objects (bare or fenced) still parse,
+// through the production parser and the real OpenRouter adapter alike.
+func TestSlice75_ParseBridges_FirstCardsObjectOfSeveral(t *testing.T) {
+	two := `{"cards":[{"q":"What is a treaty?","a":"A formal agreement"},{"q":"Which ocean is west of Europe?","a":"The Atlantic"}]}`
+	for name, reply := range map[string]string{
+		"single":                 two,
+		"fenced single":          "```json\n" + two + "\n```",
+		"cards then a trailer":   two + "\n" + `{"note":"two cards above"}`,
+		"cards then a cards obj": two + ` {"cards":[{"q":"other?","a":"x"},{"q":"other 2?","a":"y"}]}`,
+		"an object before it":    `{"thinking":"short"} ` + two,
+		"broken brace before it": `Notes {like this} then: ` + two + ` {"tail": true}`,
+		"braces inside strings":  `{"cards":[{"q":"In set notation, what does {} mean?","a":"The empty set"},{"q":"Which ocean is west of Europe?","a":"The Atlantic"}]} {"x":1}`,
+	} {
+		cards, err := ParseBridges(reply, slice75Parent)
+		if err != nil || len(cards) != 2 {
+			t.Errorf("%s: %+v, %v", name, cards, err)
+			continue
+		}
+		if name != "braces inside strings" && cards[0].Question != "What is a treaty?" {
+			t.Errorf("%s: first card %+v", name, cards[0])
+		}
+	}
+	for name, reply := range map[string]string{
+		"no cards key":  `{"note":"x"} {"other":[]}`,
+		"cards is null": `{"cards":null}`,
+		"unclosed":      `{"cards":[{"q":"a?","a":"1"},{"q":"b?","a":"2"}]`,
+	} {
+		if _, err := ParseBridges(reply, slice75Parent); err != ErrNoBridges {
+			t.Errorf("%s: err = %v, want ErrNoBridges", name, err)
+		}
+	}
+	c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"model": DefaultOpenRouterDraftModel,
+			"usage":   map[string]any{"prompt_tokens": 300, "completion_tokens": 90},
+			"choices": []map[string]any{{"message": map[string]any{"content": two + "\n{\"note\":\"done\"}"}, "finish_reason": "stop"}}})
+	})
+	if cards, _, err := c.Bridge(context.Background(), slice75Parent); err != nil || len(cards) != 2 {
+		t.Fatalf("real adapter, cards plus a trailing object = %+v, %v", cards, err)
+	}
+}
+
+// Slice 75 (pass 4): a draft that fails to parse settles only usage the
+// provider reported. With no usage in the reply, the adapter reports none
+// (the app keeps the reservation pending, G2); with usage reported it is
+// kept even though the draft failed; a clean success without usage still
+// names the drafting model. Both drafting routes.
+func TestSlice75_Bridge_FallbackModelOnlyOnSuccess(t *testing.T) {
+	good := bridgeReply([2]string{"What is a treaty?", "A formal agreement"}, [2]string{"Which ocean is west of Europe?", "The Atlantic"})
+	routes := map[string]func(t *testing.T, reply string, usage bool) *Claude{
+		"openrouter": func(t *testing.T, reply string, usage bool) *Claude {
+			c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+				body := map[string]any{"model": DefaultOpenRouterDraftModel,
+					"choices": []map[string]any{{"message": map[string]any{"content": reply}, "finish_reason": "stop"}}}
+				if usage {
+					body["usage"] = map[string]any{"prompt_tokens": 300, "completion_tokens": 90}
+				}
+				json.NewEncoder(w).Encode(body)
+			})
+			return c
+		},
+		"anthropic": func(t *testing.T, reply string, usage bool) *Claude {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body := map[string]any{"model": DefaultDraftModel, "stop_reason": "end_turn",
+					"content": []map[string]any{{"type": "text", "text": reply}}}
+				if usage {
+					body["usage"] = map[string]any{"input_tokens": 300, "output_tokens": 90}
+				}
+				json.NewEncoder(w).Encode(body)
+			}))
+			t.Cleanup(srv.Close)
+			c := NewClaude("ant-standin", "")
+			c.BaseURL, c.HTTP = srv.URL, srv.Client()
+			return c
+		},
+	}
+	for route, mk := range routes {
+		t.Run(route, func(t *testing.T) {
+			for _, bad := range []string{`{"cards":[]}`, `not json`, `{"cards":[{"q":"only","a":"one"}]}`} {
+				cards, use, err := mk(t, bad, false).Bridge(context.Background(), slice75Parent)
+				if err != ErrNoBridges || cards != nil || use != (Usage{}) {
+					t.Fatalf("%q without usage: cards %+v, usage %+v, err %v; want no usage reported", bad, cards, use, err)
+				}
+				_, use, err = mk(t, bad, true).Bridge(context.Background(), slice75Parent)
+				if err != ErrNoBridges || use.Model == "" || use.InputTokens != 300 || use.OutputTokens != 90 {
+					t.Fatalf("%q with usage: usage %+v, err %v; want the reported usage kept", bad, use, err)
+				}
+			}
+			cards, use, err := mk(t, good, false).Bridge(context.Background(), slice75Parent)
+			if err != nil || len(cards) != 2 || use.Model == "" || use.InputTokens != 0 {
+				t.Fatalf("clean success without usage: %+v, %+v, %v", cards, use, err)
+			}
+		})
+	}
+}
+
+// Slice 75 (pass 4): the request is fitted to its cap before anything is
+// sent. A 900-byte question, a 1,900-byte answer and three recent misses
+// of 300 four-byte characters do not fit as they are: the oldest misses
+// are dropped (never the question or answer) and the request goes out
+// within the cap. Input that cannot fit at all is ErrBridgeNotSent and
+// the provider is never called.
+func TestSlice75_Bridge_InputIsFittedBeforeDispatch(t *testing.T) {
+	q := strings.Repeat("q", 899) + "?"
+	a := strings.Repeat("a", 1900)
+	miss := strings.Repeat("𝔸", 300) // 4 bytes each
+	in := BridgeInput{Question: q, Answer: a, Misses: []string{miss + "1", miss + "2", miss + "3", "fourth"}}
+	if _, err := bridgeUser(BridgeInput{Question: q, Answer: a, Misses: in.Misses[:3]}); err == nil {
+		t.Fatal("precondition: the unfitted input should exceed the cap")
+	}
+	fit, err := FitBridgeInput(in)
+	if err != nil || fit.Question != q || fit.Answer != a || len(fit.Misses) == 0 || len(fit.Misses) == 3 {
+		t.Fatalf("fit = %d misses, %v", len(fit.Misses), err)
+	}
+	if fit.Misses[0] != in.Misses[0] {
+		t.Fatal("the newest miss must be kept first")
+	}
+	var calls int
+	var sent string
+	c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		raw, _ := io.ReadAll(r.Body)
+		var req struct{ Messages []struct{ Content string } }
+		json.Unmarshal(raw, &req)
+		sent = req.Messages[1].Content
+		json.NewEncoder(w).Encode(map[string]any{"model": DefaultOpenRouterDraftModel,
+			"usage":   map[string]any{"prompt_tokens": 300, "completion_tokens": 90},
+			"choices": []map[string]any{{"message": map[string]any{"content": bridgeReply([2]string{"What is x?", "x"}, [2]string{"What is y?", "y"})}, "finish_reason": "stop"}}})
+	})
+	if cards, _, err := c.Bridge(context.Background(), in); err != nil || len(cards) != 2 {
+		t.Fatalf("fitted bridge = %+v, %v", cards, err)
+	}
+	if calls != 1 || len(sent) > BridgeInputChars || !strings.Contains(sent, q) || !strings.Contains(sent, a) || !strings.Contains(sent, "𝔸") {
+		t.Fatalf("calls %d, sent %d bytes", calls, len(sent))
+	}
+	huge := BridgeInput{Question: strings.Repeat("q", BridgeInputChars), Answer: "a", Misses: []string{"m"}}
+	if _, err := FitBridgeInput(huge); err != ErrBridgeNotSent {
+		t.Fatalf("unfittable fit = %v", err)
+	}
+	_, use, err := c.Bridge(context.Background(), huge)
+	if !errors.Is(err, ErrBridgeNotSent) || use != (Usage{}) || calls != 1 {
+		t.Fatalf("unfittable bridge: err %v, usage %+v, calls %d; want ErrBridgeNotSent and no call", err, use, calls)
+	}
+}
+
+// Slice 75 (pass 4): a drafted card is kept only if it can be accepted
+// unchanged: at most 400 characters and within the card limits in bytes.
+// 400 ASCII characters and 400 two-byte characters fit; 350 Han characters
+// (1,050 bytes) are over the question limit and are dropped.
+func TestSlice75_ParseBridges_ByteBoundsMatchAcceptance(t *testing.T) {
+	ascii := "Q" + strings.Repeat("abcdefghij", 39) + "klmnopqr?"
+	accented := strings.Repeat("é", 399) + "?"
+	han := strings.Repeat("桥", 349) + "?"
+	if len(ascii) != 400 || utf8.RuneCountInString(accented) != 400 || len(han) <= BridgeQuestionMaxBytes || utf8.RuneCountInString(han) != 350 {
+		t.Fatal("bad fixtures")
+	}
+	cards, err := ParseBridges(bridgeReply([2]string{ascii, "x"}, [2]string{accented, "y"}, [2]string{han, "z"}), slice75Parent)
+	if err != nil || len(cards) != 2 || cards[0].Question != ascii || cards[1].Question != accented {
+		t.Fatalf("cards %+v, %v; want the ASCII and accented ones only", cards, err)
+	}
+	for _, c := range cards {
+		if len(c.Question) > BridgeQuestionMaxBytes || len(c.Answer) > BridgeAnswerMaxBytes {
+			t.Fatalf("over the byte limits: %d/%d", len(c.Question), len(c.Answer))
+		}
+	}
+	if _, err := ParseBridges(bridgeReply([2]string{han, "x"}, [2]string{"What is y?", "y"}), slice75Parent); err != ErrNoBridges {
+		t.Fatalf("one acceptable card left = %v, want ErrNoBridges", err)
 	}
 }

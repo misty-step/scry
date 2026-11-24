@@ -169,6 +169,11 @@ func (u *UserStore) AcceptBridges(ctx context.Context, parentID int64, key strin
 // schedule is untouched, so it is due again exactly when it was. Releasing
 // a card that is not held changes nothing and is not an error; another
 // learner's card is ErrNotFound. It returns how many bridges it ended.
+//
+// Only bridges that hold the card now are ended, by the same predicate as
+// the hold (activeBridges) in the same statement: a bridge suspended in
+// Trash with its idea is left alone, so a stale release form sent after
+// the idea was trashed is a no-op and the hold is back on restore.
 func (u *UserStore) ReleaseHold(ctx context.Context, parentID int64, now time.Time) (int, error) {
 	var n int64
 	err := u.tx(ctx, func(tx *sql.Tx) error {
@@ -177,7 +182,10 @@ func (u *UserStore) ReleaseHold(ctx context.Context, parentID int64, now time.Ti
 			return notFound(err)
 		}
 		res, err := tx.ExecContext(ctx, `UPDATE item_bridges SET ended_at = ?, end_reason = 'released'
-			WHERE user_id = ? AND parent_item_id = ? AND ended_at = 0`, ts(now), u.uid, parentID)
+			WHERE user_id = ? AND parent_item_id = ? AND ended_at = 0
+			  AND EXISTS (SELECT 1 FROM items t WHERE t.id = item_bridges.parent_item_id AND t.user_id = item_bridges.user_id
+			    AND item_bridges.id IN (SELECT hb.id`+activeBridges+`))`,
+			ts(now), u.uid, parentID)
 		if err != nil {
 			return err
 		}

@@ -1570,7 +1570,7 @@ Owner brief (2026-11-24). Choices where the brief left room:
   as Create (`*ai.Claude`; on OpenRouter the Slice 36 empirical winner
   `openai/gpt-6.2-sol`, `SCRY_DRAFT_MODEL` overrides; or the direct Anthropic
   drafting model), one bounded non-streaming call (45 s, 1,200 output tokens,
-  6,000 input characters) with the parent's question and answer and up to
+  6,000 input bytes) with the parent's question and answer and up to
   three recent Incorrect answers as untrusted data. The reply is a JSON
   object of 2–3 `{q, a}` cards; repeats, empty or over-long cards are dropped
   and fewer than two is an error. It is reserved and settled as `draft`
@@ -1650,6 +1650,29 @@ Owner brief (2026-11-24). Choices where the brief left room:
   scoped JSON only (routes, statuses, timings, assertion results, counters),
   checked free of the run's email, random password, cookie values, form
   tokens and auth field names before it is written; no Playwright archive.
+- **Pass 4 (CodeRabbit review on db9624d, each reproduced before fixing).**
+  The reply is decoded one JSON object at a time (`json.Decoder` from each
+  `{`, at most 32 tries), so a cards object followed by another object
+  parses; the first object with a `cards` list wins. A failed parse settles
+  only usage the provider reported: the fallback model name is set on a
+  clean success only, so an unparseable reply with no usage keeps its
+  reservation pending (G2). The request is fitted before any budget is
+  reserved (`ai.FitBridgeInput`: at most three misses, the oldest dropped
+  until it fits 6,000 bytes; the question and answer always fit within the
+  card limits), and a request refused before dispatch (`ai.ErrBridgeNotSent`)
+  releases its reservation, while an ambiguous failure after dispatch still
+  keeps it. Drafted cards are kept only within 400 characters and the card
+  limits in bytes (1,000 for a question, 2,000 for an answer, pinned to
+  `app.MaxPromptLen`/`MaxAnswerLen` by a test), so every previewed card can
+  be accepted unchanged; acceptance copy names bytes. "Release hold" ends
+  only bridges that hold the card now (the hold predicate, in the same
+  statement), so a stale release after trashing the idea is a no-op and the
+  hold returns on restore. A Build form restored from the back/forward cache
+  is given back (pageshow `persisted`, like the busy forms). The verifier
+  refuses an unknown or empty `--only`, and the README commands run as
+  written. Not changed: CodeRabbit's note on screenshot errors being set
+  aside was about 4c15945; since pass 2 nothing raised during a capture is
+  set aside (WebKit media runs use `bypassCSP` instead and say so).
 - **Pre-existing test flake.** `TestReserveRacingPlanEnd` (internal/store)
   fails with SQLITE_BUSY on this sandbox's disk on master as well as here;
   with `TMPDIR=/dev/shm` the whole suite passes. Not changed by this slice.

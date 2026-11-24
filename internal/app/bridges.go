@@ -177,6 +177,13 @@ func (a *App) DraftBridges(ctx context.Context, u store.User, itemID int64) ([]a
 			}
 		}
 	}
+	// Fit the request to its cap before reserving: the oldest misses go
+	// first, and a card that cannot fit at all is refused with nothing
+	// reserved and nothing sent.
+	if in, err = ai.FitBridgeInput(in); err != nil {
+		a.Log.WarnContext(ctx, "bridge input does not fit the request cap; nothing reserved or sent", "user", u.ID, "item", itemID)
+		return nil, ErrBridgesUnavailable
+	}
 	reservation, err := a.reserve(ctx, u.ID, a.BridgeBudget())
 	if err != nil {
 		return nil, err
@@ -200,11 +207,15 @@ func (a *App) DraftBridges(ctx context.Context, u store.User, itemID int64) ([]a
 	called = true
 	cards, use, err := a.Bridger.Bridge(bctx, in)
 	decided = true
-	if use.Model != "" {
+	switch {
+	case use.Model != "":
 		a.settle(u.ID, reservation, "draft", use, 0)
-	} else if err != nil {
+	case errors.Is(err, ai.ErrBridgeNotSent):
+		// Refused before dispatch: nothing was spent, so nothing stays held.
+		a.settle(u.ID, reservation, "draft", ai.Usage{}, 0)
+	case err != nil:
 		a.Log.WarnContext(ctx, "bridge provider outcome unknown; reservation held", "why", "bridge error with no usage", "user", u.ID, "item", itemID, "reservation", reservation)
-	} else {
+	default:
 		a.settle(u.ID, reservation, "draft", use, 0)
 	}
 	if err != nil {
@@ -254,9 +265,9 @@ func (a *App) AcceptBridges(ctx context.Context, u store.User, parentID int64, k
 		case an == "":
 			return BridgeResult{}, fieldErr("bridges", fmt.Sprintf("Bridge %d needs a correct answer.", i+1))
 		case len(p) > MaxPromptLen:
-			return BridgeResult{}, fieldErr("bridges", fmt.Sprintf("Bridge %d's question is too long. Keep it under 1,000 characters.", i+1))
+			return BridgeResult{}, fieldErr("bridges", fmt.Sprintf("Bridge %d's question is too long. Keep it within 1,000 bytes: about 1,000 Latin letters, or 330 Chinese, Japanese or Korean characters.", i+1))
 		case len(an) > MaxAnswerLen:
-			return BridgeResult{}, fieldErr("bridges", fmt.Sprintf("Bridge %d's answer is too long. Keep it under 2,000 characters.", i+1))
+			return BridgeResult{}, fieldErr("bridges", fmt.Sprintf("Bridge %d's answer is too long. Keep it within 2,000 bytes: about 2,000 Latin letters, or 660 Chinese, Japanese or Korean characters.", i+1))
 		}
 		clean = append(clean, store.BridgeCard{Prompt: p, Answer: an})
 	}

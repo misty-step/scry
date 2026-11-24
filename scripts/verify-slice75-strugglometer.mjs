@@ -5,7 +5,7 @@
 //
 //   make build        # or: go build -o bin/scry ./cmd/scry
 //   node scripts/verify-slice75-strugglometer.mjs --bin ./bin/scry --label after \
-//        [--shots ~/chief-evidence/media] [--traces DIR] [--only desktop-light,...] \
+//        [--shots DIR] [--traces DIR] [--only desktop-light,...] \
 //        [--expect pass|observe] [--baseline] [--keep]
 //
 // For every config the script starts its own Scry (the --bin binary) in
@@ -111,7 +111,18 @@ const CONFIGS = [
   { name: "iphone-dark", engine: "webkit", scheme: "dark", mobile: true, journeyShots: false },
   { name: "desktop-light", engine: "chromium", scheme: "light", mobile: false, journeyShots: true },
   { name: "desktop-dark", engine: "chromium", scheme: "dark", mobile: false, journeyShots: false },
-].filter(c => !opt.only || opt.only.split(",").includes(c.name));
+];
+// --only names configs; an unknown name or an empty selection is refused,
+// never a silent run of zero checks.
+if (opt.only !== "") {
+  const want = opt.only.split(",").map(x => x.trim()).filter(Boolean);
+  const unknown = want.filter(n => !CONFIGS.some(c => c.name === n));
+  if (unknown.length || !want.length) {
+    console.error(`--only: ${unknown.length ? "unknown config " + unknown.join(", ") : "no config named"}; choose from ${CONFIGS.map(c => c.name).join(", ")}`);
+    process.exit(2);
+  }
+  CONFIGS.splice(0, CONFIGS.length, ...CONFIGS.filter(c => want.includes(c.name)));
+}
 
 const JUDGMENTS = "missed,right,missed,right,close,right,close";
 // A valid 400-character bridge question with no break opportunity in it.
@@ -229,7 +240,9 @@ function contextOptions(c) {
 
 async function launch(engine) {
   if (engine === "webkit") return webkit.launch();
-  return chromium.launch({ executablePath: process.env.CHROME_BIN || "/usr/bin/google-chrome" });
+  // Playwright turns Chrome's back/forward cache off by default; keep it on
+  // so going Back behaves as it does for a learner.
+  return chromium.launch({ executablePath: process.env.CHROME_BIN || "/usr/bin/google-chrome", ignoreDefaultArgs: ["--disable-back-forward-cache"] });
 }
 
 function watch(page, health) {
@@ -307,8 +320,8 @@ async function press(c, locator) {
   if (c.mobile) await locator.tap(); else await locator.click();
 }
 
-async function settle(page) {
-  await page.waitForLoadState("load");
+async function settle(page, { load = true } = {}) {
+  if (load) await page.waitForLoadState("load");
   await page.evaluate(() => document.fonts && document.fonts.ready);
   await page.waitForTimeout(350);
   // Form tokens on the page are secrets of this run: never written out.
@@ -409,6 +422,17 @@ async function currentPrompt(page) {
 }
 
 const verdictOf = page => page.evaluate(() => (document.querySelector("[data-verdict-label]") || {}).textContent?.trim());
+
+// The "Build bridge cards" form as the learner finds it.
+async function buildFormState(page) {
+  return page.evaluate(() => {
+    const form = document.querySelector("form[data-bridge-build]");
+    if (!form) return { form: false };
+    const b = form.querySelector("[data-build-bridges]");
+    return { form: true, sent: form.dataset.sent || "", disabled: b.disabled, busy: b.getAttribute("aria-busy"), label: form.querySelector("[data-build-label]").textContent };
+  });
+}
+const buildFormReady = st => st.form && !st.sent && !st.disabled && st.busy === null && st.label === "Build bridge cards";
 
 async function clickNav(page, c, locator) {
   await Promise.all([page.waitForNavigation({ waitUntil: "load" }), press(c, locator)]);
@@ -536,8 +560,37 @@ async function runConfig(c, port) {
     check(`${tag}: deck list shows the 400-character bridge`, f.long, null);
     layoutChecks(tag, f, c, "deck list with a 400-character bridge");
 
-    // 4. Card A: build from its page, accept all 3, remove one, release.
+    // 4. Card A: build from its page, go Back (back/forward cache), build
+    // again, accept all 3, remove one, release.
     await go(page, `${base}/library/items/${s.A.id}`);
+    await page.evaluate(() => { window.__s75Page = "kept"; });
+    await clickNav(page, c, page.locator("[data-build-bridges]"));
+    check(`${tag}: Build bridge cards from the card page opens the preview`, (await page.locator("[data-bridge-card]").count()) === 3, null);
+    // A cache restore fires pageshow, not load: wait for the commit only.
+    await page.goBack({ waitUntil: "commit" });
+    await page.waitForFunction(() => document.readyState === "complete" && !!document.querySelector("form[data-bridge-build]"));
+    await settle(page, { load: false });
+    out.bfcache = await buildFormState(page);
+    out.bfcache.restoredFromCache = await page.evaluate(() => window.__s75Page === "kept");
+    check(`${tag}: Back to the card page gives "Build bridge cards" back (${out.bfcache.restoredFromCache ? "restored from the back/forward cache" : "the engine reloaded the page; no cache restore happened"})`,
+      buildFormReady(out.bfcache), out.bfcache);
+    // The engine-independent proof: a sent form, then a persisted pageshow.
+    out.bfcacheEvent = await page.evaluate(() => {
+      const form = document.querySelector("form[data-bridge-build]");
+      const stop = e => e.preventDefault();
+      form.addEventListener("submit", stop);
+      form.requestSubmit(form.querySelector("[data-build-bridges]"));
+      form.removeEventListener("submit", stop);
+      return new Promise(res => setTimeout(() => {
+        const b = form.querySelector("[data-build-bridges]");
+        const sent = { sent: form.dataset.sent || "", disabled: b.disabled, busy: b.getAttribute("aria-busy"), label: form.querySelector("[data-build-label]").textContent };
+        window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+        res(sent);
+      }, 20));
+    });
+    const afterEvent = await buildFormState(page);
+    check(`${tag}: a sent build form ("building", disabled) is reset by a persisted pageshow`,
+      out.bfcacheEvent.sent === "1" && out.bfcacheEvent.disabled && out.bfcacheEvent.label === "building" && buildFormReady(afterEvent), { sent: out.bfcacheEvent, after: afterEvent });
     await clickNav(page, c, page.locator("[data-build-bridges]"));
     await clickNav(page, c, page.locator("[data-bridge-accept]"));
     f = await facts(page);

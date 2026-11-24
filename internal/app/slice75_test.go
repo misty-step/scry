@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -420,5 +421,118 @@ func TestSlice75_Generation_RealAdapterDropsSymbolOnlyAnswerLeak(t *testing.T) {
 	reply = `{"cards":[{"q":"In C, what does the == operator test?","a":"That two values are equal"},{"q":"Which programming languages use != to mean not equal?","a":"C and Java"},{"q":"How is inequality written in C?","a":"!="}]}`
 	if cards, err := w.app.DraftBridges(w.ctx, w.user, p); !errors.Is(err, app.ErrBridgesUnavailable) || cards != nil {
 		t.Fatalf("one safe card left = %+v, %v; want ErrBridgesUnavailable", cards, err)
+	}
+}
+
+// notSentBridger refuses every request before dispatch, as the real
+// adapter does for input that cannot fit its cap.
+type notSentBridger struct{ calls int }
+
+func (b *notSentBridger) Name() string { return "not-sent" }
+func (b *notSentBridger) Bridge(context.Context, ai.BridgeInput) ([]ai.BridgeCard, ai.Usage, error) {
+	b.calls++
+	return nil, ai.Usage{}, ai.ErrBridgeNotSent
+}
+
+// Slice 75 (pass 4): an otherwise valid card whose question, answer and
+// recent multibyte misses exceed the request cap is fitted before any
+// budget is reserved (the oldest misses go), so the real adapter sends it
+// and nothing stays reserved. A request refused before dispatch releases
+// its reservation; a failure after dispatch with no usage (outcome
+// unknown) keeps it pending, as before (G2).
+func TestSlice75_Generation_OverCapInputNeverStrandsAReservation(t *testing.T) {
+	w, fb, ids := struggleWorld(t)
+	p := ids[0]
+	q, a := strings.Repeat("q", 899)+"?", strings.Repeat("a", 1900)
+	if err := w.us.UpdateItem(w.ctx, p, q, a, false); err != nil {
+		t.Fatal(err)
+	}
+	miss := strings.Repeat("𝔸", 300)
+	w.answerOnce(t, p, srs.Missed, "one "+miss)
+	w.advance(25 * time.Hour)
+	w.answerOnce(t, p, srs.Missed, "two "+miss)
+	w.advance(25 * time.Hour)
+	w.answerOnce(t, p, srs.Missed, "three "+miss)
+
+	var calls int
+	var sent string
+	srv := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		calls++
+		raw, _ := io.ReadAll(r.Body)
+		var req struct{ Messages []struct{ Content string } }
+		json.Unmarshal(raw, &req)
+		if len(req.Messages) == 2 {
+			sent = req.Messages[1].Content
+		}
+		json.NewEncoder(rw).Encode(map[string]any{"model": ai.DefaultOpenRouterDraftModel,
+			"usage":   map[string]any{"prompt_tokens": 1500, "completion_tokens": 90},
+			"choices": []map[string]any{{"message": map[string]any{"content": `{"cards":[{"q":"What is the first safe bridge?","a":"Safe one"},{"q":"What is the second safe bridge?","a":"Safe two"}]}`}, "finish_reason": "stop"}}})
+	}))
+	t.Cleanup(srv.Close)
+	c, err := ai.NewClaudeWithRouter("", "sk-or-v1-standin", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.BaseURL, c.HTTP = srv.URL, srv.Client()
+	w.app.Bridger = c
+	cards, err := w.app.DraftBridges(w.ctx, w.user, p)
+	if err != nil || len(cards) != 2 {
+		t.Fatalf("over-cap input = %+v, %v; want it fitted and drafted", cards, err)
+	}
+	if calls != 1 || len(sent) > ai.BridgeInputChars || !strings.Contains(sent, q) || !strings.Contains(sent, a) || !strings.Contains(sent, ">three 𝔸") || !strings.Contains(sent, ">two 𝔸") || strings.Contains(sent, ">one 𝔸") {
+		t.Fatalf("calls %d, sent %d bytes; want the two newest misses, the oldest dropped", calls, len(sent))
+	}
+	if held, _ := w.us.ReservedMicros(w.ctx); held != 0 {
+		t.Fatalf("%d micros still reserved after a fitted draft", held)
+	}
+
+	ns := &notSentBridger{}
+	w.app.Bridger = ns
+	for i := 0; i < 3; i++ { // retries strand nothing either
+		if _, err := w.app.DraftBridges(w.ctx, w.user, p); !errors.Is(err, app.ErrBridgesUnavailable) {
+			t.Fatalf("not sent = %v", err)
+		}
+	}
+	if held, _ := w.us.ReservedMicros(w.ctx); held != 0 || ns.calls != 3 {
+		t.Fatalf("%d micros reserved after %d refused-before-dispatch requests; want 0", held, ns.calls)
+	}
+
+	fb.Mode = "fail" // dispatched, outcome unknown, no usage
+	w.app.Bridger = fb
+	if _, err := w.app.DraftBridges(w.ctx, w.user, p); !errors.Is(err, app.ErrBridgesUnavailable) {
+		t.Fatalf("ambiguous failure = %v", err)
+	}
+	if held, _ := w.us.ReservedMicros(w.ctx); held != w.app.BridgeBudget() {
+		t.Fatalf("ambiguous failure: %d micros reserved, want the pending %d", held, w.app.BridgeBudget())
+	}
+}
+
+// Slice 75 (pass 4): the draft parser and acceptance use the same limits
+// (bytes, as for every card), so any card a preview shows can be accepted
+// unchanged: a 400-character ASCII question is accepted, and a 350-
+// character Han question (1,050 bytes) is never drafted into a preview,
+// and typed in by hand it is refused with copy that names the unit.
+func TestSlice75_Accept_BoundsMatchTheDraftParser(t *testing.T) {
+	if ai.BridgeQuestionMaxBytes != app.MaxPromptLen || ai.BridgeAnswerMaxBytes != app.MaxAnswerLen {
+		t.Fatalf("parser limits %d/%d, card limits %d/%d", ai.BridgeQuestionMaxBytes, ai.BridgeAnswerMaxBytes, app.MaxPromptLen, app.MaxAnswerLen)
+	}
+	w, _, ids := struggleWorld(t)
+	p := ids[0]
+	w.answerOnce(t, p, srs.Missed, "x")
+	w.advance(25 * time.Hour)
+	w.answerOnce(t, p, srs.Missed, "y")
+	ascii := "Q" + strings.Repeat("abcdefghij", 39) + "klmnopqr?"
+	han := strings.Repeat("桥", 349) + "？"
+	if cards, err := ai.ParseBridges(`{"cards":[{"q":"`+han+`","a":"桥"},{"q":"What is y?","a":"y"},{"q":"What is z?","a":"z"}]}`, ai.BridgeInput{Question: "parent q", Answer: "parent a"}); err != nil || len(cards) != 2 || strings.Contains(cards[0].Question, "桥") {
+		t.Fatalf("parser kept %+v, %v", cards, err)
+	}
+	var fe *app.FieldError
+	_, err := w.app.AcceptBridges(w.ctx, w.user, p, app.BridgeKey(), []store.BridgeCard{{Prompt: han, Answer: "桥"}})
+	if !errors.As(err, &fe) || !strings.Contains(fe.Msg, "1,000 bytes") {
+		t.Fatalf("350 Han characters by hand = %v", err)
+	}
+	res, err := w.app.AcceptBridges(w.ctx, w.user, p, app.BridgeKey(), []store.BridgeCard{{Prompt: ascii, Answer: "x"}, {Prompt: "What is y?", Answer: "y"}})
+	if err != nil || res.Bridges != 2 {
+		t.Fatalf("400 ASCII characters = %+v, %v", res, err)
 	}
 }

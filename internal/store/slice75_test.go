@@ -488,3 +488,45 @@ func TestSlice75_Store_MigrationIsAdditive(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Slice 75 (pass 4): a release sent while the idea is in the Trash (a
+// form opened before trashing it) is the documented no-op: the suspended
+// bridges are not ended, so restoring the idea restores the hold; a
+// release of the visible hold after restore still ends it.
+func TestSlice75_Store_StaleReleaseWhileTrashedIsANoOp(t *testing.T) {
+	ctx := context.Background()
+	st, us, now, idea, p := slice75World(t)
+	res, err := us.AcceptBridges(ctx, p, "k", twoBridges, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := us.RemoveIdea(ctx, idea, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := us.ReleaseHold(ctx, p, now.Add(2*time.Minute)); err != nil || n != 0 {
+		t.Fatalf("stale release while trashed = %d, %v; want a no-op", n, err)
+	}
+	var ended int
+	st.DB().QueryRow(`SELECT COUNT(*) FROM item_bridges WHERE parent_item_id = ? AND ended_at != 0`, p).Scan(&ended)
+	if ended != 0 {
+		t.Fatalf("%d suspended bridges were ended by a stale release", ended)
+	}
+	if err := us.RestoreIdea(ctx, idea); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := us.BridgeState(ctx, p); s.HeldBy != 2 {
+		t.Fatalf("after restore: held by %d, want 2", s.HeldBy)
+	}
+	if contains(dueIDs(t, us, now.Add(time.Hour)), p) {
+		t.Fatal("restored and held: the parent must stay out of the queue")
+	}
+	if n, err := us.ReleaseHold(ctx, p, now.Add(3*time.Minute)); err != nil || n != 2 {
+		t.Fatalf("release of the visible hold = %d, %v; want 2", n, err)
+	}
+	if _, reason, _, _ := us.BridgeEnd(ctx, res.Bridges[1]); reason != "released" {
+		t.Fatalf("released bridge reason = %q", reason)
+	}
+	if !contains(dueIDs(t, us, now.Add(time.Hour)), p) {
+		t.Fatal("released: the parent should be due again")
+	}
+}

@@ -730,9 +730,12 @@
         form.dataset.sent = "1";
         if (button) {
           button.setAttribute("aria-busy", "true");
-          setTimeout(function () { button.disabled = true; }, 0);
+          setTimeout(function () { if (form.dataset.sent === "1") button.disabled = true; }, 0);
         }
-        if (label) label.textContent = "building";
+        if (label) {
+          if (!label.dataset.idle) label.dataset.idle = label.textContent;
+          label.textContent = "building";
+        }
       });
     });
     var list = $("[data-bridge-list]");
@@ -770,6 +773,18 @@
     });
     renumber();
   }
+
+  // A page restored from the back/forward cache comes back as it was left:
+  // give a sent bridge form back, like the busy forms above.
+  function bridgeBuildReset(form) {
+    var button = $("[data-build-bridges]", form), label = $("[data-build-label]", form);
+    form.removeAttribute("data-sent");
+    if (button) { button.disabled = false; button.removeAttribute("aria-busy"); }
+    if (label && label.dataset.idle) label.textContent = label.dataset.idle;
+  }
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted) $$("form[data-bridge-build][data-sent]").forEach(bridgeBuildReset);
+  });
 
   function init() {
     initTZ();
