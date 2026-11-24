@@ -159,7 +159,7 @@ func (s *Server) itemPage(w http.ResponseWriter, r *http.Request, c *rc) error {
 	}
 	return s.render(w, r, c, http.StatusOK, "item.html", map[string]any{
 		"Title": "Item", "Nav": "library", "Item": it, "Due": due, "History": history,
-		"Bridge": s.bridgeViewFor(r, c, it, st, "item"),
+		"Bridge": bridgeViewFor(r.Context(), c, it, st, "item"),
 		"Flash":  libraryFlash[r.URL.Query().Get("ok")], "Error": map[string]string{"needboth": "An item needs both a question and an answer."}[r.URL.Query().Get("err")],
 	})
 }

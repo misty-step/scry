@@ -1681,3 +1681,10 @@ Owner brief (2026-11-24). Choices where the brief left room:
 
 - An exact, whitespace-normalized repeat of a symbol-only parent question is still a repeat; simply using the operator in a different question is not. The production OpenRouter adapter is covered by a loopback regression.
 - Omitting `--only` runs all browser configurations; explicitly supplying no name (including an empty string) or supplying the option twice is a usage error.
+
+### Slice 75: the bridge review names its parent
+
+- DESIGN.md (Held) says "A bridge card's page and review say 'Bridge card · leads up to …'". The card's page linked the parent; the post-answer Study review built its bridge view without it and said only "Bridge card." Study now builds the view with the same `bridgeViewFor` the card page uses (a read through the learner's scoped store), so an active bridge's review links the parent card's question to its page. Only the question is shown, never the parent's answer.
+- Only after the answer: the waiting bridge carries no bridge note and no parent link, as before (the bridge view is built only for a judged card).
+- An *active* bridge only. Once a bridge is answered Correct or Almost Correct it has ended, and its review says "Bridge cleared · …" (what clearing it changed) instead, as DESIGN.md describes, without the "leads up to" line. A practice re-attempt on an active bridge shows the same line as its first review.
+- No schema or persistence change: no migration. The parent is read with the existing scoped `Item` query, so another learner's card can never be named (that read is a not-found for them) and the parent's page is a 404 for anyone else.

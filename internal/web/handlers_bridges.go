@@ -185,10 +185,13 @@ func (s *Server) bridgesRelease(w http.ResponseWriter, r *http.Request, c *rc) e
 	return back(w, r, bridgeBack(bridgeFrom(r), id, "released"))
 }
 
-// bridgeViewFor builds the cue/hold view of one card for a page.
-func (s *Server) bridgeViewFor(r *http.Request, c *rc, it store.Item, st app.Struggle, from string) bridgeView {
+// bridgeViewFor builds the cue/hold view of one card for a page: the
+// card's page (from "item") or its post-answer review (from "study"). An
+// active bridge names the card it leads up to, read through the learner's
+// scoped store, so only the learner's own card can ever be named; it shows
+// that card's question and a link, never its answer.
+func bridgeViewFor(ctx context.Context, c *rc, it store.Item, st app.Struggle, from string) bridgeView {
 	v := bridgeView{Struggle: st, ItemID: it.ID, CSRF: c.sess.CSRF, From: from}
-	ctx := r.Context()
 	if st.BridgeFor != 0 {
 		if p, err := c.us.Item(ctx, st.BridgeFor); err == nil {
 			v.Parent = &p
