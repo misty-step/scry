@@ -1676,3 +1676,8 @@ Owner brief (2026-11-24). Choices where the brief left room:
 - **Pre-existing test flake.** `TestReserveRacingPlanEnd` (internal/store)
   fails with SQLITE_BUSY on this sandbox's disk on master as well as here;
   with `TMPDIR=/dev/shm` the whole suite passes. Not changed by this slice.
+
+### Slice 75: independent follow-up
+
+- An exact, whitespace-normalized repeat of a symbol-only parent question is still a repeat; simply using the operator in a different question is not. The production OpenRouter adapter is covered by a loopback regression.
+- Omitting `--only` runs all browser configurations; explicitly supplying no name (including an empty string) or supplying the option twice is a usage error.

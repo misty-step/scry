@@ -356,15 +356,20 @@ func (c *Claude) bridgeOpenRouter(ctx context.Context, user string, in BridgeInp
 // "B is Bravo." but not in "Bravos". Partial overlaps are not spoilers:
 // a bridge may share a word or two with the card it leads up to.
 //
-// An answer with no letters or digits at all, such as a code or math
-// operator ("!=", "->", "≠"), has no words to compare, so it is matched
-// literally instead: the trimmed answer (inner spacing collapsed) found
-// anywhere in the bridge's question or answer is a spoiler.
+// Text with no letters or digits, such as a code or math operator ("!=",
+// "->", "≠"), is compared literally after normalizing whitespace. A
+// symbol-only question must match in full, while a symbol-only answer
+// found anywhere in either field is a spoiler.
 func Spoils(c BridgeCard, parent BridgeInput) bool {
 	pq, pa := normWords(parent.Question), normWords(parent.Answer)
 	q, a := normWords(c.Question), normWords(c.Answer)
 	if len(pq) > 0 && equalWords(q, pq) {
 		return true
+	}
+	if len(pq) == 0 {
+		if literal := oneLine(parent.Question); literal != "" && oneLine(c.Question) == literal {
+			return true
+		}
 	}
 	if len(pa) == 0 {
 		sym := oneLine(parent.Answer)

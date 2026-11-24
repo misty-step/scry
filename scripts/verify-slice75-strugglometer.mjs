@@ -87,7 +87,7 @@ import { DatabaseSync } from "node:sqlite";
 import { chromium, webkit, devices } from "playwright-core";
 
 const args = process.argv.slice(2);
-const opt = { bin: "./bin/scry", label: "run", shots: "", traces: "", expect: "pass", baseline: false, only: "", keep: false, port: 18750 };
+const opt = { bin: "./bin/scry", label: "run", shots: "", traces: "", expect: "pass", baseline: false, only: null, keep: false, port: 18750 };
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
   const v = () => args[++i];
@@ -97,7 +97,10 @@ for (let i = 0; i < args.length; i++) {
   else if (a === "--traces") opt.traces = v();
   else if (a === "--expect") opt.expect = v();
   else if (a === "--baseline") opt.baseline = true;
-  else if (a === "--only") opt.only = v();
+  else if (a === "--only") {
+    if (opt.only !== null) { console.error("--only must be specified once"); process.exit(2); }
+    opt.only = v();
+  }
   else if (a === "--keep") opt.keep = true;
   else if (a === "--port") opt.port = Number(v());
   else { console.error("unknown flag " + a); process.exit(2); }
@@ -114,8 +117,8 @@ const CONFIGS = [
 ];
 // --only names configs; an unknown name or an empty selection is refused,
 // never a silent run of zero checks.
-if (opt.only !== "") {
-  const want = opt.only.split(",").map(x => x.trim()).filter(Boolean);
+if (opt.only !== null) {
+  const want = (opt.only ?? "").split(",").map(x => x.trim()).filter(Boolean);
   const unknown = want.filter(n => !CONFIGS.some(c => c.name === n));
   if (unknown.length || !want.length) {
     console.error(`--only: ${unknown.length ? "unknown config " + unknown.join(", ") : "no config named"}; choose from ${CONFIGS.map(c => c.name).join(", ")}`);

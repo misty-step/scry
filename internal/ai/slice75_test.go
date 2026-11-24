@@ -492,3 +492,22 @@ func TestSlice75_ParseBridges_ByteBoundsMatchAcceptance(t *testing.T) {
 		t.Fatalf("one acceptable card left = %v, want ErrNoBridges", err)
 	}
 }
+
+// A symbol-only parent question has no normalized words, but an exact
+// literal repeat is still the same question. Using the operator in a
+// different prerequisite question is fine.
+func TestSlice75_Bridge_RealAdapterDropsSymbolOnlyQuestionRepeat(t *testing.T) {
+	parent := BridgeInput{Question: " -> ", Answer: "pointer member access"}
+	safe1 := [2]string{"What does -> require on its left in C?", "A pointer to a struct or union"}
+	safe2 := [2]string{"Which operator accesses a member of a struct value in C?", "."}
+	repeat := [2]string{"->", "Access a member through a pointer"}
+	c, _ := routerClaude(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"content": bridgeReply(safe1, repeat, safe2)}, "finish_reason": "stop"}},
+		})
+	})
+	got, _, err := c.Bridge(context.Background(), parent)
+	if err != nil || len(got) != 2 || got[0].Question != safe1[0] || got[1].Question != safe2[0] {
+		t.Fatalf("kept %+v, err %v; want only the two different questions", got, err)
+	}
+}
