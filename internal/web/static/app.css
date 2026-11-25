@@ -868,6 +868,18 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
   transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease);
 }
 .example:active { transform: translateY(1px); }
+/* S106-3: Import a deck, after a 1 px rule under the prompt. */
+.import { display: grid; gap: var(--s2); margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid var(--line); }
+.import .meta { max-width: none; }
+.import-form { display: grid; gap: var(--s3); margin-top: var(--s2); max-width: 560px; }
+.import-file { padding: 10px var(--s3); font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-body); cursor: pointer; }
+.import-file::file-selector-button {
+  margin-right: var(--s3); padding: 4px var(--s3); font: inherit; color: var(--ink);
+  background: var(--page); border: 1px solid var(--line); border-radius: var(--radius-control); cursor: pointer;
+}
+.import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
+.import-actions .import-status { flex: 1 1 260px; margin: 0; }
+.export-links { display: flex; flex-wrap: wrap; gap: var(--s2); }
 
 /* ---- Billing ----------------------------------------------------------- */
 

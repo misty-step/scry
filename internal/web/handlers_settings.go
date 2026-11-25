@@ -140,20 +140,6 @@ func (s *Server) settingsRestore(w http.ResponseWriter, r *http.Request, c *rc) 
 	return back(w, r, "/settings?ok=restored")
 }
 
-// settingsExport hands the learner everything Scry holds for them. It
-// works whatever the state of their plan: the data is theirs.
-func (s *Server) settingsExport(w http.ResponseWriter, r *http.Request, c *rc) error {
-	exp, err := c.us.Export(r.Context(), s.App.Now())
-	if err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="scry-export.json"`)
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(exp)
-}
-
 // The API for the learner's own scripts and tools. A script authenticates
 // with a token its learner made in Settings; everything it does lands in
 // that learner's account only.

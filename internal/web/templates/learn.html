@@ -15,5 +15,25 @@
     <button class="btn btn-accent">Draft cards</button>
   </form>
   <p class="hints micro">⌘/ctrl + enter to draft</p>
+
+  <section class="import" id="import" aria-labelledby="import-title">
+    <h2 class="title" id="import-title">Import a deck</h2>
+    <p class="meta">Anki .apkg, CSV or Markdown · up to 20 MiB</p>
+    <form method="post" action="/learn/import" enctype="multipart/form-data" class="form import-form" data-import-form>
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="field{{if .ImportError}} has-error{{end}}">
+        <label class="label" for="import-file">File</label>
+        <input class="input import-file" id="import-file" name="file" type="file" accept=".apkg,.csv,.tsv,.tab,.md,.markdown,.txt" required aria-describedby="import-status">
+      </div>
+      <div class="field">
+        <label class="label" for="import-idea">Idea title <span class="meta">optional</span></label>
+        <input class="input" id="import-idea" name="idea" value="{{.ImportIdea}}" maxlength="120" autocomplete="off" placeholder="Named from the file if left empty">
+      </div>
+      <div class="import-actions">
+        <button class="btn" data-import-submit>Import</button>
+        <p class="meta import-status" id="import-status" role="status" data-import-status{{if .ImportError}} data-refused{{end}}>{{if .ImportError}}<span class="field-error">{{.ImportError}}</span>{{else}}Cards from Anki, CSV and card-block Markdown go straight into your library at no allowance cost; other Markdown goes to the drafting agent.{{end}}</p>
+      </div>
+    </form>
+  </section>
 </section>
 {{end}}

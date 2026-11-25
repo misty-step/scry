@@ -486,7 +486,7 @@ func TestS106_2_NoHandWrittenCardForms(t *testing.T) {
 	idea := outline[len(outline)-1]
 	page := b.mustGet(fmt.Sprintf("/library/ideas/%d", idea.ID))
 	hasNot(t, page, "Add an item", "Add an exact text", "/library/texts", "/items\" class=\"form\"", `name="prompt"`, `name="answer"`)
-	end := `<p class="pane-links meta" data-outline-end><a class="link quiet" href="/shelf">Starter shelf</a> · <a class="link quiet" href="/learn">Create or import cards</a></p>`
+	end := `<p class="pane-links meta" data-outline-end><a class="link quiet" href="/shelf">Starter shelf</a> · <a class="link quiet" href="/learn#import">Create or import cards</a></p>`
 	if strings.Count(page, end) != 2 {
 		t.Errorf("the outline (desktop pane and phone picker) should both end with Starter shelf · Create or import cards: %d", strings.Count(page, end))
 	}

@@ -1,6 +1,7 @@
 {{define "head"}}{{if eq .Draft.Status "drafting"}}<noscript><meta http-equiv="refresh" content="2"></noscript>{{end}}{{end}}
 {{define "main"}}
 <section class="draft"{{if eq .Draft.Status "drafting"}} data-drafting{{end}} data-draft>
+  {{template "flash" .}}
   <header class="list-head">
     <div>
       <p class="meta">{{.Kind}}</p>

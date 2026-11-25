@@ -60,6 +60,11 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, c *rc) error {
 		return back(w, r, "/shelf")
 	}
 	data := map[string]any{"Title": "Library", "Nav": "library", "Outline": outline, "Flash": libraryFlash[r.URL.Query().Get("ok")]}
+	// After an import, Library opens on the imported idea with a plain
+	// count (S106-3): "Imported 42 cards."
+	if n, err := strconv.Atoi(r.URL.Query().Get("imported")); err == nil && n > 0 {
+		data["Flash"] = "Imported " + plural(n, "card", "cards") + "."
+	}
 	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" && r.PathValue("id") == "" {
 		items, err := c.us.Search(ctx, q)
 		if err != nil {
@@ -245,7 +250,8 @@ func (s *Server) learn(w http.ResponseWriter, r *http.Request, c *rc) error {
 			q = d.Query
 		}
 	}
-	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": q, "Error": hint, "Examples": learnExamples})
+	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": q, "Error": hint, "Examples": learnExamples,
+		"ImportError": importRefusals[r.URL.Query().Get("import")]})
 }
 
 // learnExamples are Create's concrete starting points (DESIGN.md, Create):
@@ -307,6 +313,7 @@ func (s *Server) draft(w http.ResponseWriter, r *http.Request, c *rc) error {
 	}
 	return s.render(w, r, c, http.StatusOK, "draft.html", map[string]any{
 		"Title": d.Title, "Nav": "learn", "Draft": d, "Kind": kind, "Groups": groups, "Pending": pending, "Approved": approved,
+		"Flash": map[string]string{"import": "Sent to drafting: that Markdown has no card blocks, so Scry's drafting agent is writing its cards. Approve them here."}[r.URL.Query().Get("from")],
 		"Ideas": len(groups), "Reset": c.sub.PeriodEnd.In(c.user.Location()), "NoCard": c.sub.NoCard(),
 		"Retry": "/learn?draft=" + strconv.FormatInt(d.ID, 10),
 	})

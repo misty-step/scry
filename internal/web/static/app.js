@@ -724,6 +724,36 @@
     });
   }
 
+  // ---- Create: Import a deck (S106-3) --------------------------------------
+
+  // A file over 20 MiB is refused in words before it is sent; otherwise
+  // the status line says "importing" and the button waits until the
+  // server answers (the form posts as usual, with or without script).
+  function initImport() {
+    var form = $("[data-import-form]");
+    if (!form) return;
+    var status = $("[data-import-status]", form);
+    var button = $("[data-import-submit]", form);
+    var file = form.querySelector('input[type="file"]');
+    form.addEventListener("submit", function (e) {
+      var f = file && file.files && file.files[0];
+      if (f && f.size > 20 * 1024 * 1024) {
+        e.preventDefault();
+        status.textContent = "";
+        var err = document.createElement("span");
+        err.className = "field-error";
+        err.textContent = "That file is larger than 20 MiB. Split it and import the parts.";
+        status.appendChild(err);
+        return;
+      }
+      status.textContent = "importing " + (f ? f.name : "") + "…";
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    });
+    // Coming back to the page (bfcache) never leaves the button stuck.
+    window.addEventListener("pageshow", function () { button.disabled = false; button.removeAttribute("aria-busy"); });
+  }
+
   // ---- Settings: appearance applies at once ------------------------------
 
   // Choosing a mode changes the page immediately, and saves it as well.
@@ -873,6 +903,7 @@
   function init() {
     initTZ();
     initExamples();
+    initImport();
     initTheme();
     initShelf();
     initBusy();

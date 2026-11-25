@@ -177,6 +177,7 @@ func New(a *app.App, log *slog.Logger) *Server {
 
 	mux.Handle("GET /learn", s.member(s.learn))
 	mux.Handle("POST /learn", s.member(s.learnAsk))
+	mux.Handle("POST /learn/import", importGuard(s.member(s.learnImport)))
 	mux.Handle("GET /learn/{id}", s.member(s.draft))
 	mux.Handle("POST /learn/{id}/approve-all", s.member(s.draftApproveAll))
 
