@@ -38,9 +38,8 @@
   <div class="sug-text">
     <p class="sug-q">{{.S.Prompt}}</p>
     <p class="sug-a">{{.S.Answer}}</p>
-    <p class="meta">{{if .S.DraftID}}drafted by Scry{{if .S.Source}} · {{.S.Source}}{{end}}{{else}}{{.S.SourceLine}}{{end}}{{if .S.Exact}} · exact{{end}}</p>
+    <p class="meta">drafted by Scry{{if .S.Source}} · {{.S.Source}}{{end}}{{if .S.Exact}} · exact{{end}}</p>
   </div>
-  {{if not .S.DraftID}}<p class="sug-idea meta">{{if .S.Joins}}joins{{else}}new idea{{end}} <span class="sug-idea-name">{{.S.IdeaTitle}}</span></p>{{end}}
   <div class="sug-actions">
     <form method="post" action="/suggestions/{{.S.ID}}/approve" data-approve>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -87,3 +86,11 @@
 
 {{/* A deck row's Strugglometer line: the cue, the hold, or "Bridge card". */}}
 {{define "rowcue"}}{{if .Offer}}<span class="row-cue meta" data-row-cue>{{icon "bridge"}}<span>Repeated miss — scaffold prerequisite bridges?</span></span>{{else if .HeldBy}}<span class="row-cue meta" data-row-hold>{{icon "hold"}}<span>Held by {{plural .HeldBy "bridge" "bridges"}}</span></span>{{else if .BridgeFor}}<span class="row-cue meta" data-row-bridge>{{icon "bridge"}}<span>Bridge card</span></span>{{end}}{{end}}
+
+{{/* S106-4: how a script adds cards. It carries the token only on the
+     response that created it; otherwise a placeholder, never a stored one. */}}
+{{define "apiexample"}}<p class="meta">Send 1 to 50 cards at a time to <code>POST /api/v1/items</code>; they go straight into your library.</p>
+    <pre class="mono code" data-api-example>curl -X POST {{.Origin}}/api/v1/items \
+  -H "Authorization: Bearer {{if .NewToken}}{{.NewToken}}{{else}}scry_…{{end}}" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "The Federalist Papers", "items": [{"question": "Who wrote Federalist No. 10?", "answer": "James Madison", "idea": "Faction"}]}'</pre>{{end}}

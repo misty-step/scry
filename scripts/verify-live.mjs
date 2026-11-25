@@ -18,7 +18,7 @@
 // (/study answers 200 itself, even for an empty library). --local-signup
 // checks that a new sign-up lands straight in Scry (/shelf or /study, no
 // card step) with the no-card trial's status line in the chrome, that the
-// navigation reads Study, Library, Inbox, Create, Billing, Settings with an
+// navigation reads Study, Library, Create, Billing, Settings with an
 // icon each, and that Study with the new, empty library is its own screen
 // with its two ways forward (never a silent redirect). Prints one JSON summary on
 // stdout; exits 0 only when every check passes.
@@ -304,16 +304,17 @@ async function signedInCard(ctx, base, opt, mode, altShot) {
 
 // signedInPages checks the signed-in pages a learner lives on: /billing,
 // /study (which stays on /study whatever is in the library), /shelf, /learn
-// (Create), /inbox and /settings, each with zero CSP violations, console
-// errors, page errors and failed requests.
+// (Create) and /settings, each with zero CSP violations, console errors,
+// page errors and failed requests. (There is no Inbox: /inbox is a 303 to
+// Library, S106-4.)
 async function signedInPages(ctx, base, opt, mode) {
-  for (const p of ["/billing", "/study", "/shelf", "/learn", "/inbox", "/settings"]) {
+  for (const p of ["/billing", "/study", "/shelf", "/learn", "/settings"]) {
     await visit(ctx, base, p, opt, { expectStatus: 200, mode });
   }
 }
 
 // emptyStudy checks what a brand-new learner sees: the navigation with its
-// six labelled, icon-carrying destinations (Create, not Learn), and Study
+// five labelled, icon-carrying destinations (Create, not Learn), and Study
 // with an empty library as its own screen with both ways forward.
 async function emptyStudy(ctx, base, opt, mode) {
   const page = await ctx.newPage();
@@ -329,8 +330,8 @@ async function emptyStudy(ctx, base, opt, mode) {
     check(mode + ": GET /study with an empty library answers 200 on /study (no redirect)", res.status() === 200 && seen.path === "/study", { status: res.status(), path: seen.path });
     check(mode + ": empty Study says so and offers a starter set and Create", seen.empty && seen.head.trim() === "No cards to study yet." &&
       seen.ctas.join(",") === "/shelf,/learn", { head: seen.head.trim(), ctas: seen.ctas });
-    check(mode + ": navigation reads Study, Library, Inbox, Create, Billing, Settings, each with an icon",
-      seen.nav.map(n => n.label).join(",") === "Study,Library,Inbox,Create,Billing,Settings" && seen.nav.every(n => n.icon), seen.nav);
+    check(mode + ": navigation reads Study, Library, Create, Billing, Settings, each with an icon",
+      seen.nav.map(n => n.label).join(",") === "Study,Library,Create,Billing,Settings" && seen.nav.every(n => n.icon), seen.nav);
   } catch (err) {
     check(mode + ": empty Study", false, String(err.message || err).split("\n")[0]);
   } finally {

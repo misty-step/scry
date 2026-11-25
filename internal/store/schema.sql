@@ -177,7 +177,8 @@ CREATE TABLE drafts (
 );
 
 -- Material waiting for the learner's approval: suggestions from agents
--- (draft_id = 0, shown in the inbox) and the items of a draft outline.
+-- (draft_id = 0: an API token's cards, recorded as approved; there is no
+-- Inbox, S106-4) and the items of a draft outline.
 CREATE TABLE suggestions (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

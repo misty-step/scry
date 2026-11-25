@@ -32,7 +32,7 @@ func TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance(t *testing.T) {
 
 	// No card: every part of the product works at once, with the trial's
 	// quiet status line in the chrome.
-	for _, path := range []string{"/study", "/library", "/shelf", "/inbox", "/learn", "/billing"} {
+	for _, path := range []string{"/study", "/library", "/shelf", "/learn", "/billing"} {
 		page := b.mustGet(path)
 		if b.path != path && !((path == "/study" || path == "/library") && b.path == "/shelf") { // an empty library starts on the shelf
 			t.Errorf("on the no-card trial, %s ends at %s", path, b.path)
@@ -629,7 +629,14 @@ func TestRule_SeededDemoData(t *testing.T) {
 	if items < 100 || due < 10 || due == items {
 		t.Errorf("demo library: %d items, %d due", items, due)
 	}
-	has(t, b.mustGet("/inbox"), "7 suggestions", "from reading agent · The Federalist Papers")
+	// The demo's API tokens added their cards straight to the library
+	// (S106-4): nothing waits in an Inbox.
+	if left, _ := lib.Suggestions(ctx, 0); len(left) != 0 {
+		t.Errorf("%d demo cards wait for approval", len(left))
+	}
+	if faction, _ := lib.Search(ctx, "faction"); len(faction) != 2 || faction[0].Source != "from reading agent · The Federalist Papers" {
+		t.Errorf("demo API cards = %+v", faction)
+	}
 	has(t, b.mustGet("/billing"), "You've used 62% of this month's allowance. It resets on", "Top-up", "7-day trial started")
 	has(t, b.mustGet("/library"), "NATO phonetic alphabet", "Mental models", "The Creeds")
 }

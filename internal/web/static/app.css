@@ -227,9 +227,8 @@ p { max-width: var(--measure); }
 }
 .nav .icon { width: 16px; height: 16px; }
 .nav a[aria-current] { color: var(--ink); }
-/* The active page underlines its label only, never the Inbox count. */
+/* The active page underlines its label text only. */
 .nav a[aria-current] .nav-label { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; }
-.nav .count { color: var(--accent); }
 
 .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s2) var(--s4); padding-top: var(--s3); padding-bottom: var(--s4); }
 .foot p { max-width: none; }
@@ -729,7 +728,7 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .quiet-form summary, .cancel summary { cursor: pointer; list-style: none; }
 .quiet-form summary::-webkit-details-marker, .cancel summary::-webkit-details-marker { display: none; }
 
-/* ---- Inbox and drafts -------------------------------------------------- */
+/* ---- Draft outlines ---------------------------------------------------- */
 
 .list-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); margin-bottom: var(--s4); }
 .list-purpose { order: 1; flex-basis: 100%; }
@@ -765,13 +764,19 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .learn { display: grid; align-content: center; min-height: 50vh; }
 .learn .page-head { margin-bottom: var(--s5); }
 .ask { display: grid; gap: var(--s3); }
+/* S106-2: one multi-line field in Body type, about six lines tall, that
+   grows with what is typed or pasted (script sets its height, up to about
+   two thirds of the screen; then it scrolls). Without script it can be
+   dragged taller. Body size never clips its placeholder at 390 px. */
 .ask-input {
-  width: 100%; min-height: var(--s7); padding: var(--s2) 0;
-  background: transparent; border: 0; border-bottom: 1px solid var(--ink-ghost);
+  display: block; width: 100%; min-height: calc(6 * 1.55em + 2 * var(--s3) + 2px); max-height: 66vh;
+  padding: var(--s3); font: 400 var(--body)/1.55 var(--text); color: var(--ink);
+  background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-control);
+  resize: vertical; overflow-y: auto; overflow-wrap: anywhere;
   transition: border-color var(--fast) var(--ease);
 }
 .ask-input::placeholder { color: var(--ink-muted); opacity: 1; }
-.ask-input:focus { outline: none; border-bottom-color: var(--ink); }
+.ask-input:focus, .ask-input:focus-visible, .js-focus .ask-input:focus-visible, .js-focus.kbd-nav .ask-input:focus-visible { border-color: var(--ink); outline: 1px solid var(--ink); outline-offset: -2px; }
 .ask .btn { justify-self: end; }
 .examples { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .example {
@@ -836,12 +841,12 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .top { flex-wrap: wrap; align-items: center; gap: 0 var(--s3); min-height: 56px; }
   .brand { min-height: 55px; flex-wrap: nowrap; gap: var(--s3); } /* + the 1 px hairline = 56 px */
   .nav { gap: 0 var(--s3); }
-  /* Signed in: a 48 px brand row over one compact 52 px row holding all six
+  /* Signed in: a 48 px brand row over one compact 52 px row holding all five
      destinations as equal columns (icon over its Micro label), so every
      destination is in view: nothing scrolls sideways or wraps. */
   .top-app .brand { min-height: 48px; }
   .top-app .nav {
-    flex: 1 0 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0;
+    flex: 1 0 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0;
     height: 52px; margin: 0 calc(-1 * var(--s3)); padding: 0 var(--s1);
     border-top: 1px solid var(--line);
   }
@@ -852,12 +857,10 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   }
   .top-app .nav .nav-label { max-width: 100%; }
   .top-app .nav a[aria-current] .nav-label { text-underline-offset: 3px; }
-  .top-app .nav .count { position: absolute; top: 5px; left: calc(50% + 10px); font-size: 10px; line-height: 1; }
   .js-focus.kbd-nav .top-app .nav a:focus-visible, .top-app .nav a:focus-visible { outline-offset: -3px; }
   .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s5); padding-top: var(--s4); }
   .specimen-frame { padding: var(--s4) var(--s4) var(--s3); }
   .setting .form > .btn { justify-self: stretch; }
-  .ask-input { font-size: min(var(--display), 6.4vw); }
   .idea-picker { display: block; margin-bottom: var(--s4); }
   .pane-outline { display: none; }
   .keys { display: none; }

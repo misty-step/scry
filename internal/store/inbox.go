@@ -5,15 +5,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
 
-// Suggestion is material waiting for the learner's approval. Nothing in
-// it is part of the library until they approve it.
+// Suggestion is one item of a draft outline, waiting for the learner's
+// approval: nothing in it is part of the library until they approve it.
+// Rows with DraftID 0 record what an API token added; they go straight
+// into the library (S106-4) and never wait anywhere.
 type Suggestion struct {
 	ID          int64
-	DraftID     int64  // 0 for an agent's suggestion in the inbox
+	DraftID     int64  // 0 for an item an API token added
 	Agent       string // which agent sent it
 	Source      string // the reading or conversation it came from
 	ParentTitle string // the top-level idea (a book, a topic) to file under
@@ -83,8 +86,7 @@ func scanSuggestion(row interface{ Scan(...any) error }) (Suggestion, error) {
 	return s, nil
 }
 
-// Suggestions lists what is waiting: the inbox when draftID is 0,
-// otherwise the items of that draft.
+// Suggestions lists the pending items of a draft.
 func (u *UserStore) Suggestions(ctx context.Context, draftID int64) ([]Suggestion, error) {
 	rows, err := u.s.db.QueryContext(ctx, `SELECT `+sugCols+` FROM suggestions g
 		WHERE g.user_id = ? AND g.draft_id = ? AND g.status = 'pending' ORDER BY g.id`, u.uid, draftID)
@@ -108,14 +110,7 @@ func (u *UserStore) Suggestion(ctx context.Context, id int64) (Suggestion, error
 	return scanSuggestion(u.s.db.QueryRowContext(ctx, `SELECT `+sugCols+` FROM suggestions g WHERE g.id = ? AND g.user_id = ?`, id, u.uid))
 }
 
-// InboxCount is the number of agent suggestions waiting.
-func (u *UserStore) InboxCount(ctx context.Context) (int, error) {
-	var n int
-	err := u.s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM suggestions WHERE user_id = ? AND draft_id = 0 AND status = 'pending'`, u.uid).Scan(&n)
-	return n, err
-}
-
-// SuggestionCounts reports how a draft's (or the inbox's) suggestions stand.
+// SuggestionCounts reports how a draft's suggestions stand.
 func (u *UserStore) SuggestionCounts(ctx context.Context, draftID int64) (pending, approved, dismissed int, err error) {
 	err = u.s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(status = 'pending'), 0), COALESCE(SUM(status = 'approved'), 0), COALESCE(SUM(status = 'dismissed'), 0)
@@ -202,8 +197,9 @@ func (u *UserStore) Approve(ctx context.Context, id int64, now time.Time) (int64
 	return itemID, err
 }
 
-// ApproveAll approves everything waiting in the inbox (draftID 0) or in
-// one draft, and returns how many items were added.
+// ApproveAll approves everything waiting in one draft (or, for draftID 0,
+// any old inbox suggestion still pending) and returns how many items were
+// added.
 func (u *UserStore) ApproveAll(ctx context.Context, draftID int64, now time.Time) (int, error) {
 	n := 0
 	err := u.tx(ctx, func(tx *sql.Tx) error {
@@ -234,6 +230,93 @@ func (u *UserStore) ApproveAll(ctx context.Context, draftID int64, now time.Time
 		return nil
 	})
 	return n, err
+}
+
+// AddFromAgent puts items an API token sent straight into the library, in
+// one transaction: each is recorded as an approved suggestion (draft 0, so
+// its source line is kept on the item) and filed under its idea, which is
+// created if it is new. It returns the new items' ids in order.
+func (u *UserStore) AddFromAgent(ctx context.Context, items []Suggestion, now time.Time) ([]int64, error) {
+	var ids []int64
+	err := u.tx(ctx, func(tx *sql.Tx) error {
+		ids = ids[:0]
+		for _, s := range items {
+			s.DraftID = 0
+			if strings.TrimSpace(s.Prompt) == "" || strings.TrimSpace(s.Answer) == "" {
+				return errors.New("each item needs a question and an answer")
+			}
+			if strings.TrimSpace(s.IdeaTitle) == "" {
+				return errors.New("each item needs an idea to belong to")
+			}
+			s.Prompt, s.Answer, s.IdeaTitle = strings.TrimSpace(s.Prompt), strings.TrimSpace(s.Answer), strings.TrimSpace(s.IdeaTitle)
+			s.ParentTitle = strings.TrimSpace(s.ParentTitle)
+			links, _ := json.Marshal(append([]string{}, s.Links...))
+			res, err := tx.ExecContext(ctx, `
+				INSERT INTO suggestions (user_id, draft_id, agent, source, parent_title, idea_title, idea_summary, links, prompt, answer, exact, created_at)
+				VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				u.uid, s.Agent, s.Source, s.ParentTitle, s.IdeaTitle, s.IdeaSummary, string(links), s.Prompt, s.Answer, b2i(s.Exact), ts(now))
+			if err != nil {
+				return err
+			}
+			if s.ID, err = res.LastInsertId(); err != nil {
+				return err
+			}
+			itemID, err := u.approve(ctx, tx, s, now)
+			if err != nil {
+				return err
+			}
+			ids = append(ids, itemID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// InboxMove is what the startup migration did for one learner: how many
+// old inbox suggestions it moved into their library.
+type InboxMove struct {
+	UserID int64
+	Moved  int
+}
+
+// MoveInboxToLibrary retires the Inbox (S106-4): every agent suggestion
+// still pending (draft 0) is approved into its learner's library with the
+// same logic as a tap on Approve, one learner per transaction. It is
+// idempotent (an approved suggestion is never pending again), so it runs
+// on every open; a learner whose move fails is reported and retried on the
+// next open, and never blocks anyone else's.
+func (s *Store) MoveInboxToLibrary(ctx context.Context, now time.Time) ([]InboxMove, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT user_id FROM suggestions WHERE draft_id = 0 AND status = 'pending' ORDER BY user_id`)
+	if err != nil {
+		return nil, err
+	}
+	var users []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		users = append(users, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var moves []InboxMove
+	var errs []error
+	for _, uid := range users {
+		n, err := s.For(uid).ApproveAll(ctx, 0, now)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("user %d: %w", uid, err))
+			continue
+		}
+		moves = append(moves, InboxMove{UserID: uid, Moved: n})
+	}
+	return moves, errors.Join(errs...)
 }
 
 // Dismiss drops a suggestion without adding it.

@@ -4,16 +4,16 @@
     <h1 class="title page-title">{{icon "create"}}Create</h1>
     <p class="purpose">Generate cards with AI</p>
   </header>
-  <form method="post" action="/learn" class="ask">
+  <form method="post" action="/learn" class="ask" data-ask>
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label class="sr" for="q">What do you want to know?</label>
-    <input class="ask-input display" id="q" name="q" value="{{.Q}}" placeholder="What do you want to know?" autofocus autocomplete="off" maxlength="300" required aria-describedby="ask-hint">
-    <p class="meta" id="ask-hint">{{if .Error}}{{.Error}}{{else}}A topic, a question, or a book's title{{end}}</p>
+    <textarea class="ask-input" id="q" name="q" rows="6" placeholder="What do you want to know?" autofocus autocomplete="off" spellcheck="true" maxlength="16000" required aria-describedby="ask-hint" data-ask-input>{{.Q}}</textarea>
+    <p class="meta" id="ask-hint"{{if .Error}} role="alert"{{end}}>{{if .Error}}{{.Error}}{{else}}A topic, a question, a book's title, or pasted Markdown or notes{{end}}</p>
     <ul class="examples" aria-label="Examples to start from" data-examples>
       {{range .Examples}}<li><a class="example" href="/learn?q={{.}}" data-example="{{.}}">{{.}}</a></li>{{end}}
     </ul>
-    <button class="btn btn-accent">Draft it</button>
+    <button class="btn btn-accent">Draft cards</button>
   </form>
-  <p class="hints micro">enter to draft</p>
+  <p class="hints micro">⌘/ctrl + enter to draft</p>
 </section>
 {{end}}

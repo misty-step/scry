@@ -17,7 +17,6 @@ var iconPaths = map[string]string{
 	// Navigation
 	"cards":    `<rect x="3" y="8" width="14" height="11" rx="1.5"/><path d="M7 8V6.5A1.5 1.5 0 0 1 8.5 5h11A1.5 1.5 0 0 1 21 6.5v8a1.5 1.5 0 0 1-1.5 1.5H17"/>`,
 	"library":  `<path d="M5 4v16M9.5 4v16"/><path d="M13.6 5.6l3.4-.9 3.6 13.7-3.4.9z"/>`,
-	"inbox":    `<path d="M3 13l2.6-6.9A1.5 1.5 0 0 1 7 5h10a1.5 1.5 0 0 1 1.4 1.1L21 13v4.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/>`,
 	"create":   `<path d="M11 5l1.9 6.1L19 13l-6.1 1.9L11 21l-1.9-6.1L3 13l6.1-1.9z"/><path d="M19 2.5v4M17 4.5h4"/>`,
 	"billing":  `<rect x="3" y="5.5" width="18" height="13" rx="1.5"/><path d="M3 10h18M7 14.5h3"/>`,
 	"settings": `<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>`,

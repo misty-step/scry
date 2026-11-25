@@ -105,10 +105,14 @@ func TestD8_ReadingMeasure(t *testing.T) {
 
 func TestD11_KeyHints(t *testing.T) {
 	b, _ := templateFS.ReadFile("templates/layout.html")
-	for _, hint := range []string{"g s study", "g l library", "g i inbox", "g n create", "g b billing", "/ search", "esc leave field", "tab/enter other actions"} {
+	for _, hint := range []string{"g s study", "g l library", "g n create", "g b billing", "/ search", "esc leave field", "tab/enter other actions"} {
 		if !strings.Contains(string(b), hint) {
 			t.Errorf("missing key hint %s", hint)
 		}
+	}
+	// S106-4: there is no Inbox, so no g i.
+	if strings.Contains(string(b), "g i inbox") || strings.Contains(string(b), "inbox") {
+		t.Error("the key hints still offer g i inbox")
 	}
 	b, _ = templateFS.ReadFile("templates/study.html")
 	for _, hint := range []string{"a again", "enter or space for", "enter to check", "space to start/stop speaking"} {

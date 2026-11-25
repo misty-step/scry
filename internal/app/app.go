@@ -1,5 +1,5 @@
 // Package app is Scry's behaviour: accounts, the plan and its allowance,
-// study sessions, drafting, and the agents' inbox. It sits between the
+// study sessions, drafting, and the API tokens' additions. It sits between the
 // web layer and the store, and talks to the outside world only through
 // the adapter interfaces.
 package app
@@ -247,8 +247,9 @@ func (a *App) SignOut(ctx context.Context, token string) error {
 }
 
 // CreateAgentToken makes a credential the learner can hand to one of
-// their agents. The plain token is returned once and never stored.
-func (a *App) CreateAgentToken(ctx context.Context, userID int64, name string, canAdd bool) (string, error) {
+// their scripts or tools; every token may add cards to their library. The
+// plain token is returned once and never stored.
+func (a *App) CreateAgentToken(ctx context.Context, userID int64, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", fieldErr("name", "Give the token a name, such as “reading script”.")
@@ -257,7 +258,7 @@ func (a *App) CreateAgentToken(ctx context.Context, userID int64, name string, c
 		return "", fieldErr("name", "Keep the name under 40 characters.")
 	}
 	token := "scry_" + randomToken(30)
-	return token, a.Store.For(userID).CreateToken(ctx, name, hashToken(token), canAdd, a.now())
+	return token, a.Store.For(userID).CreateToken(ctx, name, hashToken(token), a.now())
 }
 
 // AgentFromToken resolves an agent's bearer token.
