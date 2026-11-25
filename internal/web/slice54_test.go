@@ -43,14 +43,16 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	// the rubric wording) and its schedule.
 	spec := home[strings.Index(home, `<figure class="specimen"`):]
 	spec = spec[:strings.Index(spec, "</figure>")]
-	q := "Which razor says never to attribute to malice what is adequately explained by carelessness or stupidity?"
-	has(t, spec, q, "Your answer", "hanlons razor", "Correct answer", "Hanlon's razor",
+	// Slice 106 (S106-1): the card is asked the other way round, the razor
+	// as its prompt and what it says as the correct answer.
+	expected := "Never attribute to malice what is adequately explained by carelessness or stupidity"
+	has(t, spec, "Hanlon's razor", "Your answer", "don't assume malice when carelessness or stupidity explains it", "Correct answer", expected,
 		`verdict-badge verdict-right`, ">Correct</span>", ai.PlainWhy(srs.Right), "Next review", "Interval", "Stability", "Difficulty")
 	real := false
 	for _, set := range starter.All() {
 		for _, idea := range set.Ideas {
 			for _, it := range idea.Items {
-				if it.Q == q && it.A == "Hanlon's razor" && idea.Title == "The razors" {
+				if strings.Contains(it.Q, strings.TrimPrefix(expected, "Never ")) && it.A == "Hanlon's razor" && idea.Title == "The razors" {
 					real = true
 				}
 			}
@@ -65,7 +67,7 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	if n := strings.Count(rows, `class="plain-row"`); n != 4 {
 		t.Errorf("%d ruled rows below the hero, want 4", n)
 	}
-	has(t, rows, "AI grader", "word for word", "Thirty starter sets", "book", "scripts or tools")
+	has(t, rows, "AI grader", "word for word", "Thirty starter sets", "Markdown", "scripts or tools")
 	hasNot(t, rows, "agents")
 	// Public pages end with a quiet hairline footer naming Misty Step and the
 	// privacy commitment.
@@ -312,8 +314,8 @@ func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 		".nav a[aria-current] .nav-label { text-decoration: underline;",
 		"grid-template-columns: 196px minmax(0, 1fr); align-items: start;",
 		".session-margin { display: flex; flex-direction: column; gap: var(--s1); align-self: start;",
-		"grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);",
-		".specimen-frame::before", `mask: url("/static/grid.svg")`,
+		"grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);",
+		".hero::before", `mask: url("/static/grid.svg")`,
 		".mark { width: 20px; height: 20px;", ".mark-focal { fill: var(--accent); stroke: none; }",
 		".wordmark { gap: var(--s2); }",
 		".example {", "border: 1px solid var(--line); border-radius: var(--radius-control);",

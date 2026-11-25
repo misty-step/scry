@@ -801,3 +801,62 @@
   init();
   frameReview();
 })();
+
+// ---- Landing: the Study Specimen ---------------------------------------
+//
+// DESIGN.md (Landing, Motion): the one ambient demonstration. The server
+// renders the Judged stage and inert step controls, so without this script
+// the Specimen is complete and still. With it the steps work, and the
+// stages move on (Prompt, Answer, Judged, again) every 4 s with a 200 ms
+// cross-fade drawn by app.css, holding while the Specimen is hovered or
+// holds focus, and stopping for good once a step is chosen. Under reduced
+// motion it never moves on by itself: it rests on Judged.
+(function () {
+  "use strict";
+  var fig = document.querySelector("[data-specimen]");
+  if (!fig) return;
+  var steps = Array.prototype.slice.call(fig.querySelectorAll("[data-specimen-step]"));
+  var stages = Array.prototype.slice.call(fig.querySelectorAll("[data-specimen-stage]"));
+  var order = steps.map(function (b) { return b.getAttribute("data-specimen-step"); });
+  if (!steps.length || steps.length !== stages.length) return;
+  var still = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+  var every = 4000, timer = 0, chosen = false, hovered = false, focused = false, current = order.length - 1;
+  stages.forEach(function (s) {
+    if (s.classList.contains("is-shown")) current = Math.max(0, order.indexOf(s.getAttribute("data-specimen-stage")));
+  });
+
+  function show(i) {
+    current = i;
+    stages.forEach(function (s) { s.classList.toggle("is-shown", s.getAttribute("data-specimen-stage") === order[i]); });
+    steps.forEach(function (b, j) { b.setAttribute("aria-pressed", j === i ? "true" : "false"); });
+  }
+  function hold() {
+    if (timer) clearTimeout(timer);
+    timer = 0;
+  }
+  function run() {
+    hold();
+    if (chosen || hovered || focused || still.matches || document.hidden) return;
+    timer = setTimeout(function () {
+      timer = 0;
+      show((current + 1) % order.length);
+      run();
+    }, every);
+  }
+
+  steps.forEach(function (b, i) {
+    b.disabled = false;
+    b.addEventListener("click", function () { chosen = true; hold(); show(i); });
+  });
+  fig.addEventListener("mouseenter", function () { hovered = true; hold(); });
+  fig.addEventListener("mouseleave", function () { hovered = false; run(); });
+  fig.addEventListener("focusin", function () { focused = true; hold(); });
+  fig.addEventListener("focusout", function (e) {
+    if (e.relatedTarget && fig.contains(e.relatedTarget)) return;
+    focused = false;
+    run();
+  });
+  document.addEventListener("visibilitychange", run);
+  if (still.addEventListener) still.addEventListener("change", run);
+  run();
+})();
