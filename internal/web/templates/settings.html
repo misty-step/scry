@@ -68,13 +68,13 @@
   </section>
 
   {{if .Removed}}
-  <section class="setting">
+  <section class="setting" data-recently-removed>
     <h2 class="title">Recently removed</h2>
-    <p>Removed ideas are kept for 30 days.</p>
+    <p>Removed ideas and cards are kept for 30 days.</p>
     <ul class="rows">
       {{range .Removed}}
-      <li class="row token-row"><span>{{.Title}}</span><span class="meta">{{plural .Items "item" "items"}} · removed {{short .Removed}}</span>
-        <form method="post" action="/settings/restore/{{.ID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link" aria-label="Restore {{.Title}}">Restore</button></form></li>
+      <li class="row token-row removed-row" data-removed="{{.Kind}}"><span class="removed-title">{{.Title}}</span><span class="meta removed-detail">{{.Detail}} · removed {{short .Removed}}</span>
+        <form method="post" action="/settings/restore/{{.ID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}">{{if eq .Kind "card"}}<input type="hidden" name="kind" value="card">{{end}}<button class="link" aria-label="Restore {{.Title}}">Restore</button></form></li>
       {{end}}
     </ul>
   </section>

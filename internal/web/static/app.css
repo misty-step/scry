@@ -571,6 +571,40 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
 .edit-status { display: inline-flex; align-items: center; gap: 6px; color: var(--right); }
 .edit-status .icon { width: 16px; height: 16px; }
+.edit-card summary .icon { width: 16px; height: 16px; }
+/* S106-5: Snooze and Delete. In the review, bordered secondary controls
+   beside Edit card (a 16 px icon and the word, Meta mono); while a card
+   waits, quiet text actions under the answer line. The quiet line after
+   either sits above the next card. */
+.manage-form { display: contents; }
+.manage-btn { font: 400 var(--meta)/1.4 var(--mono); }
+.manage-btn .icon { width: 16px; height: 16px; }
+.manage-quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s4); max-width: none; }
+.manage-quiet .link { font: 400 var(--meta)/1.4 var(--mono); }
+.study-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s2); color: var(--ink-muted); max-width: none; }
+.study-note-form { display: inline-flex; }
+.study-note .link { font: inherit; }
+/* Open, Edit card takes the whole row (its form keeps its measure), so
+   Snooze and Delete stay together beside Next card under the form. */
+.review-foot > .edit-card[open] { max-width: none; }
+.review-foot > .edit-card[open] .edit-form { max-width: 560px; }
+/* Settings → Recently removed: an idea's title or a card's question, then
+   what it is and when it was removed; on phones the title has its own line. */
+.removed-row { flex-wrap: wrap; column-gap: var(--s3); }
+.removed-title { min-width: 0; overflow-wrap: anywhere; }
+@media screen and (max-width: 760px) {
+  .rows .removed-row > .removed-title { flex: 1 1 100%; }
+  .removed-row > .removed-detail { flex: 1; min-width: 0; }
+}
+/* Phones: Edit card, Snooze and Delete share one row of equal columns,
+   in the flow above the pinned Next card bar's clearance. ("screen and"
+   keeps the main phone block the one plain 760 px query.) */
+@media screen and (max-width: 760px) {
+  .review-foot { column-gap: var(--s2); }
+  .review-foot > .edit-card:not([open]), .review-foot .manage-btn { flex: 1 1 0; min-width: 0; }
+  .review-foot .edit-card:not([open]) summary { width: 100%; }
+  .review-foot .edit-toggle, .review-foot .manage-btn { padding: 0 var(--s2); gap: 6px; white-space: nowrap; }
+}
 /* On-demand "Ask Why?": a bordered control, then the explanation as body text. */
 .explain { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); max-width: var(--measure); }
 .explain-btn { font: 400 var(--meta)/1.4 var(--mono); }

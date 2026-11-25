@@ -85,5 +85,10 @@
 {{if .Cleared}}<p class="struggle-line bridge-note meta" data-bridge-cleared role="status">{{icon "check"}}<span>{{.Cleared}}</span></p>{{end}}
 {{end}}
 
+{{/* S106-5: the one quiet line after Snooze or Delete in Study ("Snoozed
+     until tomorrow." / "Card removed · Restore"), on the next card, the
+     session's end or Study's rest. */}}
+{{define "studynote"}}{{with .Note}}<div class="meta study-note" role="status" data-study-note>{{.Text}}{{if .RestoreID}}<span aria-hidden="true"> · </span><form method="post" action="/study/restore" class="study-note-form" data-manage-form><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="item_id" value="{{.RestoreID}}"><button class="link" data-restore>Restore</button></form>{{end}}</div>{{end}}{{end}}
+
 {{/* A deck row's Strugglometer line: the cue, the hold, or "Bridge card". */}}
 {{define "rowcue"}}{{if .Offer}}<span class="row-cue meta" data-row-cue>{{icon "bridge"}}<span>Repeated miss — scaffold prerequisite bridges?</span></span>{{else if .HeldBy}}<span class="row-cue meta" data-row-hold>{{icon "hold"}}<span>Held by {{plural .HeldBy "bridge" "bridges"}}</span></span>{{else if .BridgeFor}}<span class="row-cue meta" data-row-bridge>{{icon "bridge"}}<span>Bridge card</span></span>{{end}}{{end}}

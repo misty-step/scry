@@ -34,6 +34,9 @@ var iconPaths = map[string]string{
 	"history":  `<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>`,
 	"calendar": `<rect x="4" y="5.5" width="16" height="14.5" rx="1.5"/><path d="M4 10h16M8 3.5v4M16 3.5v4"/>`,
 	"spinner":  `<path d="M21 12a9 9 0 1 1-9-9"/>`,
+	// Managing a card in Study (S106-5): Snooze, a crescent moon; Delete, a bin.
+	"snooze": `<path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10z"/>`,
+	"bin":    `<path d="M4 7h16M9.5 7V4.5h5V7M6 7l1 13h10l1-13M10 11v5.5M14 11v5.5"/>`,
 
 	// Bridge cards (Slice 75): a bridge (a deck on two piers over an arch)
 	// for the struggle cue and bridge cards, a pause in a circle for a held

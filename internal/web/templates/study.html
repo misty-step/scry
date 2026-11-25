@@ -12,6 +12,36 @@
         <p class="verdict"><span class="verdict-badge verdict-{{.Judged.Verdict}}" data-verdict="{{.Judged.Verdict}}">{{icon .Judged.Icon}}<span data-verdict-label>{{.Judged.Badge}}</span></span> <span class="why">{{.Judged.Why}}</span></p>
 {{end}}
 
+{{/* S106-5: Snooze and Delete. Each form carries only the card's id: no
+     question, no answer, so a waiting card never shows its answer here. */}}
+{{define "manage-review"}}
+        <form method="post" action="/study/snooze" class="manage-form" data-manage-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="item_id" value="{{.Item.ID}}">
+          <button class="btn manage-btn" data-snooze aria-keyshortcuts="S">{{icon "snooze"}}Snooze</button>
+        </form>
+        <form method="post" action="/study/delete" class="manage-form" data-manage-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="item_id" value="{{.Item.ID}}">
+          <button class="btn manage-btn" data-delete>{{icon "bin"}}Delete</button>
+        </form>
+{{end}}
+
+{{define "manage-waiting"}}
+      <div class="manage-quiet meta" data-manage>
+        <form method="post" action="/study/snooze" data-manage-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="item_id" value="{{.Item.ID}}">
+          <button class="link quiet" data-snooze aria-keyshortcuts="S">Snooze</button>
+        </form>
+        <form method="post" action="/study/delete" data-manage-form>
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="item_id" value="{{.Item.ID}}">
+          <button class="link quiet" data-delete>Delete</button>
+        </form>
+      </div>
+{{end}}
+
 {{define "review"}}
         {{template "explain" .}}
         {{with .Bridge}}{{template "struggle" .}}{{end}}
@@ -29,26 +59,34 @@
         {{if .Judged.Practice}}<p class="meta practice-note">Practice attempt: the schedule did not move.</p>{{end}}
         <div class="review-foot">
         <details class="edit-card" data-edit{{if .EditOpen}} open{{end}}>
-          <summary class="btn edit-toggle" data-edit-toggle>{{icon "pencil"}}Edit card</summary>
-          <form method="post" action="/study/edit" class="form edit-form" data-edit-form>
+          <summary class="btn edit-toggle" data-edit-toggle aria-keyshortcuts="E">{{icon "pencil"}}Edit card</summary>
+          <form method="post" action="/study/edit" class="form edit-form" data-edit-form novalidate>
             <input type="hidden" name="csrf" value="{{.CSRF}}">
             <input type="hidden" name="item_id" value="{{.Item.ID}}">
-            <div class="field">
+            <div class="field{{if eq .EditField "prompt"}} has-error{{end}}">
               <label class="label" for="edit-prompt">Question</label>
-              <textarea class="input" id="edit-prompt" name="prompt" rows="2" maxlength="1000" required>{{.EditPrompt}}</textarea>
+              <textarea class="input" id="edit-prompt" name="prompt" rows="2" maxlength="1000" required aria-describedby="edit-prompt-error"{{if eq .EditField "prompt"}} aria-invalid="true"{{end}}>{{.EditPrompt}}</textarea>
+              <p class="field-error" id="edit-prompt-error" role="alert" data-edit-error="prompt"{{if ne .EditField "prompt"}} hidden{{end}}>{{if eq .EditField "prompt"}}{{.EditError}}{{end}}</p>
             </div>
-            <div class="field">
+            <div class="field{{if eq .EditField "answer"}} has-error{{end}}">
               <label class="label" for="edit-answer">Correct answer</label>
-              <textarea class="input" id="edit-answer" name="answer" rows="2" maxlength="2000" required>{{.EditAnswer}}</textarea>
+              <textarea class="input" id="edit-answer" name="answer" rows="2" maxlength="2000" required aria-describedby="edit-answer-error"{{if eq .EditField "answer"}} aria-invalid="true"{{end}}>{{.EditAnswer}}</textarea>
+              <p class="field-error" id="edit-answer-error" role="alert" data-edit-error="answer"{{if ne .EditField "answer"}} hidden{{end}}>{{if eq .EditField "answer"}}{{.EditError}}{{end}}</p>
             </div>
-            <p class="field-error" role="alert" data-edit-error{{if not .EditError}} hidden{{end}}>{{.EditError}}</p>
+            <div class="field{{if eq .EditField "idea"}} has-error{{end}}">
+              <label class="label" for="edit-idea">Idea</label>
+              <input class="input" id="edit-idea" name="idea" value="{{.EditIdea}}" maxlength="200" required list="edit-ideas" autocomplete="off" aria-describedby="edit-idea-error"{{if eq .EditField "idea"}} aria-invalid="true"{{end}}>
+              <datalist id="edit-ideas" data-edit-ideas>{{range .IdeaTitles}}<option value="{{.}}"></option>{{end}}</datalist>
+              <p class="field-error" id="edit-idea-error" role="alert" data-edit-error="idea"{{if ne .EditField "idea"}} hidden{{end}}>{{if eq .EditField "idea"}}{{.EditError}}{{end}}</p>
+            </div>
             <div class="edit-actions">
               <button class="btn" data-edit-save>Save card</button>
               <span class="meta edit-status" role="status" data-edit-status{{if not .Saved}} hidden{{end}}>{{icon "check"}}Saved</span>
             </div>
-            <p class="meta">Edits apply from the next review. This grade and its schedule stay as they are.</p>
+            <p class="meta">This grade and its schedule stay as they are.</p>
           </form>
         </details>
+        {{template "manage-review" .}}
         <form method="post" action="/study/next" class="judged-actions" data-next-form>
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           {{if eq .Judged.Kind "exact"}}<button class="link" name="again" value="1" data-again>Again</button>{{end}}
@@ -79,6 +117,7 @@
     </ol>
     {{end}}
 
+    {{template "studynote" .}}
     {{if .Judged}}
     <div class="current judged judged-{{.Judged.Kind}}" data-judged data-review data-kind="{{.Judged.Kind}}">
       {{if eq .Judged.Kind "exact"}}
@@ -127,6 +166,7 @@
           <button class="btn btn-accent" data-check>Check</button>
         </div>
       </form>
+      {{template "manage-waiting" .}}
       <p class="hints micro">enter to check · space to start/stop speaking (empty answer)</p>
     </div>
     {{end}}

@@ -671,7 +671,8 @@ func TestSlice41_Edit_SavesInPlacePersistsAndIsGuarded(t *testing.T) {
 	w.model.script = []ai.Judgment{{Verdict: srs.Missed, Reason: "Not it."}}
 	review := b.answer(item, "apple")
 	has(t, review, `action="/study/edit"`, `name="prompt"`, `name="answer"`, "Save card",
-		"Edits apply from the next review. This grade and its schedule stay as they are.")
+		"This grade and its schedule stay as they are.")
+	hasNot(t, review, "Edits apply from the next review.")
 	hist, _ := lib.History(ctx, item.ID)
 	sched := mustItem(t, lib, item.ID).Sched
 	id := strconv.FormatInt(item.ID, 10)

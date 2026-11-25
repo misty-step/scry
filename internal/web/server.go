@@ -144,6 +144,10 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.Handle("POST /study/speech", s.member(s.studySpeech))
 	mux.Handle("POST /study/explain", s.member(s.studyExplain))
 	mux.Handle("POST /study/edit", s.member(s.studyEdit))
+	// S106-5: Snooze and Delete in Study, and Restore from its quiet line.
+	mux.Handle("POST /study/snooze", s.member(s.studySnooze))
+	mux.Handle("POST /study/delete", s.member(s.studyDelete))
+	mux.Handle("POST /study/restore", s.member(s.studyRestore))
 
 	mux.Handle("GET /library", s.member(s.library))
 	mux.Handle("GET /library/ideas/{id}", s.member(s.library))
