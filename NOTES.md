@@ -1464,6 +1464,29 @@ Choices where the Folio left room:
   is 48 px; with the margin top-aligned there is nothing to centre. Measured
   on the running app: scrollHeight 900 at a 900 px window (was 918).
 
+### Slice 106 [S106-1]: the landing Specimen steps
+
+- **The prompt "Hanlon's razor".** DESIGN.md names the prompt; the starter
+  card asks the razor's definition and answers "Hanlon's razor". The Specimen
+  asks it the other way round: the correct answer is the starter card's own
+  wording ("Never attribute to malice what is adequately explained by
+  carelessness or stupidity"), the typed answer says the same in other words,
+  and the why is the grader's plain sentence for Correct. The place is the
+  spoiler-safe "Mental models · Set 1" a session shows.
+- **Step controls without script.** They are rendered (3 · Judged marked
+  current, aria-pressed) but `disabled` until app.js wires them, so no page
+  shows a control that does nothing; with script they are ordinary buttons
+  reached by Tab.
+- **Timing.** One stage every 4 s (inside 3.5–4.5 s), 200 ms ease-out
+  cross-fade. Hover or focus within holds the loop; leaving resumes it; a
+  chosen step stops it for the page's life. The loop also rests while the tab
+  is hidden. Under reduced motion it never advances, but the steps still work.
+- **Calibrated ticks.** A short 8 px tick every 22 px (the session's) plus a
+  long 14 px tick every fifth (110 px), `static/tick-major.svg`.
+- **Prompt and Answer stages** keep the Judged stage's height (one grid
+  cell); their one-line hint sits at the foot of the cell, so the panel never
+  changes size while it steps.
+
 
 ## Slice 70: iPhone dogfooding polish on the Study review (Folio 54beb48 → this PR)
 

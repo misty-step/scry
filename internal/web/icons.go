@@ -46,6 +46,14 @@ var iconPaths = map[string]string{
 	"release": `<circle cx="12" cy="12" r="9"/><path d="M10 8.75l5 3.25-5 3.25z"/>`,
 	"remove":  `<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>`,
 
+	// How Scry works (Slice 106): the landing page's four rows. A clock for
+	// the five-minute daily loop, layered books for starter sets, capture
+	// and imports, and a lock for privacy, exports and API tokens; the row
+	// on judgment uses the Correct verdict's check in a circle.
+	"clock": `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>`,
+	"books": `<rect x="3" y="15" width="18" height="5" rx="1"/><path d="M4.5 15v-4a1 1 0 0 1 1-1h12.5a1 1 0 0 1 1 1v4M6 10V6a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v4M17 15v5M8 10v5M14 5v5"/>`,
+	"lock":  `<rect x="4.5" y="10.5" width="15" height="10" rx="1.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3M12 14.5V17"/>`,
+
 	// Verdicts
 	"verdict-right":  `<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.8 2.8L16 9.5"/>`,
 	"verdict-close":  `<circle cx="12" cy="12" r="9"/><path d="M8 12.5c1.3-1.6 2.7-1.6 4 0s2.7 1.6 4 0"/>`,

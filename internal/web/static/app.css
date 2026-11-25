@@ -304,41 +304,87 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .column .form { margin-top: var(--s2); max-width: none; }
 .trial-terms { color: var(--ink); }
 
+/* The landing hero sits on the drafting band (DESIGN.md, Shape and
+   Landing): a sunken wash in a 1 px line frame with the study session's
+   faint 22 px dot grid and calibrated ruler ticks down both edges (a short
+   tick every 22 px, a long one every fifth). No gradient, glow or shadow. */
 .hero {
-  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: center; gap: var(--s6);
-  padding: var(--s6) 0 var(--section);
+  position: relative;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); align-items: center; gap: var(--s6);
+  padding: clamp(var(--s4), 4vw, var(--s6)); margin-bottom: var(--section);
+  background: var(--sunken); border: 1px solid var(--line);
 }
-.hero-copy { display: grid; gap: var(--s4); align-content: center; }
-.hero .display { max-width: 16ch; }
-.nowrap { white-space: nowrap; }
-/* The Study Specimen: one real review moment in type and hairlines, on the
-   study session's dot grid with its edge ticks. */
-.specimen { margin: 0; display: grid; gap: var(--s2); min-width: 0; }
-.specimen-frame {
-  position: relative; display: grid; gap: var(--s3);
-  padding: var(--s5) var(--s5) var(--s4); border: 1px solid var(--line); background: var(--page);
-}
-.specimen-frame::before, .specimen-frame::after {
+.hero::before, .hero::after {
   content: ""; position: absolute; inset: 0; pointer-events: none; background-color: var(--ink);
 }
-.specimen-frame::before {
+.hero::before {
   opacity: var(--grid-opacity);
   -webkit-mask: url("/static/grid.svg") 0 0 / var(--grid) var(--grid);
   mask: url("/static/grid.svg") 0 0 / var(--grid) var(--grid);
 }
-.specimen-frame::after {
+.hero::after {
   opacity: 0.2;
-  -webkit-mask: url("/static/tick.svg") left top / 8px var(--grid) repeat-y, url("/static/tick.svg") right top / 8px var(--grid) repeat-y;
-  mask: url("/static/tick.svg") left top / 8px var(--grid) repeat-y, url("/static/tick.svg") right top / 8px var(--grid) repeat-y;
+  -webkit-mask: url("/static/tick.svg") left top / 8px var(--grid) repeat-y, url("/static/tick.svg") right top / 8px var(--grid) repeat-y,
+    url("/static/tick-major.svg") left top / 14px calc(5 * var(--grid)) repeat-y, url("/static/tick-major.svg") right top / 14px calc(5 * var(--grid)) repeat-y;
+  mask: url("/static/tick.svg") left top / 8px var(--grid) repeat-y, url("/static/tick.svg") right top / 8px var(--grid) repeat-y,
+    url("/static/tick-major.svg") left top / 14px calc(5 * var(--grid)) repeat-y, url("/static/tick-major.svg") right top / 14px calc(5 * var(--grid)) repeat-y;
 }
-.specimen-frame > * { position: relative; z-index: 1; }
+.hero > * { position: relative; z-index: 1; }
+.hero-copy { display: grid; gap: var(--s4); align-content: center; }
+.hero .display { max-width: 16ch; }
+.nowrap { white-space: nowrap; }
+/* The Study Specimen: one card stepped from its prompt to its judgment, in
+   type, hairlines and line icons on a raised panel. The three stages share
+   one grid cell, so the panel keeps the tallest stage's height and nothing
+   below it moves; the hidden ones are invisible to everyone. */
+.specimen {
+  margin: 0; min-width: 0; display: grid; gap: var(--s3);
+  padding: var(--s4) 28px 28px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius-surface);
+}
+.specimen-steps { display: flex; gap: var(--s4); border-bottom: 1px solid var(--line); }
+.specimen-step {
+  min-height: var(--touch); padding: 0; margin: 0; border: 0; background: none; cursor: pointer;
+  font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); white-space: nowrap;
+  transition: color var(--fast) var(--ease);
+}
+.specimen-step[aria-pressed="true"] { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; }
+.specimen-step:disabled { cursor: default; }
 .specimen-place { display: flex; justify-content: space-between; gap: var(--s3); max-width: none; }
 .specimen-count { flex: none; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.specimen-q { font: 500 var(--body)/1.4 var(--text); color: var(--ink-muted); }
-.specimen .compare-answer { font-size: 20px; }
+.specimen-stages { display: grid; min-width: 0; }
+.specimen-stage {
+  grid-area: 1 / 1; display: flex; flex-direction: column; gap: var(--s3); min-width: 0;
+  visibility: hidden; opacity: 0;
+  transition: opacity 200ms var(--ease), visibility 0s linear 200ms;
+}
+.specimen-stage.is-shown { visibility: visible; opacity: 1; transition: opacity 200ms var(--ease), visibility 0s; }
+.specimen-prompt { font: 500 32px/1.15 var(--text); letter-spacing: -0.02em; color: var(--ink); overflow-wrap: anywhere; }
+.specimen-line {
+  display: flex; align-items: flex-end; min-height: 56px; max-width: none; padding: var(--s2) 0;
+  border-bottom: 1px solid var(--ink-ghost); font: 400 20px/1.35 var(--text); color: var(--ink);
+}
+.specimen-caret { display: block; width: 0.5em; height: 1.15em; background: var(--ink); }
+.specimen-typed { display: block; overflow-wrap: anywhere; }
+.specimen-stage.is-shown .specimen-typed { animation: settle var(--slow) var(--ease) both; }
+@keyframes settle { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.specimen-hint { margin-top: auto; max-width: none; }
+.specimen .compare-answer { font-size: var(--reading); line-height: 1.35; }
 .specimen .why { font-size: var(--body); }
-.specimen-schedule { gap: 0 var(--s3); }
-.specimen-caption { max-width: none; }
+/* The Specimen's schedule: a flush 2x2 grid of cells sharing 1 px rules at
+   every width. Each label stays on one line beside its icon, over its value;
+   the post-answer review keeps its own .telemetry table. */
+.specimen-schedule {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0;
+  border-top: 1px solid var(--line); border-left: 1px solid var(--line);
+  font: 400 var(--meta)/1.4 var(--mono);
+}
+.specimen-fact {
+  display: grid; gap: var(--s1); align-content: start; min-width: 0;
+  padding: 14px var(--s3); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.specimen-fact dt { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); white-space: nowrap; }
+.specimen-fact dt .icon { width: 14px; height: 14px; }
+.specimen-fact dd { color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4); }
 .plain-list { border-top: 1px solid var(--line); }
 .plain-row {
@@ -346,6 +392,8 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
   padding: var(--s5) 0; border-bottom: 1px solid var(--line);
 }
 .plain-row p { font-size: var(--reading); }
+.plain-title { display: flex; align-items: flex-start; gap: 12px; }
+.plain-title .icon { width: 20px; height: 20px; margin-top: 0.125em; color: var(--ink-muted); }
 
 /* ---- Starter shelf ----------------------------------------------------- */
 
@@ -892,8 +940,10 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .top-app .nav .nav-label { max-width: 100%; }
   .top-app .nav a[aria-current] .nav-label { text-underline-offset: 3px; }
   .js-focus.kbd-nav .top-app .nav a:focus-visible, .top-app .nav a:focus-visible { outline-offset: -3px; }
-  .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s5); padding-top: var(--s4); }
-  .specimen-frame { padding: var(--s4) var(--s4) var(--s3); }
+  .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s5); padding: var(--s4) var(--s3); }
+  .specimen { padding: var(--s3) 18px 20px; }
+  .specimen-prompt { font-size: 28px; }
+  .specimen-fact { padding: 12px; }
   .setting .form > .btn { justify-self: stretch; }
   .idea-picker { display: block; margin-bottom: var(--s4); }
   .pane-outline { display: none; }
@@ -962,6 +1012,8 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
 @media (hover: hover) {
   .trial-chip:hover .trial-act { text-decoration: underline; text-underline-offset: 3px; }
   .nav a:hover { color: var(--ink); }
+  .specimen-step:not(:disabled):hover { color: var(--ink); }
+  .hero .btn:not(.btn-accent):hover { background: var(--raised); }
   .btn:hover { background: var(--sunken); border-color: var(--ink); }
   .btn-accent:hover { background: var(--accent); border-color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
   .btn-ink:hover { background: var(--ink); border-color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
