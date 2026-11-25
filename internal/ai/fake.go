@@ -129,9 +129,19 @@ func (f *Fake) Draft(ctx context.Context, in DraftInput, sink DraftSink) (DraftR
 	}
 	head := DraftHead{Kind: "topic", Title: strings.TrimSpace(in.Query)}
 	var ideas []DraftIdea
+	if IsMaterial(in.Query) {
+		// Pasted Markdown, prose or notes: a fixed outline from its own
+		// headings or paragraphs (S106-2), never a book or starter match.
+		head, ideas = materialDraft(in.Query)
+		if len(ideas) == 0 {
+			use.OutputTokens = 30
+			return DraftResult{Note: "Scry couldn't find anything to make cards from in that. Paste notes with a few full lines, or type a topic."}, use, nil
+		}
+	}
+	material := ideas != nil
 	for _, b := range books {
 		for _, m := range b.match {
-			if strings.Contains(q, m) {
+			if !material && strings.Contains(q, m) {
 				head, ideas = DraftHead{Kind: "book", Title: b.title}, b.ideas
 			}
 		}

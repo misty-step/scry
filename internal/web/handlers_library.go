@@ -5,10 +5,10 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
+	"scry/internal/ai"
 	"scry/internal/app"
 	"scry/internal/store"
 )
@@ -43,7 +43,6 @@ func (s *Server) itemRows(ctx context.Context, c *rc, items []store.Item, words 
 var libraryFlash = map[string]string{
 	"removed":  "Removed. You can restore it in Settings for 30 days.",
 	"saved":    "Saved.",
-	"added":    "Added.",
 	"approved": "Approved. It's in your library.",
 	// Slice 75: bridge cards.
 	"held":      "Bridges added. This card is held until each bridge is answered Correct or Almost Correct once.",
@@ -61,6 +60,11 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, c *rc) error {
 		return back(w, r, "/shelf")
 	}
 	data := map[string]any{"Title": "Library", "Nav": "library", "Outline": outline, "Flash": libraryFlash[r.URL.Query().Get("ok")]}
+	// After an import, Library opens on the imported idea with a plain
+	// count (S106-3): "Imported 42 cards."
+	if n, err := strconv.Atoi(r.URL.Query().Get("imported")); err == nil && n > 0 {
+		data["Flash"] = "Imported " + plural(n, "card", "cards") + "."
+	}
 	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" && r.PathValue("id") == "" {
 		items, err := c.us.Search(ctx, q)
 		if err != nil {
@@ -110,29 +114,6 @@ func (s *Server) ideaRemove(w http.ResponseWriter, r *http.Request, c *rc) error
 		return err
 	}
 	return back(w, r, "/library?ok=removed")
-}
-
-func (s *Server) itemAdd(w http.ResponseWriter, r *http.Request, c *rc) error {
-	id, err := pathID(r)
-	if err != nil {
-		return err
-	}
-	prompt, answer := strings.TrimSpace(r.FormValue("prompt")), strings.TrimSpace(r.FormValue("answer"))
-	if prompt == "" || answer == "" || len(prompt) > 1000 || len(answer) > 2000 {
-		return back(w, r, "/library/ideas/"+strconv.FormatInt(id, 10)+"?ok=needboth#add")
-	}
-	idea, err := c.us.Idea(r.Context(), id)
-	if err != nil {
-		return err
-	}
-	n := store.NewItem{IdeaID: id, Prompt: prompt, Answer: answer, Exact: r.FormValue("exact") == "1"}
-	if n.Exact {
-		n.TextTitle = idea.Title
-	}
-	if _, err := c.us.AddItem(r.Context(), n, s.App.Now()); err != nil {
-		return err
-	}
-	return back(w, r, "/library/ideas/"+strconv.FormatInt(id, 10)+"?ok=added")
 }
 
 func (s *Server) itemPage(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -197,64 +178,6 @@ func (s *Server) itemRemove(w http.ResponseWriter, r *http.Request, c *rc) error
 	return back(w, r, "/library/ideas/"+strconv.FormatInt(it.IdeaID, 10)+"?ok=removed")
 }
 
-func (s *Server) textData(r *http.Request, c *rc) (map[string]any, error) {
-	outline, err := c.us.Outline(r.Context())
-	if err != nil {
-		return nil, err
-	}
-	var tops []store.Idea
-	for _, o := range outline {
-		if o.Depth == 0 {
-			tops = append(tops, o)
-		}
-	}
-	return map[string]any{"Title": "Add an exact text", "Nav": "library", "Parents": tops}, nil
-}
-
-func (s *Server) textForm(w http.ResponseWriter, r *http.Request, c *rc) error {
-	data, err := s.textData(r, c)
-	if err != nil {
-		return err
-	}
-	return s.render(w, r, c, http.StatusOK, "text.html", data)
-}
-
-func (s *Server) textSave(w http.ResponseWriter, r *http.Request, c *rc) error {
-	title, text := strings.TrimSpace(r.FormValue("title")), r.FormValue("text")
-	parent, _ := strconv.ParseInt(r.FormValue("parent"), 10, 64)
-	var lines []string
-	for _, l := range strings.Split(strings.ReplaceAll(text, "\r", ""), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			lines = append(lines, l)
-		}
-	}
-	msg := ""
-	switch {
-	case title == "" || len(title) > 120:
-		msg = "Give the text a name, such as “Sonnet 18”."
-	case len(lines) == 0:
-		msg = "Paste the text, one line per line."
-	case len(lines) > 200 || len(text) > 20000:
-		msg = "That text is too long for one piece. Add it in parts of at most 200 lines."
-	}
-	if msg == "" {
-		id, err := c.us.AddExactText(r.Context(), parent, title, lines, s.App.Now())
-		if err == nil {
-			return back(w, r, "/library/ideas/"+strconv.FormatInt(id, 10)+"?ok=added")
-		}
-		if !errors.Is(err, store.ErrNotFound) {
-			return err
-		}
-		msg = "That idea isn't in your library. Choose another."
-	}
-	data, err := s.textData(r, c)
-	if err != nil {
-		return err
-	}
-	data["Error"], data["TextTitle"], data["Text"], data["Parent"] = msg, title, text, parent
-	return s.render(w, r, c, http.StatusUnprocessableEntity, "text.html", data)
-}
-
 // ideaGroup is one idea of a draft with the items waiting under it.
 type ideaGroup struct {
 	Title   string
@@ -262,31 +185,13 @@ type ideaGroup struct {
 	Items   []store.Suggestion
 }
 
-func (s *Server) inbox(w http.ResponseWriter, r *http.Request, c *rc) error {
-	list, err := c.us.Suggestions(r.Context(), 0)
-	if err != nil {
-		return err
-	}
-	flash := ""
-	if n, err := strconv.Atoi(r.URL.Query().Get("approved")); err == nil && n > 0 {
-		flash = "All approved. " + plural(n, "item", "items") + " joined your library."
-	}
-	return s.render(w, r, c, http.StatusOK, "inbox.html", map[string]any{"Title": "Inbox", "Nav": "inbox", "Suggestions": list, "Flash": flash})
-}
-
-func (s *Server) inboxApproveAll(w http.ResponseWriter, r *http.Request, c *rc) error {
-	n, err := c.us.ApproveAll(r.Context(), 0, s.App.Now())
-	if err != nil {
-		return err
-	}
-	return back(w, r, "/inbox?approved="+strconv.Itoa(n))
-}
-
+// suggestionHome is where deciding a suggestion returns: its draft, or
+// the library for an old inbox suggestion (there is no Inbox, S106-4).
 func suggestionHome(sg store.Suggestion) string {
 	if sg.DraftID != 0 {
 		return "/learn/" + strconv.FormatInt(sg.DraftID, 10)
 	}
-	return "/inbox"
+	return "/library"
 }
 
 func (s *Server) suggestionApprove(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -336,7 +241,17 @@ func (s *Server) learn(w http.ResponseWriter, r *http.Request, c *rc) error {
 		}
 	}
 
-	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": r.URL.Query().Get("q"), "Error": hint, "Examples": learnExamples})
+	q := r.URL.Query().Get("q")
+	// "Ask again" and "Try a narrower topic" on a draft reopen Create with
+	// that draft's request (pasted material can be 16,000 characters, too
+	// long to carry in a link), so it can be edited and sent again.
+	if from, err := strconv.ParseInt(r.URL.Query().Get("draft"), 10, 64); err == nil && from > 0 {
+		if d, err := c.us.Draft(r.Context(), from); err == nil {
+			q = d.Query
+		}
+	}
+	return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{"Title": "Create", "Nav": "learn", "Q": q, "Error": hint, "Examples": learnExamples,
+		"ImportError": importRefusals[r.URL.Query().Get("import")]})
 }
 
 // learnExamples are Create's concrete starting points (DESIGN.md, Create):
@@ -386,12 +301,21 @@ func (s *Server) draft(w http.ResponseWriter, r *http.Request, c *rc) error {
 		groups[len(groups)-1].Items = append(groups[len(groups)-1].Items, sg)
 	}
 	kind := "topic"
-	if d.Kind == "book" {
+	switch {
+	case d.Kind == "book":
 		kind = "book · core ideas"
+	case ai.IsMaterial(d.Query):
+		kind = "from your notes"
+	}
+	if d.Title == "" {
+		// Named before the model answers: never the whole pasted text.
+		d.Title = app.DraftTitle(d.Query)
 	}
 	return s.render(w, r, c, http.StatusOK, "draft.html", map[string]any{
 		"Title": d.Title, "Nav": "learn", "Draft": d, "Kind": kind, "Groups": groups, "Pending": pending, "Approved": approved,
-		"Ideas": len(groups), "Reset": c.sub.PeriodEnd.In(c.user.Location()), "NoCard": c.sub.NoCard(), "Retry": url.QueryEscape(d.Query),
+		"Flash": map[string]string{"import": "Sent to drafting: that Markdown has no card blocks, so Scry's drafting agent is writing its cards. Approve them here."}[r.URL.Query().Get("from")],
+		"Ideas": len(groups), "Reset": c.sub.PeriodEnd.In(c.user.Location()), "NoCard": c.sub.NoCard(),
+		"Retry": "/learn?draft=" + strconv.FormatInt(d.ID, 10),
 	})
 }
 

@@ -227,9 +227,8 @@ p { max-width: var(--measure); }
 }
 .nav .icon { width: 16px; height: 16px; }
 .nav a[aria-current] { color: var(--ink); }
-/* The active page underlines its label only, never the Inbox count. */
+/* The active page underlines its label text only. */
 .nav a[aria-current] .nav-label { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; }
-.nav .count { color: var(--accent); }
 
 .foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--s2) var(--s4); padding-top: var(--s3); padding-bottom: var(--s4); }
 .foot p { max-width: none; }
@@ -305,41 +304,87 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .column .form { margin-top: var(--s2); max-width: none; }
 .trial-terms { color: var(--ink); }
 
+/* The landing hero sits on the drafting band (DESIGN.md, Shape and
+   Landing): a sunken wash in a 1 px line frame with the study session's
+   faint 22 px dot grid and calibrated ruler ticks down both edges (a short
+   tick every 22 px, a long one every fifth). No gradient, glow or shadow. */
 .hero {
-  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: center; gap: var(--s6);
-  padding: var(--s6) 0 var(--section);
+  position: relative;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); align-items: center; gap: var(--s6);
+  padding: clamp(var(--s4), 4vw, var(--s6)); margin-bottom: var(--section);
+  background: var(--sunken); border: 1px solid var(--line);
 }
-.hero-copy { display: grid; gap: var(--s4); align-content: center; }
-.hero .display { max-width: 16ch; }
-.nowrap { white-space: nowrap; }
-/* The Study Specimen: one real review moment in type and hairlines, on the
-   study session's dot grid with its edge ticks. */
-.specimen { margin: 0; display: grid; gap: var(--s2); min-width: 0; }
-.specimen-frame {
-  position: relative; display: grid; gap: var(--s3);
-  padding: var(--s5) var(--s5) var(--s4); border: 1px solid var(--line); background: var(--page);
-}
-.specimen-frame::before, .specimen-frame::after {
+.hero::before, .hero::after {
   content: ""; position: absolute; inset: 0; pointer-events: none; background-color: var(--ink);
 }
-.specimen-frame::before {
+.hero::before {
   opacity: var(--grid-opacity);
   -webkit-mask: url("/static/grid.svg") 0 0 / var(--grid) var(--grid);
   mask: url("/static/grid.svg") 0 0 / var(--grid) var(--grid);
 }
-.specimen-frame::after {
+.hero::after {
   opacity: 0.2;
-  -webkit-mask: url("/static/tick.svg") left top / 8px var(--grid) repeat-y, url("/static/tick.svg") right top / 8px var(--grid) repeat-y;
-  mask: url("/static/tick.svg") left top / 8px var(--grid) repeat-y, url("/static/tick.svg") right top / 8px var(--grid) repeat-y;
+  -webkit-mask: url("/static/tick.svg") left top / 8px var(--grid) repeat-y, url("/static/tick.svg") right top / 8px var(--grid) repeat-y,
+    url("/static/tick-major.svg") left top / 14px calc(5 * var(--grid)) repeat-y, url("/static/tick-major.svg") right top / 14px calc(5 * var(--grid)) repeat-y;
+  mask: url("/static/tick.svg") left top / 8px var(--grid) repeat-y, url("/static/tick.svg") right top / 8px var(--grid) repeat-y,
+    url("/static/tick-major.svg") left top / 14px calc(5 * var(--grid)) repeat-y, url("/static/tick-major.svg") right top / 14px calc(5 * var(--grid)) repeat-y;
 }
-.specimen-frame > * { position: relative; z-index: 1; }
+.hero > * { position: relative; z-index: 1; }
+.hero-copy { display: grid; gap: var(--s4); align-content: center; }
+.hero .display { max-width: 16ch; }
+.nowrap { white-space: nowrap; }
+/* The Study Specimen: one card stepped from its prompt to its judgment, in
+   type, hairlines and line icons on a raised panel. The three stages share
+   one grid cell, so the panel keeps the tallest stage's height and nothing
+   below it moves; the hidden ones are invisible to everyone. */
+.specimen {
+  margin: 0; min-width: 0; display: grid; gap: var(--s3);
+  padding: var(--s4) 28px 28px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius-surface);
+}
+.specimen-steps { display: flex; gap: var(--s4); border-bottom: 1px solid var(--line); }
+.specimen-step {
+  min-height: var(--touch); padding: 0; margin: 0; border: 0; background: none; cursor: pointer;
+  font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); white-space: nowrap;
+  transition: color var(--fast) var(--ease);
+}
+.specimen-step[aria-pressed="true"] { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; }
+.specimen-step:disabled { cursor: default; }
 .specimen-place { display: flex; justify-content: space-between; gap: var(--s3); max-width: none; }
 .specimen-count { flex: none; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.specimen-q { font: 500 var(--body)/1.4 var(--text); color: var(--ink-muted); }
-.specimen .compare-answer { font-size: 20px; }
+.specimen-stages { display: grid; min-width: 0; }
+.specimen-stage {
+  grid-area: 1 / 1; display: flex; flex-direction: column; gap: var(--s3); min-width: 0;
+  visibility: hidden; opacity: 0;
+  transition: opacity 200ms var(--ease), visibility 0s linear 200ms;
+}
+.specimen-stage.is-shown { visibility: visible; opacity: 1; transition: opacity 200ms var(--ease), visibility 0s; }
+.specimen-prompt { font: 500 32px/1.15 var(--text); letter-spacing: -0.02em; color: var(--ink); overflow-wrap: anywhere; }
+.specimen-line {
+  display: flex; align-items: flex-end; min-height: 56px; max-width: none; padding: var(--s2) 0;
+  border-bottom: 1px solid var(--ink-ghost); font: 400 20px/1.35 var(--text); color: var(--ink);
+}
+.specimen-caret { display: block; width: 0.5em; height: 1.15em; background: var(--ink); }
+.specimen-typed { display: block; overflow-wrap: anywhere; }
+.specimen-stage.is-shown .specimen-typed { animation: settle var(--slow) var(--ease) both; }
+@keyframes settle { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.specimen-hint { margin-top: auto; max-width: none; }
+.specimen .compare-answer { font-size: var(--reading); line-height: 1.35; }
 .specimen .why { font-size: var(--body); }
-.specimen-schedule { gap: 0 var(--s3); }
-.specimen-caption { max-width: none; }
+/* The Specimen's schedule: a flush 2x2 grid of cells sharing 1 px rules at
+   every width. Each label stays on one line beside its icon, over its value;
+   the post-answer review keeps its own .telemetry table. */
+.specimen-schedule {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0;
+  border-top: 1px solid var(--line); border-left: 1px solid var(--line);
+  font: 400 var(--meta)/1.4 var(--mono);
+}
+.specimen-fact {
+  display: grid; gap: var(--s1); align-content: start; min-width: 0;
+  padding: 14px var(--s3); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.specimen-fact dt { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); white-space: nowrap; }
+.specimen-fact dt .icon { width: 14px; height: 14px; }
+.specimen-fact dd { color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4); }
 .plain-list { border-top: 1px solid var(--line); }
 .plain-row {
@@ -347,6 +392,8 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
   padding: var(--s5) 0; border-bottom: 1px solid var(--line);
 }
 .plain-row p { font-size: var(--reading); }
+.plain-title { display: flex; align-items: flex-start; gap: 12px; }
+.plain-title .icon { width: 20px; height: 20px; margin-top: 0.125em; color: var(--ink-muted); }
 
 /* ---- Starter shelf ----------------------------------------------------- */
 
@@ -571,6 +618,40 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
 .edit-status { display: inline-flex; align-items: center; gap: 6px; color: var(--right); }
 .edit-status .icon { width: 16px; height: 16px; }
+.edit-card summary .icon { width: 16px; height: 16px; }
+/* S106-5: Snooze and Delete. In the review, bordered secondary controls
+   beside Edit card (a 16 px icon and the word, Meta mono); while a card
+   waits, quiet text actions under the answer line. The quiet line after
+   either sits above the next card. */
+.manage-form { display: contents; }
+.manage-btn { font: 400 var(--meta)/1.4 var(--mono); }
+.manage-btn .icon { width: 16px; height: 16px; }
+.manage-quiet { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s4); max-width: none; }
+.manage-quiet .link { font: 400 var(--meta)/1.4 var(--mono); }
+.study-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s2); color: var(--ink-muted); max-width: none; }
+.study-note-form { display: inline-flex; }
+.study-note .link { font: inherit; }
+/* Open, Edit card takes the whole row (its form keeps its measure), so
+   Snooze and Delete stay together beside Next card under the form. */
+.review-foot > .edit-card[open] { max-width: none; }
+.review-foot > .edit-card[open] .edit-form { max-width: 560px; }
+/* Settings → Recently removed: an idea's title or a card's question, then
+   what it is and when it was removed; on phones the title has its own line. */
+.removed-row { flex-wrap: wrap; column-gap: var(--s3); }
+.removed-title { min-width: 0; overflow-wrap: anywhere; }
+@media screen and (max-width: 760px) {
+  .rows .removed-row > .removed-title { flex: 1 1 100%; }
+  .removed-row > .removed-detail { flex: 1; min-width: 0; }
+}
+/* Phones: Edit card, Snooze and Delete share one row of equal columns,
+   in the flow above the pinned Next card bar's clearance. ("screen and"
+   keeps the main phone block the one plain 760 px query.) */
+@media screen and (max-width: 760px) {
+  .review-foot { column-gap: var(--s2); }
+  .review-foot > .edit-card:not([open]), .review-foot .manage-btn { flex: 1 1 0; min-width: 0; }
+  .review-foot .edit-card:not([open]) summary { width: 100%; }
+  .review-foot .edit-toggle, .review-foot .manage-btn { padding: 0 var(--s2); gap: 6px; white-space: nowrap; }
+}
 /* On-demand "Ask Why?": a bordered control, then the explanation as body text. */
 .explain { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); max-width: var(--measure); }
 .explain-btn { font: 400 var(--meta)/1.4 var(--mono); }
@@ -729,7 +810,7 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .quiet-form summary, .cancel summary { cursor: pointer; list-style: none; }
 .quiet-form summary::-webkit-details-marker, .cancel summary::-webkit-details-marker { display: none; }
 
-/* ---- Inbox and drafts -------------------------------------------------- */
+/* ---- Draft outlines ---------------------------------------------------- */
 
 .list-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); margin-bottom: var(--s4); }
 .list-purpose { order: 1; flex-basis: 100%; }
@@ -765,13 +846,19 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .learn { display: grid; align-content: center; min-height: 50vh; }
 .learn .page-head { margin-bottom: var(--s5); }
 .ask { display: grid; gap: var(--s3); }
+/* S106-2: one multi-line field in Body type, about six lines tall, that
+   grows with what is typed or pasted (script sets its height, up to about
+   two thirds of the screen; then it scrolls). Without script it can be
+   dragged taller. Body size never clips its placeholder at 390 px. */
 .ask-input {
-  width: 100%; min-height: var(--s7); padding: var(--s2) 0;
-  background: transparent; border: 0; border-bottom: 1px solid var(--ink-ghost);
+  display: block; width: 100%; min-height: calc(6 * 1.55em + 2 * var(--s3) + 2px); max-height: 66vh;
+  padding: var(--s3); font: 400 var(--body)/1.55 var(--text); color: var(--ink);
+  background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius-control);
+  resize: vertical; overflow-y: auto; overflow-wrap: anywhere;
   transition: border-color var(--fast) var(--ease);
 }
 .ask-input::placeholder { color: var(--ink-muted); opacity: 1; }
-.ask-input:focus { outline: none; border-bottom-color: var(--ink); }
+.ask-input:focus, .ask-input:focus-visible, .js-focus .ask-input:focus-visible, .js-focus.kbd-nav .ask-input:focus-visible { border-color: var(--ink); outline: 1px solid var(--ink); outline-offset: -2px; }
 .ask .btn { justify-self: end; }
 .examples { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .example {
@@ -781,6 +868,21 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
   transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease);
 }
 .example:active { transform: translateY(1px); }
+/* S106-3: Import a deck, after a 1 px rule under the prompt. */
+.import { display: grid; gap: var(--s2); margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid var(--line); }
+.import .meta { max-width: none; }
+.import-form { display: grid; gap: var(--s3); margin-top: var(--s2); max-width: 560px; }
+.import-file { padding: 10px var(--s3); font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-body); cursor: pointer; }
+.import-file::file-selector-button {
+  margin-right: var(--s3); padding: 4px var(--s3); font: inherit; color: var(--ink);
+  background: var(--page); border: 1px solid var(--line); border-radius: var(--radius-control); cursor: pointer;
+}
+.import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
+.import-actions .import-status { flex: 1 1 260px; margin: 0; }
+.export-links { display: flex; flex-wrap: wrap; gap: var(--s2); }
+@media screen and (max-width: 760px) {
+  .export-links .btn { flex: 1 1 100%; }
+}
 
 /* ---- Billing ----------------------------------------------------------- */
 
@@ -836,12 +938,12 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .top { flex-wrap: wrap; align-items: center; gap: 0 var(--s3); min-height: 56px; }
   .brand { min-height: 55px; flex-wrap: nowrap; gap: var(--s3); } /* + the 1 px hairline = 56 px */
   .nav { gap: 0 var(--s3); }
-  /* Signed in: a 48 px brand row over one compact 52 px row holding all six
+  /* Signed in: a 48 px brand row over one compact 52 px row holding all five
      destinations as equal columns (icon over its Micro label), so every
      destination is in view: nothing scrolls sideways or wraps. */
   .top-app .brand { min-height: 48px; }
   .top-app .nav {
-    flex: 1 0 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0;
+    flex: 1 0 100%; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0;
     height: 52px; margin: 0 calc(-1 * var(--s3)); padding: 0 var(--s1);
     border-top: 1px solid var(--line);
   }
@@ -852,12 +954,12 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   }
   .top-app .nav .nav-label { max-width: 100%; }
   .top-app .nav a[aria-current] .nav-label { text-underline-offset: 3px; }
-  .top-app .nav .count { position: absolute; top: 5px; left: calc(50% + 10px); font-size: 10px; line-height: 1; }
   .js-focus.kbd-nav .top-app .nav a:focus-visible, .top-app .nav a:focus-visible { outline-offset: -3px; }
-  .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s5); padding-top: var(--s4); }
-  .specimen-frame { padding: var(--s4) var(--s4) var(--s3); }
+  .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s5); padding: var(--s4) var(--s3); }
+  .specimen { padding: var(--s3) 18px 20px; }
+  .specimen-prompt { font-size: 28px; }
+  .specimen-fact { padding: 12px; }
   .setting .form > .btn { justify-self: stretch; }
-  .ask-input { font-size: min(var(--display), 6.4vw); }
   .idea-picker { display: block; margin-bottom: var(--s4); }
   .pane-outline { display: none; }
   .keys { display: none; }
@@ -925,6 +1027,8 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
 @media (hover: hover) {
   .trial-chip:hover .trial-act { text-decoration: underline; text-underline-offset: 3px; }
   .nav a:hover { color: var(--ink); }
+  .specimen-step:not(:disabled):hover { color: var(--ink); }
+  .hero .btn:not(.btn-accent):hover { background: var(--raised); }
   .btn:hover { background: var(--sunken); border-color: var(--ink); }
   .btn-accent:hover { background: var(--accent); border-color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
   .btn-ink:hover { background: var(--ink); border-color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }

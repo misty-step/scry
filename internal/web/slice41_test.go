@@ -197,9 +197,7 @@ func TestSlice41_Spoiler_HandMadeTitlesAndExactTextsFallBackToNeutralLabels(t *t
 
 	// An exact text: the cue of line 2 quotes line 1, so it is held back
 	// from "coming up" until line 1 has been answered.
-	if _, page := b.post("/library/texts", "title", "Short verse", "text", "Roses are red today\nViolets are blue tonight\nSugar is sweet", "parent", "0"); !strings.Contains(page, "Short verse") {
-		t.Fatal("the exact text was not added")
-	}
+	w.addExactText("guard@example.com", "Short verse", "Roses are red today\nViolets are blue tonight\nSugar is sweet")
 	body = b.mustGet("/study")
 	hasNot(t, visibleText(body), "Roses are red today")
 	line1, _ := b.current(body)
@@ -220,9 +218,7 @@ func TestSlice41_Spoiler_ShortExactAnswerIsNotShownInComingUp(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 	b.signUp("short@example.com")
-	if _, page := b.post("/library/texts", "title", "Studio notes", "text", "Go\nStay the course\nRest", "parent", "0"); !strings.Contains(page, "Studio notes") {
-		t.Fatal("the exact text was not added")
-	}
+	w.addExactText("short@example.com", "Studio notes", "Go\nStay the course\nRest")
 	body := b.mustGet("/study")
 	line1, _ := b.current(body)
 	if !line1.Exact || line1.Answer != "Go" || line1.LineNo != 1 {
@@ -260,9 +256,7 @@ func TestSlice41_Spoiler_AnswerBearingExactTitleIsNeutralUntilAnswered(t *testin
 	w := newWorld(t)
 	b := w.browser()
 	b.signUp("daffodils@example.com")
-	if _, page := b.post("/library/texts", "title", "Daffodils", "text", "Daffodils\nI wandered lonely as a cloud\nThat floats on high", "parent", "0"); !strings.Contains(page, "Daffodils") {
-		t.Fatal("the exact text was not added")
-	}
+	w.addExactText("daffodils@example.com", "Daffodils", "Daffodils\nI wandered lonely as a cloud\nThat floats on high")
 	noTitle := func(when, body string) {
 		t.Helper()
 		if strings.Contains(strings.ToLower(body), "daffodil") {
@@ -326,7 +320,7 @@ func TestSlice41_Spoiler_NeutralExactTitleCanBeTheAnswer(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 	b.signUp("neutral-title@example.com")
-	b.post("/library/texts", "title", "Exact text", "text", "Exact text\nNow turn the page", "parent", "0")
+	w.addExactText("neutral-title@example.com", "Exact text", "Exact text\nNow turn the page")
 
 	body := b.mustGet("/study")
 	line, ok := b.current(body)
@@ -351,7 +345,7 @@ func TestSlice41_Spoiler_EditedExactPromptDoesNotRepeatOwedAnswerOnAgain(t *test
 	w := newWorld(t)
 	b := w.browser()
 	b.signUp("repeated-title@example.com")
-	b.post("/library/texts", "title", "Daffodils", "text", "Daffodils\nI wandered lonely as a cloud", "parent", "0")
+	w.addExactText("repeated-title@example.com", "Daffodils", "Daffodils\nI wandered lonely as a cloud")
 	line, ok := b.current(b.mustGet("/study"))
 	if !ok || line.Answer != "Daffodils" {
 		t.Fatalf("unexpected waiting card: %+v", line)
@@ -626,9 +620,7 @@ func TestSlice41_Review_LastCardAndExactText(t *testing.T) {
 	b := w.browser()
 	b.signUp("exact@example.com")
 	lib := w.lib("exact@example.com")
-	if _, page := b.post("/library/texts", "title", "Motto", "text", "Know thyself well\nNothing in excess", "parent", "0"); !strings.Contains(page, "Motto") {
-		t.Fatal("the exact text was not added")
-	}
+	w.addExactText("exact@example.com", "Motto", "Know thyself well\nNothing in excess")
 	line1, _ := b.current(b.mustGet("/study"))
 	review := b.answer(line1, "Know yourself well")
 	has(t, review, `data-kind="exact"`, `data-verdict="missed"`, `<span data-verdict-label>Incorrect</span>`,
@@ -671,7 +663,8 @@ func TestSlice41_Edit_SavesInPlacePersistsAndIsGuarded(t *testing.T) {
 	w.model.script = []ai.Judgment{{Verdict: srs.Missed, Reason: "Not it."}}
 	review := b.answer(item, "apple")
 	has(t, review, `action="/study/edit"`, `name="prompt"`, `name="answer"`, "Save card",
-		"Edits apply from the next review. This grade and its schedule stay as they are.")
+		"This grade and its schedule stay as they are.")
+	hasNot(t, review, "Edits apply from the next review.")
 	hist, _ := lib.History(ctx, item.ID)
 	sched := mustItem(t, lib, item.ID).Sched
 	id := strconv.FormatInt(item.ID, 10)
@@ -792,13 +785,13 @@ func TestSlice41_Nav_StudyAndCreateAreUnmistakable(t *testing.T) {
 	b := w.browser()
 	b.signUp("nav@example.com")
 	b.addSet("kitchen-numbers")
-	for _, path := range []string{"/study", "/library", "/inbox", "/learn", "/billing", "/settings", "/shelf"} {
+	for _, path := range []string{"/study", "/library", "/learn", "/billing", "/settings", "/shelf"} {
 		page := b.mustGet(path)
 		nav := page[strings.Index(page, `<nav class="nav"`):]
 		nav = nav[:strings.Index(nav, "</nav>")]
 		for _, want := range []string{
 			`<a href="/study"`, `icon-cards`, `<span class="nav-label">Study</span>`,
-			`icon-library`, `<span class="nav-label">Library</span>`, `icon-inbox`, `<span class="nav-label">Inbox</span>`,
+			`icon-library`, `<span class="nav-label">Library</span>`,
 			`<a href="/learn"`, `icon-create`, `<span class="nav-label">Create</span>`,
 			`icon-billing`, `<span class="nav-label">Billing</span>`, `icon-settings`, `<span class="nav-label">Settings</span>`,
 		} {
@@ -806,10 +799,10 @@ func TestSlice41_Nav_StudyAndCreateAreUnmistakable(t *testing.T) {
 				t.Errorf("%s: the navigation is missing %s", path, want)
 			}
 		}
-		if strings.Contains(nav, "Learn") {
-			t.Errorf("%s: the navigation still says Learn", path)
+		if strings.Contains(nav, "Learn") || strings.Contains(nav, "Inbox") {
+			t.Errorf("%s: the navigation still says Learn or Inbox", path)
 		}
-		if strings.Count(nav, "<svg") != 6 || strings.Count(nav, `aria-hidden="true"`) != 6 {
+		if strings.Count(nav, "<svg") != 5 || strings.Count(nav, `aria-hidden="true"`) != 5 {
 			t.Errorf("%s: want one hidden icon per destination, got %d", path, strings.Count(nav, "<svg"))
 		}
 		has(t, page, "g n create")
@@ -940,17 +933,18 @@ func TestSlice41_Processing_CardAndTopUpFormsCarryTheBusyState(t *testing.T) {
 	hasNot(t, page, "is-busy", `aria-busy="true"`, "<button disabled")
 }
 
-// Item 8: Settings and Inbox say what they are in plain words.
-func TestSlice41_PlainCopy_SettingsInboxAndPagePurposes(t *testing.T) {
+// Item 8: Settings and every page say what they are in plain words
+// (S106-4: there is no Inbox).
+func TestSlice41_PlainCopy_SettingsAndPagePurposes(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 	b.signUp("plain@example.com")
 	settings := b.mustGet("/settings")
 	has(t, settings, `<h2 class="title">API Tokens</h2>`, `id="api-tokens"`,
-		"Programmatic access to your account.", "suggest cards through the Scry API", "Token name", "Create token",
+		"Programmatic access to your account. A token lets your own scripts or tools add cards to your library through the Scry API.", "Token name", "Create token",
 		`<h2 class="title">Study profile</h2>`, "Background and goals used to tailor AI-generated cards.",
 		"Appearance, your study profile, API tokens and your data.")
-	hasNot(t, settings, "can_add", "May add straight to my library", "without the inbox", ">Agents<", "About you",
+	hasNot(t, settings, "can_add", "May add straight to my library", "nbox", "suggest", ">Agents<", "About you",
 		"In your own words", "New agent's name", "Scry shapes new material to this")
 	// The form has exactly one visible field: the token's name.
 	form := settings[strings.Index(settings, `action="/settings/tokens"`):]
@@ -958,26 +952,20 @@ func TestSlice41_PlainCopy_SettingsInboxAndPagePurposes(t *testing.T) {
 	if strings.Count(form, "<input") != 2 || strings.Contains(form, "checkbox") { // csrf + name
 		t.Errorf("the Create token form has more than a name: %s", form)
 	}
-	// A posted can_add is ignored: the token still goes through the inbox.
+	// A posted can_add means nothing: a token has no options.
 	_, page := b.post("/settings/tokens", "name", "reading script", "can_add", "1")
-	has(t, page, "Token for reading script.", "suggests to inbox")
-	tokens, _ := w.lib("plain@example.com").Tokens(ctx)
-	if len(tokens) != 1 || tokens[0].CanAdd {
-		t.Fatalf("tokens = %+v, want one that may only suggest", tokens)
+	has(t, page, "Token for reading script.", "never used")
+	hasNot(t, page, "suggests to inbox", "adds to library")
+	if tokens, _ := w.lib("plain@example.com").Tokens(ctx); len(tokens) != 1 {
+		t.Fatalf("tokens = %+v, want one", tokens)
 	}
 	_, saved := b.post("/settings/about", "about", "I read history.")
 	has(t, saved, "Study profile saved.")
-
-	inbox := b.mustGet("/inbox")
-	has(t, inbox, "Cards suggested by external scripts or tools wait here until you approve them.", "Nothing waiting.",
-		`href="/settings#api-tokens"`)
-	hasNot(t, inbox, "your agents", "Give an agent a token")
 
 	b.addSet("kitchen-numbers")
 	for path, purpose := range map[string]string{
 		"/study":    "Recall what's due today",
 		"/library":  "Every card you have, grouped by idea.",
-		"/inbox":    "Cards suggested by external scripts or tools wait here until you approve them.",
 		"/learn":    "Generate cards with AI",
 		"/billing":  "Your plan, what you have used and what you have been charged.",
 		"/settings": "Appearance, your study profile, API tokens and your data.",

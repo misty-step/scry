@@ -230,9 +230,9 @@ func TestSanitizeClientRoute(t *testing.T) {
 		"/library":                       "/library",
 		"/library/ideas/7":               "/library/ideas/:id",
 		"https://scry.mistystep.io/library/items/42?q=x": "/library/items/:id",
-		"/library/texts/new":                             "/library/texts/new",
-		"/library/texts/abc":                             "/library/texts/:id",
-		"/inbox":                                         "/inbox",
+		"/library/texts/new":                             "/other", // retired (S106-2), a redirect
+		"/library/texts/abc":                             "/other",
+		"/inbox":                                         "/other", // retired (S106-4), a redirect
 		"/learn":                                         "/learn",
 		"/learn/bob@example.com":                         "/learn/:id",
 		"/billing":                                       "/billing",

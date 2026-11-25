@@ -43,14 +43,16 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	// the rubric wording) and its schedule.
 	spec := home[strings.Index(home, `<figure class="specimen"`):]
 	spec = spec[:strings.Index(spec, "</figure>")]
-	q := "Which razor says never to attribute to malice what is adequately explained by carelessness or stupidity?"
-	has(t, spec, q, "Your answer", "hanlons razor", "Correct answer", "Hanlon's razor",
+	// Slice 106 (S106-1): the card is asked the other way round, the razor
+	// as its prompt and what it says as the correct answer.
+	expected := "Never attribute to malice what is adequately explained by carelessness or stupidity"
+	has(t, spec, "Hanlon's razor", "Your answer", "don't assume malice when carelessness or stupidity explains it", "Correct answer", expected,
 		`verdict-badge verdict-right`, ">Correct</span>", ai.PlainWhy(srs.Right), "Next review", "Interval", "Stability", "Difficulty")
 	real := false
 	for _, set := range starter.All() {
 		for _, idea := range set.Ideas {
 			for _, it := range idea.Items {
-				if it.Q == q && it.A == "Hanlon's razor" && idea.Title == "The razors" {
+				if strings.Contains(it.Q, strings.TrimPrefix(expected, "Never ")) && it.A == "Hanlon's razor" && idea.Title == "The razors" {
 					real = true
 				}
 			}
@@ -65,7 +67,7 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	if n := strings.Count(rows, `class="plain-row"`); n != 4 {
 		t.Errorf("%d ruled rows below the hero, want 4", n)
 	}
-	has(t, rows, "AI grader", "word for word", "Thirty starter sets", "book", "scripts or tools")
+	has(t, rows, "AI grader", "word for word", "Thirty starter sets", "Markdown", "scripts or tools")
 	hasNot(t, rows, "agents")
 	// Public pages end with a quiet hairline footer naming Misty Step and the
 	// privacy commitment.
@@ -182,14 +184,13 @@ func TestStory_Create_TapAStarterExampleUnderTheField(t *testing.T) {
 	has(t, page, `data-example="Meditations by Marcus Aurelius"`, `data-example="Second-order thinking"`)
 	// Without script an example opens Create with the field filled.
 	filled := b.mustGet("/learn?q=" + links[0][1])
-	has(t, filled, `value="Meditations by Marcus Aurelius"`)
+	has(t, filled, `data-ask-input>Meditations by Marcus Aurelius</textarea>`)
 	// The book example drafts its core ideas; rows do not repeat the idea.
 	b.post("/learn", "q", "Meditations by Marcus Aurelius")
 	w.app.WaitDrafts()
 	draft := b.mustGet(b.path)
 	has(t, draft, "The dichotomy of control", "8 items in 4 ideas")
 	hasNot(t, draft, "sug-idea", "new idea")
-	// The inbox, where suggestions come from outside, still names the idea.
 	js, _ := staticAsset(t, w, "/static/app.js")
 	has(t, js, "initExamples", `input.value = a.getAttribute("data-example")`)
 }
@@ -253,16 +254,19 @@ func TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline(t *testi
 	has(t, js, `search.offsetParent === null && picker && picker.offsetParent !== null`, `search = $("[data-picker-search]", picker);`, "picker.open = true;")
 }
 
-// DESIGN.md, Inbox: the purpose line is always on its own row beneath the
-// title, including when the inbox is empty.
-func TestDesign_InboxPurposeLineOnItsOwnRowEvenWhenEmpty(t *testing.T) {
+// DESIGN.md, purpose lines (S106-4): there is no Inbox page or purpose
+// line; its address opens Library, whose purpose line is its own.
+func TestDesign_NoInboxPurposeLine_InboxOpensLibrary(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 	b.signUp("empty@example.com")
+	b.addSet("kitchen-numbers")
 	page := b.mustGet("/inbox")
-	has(t, page, "Nothing waiting.", `<p class="purpose list-purpose">Cards suggested by external scripts or tools wait here until you approve them.</p>`)
-	css, _ := staticAsset(t, w, "/static/app.css")
-	has(t, css, ".list-purpose { order: 1; flex-basis: 100%; }")
+	if !strings.HasPrefix(b.path, "/library") {
+		t.Fatalf("/inbox ended at %s", b.path)
+	}
+	has(t, page, `<p class="purpose">Every card you have, grouped by idea.</p>`)
+	hasNot(t, page, "Nothing waiting.", "Cards suggested by external scripts or tools wait here until you approve them.")
 }
 
 // DESIGN.md, Settings: choosing a mode applies at once as well as saving;
@@ -312,8 +316,8 @@ func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 		".nav a[aria-current] .nav-label { text-decoration: underline;",
 		"grid-template-columns: 196px minmax(0, 1fr); align-items: start;",
 		".session-margin { display: flex; flex-direction: column; gap: var(--s1); align-self: start;",
-		"grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);",
-		".specimen-frame::before", `mask: url("/static/grid.svg")`,
+		"grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);",
+		".hero::before", `mask: url("/static/grid.svg")`,
 		".mark { width: 20px; height: 20px;", ".mark-focal { fill: var(--accent); stroke: none; }",
 		".wordmark { gap: var(--s2); }",
 		".example {", "border: 1px solid var(--line); border-radius: var(--radius-control);",
@@ -331,11 +335,14 @@ func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 	}
 	phone := css[strings.Index(css, "@media (max-width: 760px)"):]
 	phone = phone[:strings.Index(phone, "\n}\n")]
-	// Slice 70: signed in, one compact 52 px row holds all six destinations
-	// (no sideways scroll), and the session clears the pinned bar.
-	has(t, phone, "min-height: 56px;", ".top-app .nav {", "grid-template-columns: repeat(6, minmax(0, 1fr));", "height: 52px;",
-		"calc(var(--s3) + env(safe-area-inset-bottom, 0px))", "body.in-session { padding-bottom: calc(var(--touch) + 2 * var(--s3) + 1px + var(--s4) + env(safe-area-inset-bottom, 0px)); }",
-		".ask-input { font-size: min(var(--display), 6.4vw); }")
+	// Slice 70: signed in, one compact 52 px row holds all five destinations
+	// (S106-4; no sideways scroll), and the session clears the pinned bar.
+	has(t, phone, "min-height: 56px;", ".top-app .nav {", "grid-template-columns: repeat(5, minmax(0, 1fr));", "height: 52px;",
+		"calc(var(--s3) + env(safe-area-inset-bottom, 0px))", "body.in-session { padding-bottom: calc(var(--touch) + 2 * var(--s3) + 1px + var(--s4) + env(safe-area-inset-bottom, 0px)); }")
+	// S106-2: the Create field is Body type on every screen, so its
+	// placeholder never clips at 390 px (no Display size to scale down).
+	hasNot(t, phone, ".ask-input")
+	has(t, css, "padding: var(--s3); font: 400 var(--body)/1.55 var(--text); color: var(--ink);")
 	page := w.browser().mustGet("/")
 	has(t, page, `content="width=device-width, initial-scale=1, viewport-fit=cover"`)
 }

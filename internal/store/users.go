@@ -136,7 +136,6 @@ type AgentToken struct {
 	ID       int64
 	UserID   int64
 	Name     string
-	CanAdd   bool // may add straight to the library; otherwise suggests only
 	Created  time.Time
 	LastUsed time.Time
 }
@@ -145,14 +144,13 @@ type AgentToken struct {
 func (s *Store) TokenByHash(ctx context.Context, hash string, now time.Time) (AgentToken, error) {
 	var t AgentToken
 	var created, used int64
-	var canAdd int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, name, can_add, created_at, last_used FROM agent_tokens WHERE token_hash = ? AND revoked_at = 0`, hash).
-		Scan(&t.ID, &t.UserID, &t.Name, &canAdd, &created, &used)
+		`SELECT id, user_id, name, created_at, last_used FROM agent_tokens WHERE token_hash = ? AND revoked_at = 0`, hash).
+		Scan(&t.ID, &t.UserID, &t.Name, &created, &used)
 	if err != nil {
 		return t, notFound(err)
 	}
-	t.CanAdd, t.Created, t.LastUsed = canAdd == 1, tm(created), tm(used)
+	t.Created, t.LastUsed = tm(created), tm(used)
 	_, _ = s.db.ExecContext(ctx, `UPDATE agent_tokens SET last_used = ? WHERE id = ?`, ts(now), t.ID)
 	return t, nil
 }
@@ -227,18 +225,20 @@ func (u *UserStore) SetTZ(ctx context.Context, tz string) error {
 	return err
 }
 
-// CreateToken stores a new agent token by its hash.
-func (u *UserStore) CreateToken(ctx context.Context, name, hash string, canAdd bool, now time.Time) error {
+// CreateToken stores a new agent token by its hash. Every token may add
+// to the library (S106-4); the legacy can_add column is no longer read,
+// and new rows set it only so the column never says otherwise.
+func (u *UserStore) CreateToken(ctx context.Context, name, hash string, now time.Time) error {
 	_, err := u.s.db.ExecContext(ctx,
-		`INSERT INTO agent_tokens (user_id, name, token_hash, can_add, created_at) VALUES (?, ?, ?, ?, ?)`,
-		u.uid, name, hash, b2i(canAdd), ts(now))
+		`INSERT INTO agent_tokens (user_id, name, token_hash, can_add, created_at) VALUES (?, ?, ?, 1, ?)`,
+		u.uid, name, hash, ts(now))
 	return err
 }
 
 // Tokens lists the learner's live agent tokens.
 func (u *UserStore) Tokens(ctx context.Context) ([]AgentToken, error) {
 	rows, err := u.s.db.QueryContext(ctx,
-		`SELECT id, name, can_add, created_at, last_used FROM agent_tokens WHERE user_id = ? AND revoked_at = 0 ORDER BY id`, u.uid)
+		`SELECT id, name, created_at, last_used FROM agent_tokens WHERE user_id = ? AND revoked_at = 0 ORDER BY id`, u.uid)
 	if err != nil {
 		return nil, err
 	}
@@ -246,12 +246,11 @@ func (u *UserStore) Tokens(ctx context.Context) ([]AgentToken, error) {
 	var out []AgentToken
 	for rows.Next() {
 		t := AgentToken{UserID: u.uid}
-		var canAdd int
 		var created, used int64
-		if err := rows.Scan(&t.ID, &t.Name, &canAdd, &created, &used); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &created, &used); err != nil {
 			return nil, err
 		}
-		t.CanAdd, t.Created, t.LastUsed = canAdd == 1, tm(created), tm(used)
+		t.Created, t.LastUsed = tm(created), tm(used)
 		out = append(out, t)
 	}
 	return out, rows.Err()

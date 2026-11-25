@@ -11,6 +11,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -137,7 +138,26 @@ func (s *Store) migrateAdded() error {
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS topups_charge ON topups(charge_ref)`); err != nil {
 		return err
 	}
-	return s.renameStarterIdeas()
+	if err := s.renameStarterIdeas(); err != nil {
+		return err
+	}
+	s.retireInbox()
+	return nil
+}
+
+// retireInbox moves old inbox suggestions into their learners' libraries
+// on every open (S106-4: old suggestions never strand anyone in a dead
+// queue). Each move is logged. A failure is logged as an error (which
+// alerts) and retried on the next open; it never stops Scry from starting.
+func (s *Store) retireInbox() {
+	ctx := context.Background()
+	moves, err := s.MoveInboxToLibrary(ctx, time.Now())
+	for _, m := range moves {
+		slog.InfoContext(ctx, "moved pending inbox suggestions into the library", "user", m.UserID, "count", m.Moved)
+	}
+	if err != nil {
+		slog.ErrorContext(ctx, "moving inbox suggestions into the library failed; retried on the next start", "err", err)
+	}
 }
 
 // starterIdeaRenames are starter-set section titles that gave answers away

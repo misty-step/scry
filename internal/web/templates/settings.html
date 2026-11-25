@@ -34,15 +34,12 @@
 
   <section class="setting" id="api-tokens">
     <h2 class="title">API Tokens</h2>
-    <p>Programmatic access to your account. A token lets your own scripts or tools suggest cards through the Scry API; suggestions wait in your Inbox until you approve them.</p>
+    <p>Programmatic access to your account. A token lets your own scripts or tools add cards to your library through the Scry API.</p>
     {{if .NewToken}}
     <div class="token-new" role="status">
       <p><strong>Token for {{.NewTokenName}}.</strong> Copy it now; Scry keeps only a fingerprint and can't show it again.</p>
       <p class="mono token-value">{{.NewToken}}</p>
-      <pre class="mono code">curl -X POST {{.Origin}}/api/v1/suggestions \
-  -H "Authorization: Bearer {{.NewToken}}" \
-  -H "Content-Type: application/json" \
-  -d '{"source": "The Federalist Papers", "items": [{"question": "…", "answer": "…", "idea": "Faction"}]}'</pre>
+      {{template "apiexample" .}}
     </div>
     {{end}}
     {{if .Tokens}}
@@ -50,7 +47,7 @@
       {{range .Tokens}}
       <li class="row token-row">
         <span>{{.Name}}</span>
-        <span class="meta">{{if .CanAdd}}adds to library{{else}}suggests to inbox{{end}} · {{if .LastUsed.IsZero}}never used{{else}}last used {{short .LastUsed}}{{end}}</span>
+        <span class="meta">created {{short .Created}} · {{if .LastUsed.IsZero}}never used{{else}}last used {{short .LastUsed}}{{end}}</span>
         <form method="post" action="/settings/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link quiet" aria-label="Revoke the token for {{.Name}}">Revoke</button></form>
       </li>
       {{end}}
@@ -65,16 +62,17 @@
       </div>
       <button class="btn">Create token</button>
     </form>
+    {{if not .NewToken}}{{template "apiexample" .}}{{end}}
   </section>
 
   {{if .Removed}}
-  <section class="setting">
+  <section class="setting" data-recently-removed>
     <h2 class="title">Recently removed</h2>
-    <p>Removed ideas are kept for 30 days.</p>
+    <p>Removed ideas and cards are kept for 30 days.</p>
     <ul class="rows">
       {{range .Removed}}
-      <li class="row token-row"><span>{{.Title}}</span><span class="meta">{{plural .Items "item" "items"}} · removed {{short .Removed}}</span>
-        <form method="post" action="/settings/restore/{{.ID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="link" aria-label="Restore {{.Title}}">Restore</button></form></li>
+      <li class="row token-row removed-row" data-removed="{{.Kind}}"><span class="removed-title">{{.Title}}</span><span class="meta removed-detail">{{.Detail}} · removed {{short .Removed}}</span>
+        <form method="post" action="/settings/restore/{{.ID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}">{{if eq .Kind "card"}}<input type="hidden" name="kind" value="card">{{end}}<button class="link" aria-label="Restore {{.Title}}">Restore</button></form></li>
       {{end}}
     </ul>
   </section>
@@ -83,7 +81,8 @@
   <section class="setting">
     <h2 class="title">Your data</h2>
     <p>Your library and history are yours alone. Nobody else can see them, and you can take a full copy whenever you like.</p>
-    <p><a class="link" href="/settings/export">Download everything as JSON</a></p>
+    <p class="export-links" data-export-links><a class="btn" href="/settings/export?format=md" download>Download Markdown</a> <a class="btn" href="/settings/export?format=csv" download>Download CSV</a> <a class="btn" href="/settings/export?format=json" download>Download JSON</a></p>
+    <p class="meta">Markdown and CSV hold every card by idea, and import back intact. JSON holds everything Scry keeps for you, history included. <a class="link" href="/learn#import">Import a deck</a></p>
   </section>
 
   <section class="setting">

@@ -34,7 +34,6 @@
   <nav class="nav" aria-label="Main">
     <a href="/study"{{if eq .Nav "study"}} aria-current="page"{{end}} title="Study: recall what's due today">{{icon "cards"}}<span class="nav-label">Study</span></a>
     <a href="/library"{{if eq .Nav "library"}} aria-current="page"{{end}}>{{icon "library"}}<span class="nav-label">Library</span></a>
-    <a href="/inbox"{{if eq .Nav "inbox"}} aria-current="page"{{end}}>{{icon "inbox"}}<span class="nav-label">Inbox</span>{{if .InboxCount}} <span class="count">{{.InboxCount}}</span>{{end}}</a>
     <a href="/learn"{{if eq .Nav "learn"}} aria-current="page"{{end}} title="Create: generate cards with AI">{{icon "create"}}<span class="nav-label">Create</span></a>
     <a href="/billing"{{if eq .Nav "billing"}} aria-current="page"{{end}}>{{icon "billing"}}<span class="nav-label">Billing</span></a>
     <a href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>{{icon "settings"}}<span class="nav-label">Settings</span></a>
@@ -48,7 +47,7 @@
 </main>
 <footer class="foot frame{{if not .User}} foot-public{{end}}">
   {{if not .User}}<p class="meta" data-public-foot>Made by Misty Step · Your library and history are yours alone: nobody else can see them.</p>{{end}}
-  {{if and .User (not .Bare)}}<p class="micro keys" data-keys>g s study · g l library · g i inbox · g n create · g b billing · / search · esc leave field · tab/enter other actions</p>{{end}}
+  {{if and .User (not .Bare)}}<p class="micro keys" data-keys>g s study · g l library · g n create · g b billing · / search · esc leave field · tab/enter other actions</p>{{end}}
   {{if .TestMode}}<p class="meta">test mode · no real charges or model · speech is simulated</p>{{end}}
 </footer>
 </body>

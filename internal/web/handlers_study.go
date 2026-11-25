@@ -375,7 +375,8 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 			}
 		}
 		data["Last"] = remaining == 0
-		data["EditPrompt"], data["EditAnswer"] = shown.Item.Prompt, shown.Item.Answer
+		data["EditPrompt"], data["EditAnswer"], data["EditIdea"] = shown.Item.Prompt, shown.Item.Answer, shown.Item.IdeaTitle
+		data["IdeaTitles"], data["EditField"] = ideaChoices(ctx, c), ""
 	}
 	// While a card waits, no cue on the screen may quote its answer: not
 	// in the scrollback above it, and not in the "coming up" list below.
@@ -405,7 +406,14 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 	data["Answered"] = rows
 	if cur != nil {
 		data["Item"] = cur.Item
+		// The count is the card's place among the session's cards as they
+		// stand: a card snoozed or removed from the session leaves no gap.
 		data["Position"] = cur.Position
+		for i := range sess.Entries {
+			if &sess.Entries[i] == cur {
+				data["Position"] = i + 1
+			}
+		}
 		data["ExactLabel"] = exactLabel(cur.Item, judged, sess.RetryItemID == cur.Item.ID)
 		// The prompt as the waiting card shows it; the review shows the
 		// card's own prompt.
@@ -444,7 +452,8 @@ func (s *Server) study(w http.ResponseWriter, r *http.Request, c *rc) error {
 		if items == 0 {
 			// An empty library is said on Study itself, with the two ways
 			// forward; never a silent redirect to another page.
-			return s.render(w, r, c, http.StatusOK, "study_empty.html", map[string]any{"Title": "Study", "Nav": "study", "Purpose": studyPurpose})
+			return s.render(w, r, c, http.StatusOK, "study_empty.html", map[string]any{"Title": "Study", "Nav": "study", "Purpose": studyPurpose,
+				"Note": s.studyNote(r, c)})
 		}
 		return s.renderRest(w, r, c)
 	}
@@ -452,19 +461,47 @@ func (s *Server) study(w http.ResponseWriter, r *http.Request, c *rc) error {
 	if _, judged := data["Judged"]; judged && r.URL.Query().Get("saved") == "1" {
 		data["Saved"], data["EditOpen"] = true, true
 	}
+	data["Note"] = s.studyNote(r, c)
 	return s.render(w, r, c, http.StatusOK, "study.html", data)
 }
 
+// ideaChoices are the idea names Edit card offers (a <datalist>): every
+// idea in the library once, whatever its case.
+func ideaChoices(ctx context.Context, c *rc) []string {
+	titles, err := c.us.IdeaTitles(ctx)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range titles {
+		if k := strings.ToLower(strings.TrimSpace(t)); k != "" && !seen[k] {
+			seen[k] = true
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // studyEdit saves an edit made in the post-answer review: the card's
-// question and correct answer. The card must be the learner's own (the
-// scoped store answers 404 for anyone else's), neither field may be empty,
-// and nothing but the card's text changes: not the grade on screen, not
-// the schedule, not the session. The review's script asks for JSON and
+// question, correct answer and idea (S106-5). The card must be the
+// learner's own (the scoped store answers 404 for anyone else's), no field
+// may be empty, and nothing but the card's text and idea change: not the
+// grade on screen, not the schedule, not the session. The review's script asks for JSON and
 // updates the panel in place; a plain form post returns to the review.
 func (s *Server) studyEdit(w http.ResponseWriter, r *http.Request, c *rc) error {
 	id, _ := strconv.ParseInt(r.FormValue("item_id"), 10, 64)
-	prompt, answer := r.FormValue("prompt"), r.FormValue("answer")
-	it, err := s.App.EditCard(r.Context(), c.user, id, prompt, answer)
+	prompt, answer, idea := r.FormValue("prompt"), r.FormValue("answer"), r.FormValue("idea")
+	_, withIdea := r.PostForm["idea"]
+	var it store.Item
+	var err error
+	if withIdea {
+		// The review's form (S106-5): question, correct answer and idea.
+		it, err = s.App.EditCardIdea(r.Context(), c.user, id, prompt, answer, idea)
+	} else {
+		// A form without the idea field: the card keeps its idea.
+		it, err = s.App.EditCard(r.Context(), c.user, id, prompt, answer)
+	}
 	var fe *app.FieldError
 	switch {
 	case errors.As(err, &fe):
@@ -482,7 +519,10 @@ func (s *Server) studyEdit(w http.ResponseWriter, r *http.Request, c *rc) error 
 		if _, judged := data["Judged"]; !judged {
 			return back(w, r, "/study")
 		}
-		data["EditOpen"], data["EditError"], data["EditPrompt"], data["EditAnswer"] = true, fe.Msg, prompt, answer
+		data["EditOpen"], data["EditError"], data["EditField"], data["EditPrompt"], data["EditAnswer"] = true, fe.Msg, fe.Field, prompt, answer
+		if withIdea {
+			data["EditIdea"] = idea
+		}
 		return s.render(w, r, c, http.StatusUnprocessableEntity, "study.html", data)
 	case errors.Is(err, store.ErrNotFound):
 		if wantsJSON(r) {
@@ -494,10 +534,100 @@ func (s *Server) studyEdit(w http.ResponseWriter, r *http.Request, c *rc) error 
 		return err
 	}
 	if wantsJSON(r) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "saved": true, "item_id": it.ID, "prompt": it.Prompt, "answer": it.Answer})
+		// The review shows the card's real place (its answer is in), so the
+		// rail's header follows the card to its idea.
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "saved": true, "item_id": it.ID, "prompt": it.Prompt, "answer": it.Answer,
+			"idea": it.IdeaTitle, "header": s.studyHeader(r.Context(), c, it, true)})
 		return nil
 	}
 	return back(w, r, "/study?saved=1")
+}
+
+// Snooze and Delete in Study (S106-5). Each acts at once on one of the
+// learner's own cards, waiting or in its review, and goes straight to the
+// next card (or the session's end) under one quiet line. Another
+// learner's card is a 404; a repeated or stale post is harmless.
+
+// studyNote is the one quiet line Study shows after Snooze, Delete or a
+// restore, read from the redirect's query.
+type studyNote struct {
+	Text      string
+	RestoreID int64 // offer "Restore" for this removed card
+}
+
+// noteQuery is the part of a Study URL that carries the quiet line on.
+func noteQuery(r *http.Request) string {
+	q := r.URL.Query()
+	switch q.Get("note") {
+	case "snoozed", "restored":
+		return "note=" + q.Get("note")
+	case "removed":
+		if id, err := strconv.ParseInt(q.Get("card"), 10, 64); err == nil && id > 0 {
+			return "note=removed&card=" + strconv.FormatInt(id, 10)
+		}
+	}
+	return ""
+}
+
+func (s *Server) studyNote(r *http.Request, c *rc) *studyNote {
+	q := r.URL.Query()
+	switch q.Get("note") {
+	case "snoozed":
+		return &studyNote{Text: "Snoozed until tomorrow."}
+	case "restored":
+		return &studyNote{Text: "Card restored."}
+	case "removed":
+		id, err := strconv.ParseInt(q.Get("card"), 10, 64)
+		if err != nil || id <= 0 {
+			return nil
+		}
+		// Offered only while the card is the learner's and still removed.
+		if del, err := c.us.ItemRemovedAt(r.Context(), id); err != nil || del.IsZero() {
+			return nil
+		}
+		return &studyNote{Text: "Card removed", RestoreID: id}
+	}
+	return nil
+}
+
+// afterManage goes on to the next card, or to the session's end once
+// nothing is left, carrying the quiet line.
+func (s *Server) afterManage(w http.ResponseWriter, r *http.Request, c *rc, note string) error {
+	sess, err := c.us.ActiveSession(r.Context())
+	if err != nil {
+		return err
+	}
+	if sess == nil {
+		return back(w, r, "/study/done?"+note)
+	}
+	return back(w, r, "/study?"+note)
+}
+
+func (s *Server) studySnooze(w http.ResponseWriter, r *http.Request, c *rc) error {
+	id, _ := strconv.ParseInt(r.FormValue("item_id"), 10, 64)
+	if err := s.App.SnoozeCard(r.Context(), c.user, id); err != nil {
+		return err
+	}
+	return s.afterManage(w, r, c, "note=snoozed")
+}
+
+func (s *Server) studyDelete(w http.ResponseWriter, r *http.Request, c *rc) error {
+	id, _ := strconv.ParseInt(r.FormValue("item_id"), 10, 64)
+	if err := s.App.DeleteCard(r.Context(), c.user, id); err != nil {
+		return err
+	}
+	return s.afterManage(w, r, c, "note=removed&card="+strconv.FormatInt(id, 10))
+}
+
+// studyRestore is "Restore" on the quiet line after Delete: the card is
+// back in its idea and in study (a card still waiting in the open session
+// is back in it).
+func (s *Server) studyRestore(w http.ResponseWriter, r *http.Request, c *rc) error {
+	id, _ := strconv.ParseInt(r.FormValue("item_id"), 10, 64)
+	if err := s.App.RestoreCard(r.Context(), c.user, id); err != nil {
+		return err
+	}
+	return back(w, r, "/study?note=restored")
 }
 
 // renderRest is the study page when nothing is due.
@@ -506,7 +636,8 @@ func (s *Server) renderRest(w http.ResponseWriter, r *http.Request, c *rc) error
 	if next, err := c.us.NextDue(r.Context()); err == nil && !next.IsZero() {
 		line = "Your next review is " + strings.TrimPrefix(dueLabel(c.user, store.Item{Sched: srs.State{Due: next}}, s.App.Now()), "due ") + "."
 	}
-	return s.render(w, r, c, http.StatusOK, "done.html", map[string]any{"Title": "Nothing due", "Nav": "study", "Head": "Nothing due.", "Line": line})
+	return s.render(w, r, c, http.StatusOK, "done.html", map[string]any{"Title": "Nothing due", "Nav": "study", "Head": "Nothing due.", "Line": line,
+		"Note": s.studyNote(r, c)})
 }
 
 func (s *Server) afterStudy(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -565,6 +696,12 @@ func (s *Server) studyDone(w http.ResponseWriter, r *http.Request, c *rc) error 
 		return err
 	}
 	if sess == nil || sess.Reviewed() == 0 {
+		// A session that Snooze or Delete emptied before any answer: Study
+		// itself says what is next (another card, nothing due, or an empty
+		// library), keeping the one quiet line.
+		if q := noteQuery(r); q != "" {
+			return back(w, r, "/study?"+q)
+		}
 		return back(w, r, "/study")
 	}
 	sum := s.App.Summarize(c.user, sess)
@@ -572,7 +709,8 @@ func (s *Server) studyDone(w http.ResponseWriter, r *http.Request, c *rc) error 
 	if sum.Tomorrow > 0 {
 		line += ", " + strconv.Itoa(sum.Tomorrow) + " to revisit tomorrow"
 	}
-	return s.render(w, r, c, http.StatusOK, "done.html", map[string]any{"Title": "Done", "Nav": "study", "Head": "Done.", "Line": line + "."})
+	return s.render(w, r, c, http.StatusOK, "done.html", map[string]any{"Title": "Done", "Nav": "study", "Head": "Done.", "Line": line + ".",
+		"Note": s.studyNote(r, c)})
 }
 
 // studyExplain is the on-demand "Ask Why?" on a model-judged answer. It

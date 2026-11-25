@@ -91,10 +91,10 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
       [["Pick a starter set", "/shelf"], ["Create cards with AI", "/learn"]]);
     // Slice 41 (4): Study and Create are told apart: label, icon, purpose.
     const nav = await page.$$eval(".nav a", as => as.map(a => ({ label: a.querySelector("span").textContent, href: a.getAttribute("href"), icon: (a.querySelector("svg[aria-hidden=true]") || {}).className?.baseVal || "" })));
-    assert.deepEqual(nav.map(n => n.label), ["Study", "Library", "Inbox", "Create", "Billing", "Settings"]);
+    assert.deepEqual(nav.map(n => n.label), ["Study", "Library", "Create", "Billing", "Settings"]);
     assert(nav.every(n => n.icon.includes("icon-")), "every destination has an icon: " + JSON.stringify(nav));
-    assert.notEqual(nav[0].icon, nav[3].icon, "Study and Create have different icons");
-    assert.equal(nav[3].href, "/learn");
+    assert.notEqual(nav[0].icon, nav[2].icon, "Study and Create have different icons");
+    assert.equal(nav[2].href, "/learn");
     assert((await text("[data-keys]")).includes("g n create"));
     await page.screenshot({ path: out + "/study-empty.png" });
 
@@ -375,10 +375,10 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     assert.equal(await text(".margin-count", s), "3 / 15");
 
     // Navigation keys, and Settings in plain words (slice 41 (8)).
-    for (const path of ["/library", "/inbox", "/billing", "/settings"]) {
+    for (const path of ["/library", "/billing", "/settings"]) {
       if (path === "/settings") { await sgo(path); } else {
         await s.keyboard.press("Escape");
-        const key = { "/library": "l", "/inbox": "i", "/billing": "b" }[path];
+        const key = { "/library": "l", "/billing": "b" }[path];
         await Promise.all([s.waitForNavigation({ waitUntil: "networkidle" }), (async () => { await s.keyboard.press("g"); await s.keyboard.press(key); })()]);
         assert.equal(new URL(s.url()).pathname, path);
       }
@@ -388,7 +388,6 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
         assert.equal(await text(".page-head .purpose", s), "Every card you have, grouped by idea.");
         assert((await s.$eval(".outline", e => e.textContent)).includes("Letters A–I"));
       }
-      if (path === "/inbox") assert.equal(await text(".list-purpose", s), "Cards suggested by external scripts or tools wait here until you approve them.");
       if (path === "/billing" || path === "/settings") {
         const tooWide = await s.$$eval("main p", es => es.filter(e => e.getBoundingClientRect().width > parseFloat(getComputedStyle(e).maxWidth) + 1).map(e => e.className));
         assert.deepEqual(tooWide, [], "reading paragraphs exceed measure");
@@ -397,8 +396,9 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
         const set = await s.evaluate(() => ({ titles: [...document.querySelectorAll(".setting h2")].map(h => h.textContent), canAdd: !!document.querySelector("[name=can_add]"), boxes: document.querySelectorAll("#api-tokens input[type=checkbox]").length, body: document.querySelector("main").innerText }));
         assert(set.titles.includes("API Tokens") && set.titles.includes("Study profile") && !set.titles.includes("Agents") && !set.titles.includes("About you"), JSON.stringify(set.titles));
         assert(!set.canAdd && set.boxes === 0, "no can_add checkbox");
-        assert(set.body.includes("Programmatic access to your account.") && set.body.includes("Background and goals used to tailor AI-generated cards."));
-        assert(!/May add straight|without the inbox/.test(set.body));
+        assert(set.body.includes("Programmatic access to your account. A token lets your own scripts or tools add cards to your library through the Scry API.") && set.body.includes("Background and goals used to tailor AI-generated cards."));
+        assert(!/May add straight|inbox|suggest/i.test(set.body));
+        assert(set.body.includes("curl -X POST") && set.body.includes("/api/v1/items"));
       }
       const short = await s.$$eval("a.link", els => els.filter(e => e.getClientRects().length && e.getBoundingClientRect().height < 44).map(e => e.textContent));
       assert.deepEqual(short, [], "short touch targets on " + path);
@@ -424,9 +424,15 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     await exact.fill("#email", "exact-browser@example.com"); await exact.fill("#password", "browser-password");
     await exactSubmit("main form button");
     await onTrialShelf(exact, "third signup"); // studies on the no-card trial
-    await exact.goto(base + "/library/texts/new", { waitUntil: "networkidle" });
-    await exact.fill("#title", "Key exercise"); await exact.fill("#text", "Remember this line.");
-    await exactSubmit("main form button");
+    // No hand-written card form (S106-2): the exact card arrives through
+    // the API, with a token made in Settings.
+    await exact.goto(base + "/settings", { waitUntil: "networkidle" });
+    await exact.fill("#name", "smoke script");
+    await exactSubmit('form[action="/settings/tokens"] button');
+    const apiToken = (await text(".token-value", exact)).trim();
+    const added = await exact.request.post(base + "/api/v1/items", { headers: { Authorization: "Bearer " + apiToken },
+      data: { source: "smoke", items: [{ question: "Key exercise: recite the line", answer: "Remember this line.", idea: "Key exercise", exact: true }] } });
+    assert.equal(added.status(), 201, "POST /api/v1/items");
     await exact.goto(base + "/study", { waitUntil: "networkidle" });
     await exact.fill("#answer", "wrong"); await exact.keyboard.press("Enter"); await exact.waitForSelector("[data-again]");
     assert.equal(await exact.$eval("[data-review]", e => e.dataset.kind), "exact");
@@ -445,6 +451,6 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     assert.equal(await text(".done a", exact), "Create new cards");
     await noCSP(exact, "exact");
     assert.deepEqual(errors, []);
-    console.log("empty Study, card processing state, in-place starter add, spoiler-free rail, typed/spoken study, post-answer review (correct, incorrect, exact), Ask Why?, inline edit, Enter/Space, library, inbox, billing, settings, create: PASS");
+    console.log("empty Study, card processing state, in-place starter add, spoiler-free rail, typed/spoken study, post-answer review (correct, incorrect, exact), Ask Why?, inline edit, Enter/Space, library, billing, settings, create: PASS");
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

@@ -16,7 +16,7 @@ func (s *Server) settingsData(r *http.Request, c *rc) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	removed, err := c.us.Removed(r.Context())
+	removed, err := recentlyRemoved(r.Context(), c)
 	if err != nil {
 		return nil, err
 	}
@@ -92,10 +92,9 @@ func (s *Server) settingsAbout(w http.ResponseWriter, r *http.Request, c *rc) er
 
 func (s *Server) settingsToken(w http.ResponseWriter, r *http.Request, c *rc) error {
 	name := r.FormValue("name")
-	// A new token always suggests through the inbox. Settings no longer
-	// offers "may add straight to my library", and a posted can_add is
-	// ignored; tokens made earlier with it keep working until revoked.
-	token, err := s.App.CreateAgentToken(r.Context(), c.user.ID, name, false)
+	// A token has no options (S106-4): every token adds straight to the
+	// library, and a posted can_add (from an older form) means nothing.
+	token, err := s.App.CreateAgentToken(r.Context(), c.user.ID, name)
 	var fe *app.FieldError
 	if err != nil && !errors.As(err, &fe) {
 		return err
@@ -130,28 +129,20 @@ func (s *Server) settingsRestore(w http.ResponseWriter, r *http.Request, c *rc) 
 	if err != nil {
 		return err
 	}
-	if err := c.us.RestoreIdea(r.Context(), id); err != nil {
+	// Recently removed lists ideas and cards (S106-5); a card's row says so.
+	restore := c.us.RestoreIdea
+	if r.FormValue("kind") == "card" {
+		restore = c.us.RestoreItem
+	}
+	if err := restore(r.Context(), id); err != nil {
 		return err
 	}
 	return back(w, r, "/settings?ok=restored")
 }
 
-// settingsExport hands the learner everything Scry holds for them. It
-// works whatever the state of their plan: the data is theirs.
-func (s *Server) settingsExport(w http.ResponseWriter, r *http.Request, c *rc) error {
-	exp, err := c.us.Export(r.Context(), s.App.Now())
-	if err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="scry-export.json"`)
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(exp)
-}
-
-// The agents' API. An agent authenticates with a token its learner made
-// in Settings; everything it does lands in that learner's account only.
+// The API for the learner's own scripts and tools. A script authenticates
+// with a token its learner made in Settings; everything it does lands in
+// that learner's account only.
 
 type agentRequest struct {
 	Source string          `json:"source"`
@@ -161,7 +152,7 @@ type agentRequest struct {
 func (s *Server) agent(w http.ResponseWriter, r *http.Request) (store.AgentToken, bool) {
 	bearer, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "send your agent token as: Authorization: Bearer scry_…"})
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "send your API token as: Authorization: Bearer scry_…"})
 		return store.AgentToken{}, false
 	}
 	t, err := s.App.AgentFromToken(r.Context(), strings.TrimSpace(bearer))
@@ -200,23 +191,13 @@ func (s *Server) agentBody(w http.ResponseWriter, r *http.Request) (agentRequest
 	return req, true
 }
 
-func (s *Server) apiSuggest(w http.ResponseWriter, r *http.Request) {
-	t, ok := s.agent(w, r)
-	if !ok {
-		return
-	}
-	req, ok := s.agentBody(w, r)
-	if !ok {
-		return
-	}
-	ids, err := s.App.AgentSuggest(r.Context(), t, req.Source, req.Items)
-	if err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]any{"suggested": len(ids), "ids": ids, "status": "waiting in the inbox for approval"})
-}
+// apiSuggest is POST /api/v1/suggestions, kept for scripts written when
+// cards waited in an Inbox. There is no Inbox now (S106-4): it is an alias
+// of POST /api/v1/items and adds straight to the library, for every token.
+func (s *Server) apiSuggest(w http.ResponseWriter, r *http.Request) { s.apiAdd(w, r) }
 
+// apiAdd is POST /api/v1/items: 1 to 50 cards (question, answer, idea,
+// summary, exact) go straight into the token owner's library, all or none.
 func (s *Server) apiAdd(w http.ResponseWriter, r *http.Request) {
 	t, ok := s.agent(w, r)
 	if !ok {
@@ -227,10 +208,6 @@ func (s *Server) apiAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ids, err := s.App.AgentAdd(r.Context(), t, req.Source, req.Items)
-	if errors.Is(err, app.ErrAgentMayNotAdd) {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "this token may suggest but not add; POST to /api/v1/suggestions, or ask the learner for a token that may add"})
-		return
-	}
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 		return

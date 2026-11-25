@@ -361,14 +361,13 @@ const otherRoute = "/other"
 var (
 	routeExact = map[string]bool{
 		"/": true, "/signin": true, "/signup": true, "/signup/card": true, "/shelf": true,
-		"/study": true, "/study/done": true, "/library": true, "/library/texts/new": true,
-		"/inbox": true, "/learn": true, "/billing": true, "/billing/card": true,
+		"/study": true, "/study/done": true, "/library": true,
+		"/learn": true, "/billing": true, "/billing/card": true,
 		"/settings": true, "/healthz": true,
 	}
 	routeWithID = map[string]string{
 		"/library/ideas": "/library/ideas/:id",
 		"/library/items": "/library/items/:id",
-		"/library/texts": "/library/texts/:id",
 		"/learn":         "/learn/:id",
 	}
 )

@@ -18,8 +18,8 @@ const (
 )
 
 // SeedDemo fills an empty database with one learner mid-way through their
-// first month: a library with history, items due today, a waiting inbox
-// and a billing ledger. It does nothing if the demo account exists.
+// first month: a library with history, items due today, cards its API
+// tokens added and a billing ledger. It does nothing if the demo account exists.
 func (a *App) SeedDemo(ctx context.Context) error {
 	if _, err := a.Store.UserByEmail(ctx, DemoEmail); err == nil {
 		return nil
@@ -146,11 +146,12 @@ func (a *App) SeedDemo(ctx context.Context) error {
 		}
 	}
 
-	// Agents and their suggestions.
+	// API tokens and the cards their scripts added (S106-4: straight into
+	// the library, as POST /api/v1/items does).
 	for _, t := range []struct {
 		name, token string
 	}{{"reading agent", DemoAgentToken}, {"conversation agent", "scry_" + randomToken(30)}} {
-		if err := us.CreateToken(ctx, t.name, hashToken(t.token), false, now.AddDate(0, 0, -10)); err != nil {
+		if err := us.CreateToken(ctx, t.name, hashToken(t.token), now.AddDate(0, 0, -10)); err != nil {
 			return err
 		}
 	}
@@ -170,7 +171,7 @@ func (a *App) SeedDemo(ctx context.Context) error {
 		{Agent: "conversation agent", Source: "Chat about a hiring decision, " + now.AddDate(0, 0, -1).Format("Jan 2"), IdeaTitle: "Reasoning from the ground up",
 			Prompt: "Before a hiring decision, what does inversion ask you to list first?", Answer: "The ways the hire could fail, so you can avoid them"},
 	} {
-		if _, err := us.AddSuggestion(ctx, s, now.AddDate(0, 0, -1)); err != nil {
+		if _, err := us.AddFromAgent(ctx, []store.Suggestion{s}, now.AddDate(0, 0, -1)); err != nil {
 			return err
 		}
 	}

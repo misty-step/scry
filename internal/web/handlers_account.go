@@ -30,15 +30,19 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, c *rc) error {
 }
 
 // landingSpecimen is the landing page's Study Specimen (DESIGN.md, Landing):
-// one real recall review moment. The card is a real starter card, the typed
-// answer differs from it only in case and punctuation, and the one-line why
-// is the grader's own fixed criterion sentence for the verdict.
+// one real card stepped from its prompt to a typed answer to its judgment.
+// The card is the starter set's Hanlon's razor card asked the other way
+// round (the razor, answered with what it says), the typed answer says the
+// same thing in other words, and the one-line why is the grader's own plain
+// sentence for the verdict. The place is the spoiler-safe "Set N" a study
+// session shows.
 func landingSpecimen() map[string]string {
 	return map[string]string{
-		"Place":    "Mental models · The razors",
-		"Question": "Which razor says never to attribute to malice what is adequately explained by carelessness or stupidity?",
-		"Answer":   "hanlons razor",
-		"Expected": "Hanlon's razor",
+		"Place":    "Mental models · Set 1",
+		"Count":    "4 / 11",
+		"Prompt":   "Hanlon's razor",
+		"Answer":   "don't assume malice when carelessness or stupidity explains it",
+		"Expected": "Never attribute to malice what is adequately explained by carelessness or stupidity",
 		"Verdict":  string(srs.Right),
 		"Icon":     "verdict-right",
 		"Badge":    "Correct",

@@ -1,6 +1,6 @@
 # Scry
 
-One Go service: private libraries, model-judged study, exact texts, and agent suggestions.
+One Go service: private libraries, model-judged study, exact texts, AI-drafted cards from a topic or pasted notes, and an API that adds cards.
 Server-rendered HTML, self-hosted Geist fonts, SQLite, no frontend build step.
 
 ## Run and test
@@ -30,7 +30,11 @@ SCRY_TEST_JUDGMENTS=close,missed,right hands out that verdict sequence in turn
 (answer-independent) so the running app can show close/missed and “Why?”.
 The test explainer sets the two answers side by side; it assesses nothing.
 Exact texts use the real word diff. Drafts use built-in examples or labelled
-placeholders, not general knowledge generation. Speech is simulated, though
+placeholders, not general knowledge generation; pasted Markdown, prose or notes
+(several lines, or over 300 characters) get a fixed fixture built from the
+text's own headings (up to four ideas) or paragraphs, with template questions
+from the lines under each, so Create → draft outline → Approve all → Library
+runs with no network call. Speech is simulated, though
 the browser can request microphone permission and send validated PCM WAV audio
 to this service once recording stops (no repeated live transcription).
 SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
@@ -212,8 +216,8 @@ runbook for configuration and the end-to-end drill.
 
 SQLite uses WAL, FULL synchronous writes, foreign keys, and transactions.
 Learner queries are scoped by user ID. Cookies are HttpOnly/SameSite; mutations
-require CSRF. Agent tokens are hashed and default to suggestions-only; direct
-addition is an explicit permission. Data is private between accounts, **not
+require CSRF. API tokens are hashed; every token may add cards to its own
+learner's library and nothing else. Data is private between accounts, **not
 end-to-end encrypted**: host administrators and backup holders can read it.
 Encrypt volumes and off-host backups and restrict operator access.
 
@@ -244,21 +248,37 @@ rejects conflicting account identities. It does not restore account profile,
 local passwords, or browser sessions; use whole recovery for these. Billing and
 agent-token rows are restored: reconcile billing and revoke restored tokens
 before reopening access. It is not an import between unrelated databases.
-Settings also offers JSON export (without token hashes) and 30-day undo for
-removed ideas; export is not a whole-database backup.
+Settings → Your data offers Markdown and CSV downloads of every card by idea
+(both import back intact through Create → Import a deck) and a JSON export of
+every row the learner owns (without token hashes), on any plan state, plus
+30-day undo for removed ideas and cards; export is not a whole-database backup.
 
 ## Agents and keyboard
 
-Settings (API Tokens) creates/revokes API tokens. Send Authorization: Bearer TOKEN:
-GET /api/v1/ideas lists private ideas; POST /api/v1/suggestions queues approval;
-POST /api/v1/items requires a token that may add. Settings no longer offers that
-option: tokens made there suggest through the inbox, and a token made earlier
-with it keeps working until revoked. Body example:
+Settings (API Tokens) creates/revokes API tokens (a name, no options) and shows
+a `curl` example for POST /api/v1/items (with the new token only on the page
+that created it). Send Authorization: Bearer TOKEN:
+GET /api/v1/ideas lists private ideas; POST /api/v1/items adds 1–50 cards
+(`question`, `answer`, `idea`, `summary`, `exact`) straight to the library, all
+or none (201 `{"added":N,"ids":[…],"status":"in the library"}`; 0 or over 50
+items, or a bad item, is a 422 saying why). Every token may add, including one
+made before tokens could (can_add = 0). POST /api/v1/suggestions is kept as an
+alias of POST /api/v1/items with the same response: there is no Inbox (S106-4),
+`/inbox` answers 303 to Library, and any suggestion still pending in the old
+Inbox is moved into its learner's library when the database opens (idempotent,
+logged per learner). Body example:
 
     {"source":"Reading notes","items":[{"question":"What is inversion?","answer":"Reason backward from failure","idea":"Mental models"}]}
 
-Tab/Enter operate controls. Outside fields: g s study, g l library, g i inbox,
-g n learn, g b billing; / focuses search. Inbox: A approve, D dismiss,
+Create (/learn) takes a topic, a question, a book's title, or up to 16,000
+characters of pasted Markdown, prose or notes (line breaks kept); "Draft cards"
+or Cmd/Ctrl+Enter sends it to the drafting agent. Library has no hand-written
+card forms: /library/texts/new, POST /library/texts and POST
+/library/ideas/{id}/items answer 303 to Create; a card is still edited on its
+own page (/library/items/{id}) or in Study.
+
+Tab/Enter operate controls. Outside fields: g s study, g l library,
+g n create, g b billing; / focuses search. Draft rows: A approve, D dismiss,
 J/K or arrows move. Study: Enter checks/continues, Space on an empty answer
 starts voice and another Space stops it, A repeats exact text. Settings has
 system/light/dark modes; reduced motion disables transitions.
@@ -273,19 +293,24 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | --- | --- |
 | Operator story: continuous monitoring, incident triage, fix proposal and fault drill | `TestStory_ContinuousMonitoringFaultDrillRestartRecovery`, `TestMonitoringDedupTriageFixQuietDurability` (internal/watch) |
 | Story: signup, trial and study within a minute; understand Scry at a glance, see one judged card on the landing page, add Scry to the home screen | TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen; TestDesign_BrandMarkBesideTheWordmark; internal/web.TestBrand_MarkIsOneDrawingEverywhere |
+| [S106-1] Landing hero and Study Specimen: the Specimen steps Prompt, Answer, Judged on its own or by its step controls, holds on hover or focus, rests on Judged without script or under reduced motion; four schedule facts on one line each in a flush 2x2 grid; four How Scry works rows with icons (Slice 106) | TestS106_1_LandingSpecimenStepsAndRestsOnJudged; TestS106_1_SpecimenScheduleGridCSS; TestS106_1_HowScryWorksRowsHaveIcons; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen |
 | Story: forgot password: email on Sign in, then "Forgot password" on the password step | TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep; TestClerkFrontendStandIn (these cover the Sign in guidance and Scry's "Reset your password" copy on Clerk's forgot/reset-password routes; Clerk itself completes the emailed reset and the sign-in with the new password, which stay outside automated test coverage — the stand-in simulates no reset) |
 | Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
 | Story: any topic shaped to learner, or tap a starter example under the field | TestStory_AskForAnyTopic_AndGetItShapedToMe; TestStory_Create_TapAStarterExampleUnderTheField |
+| [S106-2] Create from a topic, Markdown or prose: one textarea up to 16,000 characters, "Draft cards" and Cmd/Ctrl+Enter, the drafting agent always writes the cards (fixtures in test mode), no hand-written card forms | TestS106_2_CreateTextareaUpTo16000Chars; TestS106_2_MarkdownDraftsFromFixtureToApproval; TestS106_2_NoHandWrittenCardForms; internal/ai.TestS106_2_MaterialFixtureFromHeadingsAndProse; internal/ai.TestS106_2_PromptTellsTheModelAboutPastedMaterial |
 | Story: favorite book core ideas | TestStory_TurnAFavoriteBookIntoASetOfItsCoreIdeas |
-| Story: agents add/suggest; one-tap approval | TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
+| [S106-3] Import and export decks: Anki .apkg (basic and cloze), UTF-8 CSV/TSV (header optional), Markdown (Scry export or `---` card blocks) up to 20 MiB with bounded unzipping, straight into the library at no allowance cost; unstructured Markdown to the drafting agent; HTML to plain text, media skipped; Markdown, CSV and JSON downloads on any plan state that import back intact | TestS106_3_ImportSectionAndDownloadsAreLinked; TestS106_3_ImportApkgCSVMarkdownIntoLibrary; TestS106_3_UnstructuredMarkdownGoesToDrafting; TestS106_3_ImportRefusedInWords; TestS106_3_ExportRoundTrip; TestS106_3_ExportOnAnyPlanState; internal/deck.TestS106_3_*; internal/store.TestS106_3_StoreImportExportRoundTrip |
+| [S106-6] Nothing else changes; every change is proved headed: the whole suite stays green, and scripts/verify-slice106.mjs walks the landing Specimen, Create from Markdown, imports, exports round-trip, five-destination navigation, /inbox, the API, and Snooze / Edit card / Delete / restore in a headed Chrome at 1440×900 and 390×844, light and dark, with 0 console/page/CSP/request problems and no sideways scroll | go test ./...; scripts/verify-slice106.mjs |
+| [S106-4] No Inbox; the API adds to the library: five destinations, `/inbox` 303 to Library, every token adds (old can_add = 0 too) via /api/v1/items and its /api/v1/suggestions alias, 1–50 per request, old pending suggestions moved into the library | TestS106_4_InboxRedirects303ToLibrary; TestS106_4_NavHasFiveDestinations; TestS106_4_EveryTokenAddsToLibrary; TestS106_4_ItemsBatchLimits1To50; internal/store.TestS106_4_PendingInboxSuggestionsMigrateToLibrary; internal/store.TestS106_4_AddFromAgentFilesStraightIntoTheLibrary; TestDesign_NoInboxPurposeLine_InboxOpensLibrary |
 | Story: due items, typing/speaking, five minutes | TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinutes |
 | Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |
 | Story: connected ideas; each item belongs to an idea; on phones the opened idea comes first with a compact collapsible outline | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea; TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline |
 | Story: every answer stops on a review that stays framed at the question and judgment | TestStory_Review_StaysFramedAtTheQuestionAndJudgment (plus the real-browser walkthrough below) |
 | Story: the review shows only the current card; an empty answer says "No answer given." and "Skipped — review the answer above." (still graded, G10); the why is in plain words, never the grader's rubric | TestSlice70_Review_ShowsTheCurrentCardOnly; TestSlice70_Review_SkipSaysNoAnswerGivenInPlainWords; TestSlice70_Review_GradedWhyIsPlainNeverTheRubric; TestG10_EmptyAnswerCallsJudgeOnce; internal/ai.TestWhy_PlainSentencesReplaceTheGraderRubric; `scripts/verify-slice70.mjs` |
 | Story: the review's schedule (event and interval on one clock, icons, verdict trail; dates in the learner's stored zone, never rewritten by a page view) | TestSlice70_Review_EventAndIntervalAgreeOnTheRunningPath; TestSlice70_Review_ScheduleIconsAndVerdictTrail; TestSlice70_NoPageViewChangesTheTimeZoneOrTheQueue; internal/web.TestSlice70_Telemetry_EventAndIntervalShareOneClock; internal/web.TestSlice70_Telemetry_TrailIsTheLastEightGradedVerdicts; internal/web.TestSlice41_Telemetry_IsFormattedFromTheStoredSchedule |
-| Story: on phones every destination is in view in one compact row and Study does not repeat itself; Next card in ink with a keyboard-only focus ring | TestSlice70_Design_InkNextCardKeyboardRingCompactNav; TestDesign_Slice54_CraftRulesHoldInTheStyleSheet; `scripts/verify-slice70.mjs` (WebKit iPhone 390x844 and Chromium 1440x900, light and dark) |
+| Story: on phones every destination (five: Study, Library, Create, Billing, Settings) is in view in one compact row and Study does not repeat itself; Next card in ink with a keyboard-only focus ring | TestS106_4_NavHasFiveDestinations; TestSlice70_Design_InkNextCardKeyboardRingCompactNav; TestDesign_Slice54_CraftRulesHoldInTheStyleSheet; `scripts/verify-slice70.mjs` (WebKit iPhone 390x844 and Chromium 1440x900, light and dark) |
 | Story: a card missed again and again is offered bridge cards (3+ lapses or the latest two graded answers Incorrect); bridges are drafted, edited, accepted atomically, hold the card out of every due queue until each is answered Correct or Almost Correct once, and can be released by hand (Slice 75) | internal/app.TestSlice75_Detection_Boundaries; internal/app.TestSlice75_Detection_IgnoresPracticeAttempts; internal/app.TestSlice75_Generation_UsesTheParentAndRecentMisses; internal/app.TestSlice75_Accept_ValidatesAndIsIdempotent; internal/app.TestSlice75_Journey_HoldBridgesAndAutomaticReentry; internal/store.TestSlice75_Store_*; internal/ai.TestSlice75_* (incl. TestSlice75_Bridge_RealAdapterDropsSpoilers, TestSlice75_Bridge_RealAdapterDropsSymbolOnlyAnswerLeaks, TestSlice75_ParseBridges_FirstCardsObjectOfSeveral, TestSlice75_Bridge_FallbackModelOnlyOnSuccess, TestSlice75_Bridge_InputIsFittedBeforeDispatch, TestSlice75_ParseBridges_ByteBoundsMatchAcceptance); internal/app.TestSlice75_Generation_OverCapInputNeverStrandsAReservation; internal/app.TestSlice75_Accept_BoundsMatchTheDraftParser; internal/store.TestSlice75_Store_StaleReleaseWhileTrashedIsANoOp; internal/app.TestSlice75_Generation_RealAdapterDropsSpoilers; internal/app.TestSlice75_Generation_RealAdapterDropsSymbolOnlyAnswerLeak; cmd/scry.TestSlice75_TestModeBridgerIsAlwaysTheFixture; TestSlice75_Web_*; `scripts/verify-slice75-strugglometer.mjs` (WebKit iPhone 390x844 and Chromium 1440x900, light and dark) |
+| [S106-5] Manage a card without leaving Study: Edit card changes the question, correct answer and idea (existing, matched case-insensitively, or newly named) with the review and place updating in place; Snooze until tomorrow in the learner's time zone (no review while waiting, next review at least tomorrow after answering); Delete, restorable for 30 days in Settings → Recently removed (ideas and cards); a waiting card never shows its answer | TestS106_5_SnoozeBeforeAnswerRecordsNoReview; TestS106_5_SnoozeAfterAnswerDueAtLeastTomorrow; TestS106_5_DeleteThenRestoreFromSettings; TestS106_5_EditCardMovesToNewOrExistingIdea; TestS106_5_WaitingCardNeverShowsAnswer; TestS106_5_KeysAndIcons; TestS106_5_SessionEndAfterSnoozeOrDelete |
 | Story: private library/history | TestStory_MyLibraryAndHistoryAreMineAlone |
 | Story: clear price/allowance, top-up/cancel | TestStory_PayingUser_KnowsThePriceAndAllowance_CanTopUpOrCancelAnyTime |
 | Rule: no free tier, 7-day no-card trial with a capped allowance | TestRule_NoFreeTier_SevenDayNoCardTrialWithACappedAllowance; TestRule_CardAddedDuringTheTrialKeepsItsEnd; TestRule_NoCardTrialNeverChargesATopup; internal/app.TestSlice36_NoCardTrialExpiresAtPeriodEnd; internal/app.TestSlice36_ConcurrentReservationsCannotPassTheCapOrTheEnd; internal/app.TestSlice36_UpgradeFromTheNoCardTrial; TestSlice36_StaleCardStepConfirmsBeforeChargingAndADeclineKeepsTheTrial; TestSlice36_CardStepWithoutTermsIsNeverCharged; internal/app.TestSlice36_StaleTrialTermsNeverChargeSilently; internal/app.TestSlice36_DeclineInTheLastHourKeepsTheTrial; internal/app.TestSlice36_ConfirmedUpgradeInTheLastHour; internal/app.TestSlice36_SpeechHoldsKeepTheTrialInsideItsCap; internal/app.TestSlice36_OverageNeverStarvesAConcurrentHoldAndStopsTheTrial |
@@ -579,7 +604,7 @@ and [drafting SSE](https://platform.claude.com/docs/en/build-with-claude/streami
 | Slice 41 (5): adding a starter set confirms in place (JSON, no redirect; plain post fallback) | TestSlice41_Shelf_AddConfirmsInPlaceWithoutAPageLoad; TestReviewBrowserSmoke (window.scrollY unchanged) |
 | Slice 41 (6): the shelf leads with broad sets; the Creeds close it | TestSlice41_Shelf_HeadlineOrderIconsAndCounts; internal/starter.TestSlice41_ShelfOrder_BroadSetsLeadAndTheCreedsComeLast |
 | Slice 41 (7): card and top-up forms show a processing state and come back on an error | TestSlice41_Processing_CardAndTopUpFormsCarryTheBusyState; TestReviewBrowserSmoke |
-| Slice 41 (8): API Tokens without can_add, Study profile, plain Inbox and page purposes | TestSlice41_PlainCopy_SettingsInboxAndPagePurposes; TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap |
+| Slice 41 (8): API Tokens without can_add, Study profile and page purposes (no Inbox since S106-4) | TestSlice41_PlainCopy_SettingsAndPagePurposes; TestS106_4_EveryTokenAddsToLibrary |
 | Slice 41 (9): one inline line-icon family; Geist only; no glows, gradients, shadows or emoji | TestSlice41_Icons_OneFamilyOfInlineLineIcons; TestSlice41_Icons_TemplatesUseOnlyDrawnIconsAndNoEmoji; TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet; internal/starter.TestSlice41_Icons_EverySetNamesAKnownIcon |
 | Slice 41 pass 2 (B1): no cue quotes the answer still owed, however short ("Go"), in "coming up" or the scrollback; an exact text named for its own line ("Daffodils") is asked for under a neutral title in the rail, label, prompt, page title, lists, and named again in the review; no starter text loses its title | TestSlice41_Spoiler_ShortExactAnswerIsNotShownInComingUp; TestSlice41_Spoiler_AnswerBearingExactTitleIsNeutralUntilAnswered; TestSlice41_Spoiler_UpcomingCueThatQuotesTheAnswerIsHeldBack; TestSlice41_Spoiler_ExactTitleThatGivesTheLineAwayIsNeutralWhileWaiting; TestSlice41_Spoiler_CuesShownWhileAnAnswerIsOwed; TestSlice41_Spoiler_EveryStarterExactTextKeepsItsTitle; scripts/verify-slice41.mjs (exactSpoilers) |
 | Slice 41 pass 2 (B2): "Coming up" cues are readable text (ink-muted at Meta size, 4.5:1 or better in light and dark, desktop and phone); ghost opacity colors no text | TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet; scripts/verify-slice41.mjs (the contrast audit no longer skips `.upcoming`, and reports it by name) |

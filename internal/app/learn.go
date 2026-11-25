@@ -6,23 +6,73 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"scry/internal/ai"
 	"scry/internal/speech"
 	"scry/internal/store"
 )
 
+// MaxLearnChars is how much a learner may type or paste into Create
+// (S106-2): a topic, a question, a book's title, or Markdown, prose or
+// notes up to 16,000 characters.
+const MaxLearnChars = 16000
+
+// maxDraftTitle bounds a draft's title, so pasted material is named by
+// its first heading or line, never by the whole text.
+const maxDraftTitle = 80
+
+// NormalizeLearn tidies what was typed or pasted into Create: line
+// endings become \n and the ends are trimmed. A one-line request has its
+// runs of spaces collapsed; pasted material keeps its line breaks.
+func NormalizeLearn(query string) string {
+	query = strings.ReplaceAll(query, "\r\n", "\n")
+	query = strings.TrimSpace(strings.ReplaceAll(query, "\r", "\n"))
+	if !strings.Contains(query, "\n") {
+		query = strings.Join(strings.Fields(query), " ")
+	}
+	return query
+}
+
+// DraftTitle names a draft before the model does: a short request names
+// itself; pasted material (several lines, or longer than a topic) is
+// named by its first Markdown heading, or else its first line, cut to at
+// most 80 characters at a word.
+func DraftTitle(query string) string {
+	if !ai.IsMaterial(query) {
+		return query
+	}
+	first := ""
+	for _, line := range strings.Split(query, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			first = line
+			break
+		}
+		if first == "" && line != "" {
+			first = line
+		}
+	}
+	return ai.Clip(ai.PlainLine(first), maxDraftTitle)
+}
+
 // Learn asks the model for material on a topic, a question or a book's
-// title, shaped to this learner. It returns at once with a draft id; the
-// outline is written in the background and its items wait as suggestions.
+// title, or for cards from Markdown, prose or notes the learner pasted,
+// shaped to this learner. It returns at once with a draft id; the outline
+// is written in the background and its items wait as suggestions.
 // Nothing enters the library until the learner approves it.
 func (a *App) Learn(ctx context.Context, u store.User, query string) (int64, error) {
-	query = strings.Join(strings.Fields(query), " ")
+	query = NormalizeLearn(query)
 	if query == "" {
-		return 0, fieldErr("q", "Type a topic, a question, or a book's title.")
+		return 0, fieldErr("q", "Type a topic, a question or a book's title, or paste your notes.")
 	}
-	if len(query) > 300 {
-		return 0, fieldErr("q", "Keep it under 300 characters.")
+	if utf8.RuneCountInString(query) > MaxLearnChars {
+		return 0, fieldErr("q", "Keep it under 16,000 characters.")
+	}
+	if !ai.DraftFits(query) {
+		// Under 16,000 characters but too many bytes for one draft's
+		// budget (a script of several bytes a character).
+		return 0, fieldErr("q", "That's too long to draft at once. Send it in parts.")
 	}
 	_, err := a.Plan(ctx, u.ID)
 	if err != nil {
@@ -110,7 +160,7 @@ func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string
 			settle(ai.Usage{})
 		}
 	}()
-	d := store.Draft{ID: id, Query: query, Kind: "topic", Title: query, Status: "drafting"}
+	d := store.Draft{ID: id, Query: query, Kind: "topic", Title: DraftTitle(query), Status: "drafting"}
 	fail := func(err error) {
 		a.Log.ErrorContext(ctx, "draft failed", "err", err, "user", u.ID, "draft", id)
 		a.Alert.Notify(ctx, "Drafting is failing", err.Error())
@@ -125,8 +175,8 @@ func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string
 	}
 	sink := ai.DraftSink{
 		Head: func(h ai.DraftHead) error {
-			if h.Title != "" {
-				d.Title = h.Title
+			if t := ai.Clip(ai.PlainLine(h.Title), maxDraftTitle); t != "" {
+				d.Title = t
 			}
 			if h.Kind == "book" {
 				d.Kind = "book"
@@ -171,7 +221,7 @@ func (a *App) runDraft(ctx context.Context, u store.User, id int64, query string
 	}
 }
 
-// AgentItem is one piece of material an agent sends.
+// AgentItem is one card a script or tool sends through the API.
 type AgentItem struct {
 	Question string `json:"question"`
 	Answer   string `json:"answer"`
@@ -180,76 +230,58 @@ type AgentItem struct {
 	Exact    bool   `json:"exact"`   // judge word for word
 }
 
-func (it AgentItem) check() error {
+// MaxAgentItems is how many cards one API request may carry (S106-4).
+const MaxAgentItems = 50
+
+func (it AgentItem) check(n int) error {
 	switch {
 	case strings.TrimSpace(it.Question) == "":
-		return errors.New("each item needs a question")
+		return fmt.Errorf("item %d needs a question", n)
 	case strings.TrimSpace(it.Answer) == "":
-		return errors.New("each item needs an answer")
+		return fmt.Errorf("item %d needs an answer", n)
 	case strings.TrimSpace(it.Idea) == "":
-		return errors.New("each item needs an idea to belong to")
-	case len(it.Question) > 1000 || len(it.Answer) > 2000 || len(it.Idea) > 120 || len(it.Summary) > 300:
-		return errors.New("an item field is too long")
+		return fmt.Errorf("item %d needs an idea to belong to", n)
+	case len(it.Question) > 1000:
+		return fmt.Errorf("item %d's question is too long; keep it within 1,000 bytes", n)
+	case len(it.Answer) > 2000:
+		return fmt.Errorf("item %d's answer is too long; keep it within 2,000 bytes", n)
+	case len(it.Idea) > 120:
+		return fmt.Errorf("item %d's idea is too long; keep it within 120 bytes", n)
+	case len(it.Summary) > 300:
+		return fmt.Errorf("item %d's summary is too long; keep it within 300 bytes", n)
 	}
 	return nil
 }
 
-// AgentSuggest queues items from one of the learner's agents in their
-// inbox, where they wait for approval.
-func (a *App) AgentSuggest(ctx context.Context, t store.AgentToken, source string, items []AgentItem) ([]int64, error) {
+// AgentAdd puts cards from one of the learner's scripts or tools straight
+// into their library (S106-4: there is no Inbox). Every live token may
+// add, including one made before tokens could, and POST /api/v1/items and
+// its alias POST /api/v1/suggestions both land here. The request is all or
+// nothing: a refused item adds none. It returns the new items' ids.
+func (a *App) AgentAdd(ctx context.Context, t store.AgentToken, source string, items []AgentItem) ([]int64, error) {
 	if err := checkAgentItems(source, items); err != nil {
 		return nil, err
 	}
-	us := a.Store.For(t.UserID)
-	var ids []int64
+	sugs := make([]store.Suggestion, 0, len(items))
 	for _, it := range items {
-		id, err := us.AddSuggestion(ctx, store.Suggestion{Agent: t.Name, Source: strings.TrimSpace(source), IdeaTitle: it.Idea,
-			IdeaSummary: strings.TrimSpace(it.Summary), Prompt: it.Question, Answer: it.Answer, Exact: it.Exact}, a.now())
-		if err != nil {
-			return ids, err
-		}
-		ids = append(ids, id)
+		sugs = append(sugs, store.Suggestion{Agent: t.Name, Source: strings.TrimSpace(source), IdeaTitle: it.Idea,
+			IdeaSummary: strings.TrimSpace(it.Summary), Prompt: it.Question, Answer: it.Answer, Exact: it.Exact})
 	}
-	return ids, nil
-}
-
-// ErrAgentMayNotAdd means the token only allows suggestions.
-var ErrAgentMayNotAdd = errors.New("this token may suggest but not add")
-
-// AgentAdd puts items from an agent straight into the library. The
-// learner must have granted the token that right.
-func (a *App) AgentAdd(ctx context.Context, t store.AgentToken, source string, items []AgentItem) ([]int64, error) {
-	if !t.CanAdd {
-		return nil, ErrAgentMayNotAdd
-	}
-	ids, err := a.AgentSuggest(ctx, t, source, items)
-	if err != nil {
-		return nil, err
-	}
-	us := a.Store.For(t.UserID)
-	var added []int64
-	for _, id := range ids {
-		itemID, err := us.Approve(ctx, id, a.now())
-		if err != nil {
-			return added, err
-		}
-		added = append(added, itemID)
-	}
-	return added, nil
+	return a.Store.For(t.UserID).AddFromAgent(ctx, sugs, a.now())
 }
 
 func checkAgentItems(source string, items []AgentItem) error {
 	if len(items) == 0 {
-		return errors.New("send at least one item")
+		return errors.New("send at least one item: 1 to 50 per request")
 	}
-	if len(items) > 50 {
-		return errors.New("send at most 50 items at a time")
+	if len(items) > MaxAgentItems {
+		return fmt.Errorf("send at most 50 items per request; this one had %d", len(items))
 	}
 	if len(source) > 200 {
-		return errors.New("source is too long")
+		return errors.New("source is too long; keep it within 200 bytes")
 	}
-	for _, it := range items {
-		if err := it.check(); err != nil {
+	for i, it := range items {
+		if err := it.check(i + 1); err != nil {
 			return err
 		}
 	}

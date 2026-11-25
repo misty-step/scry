@@ -20,7 +20,7 @@
       <input class="input mono" id="q-picker" name="q" type="search" value="{{.Query}}" placeholder="Search" data-picker-search>
     </form>
     {{template "outline" .}}
-    <p class="pane-links meta"><a class="link quiet" href="/shelf">Starter shelf</a> · <a class="link quiet" href="/library/texts/new">Add an exact text</a></p>
+    <p class="pane-links meta" data-outline-end><a class="link quiet" href="/shelf">Starter shelf</a> · <a class="link quiet" href="/learn#import">Create or import cards</a></p>
   </div>
 </details>
 <div class="library">
@@ -31,7 +31,7 @@
       <span class="micro search-key" aria-hidden="true">/</span>
     </form>
     {{template "outline" .}}
-    <p class="pane-links meta"><a class="link quiet" href="/shelf">Starter shelf</a> · <a class="link quiet" href="/library/texts/new">Add an exact text</a></p>
+    <p class="pane-links meta" data-outline-end><a class="link quiet" href="/shelf">Starter shelf</a> · <a class="link quiet" href="/learn#import">Create or import cards</a></p>
   </nav>
 
   <article class="pane pane-idea">
@@ -70,16 +70,6 @@
       </ul>
       {{else}}<p class="lede">No items here yet.</p>{{end}}
 
-      <details class="quiet-form" id="add">
-        <summary class="link quiet">Add an item</summary>
-        <form method="post" action="/library/ideas/{{.Idea.ID}}/items" class="form">
-          <input type="hidden" name="csrf" value="{{.CSRF}}">
-          <div class="field"><label class="label" for="prompt">Question</label><input class="input" id="prompt" name="prompt" required></div>
-          <div class="field"><label class="label" for="answer">Answer</label><input class="input" id="answer" name="answer" required></div>
-          <label class="check"><input type="checkbox" name="exact" value="1"> Exact: judge this answer word for word</label>
-          <button class="btn">Add item</button>
-        </form>
-      </details>
       <form method="post" action="/library/ideas/{{.Idea.ID}}/remove" class="inline-form">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <button class="link quiet">Remove this idea</button>

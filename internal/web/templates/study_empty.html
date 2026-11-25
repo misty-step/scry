@@ -2,6 +2,7 @@
 <section class="empty-state" data-study-empty>
   <p class="meta page-kicker study-kicker" data-study-kicker>{{icon "cards"}}Study · {{.Purpose}}</p>
   <h1 class="display" data-study-empty-heading>No cards to study yet.</h1>
+  {{template "studynote" .}}
   <p class="lede">Your library is empty. Add a starter set or create your own cards, then come back here to recall them.</p>
   <div class="actions">
     <a class="btn btn-accent" href="/shelf" data-cta="starter">{{icon "library"}}Pick a starter set</a>

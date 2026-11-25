@@ -1,6 +1,7 @@
 {{define "head"}}{{if eq .Draft.Status "drafting"}}<noscript><meta http-equiv="refresh" content="2"></noscript>{{end}}{{end}}
 {{define "main"}}
-<section class="inbox draft"{{if eq .Draft.Status "drafting"}} data-drafting{{end}} data-inbox>
+<section class="draft"{{if eq .Draft.Status "drafting"}} data-drafting{{end}} data-draft>
+  {{template "flash" .}}
   <header class="list-head">
     <div>
       <p class="meta">{{.Kind}}</p>
@@ -24,11 +25,11 @@
   {{else if eq .Draft.Status "empty"}}
     <p class="empty">Nothing useful found.</p>
     <p>{{.Draft.Note}}</p>
-    <p><a class="link" href="/learn?q={{.Retry}}">Try a narrower topic</a></p>
+    <p><a class="link" href="{{.Retry}}">Try a narrower topic</a></p>
   {{else if eq .Draft.Status "failed"}}
     <p class="empty">The draft didn't finish.</p>
     <p>{{.Draft.Note}}</p>
-    <p><a class="link" href="/learn?q={{.Retry}}">Ask again</a></p>
+    <p><a class="link" href="{{.Retry}}">Ask again</a></p>
   {{else}}
     {{if and .Draft.Note (ne .Draft.Status "drafting")}}<p class="meta draft-note">{{.Draft.Note}}</p>{{end}}
     {{if and (eq .Draft.Status "ready") (not .Pending)}}

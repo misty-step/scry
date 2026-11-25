@@ -179,7 +179,7 @@
 
   // ---- Global keys -------------------------------------------------------
 
-  var go = { s: "/study", l: "/library", i: "/inbox", n: "/learn", b: "/billing" };
+  var go = { s: "/study", l: "/library", n: "/learn", b: "/billing" };
   var pendingG = 0;
   doc.addEventListener("keydown", function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -350,6 +350,7 @@
     if (nextForm) initNext(nextForm);
     initExplain();
     initEdit();
+    initManage();
     if (!form) return;
 
     var input = $("#answer", form);
@@ -517,29 +518,47 @@
     });
   }
 
-  // "Edit card" in the post-answer review: the question and correct answer
-  // are saved without leaving the review. What is on screen is updated in
+  // "Edit card" in the post-answer review: the question, correct answer
+  // and idea are saved without leaving the review. What is on screen (the
+  // question, the correct answer and the place in the rail) is updated in
   // place and "Saved" is shown; the grade and schedule are never touched.
+  // A refused field is said in words under that field.
   function initEdit() {
     var form = $("[data-edit-form]");
     if (!form || !window.fetch) return;
-    var status = $("[data-edit-status]", form), error = $("[data-edit-error]", form), save = $("[data-edit-save]", form);
+    var status = $("[data-edit-status]", form), save = $("[data-edit-save]", form);
+    var errors = $$("[data-edit-error]", form);
     var busy = false;
+    var clearErrors = function () {
+      errors.forEach(function (el) {
+        el.hidden = true; el.textContent = "";
+        el.parentNode.classList.remove("has-error");
+        var field = form.elements[el.getAttribute("data-edit-error")];
+        if (field) field.removeAttribute("aria-invalid");
+      });
+    };
     form.addEventListener("input", function () { status.hidden = true; });
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       if (busy) return;
       busy = true;
       save.setAttribute("aria-busy", "true");
-      error.hidden = true;
+      clearErrors();
       status.hidden = true;
       var done = function () { busy = false; save.removeAttribute("aria-busy"); };
-      var fail = function (text) { done(); error.textContent = text; error.hidden = false; };
+      var fail = function (text, field) {
+        done();
+        var el = $("[data-edit-error='" + (field || "prompt") + "']", form) || errors[0];
+        el.textContent = text; el.hidden = false;
+        el.parentNode.classList.add("has-error");
+        var input = form.elements[el.getAttribute("data-edit-error")];
+        if (input && field) { input.setAttribute("aria-invalid", "true"); input.focus(); }
+      };
       fetch(form.action, {
         method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
         headers: { "Accept": "application/json" }
       }).then(function (res) { return res.json().then(function (j) {
-        if (!res.ok || !j.saved) { fail(j.error || "Couldn't save that. Try again."); return; }
+        if (!res.ok || !j.saved) { fail(j.error || "Couldn't save that. Try again.", j.field); return; }
         done();
         // The text above the form may grow or shrink (a missed answer is set
         // very large): keep the form where it was in the window.
@@ -548,12 +567,59 @@
         $$("[data-prompt]").forEach(function (el) { el.textContent = j.prompt; });
         form.elements.prompt.value = j.prompt;
         form.elements.answer.value = j.answer;
+        if (j.header) $$("[data-study-header]").forEach(function (el) { el.textContent = j.header; });
+        if (j.idea && form.elements.idea) {
+          form.elements.idea.value = j.idea;
+          // A newly named idea is offered from now on, too.
+          var list = $("[data-edit-ideas]", form);
+          var known = list && $$("option", list).some(function (o) { return o.value.toLowerCase() === j.idea.toLowerCase(); });
+          if (list && !known) { var o = doc.createElement("option"); o.value = j.idea; list.appendChild(o); }
+        }
         status.hidden = false;
         var moved = save.getBoundingClientRect().top - before;
         if (moved) window.scrollBy(0, moved);
       }); }).catch(function () { fail("Couldn't reach Scry. Check your connection and try again."); });
     });
   }
+
+  // Snooze, Delete and Restore in Study (S106-5): each acts at once and
+  // the next card (or the session's end) opens in place under one quiet
+  // line, as Next card does. Without script they are plain form posts.
+  function initManage() {
+    $$("form[data-manage-form]").forEach(function (form) {
+      var busy = false;
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (busy) return;
+        busy = true;
+        form.setAttribute("aria-busy", "true");
+        post(form).then(function (r) { swap(r.html, r.url); }).catch(function () { form.submit(); });
+      });
+    });
+  }
+
+  // Keys: in the review E opens Edit card; S snoozes the card in its review
+  // or, while it waits, once focus has left the answer line (Escape). Never
+  // while typing in a field, never with a modifier, and never a key another
+  // binding took ("g s" goes to Study).
+  doc.addEventListener("keydown", function (e) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.repeat || typing(e.target)) return;
+    if (!$("[data-session]")) return;
+    var key = e.key.toLowerCase();
+    if (key === "e" && $("[data-review]")) {
+      var edit = $("[data-edit]");
+      if (!edit) return;
+      e.preventDefault();
+      edit.open = true;
+      var field = $("#edit-prompt", edit);
+      if (field) field.focus();
+      return;
+    }
+    if (key === "s") {
+      var snooze = $("[data-snooze]");
+      if (snooze) { e.preventDefault(); snooze.click(); }
+    }
+  });
 
   function initNext(form) {
     var again = $("[data-again]", form);
@@ -567,7 +633,7 @@
     });
   }
 
-  // ---- Inbox and drafts --------------------------------------------------
+  // ---- Draft rows --------------------------------------------------------
 
   function initRows() {
     var rows = $$("[data-row]");
@@ -624,20 +690,68 @@
     }, 700);
   }
 
-  // ---- Create: example prompts -------------------------------------------
+  // ---- Create: the composer and its example prompts ----------------------
 
-  // Tapping an example fills the field (it is a plain link without script).
+  // The field is about six lines tall and grows with what is typed or
+  // pasted, up to the CSS max-height (then it scrolls). Cmd/Ctrl+Enter
+  // sends; a plain Enter is a new line. Tapping an example fills the field
+  // (each is a plain link without script).
   function initExamples() {
-    var input = $("#q.ask-input");
+    var input = $("[data-ask-input]");
     if (!input) return;
+    var grow = function () {
+      input.style.height = "auto";
+      var max = parseFloat(getComputedStyle(input).maxHeight) || Infinity;
+      var h = input.scrollHeight + (input.offsetHeight - input.clientHeight);
+      input.style.height = Math.min(h, max) + "px";
+    };
+    input.addEventListener("input", grow);
+    grow();
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        if (input.form.reportValidity()) input.form.requestSubmit();
+      }
+    });
     $$("[data-example]").forEach(function (a) {
       a.addEventListener("click", function (e) {
         e.preventDefault();
         input.value = a.getAttribute("data-example");
+        grow();
         input.focus();
         input.setSelectionRange(input.value.length, input.value.length);
       });
     });
+  }
+
+  // ---- Create: Import a deck (S106-3) --------------------------------------
+
+  // A file over 20 MiB is refused in words before it is sent; otherwise
+  // the status line says "importing" and the button waits until the
+  // server answers (the form posts as usual, with or without script).
+  function initImport() {
+    var form = $("[data-import-form]");
+    if (!form) return;
+    var status = $("[data-import-status]", form);
+    var button = $("[data-import-submit]", form);
+    var file = form.querySelector('input[type="file"]');
+    form.addEventListener("submit", function (e) {
+      var f = file && file.files && file.files[0];
+      if (f && f.size > 20 * 1024 * 1024) {
+        e.preventDefault();
+        status.textContent = "";
+        var err = document.createElement("span");
+        err.className = "field-error";
+        err.textContent = "That file is larger than 20 MiB. Split it and import the parts.";
+        status.appendChild(err);
+        return;
+      }
+      status.textContent = "importing " + (f ? f.name : "") + "…";
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+    });
+    // Coming back to the page (bfcache) never leaves the button stuck.
+    window.addEventListener("pageshow", function () { button.disabled = false; button.removeAttribute("aria-busy"); });
   }
 
   // ---- Settings: appearance applies at once ------------------------------
@@ -789,6 +903,7 @@
   function init() {
     initTZ();
     initExamples();
+    initImport();
     initTheme();
     initShelf();
     initBusy();
@@ -800,4 +915,63 @@
 
   init();
   frameReview();
+})();
+
+// ---- Landing: the Study Specimen ---------------------------------------
+//
+// DESIGN.md (Landing, Motion): the one ambient demonstration. The server
+// renders the Judged stage and inert step controls, so without this script
+// the Specimen is complete and still. With it the steps work, and the
+// stages move on (Prompt, Answer, Judged, again) every 4 s with a 200 ms
+// cross-fade drawn by app.css, holding while the Specimen is hovered or
+// holds focus, and stopping for good once a step is chosen. Under reduced
+// motion it never moves on by itself: it rests on Judged.
+(function () {
+  "use strict";
+  var fig = document.querySelector("[data-specimen]");
+  if (!fig) return;
+  var steps = Array.prototype.slice.call(fig.querySelectorAll("[data-specimen-step]"));
+  var stages = Array.prototype.slice.call(fig.querySelectorAll("[data-specimen-stage]"));
+  var order = steps.map(function (b) { return b.getAttribute("data-specimen-step"); });
+  if (!steps.length || steps.length !== stages.length) return;
+  var still = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+  var every = 4000, timer = 0, chosen = false, hovered = false, focused = false, current = order.length - 1;
+  stages.forEach(function (s) {
+    if (s.classList.contains("is-shown")) current = Math.max(0, order.indexOf(s.getAttribute("data-specimen-stage")));
+  });
+
+  function show(i) {
+    current = i;
+    stages.forEach(function (s) { s.classList.toggle("is-shown", s.getAttribute("data-specimen-stage") === order[i]); });
+    steps.forEach(function (b, j) { b.setAttribute("aria-pressed", j === i ? "true" : "false"); });
+  }
+  function hold() {
+    if (timer) clearTimeout(timer);
+    timer = 0;
+  }
+  function run() {
+    hold();
+    if (chosen || hovered || focused || still.matches || document.hidden) return;
+    timer = setTimeout(function () {
+      timer = 0;
+      show((current + 1) % order.length);
+      run();
+    }, every);
+  }
+
+  steps.forEach(function (b, i) {
+    b.disabled = false;
+    b.addEventListener("click", function () { chosen = true; hold(); show(i); });
+  });
+  fig.addEventListener("mouseenter", function () { hovered = true; hold(); });
+  fig.addEventListener("mouseleave", function () { hovered = false; run(); });
+  fig.addEventListener("focusin", function () { focused = true; hold(); });
+  fig.addEventListener("focusout", function (e) {
+    if (e.relatedTarget && fig.contains(e.relatedTarget)) return;
+    focused = false;
+    run();
+  });
+  document.addEventListener("visibilitychange", run);
+  if (still.addEventListener) still.addEventListener("change", run);
+  run();
 })();
