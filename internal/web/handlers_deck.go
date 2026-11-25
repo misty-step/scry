@@ -39,8 +39,10 @@ var importRefusals = map[string]string{
 // learnImport is Create's "Import a deck" (S106-3, DESIGN.md Create).
 func (s *Server) learnImport(w http.ResponseWriter, r *http.Request, c *rc) error {
 	ideaTitle := r.FormValue("idea")
+	// A refusal is an expected outcome shown in words on Create, so it is
+	// a normal page (a 4xx document would log an error in the console).
 	refuse := func(msg string) error {
-		return s.render(w, r, c, http.StatusUnprocessableEntity, "learn.html", map[string]any{
+		return s.render(w, r, c, http.StatusOK, "learn.html", map[string]any{
 			"Title": "Create", "Nav": "learn", "Examples": learnExamples, "ImportError": msg, "ImportIdea": ideaTitle,
 		})
 	}

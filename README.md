@@ -248,8 +248,10 @@ rejects conflicting account identities. It does not restore account profile,
 local passwords, or browser sessions; use whole recovery for these. Billing and
 agent-token rows are restored: reconcile billing and revoke restored tokens
 before reopening access. It is not an import between unrelated databases.
-Settings also offers JSON export (without token hashes) and 30-day undo for
-removed ideas; export is not a whole-database backup.
+Settings → Your data offers Markdown and CSV downloads of every card by idea
+(both import back intact through Create → Import a deck) and a JSON export of
+every row the learner owns (without token hashes), on any plan state, plus
+30-day undo for removed ideas and cards; export is not a whole-database backup.
 
 ## Agents and keyboard
 
@@ -297,6 +299,8 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: any topic shaped to learner, or tap a starter example under the field | TestStory_AskForAnyTopic_AndGetItShapedToMe; TestStory_Create_TapAStarterExampleUnderTheField |
 | [S106-2] Create from a topic, Markdown or prose: one textarea up to 16,000 characters, "Draft cards" and Cmd/Ctrl+Enter, the drafting agent always writes the cards (fixtures in test mode), no hand-written card forms | TestS106_2_CreateTextareaUpTo16000Chars; TestS106_2_MarkdownDraftsFromFixtureToApproval; TestS106_2_NoHandWrittenCardForms; internal/ai.TestS106_2_MaterialFixtureFromHeadingsAndProse; internal/ai.TestS106_2_PromptTellsTheModelAboutPastedMaterial |
 | Story: favorite book core ideas | TestStory_TurnAFavoriteBookIntoASetOfItsCoreIdeas |
+| [S106-3] Import and export decks: Anki .apkg (basic and cloze), UTF-8 CSV/TSV (header optional), Markdown (Scry export or `---` card blocks) up to 20 MiB with bounded unzipping, straight into the library at no allowance cost; unstructured Markdown to the drafting agent; HTML to plain text, media skipped; Markdown, CSV and JSON downloads on any plan state that import back intact | TestS106_3_ImportSectionAndDownloadsAreLinked; TestS106_3_ImportApkgCSVMarkdownIntoLibrary; TestS106_3_UnstructuredMarkdownGoesToDrafting; TestS106_3_ImportRefusedInWords; TestS106_3_ExportRoundTrip; TestS106_3_ExportOnAnyPlanState; internal/deck.TestS106_3_*; internal/store.TestS106_3_StoreImportExportRoundTrip |
+| [S106-6] Nothing else changes; every change is proved headed: the whole suite stays green, and scripts/verify-slice106.mjs walks the landing Specimen, Create from Markdown, imports, exports round-trip, five-destination navigation, /inbox, the API, and Snooze / Edit card / Delete / restore in a headed Chrome at 1440×900 and 390×844, light and dark, with 0 console/page/CSP/request problems and no sideways scroll | go test ./...; scripts/verify-slice106.mjs |
 | [S106-4] No Inbox; the API adds to the library: five destinations, `/inbox` 303 to Library, every token adds (old can_add = 0 too) via /api/v1/items and its /api/v1/suggestions alias, 1–50 per request, old pending suggestions moved into the library | TestS106_4_InboxRedirects303ToLibrary; TestS106_4_NavHasFiveDestinations; TestS106_4_EveryTokenAddsToLibrary; TestS106_4_ItemsBatchLimits1To50; internal/store.TestS106_4_PendingInboxSuggestionsMigrateToLibrary; internal/store.TestS106_4_AddFromAgentFilesStraightIntoTheLibrary; TestDesign_NoInboxPurposeLine_InboxOpensLibrary |
 | Story: due items, typing/speaking, five minutes | TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinutes |
 | Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |

@@ -880,6 +880,9 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); }
 .import-actions .import-status { flex: 1 1 260px; margin: 0; }
 .export-links { display: flex; flex-wrap: wrap; gap: var(--s2); }
+@media screen and (max-width: 760px) {
+  .export-links .btn { flex: 1 1 100%; }
+}
 
 /* ---- Billing ----------------------------------------------------------- */
 

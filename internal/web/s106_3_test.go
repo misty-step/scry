@@ -140,16 +140,16 @@ func TestS106_3_ImportRefusedInWords(t *testing.T) {
 	b.signUp("imp@example.com")
 	b.mustGet("/learn")
 	status, body := b.upload("deck.apkg", []byte("not a zip"), "")
-	if status != http.StatusUnprocessableEntity {
+	if status != http.StatusOK {
 		t.Fatalf("bad apkg: %d", status)
 	}
 	has(t, body, "Import a deck", `class="field-error"`)
 	status, body = b.upload("deck.pdf", []byte("%PDF"), "")
-	if status != http.StatusUnprocessableEntity || !strings.Contains(body, "field-error") {
+	if status != http.StatusOK || !strings.Contains(body, "field-error") {
 		t.Fatalf("pdf: %d", status)
 	}
 	status, _ = b.upload("bad.csv", []byte("only-one-column\n"), "")
-	if status != http.StatusUnprocessableEntity {
+	if status != http.StatusOK {
 		t.Fatalf("bad csv: %d", status)
 	}
 	// Over 20 MiB: refused before it is read, back on Create in words.
