@@ -350,6 +350,7 @@
     if (nextForm) initNext(nextForm);
     initExplain();
     initEdit();
+    initManage();
     if (!form) return;
 
     var input = $("#answer", form);
@@ -517,29 +518,47 @@
     });
   }
 
-  // "Edit card" in the post-answer review: the question and correct answer
-  // are saved without leaving the review. What is on screen is updated in
+  // "Edit card" in the post-answer review: the question, correct answer
+  // and idea are saved without leaving the review. What is on screen (the
+  // question, the correct answer and the place in the rail) is updated in
   // place and "Saved" is shown; the grade and schedule are never touched.
+  // A refused field is said in words under that field.
   function initEdit() {
     var form = $("[data-edit-form]");
     if (!form || !window.fetch) return;
-    var status = $("[data-edit-status]", form), error = $("[data-edit-error]", form), save = $("[data-edit-save]", form);
+    var status = $("[data-edit-status]", form), save = $("[data-edit-save]", form);
+    var errors = $$("[data-edit-error]", form);
     var busy = false;
+    var clearErrors = function () {
+      errors.forEach(function (el) {
+        el.hidden = true; el.textContent = "";
+        el.parentNode.classList.remove("has-error");
+        var field = form.elements[el.getAttribute("data-edit-error")];
+        if (field) field.removeAttribute("aria-invalid");
+      });
+    };
     form.addEventListener("input", function () { status.hidden = true; });
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       if (busy) return;
       busy = true;
       save.setAttribute("aria-busy", "true");
-      error.hidden = true;
+      clearErrors();
       status.hidden = true;
       var done = function () { busy = false; save.removeAttribute("aria-busy"); };
-      var fail = function (text) { done(); error.textContent = text; error.hidden = false; };
+      var fail = function (text, field) {
+        done();
+        var el = $("[data-edit-error='" + (field || "prompt") + "']", form) || errors[0];
+        el.textContent = text; el.hidden = false;
+        el.parentNode.classList.add("has-error");
+        var input = form.elements[el.getAttribute("data-edit-error")];
+        if (input && field) { input.setAttribute("aria-invalid", "true"); input.focus(); }
+      };
       fetch(form.action, {
         method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
         headers: { "Accept": "application/json" }
       }).then(function (res) { return res.json().then(function (j) {
-        if (!res.ok || !j.saved) { fail(j.error || "Couldn't save that. Try again."); return; }
+        if (!res.ok || !j.saved) { fail(j.error || "Couldn't save that. Try again.", j.field); return; }
         done();
         // The text above the form may grow or shrink (a missed answer is set
         // very large): keep the form where it was in the window.
@@ -548,12 +567,59 @@
         $$("[data-prompt]").forEach(function (el) { el.textContent = j.prompt; });
         form.elements.prompt.value = j.prompt;
         form.elements.answer.value = j.answer;
+        if (j.header) $$("[data-study-header]").forEach(function (el) { el.textContent = j.header; });
+        if (j.idea && form.elements.idea) {
+          form.elements.idea.value = j.idea;
+          // A newly named idea is offered from now on, too.
+          var list = $("[data-edit-ideas]", form);
+          var known = list && $$("option", list).some(function (o) { return o.value.toLowerCase() === j.idea.toLowerCase(); });
+          if (list && !known) { var o = doc.createElement("option"); o.value = j.idea; list.appendChild(o); }
+        }
         status.hidden = false;
         var moved = save.getBoundingClientRect().top - before;
         if (moved) window.scrollBy(0, moved);
       }); }).catch(function () { fail("Couldn't reach Scry. Check your connection and try again."); });
     });
   }
+
+  // Snooze, Delete and Restore in Study (S106-5): each acts at once and
+  // the next card (or the session's end) opens in place under one quiet
+  // line, as Next card does. Without script they are plain form posts.
+  function initManage() {
+    $$("form[data-manage-form]").forEach(function (form) {
+      var busy = false;
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (busy) return;
+        busy = true;
+        form.setAttribute("aria-busy", "true");
+        post(form).then(function (r) { swap(r.html, r.url); }).catch(function () { form.submit(); });
+      });
+    });
+  }
+
+  // Keys: in the review E opens Edit card; S snoozes the card in its review
+  // or, while it waits, once focus has left the answer line (Escape). Never
+  // while typing in a field, never with a modifier, and never a key another
+  // binding took ("g s" goes to Study).
+  doc.addEventListener("keydown", function (e) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.repeat || typing(e.target)) return;
+    if (!$("[data-session]")) return;
+    var key = e.key.toLowerCase();
+    if (key === "e" && $("[data-review]")) {
+      var edit = $("[data-edit]");
+      if (!edit) return;
+      e.preventDefault();
+      edit.open = true;
+      var field = $("#edit-prompt", edit);
+      if (field) field.focus();
+      return;
+    }
+    if (key === "s") {
+      var snooze = $("[data-snooze]");
+      if (snooze) { e.preventDefault(); snooze.click(); }
+    }
+  });
 
   function initNext(form) {
     var again = $("[data-again]", form);

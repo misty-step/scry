@@ -16,7 +16,7 @@ func (s *Server) settingsData(r *http.Request, c *rc) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	removed, err := c.us.Removed(r.Context())
+	removed, err := recentlyRemoved(r.Context(), c)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,12 @@ func (s *Server) settingsRestore(w http.ResponseWriter, r *http.Request, c *rc) 
 	if err != nil {
 		return err
 	}
-	if err := c.us.RestoreIdea(r.Context(), id); err != nil {
+	// Recently removed lists ideas and cards (S106-5); a card's row says so.
+	restore := c.us.RestoreIdea
+	if r.FormValue("kind") == "card" {
+		restore = c.us.RestoreItem
+	}
+	if err := restore(r.Context(), id); err != nil {
 		return err
 	}
 	return back(w, r, "/settings?ok=restored")
