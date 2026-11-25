@@ -37,12 +37,13 @@ Answers the learner types are set in Text at the prompt's size, so their words c
 
 One family of inline SVG line icons, drawn on a 24 px grid: `stroke="currentColor"`, stroke width 1.75, round caps and joins, no fill, `aria-hidden="true"`. They are served inline in the page (no icon font, no sprite request, no emoji) and rendered at 16 px in the navigation and inline labels, 18 px in buttons and verdicts, and 20 px on starter tiles. An icon takes the color of the text it sits beside and always has that text next to it, so it never carries meaning alone.
 
-- **Navigation:** every destination has one: Study (a stack of cards), Library (books on a shelf), Inbox (a tray), Create (a sparkle), Billing (a card), Settings (sliders).
+- **Navigation:** every destination has one: Study (a stack of cards), Library (books on a shelf), Create (a sparkle), Billing (a card), Settings (sliders).
 - **Starter tiles:** each set has an icon for its subject in ink-muted beside its title (a radio mast for the NATO phonetic alphabet, layers for mental models, a ruler for kitchen numbers, a globe for geography, a beaker for chemistry, an atom for physics, a scroll for the Creeds, and so on). A tile stays a typographic hairline tile; the icon is a glyph on the title line, not a picture or a filled badge.
 - **Counts:** an item count is a compact card-stack icon and the number in tabular figures ("26 cards").
-- **Actions and verdicts:** Add (plus), Added (check), Start studying and Next card (arrow), Ask Why? (question mark), Edit card (pencil); Correct (check in a circle), Almost Correct (a tilde in a circle), Incorrect (a cross in a circle).
+- **Actions and verdicts:** Add (plus), Added (check), Start studying and Next card (arrow), Ask Why? (question mark), Edit card (pencil), Snooze (a crescent moon), Delete (a bin); Correct (check in a circle), Almost Correct (a tilde in a circle), Incorrect (a cross in a circle).
 - **Bridge cards:** Repeated miss and Build bridge cards (a bridge: a deck on two piers over an arch), Held by N bridges (a pause mark in a circle), Release hold (a play mark in a circle), Remove a drafted bridge (a cross). 16 px beside their words, in the words' color.
 - **Schedule facts:** Next review (calendar), Interval (a span between two stops), Stability (an anchor), Difficulty (a gauge), Reviews (a clock with a turning arrow). Rendered at 14 px in ink-muted beside their mono label.
+- **How Scry works:** the landing page's four rows each have a 20 px icon beside the Title: a clock (the five-minute daily loop), a check in a circle (judged on understanding, and exact texts), layered books (starter sets, Markdown capture, imports), a lock (private, exports, API tokens).
 
 ## Color
 
@@ -70,14 +71,14 @@ The accent appears at most once as a filled control per screen. Controls come in
 - Surfaces are square (radius 0). Controls and fields are 4 px. Nothing is a pill.
 - 1 px hairlines separate things; no shadows, no gradients, no blur.
 - Spacing steps: 4, 8, 16, 24, 32, 48, 64, 96 px. Section padding is 56 px on desktop, 40 px on phones.
-- Reading pages have a measure of at most 68 characters. Inbox, draft and study scrollback rows are exempt. The page frame is at most 1120 px.
-- The study session (and the landing page's Study Specimen frame) sits on a faint 22 px dot grid (ink-ghost at about 6%) with short tick marks along its left and right edges. No other screen has a texture.
+- Reading pages have a measure of at most 68 characters. Draft and study scrollback rows are exempt. The page frame is at most 1120 px.
+- Only the study session and the landing hero have texture: a faint 22 px dot grid (ink-ghost at 6–8%) with calibrated ruler ticks along the left and right edges; the hero adds a `sunken` drafting band in a 1 px `line` frame. Never a gradient, glow or shadow; text on it meets 4.5:1 in both modes.
 
 ## Motion
 
-- Fades and short moves of 150–250 ms, ease-out. Nothing waits on an animation, and nothing loops except the two processing marks shown while a card or billing form is being confirmed (a 14 px spinner and a 2 px progress line; see "Card and billing forms: processing").
+- Fades and short moves of 150–250 ms, ease-out. Nothing waits on an animation, and nothing loops except the landing Study Specimen (the one ambient demonstration; see Landing) and the two processing marks shown while a card or billing form is being confirmed (a 14 px spinner and a 2 px progress line; see "Card and billing forms: processing").
 - Two drawn lines: the strike through a missed answer draws across once (200 ms), and an idea's link lines draw in once when its page opens.
-- Under reduced motion, everything appears in its final state.
+- Under reduced motion, everything appears in its final state (the Specimen rests on Judged).
 
 ## Brand mark and wordmark
 
@@ -87,12 +88,13 @@ Scry pairs its lowercase Geist Mono wordmark (`scry`, ink) with a dedicated cust
 
 ### Landing
 
-A two-column desktop hero (`1.15fr` / `1fr`, stacked on phones):
+A two-column desktop hero (`minmax(0, 1fr) minmax(0, 1.08fr)`, 48 px gap; one column at 760 px and below) on the drafting band:
 
 - **Left:** Headline ("Keep what's worth knowing."), one plain lede naming active recall and spaced repetition, one filled accent action ("Start the 7-day trial") beside a quiet secondary "Sign in", and the trial terms line ("7 days free · no card needed · then $5 a month if you keep it", keeping "$5 a month" unbroken).
-- **Right:** A hairline-framed typographic **Study Specimen** resting on the faint 22 px dot grid—showing one real recall review moment (question, typed answer judged beside the canonical answer, verdict badge in words, one-line criterion, and next-review schedule). Pure type and hairlines; no stock art, no gradients, no drop shadows.
+- **Right:** the **Study Specimen**: `raised` (`page` in light), 1 px `line` border, radius 0, padding 24–28 px (16–20 px on phones); pure type, hairlines and line icons. Mono step controls (`1 · Prompt`, `2 · Answer`, `3 · Judged`; 44 px tall, reached by Tab, current one underlined) pick a stage: *Prompt* (place "Study · Mental models · Set 1", "4 / 11", the prompt "Hanlon's razor", the answer line); *Answer* (a typed answer settles on the line); *Judged* ("Your answer" beside "Correct answer", the "Correct" badge with its 16 px icon, the one-line why, the schedule). The server renders Judged, so without script and under reduced motion it is complete and still. With script it moves on every 3.5–4.5 s (150–250 ms ease-out cross-fade), pausing on hover, focus or a chosen step. Stages share one fixed-height grid cell, so nothing below shifts.
+- **Specimen schedule:** Next review "in 3 days", Interval "3 days", Stability "3.4 days", Difficulty "4.9 / 10" in a flush 2×2 grid (`repeat(2, minmax(0, 1fr))` at every width, no gap) of cells sharing 1 px `line` rules, padded 12–16 px on every side. Each cell: its 14 px icon and Meta label on one line (`white-space: nowrap`) over the value in ink, tabular figures, at least 12 px clear of every rule and border at 1440×900 and 390×844 in both modes. The post-answer review keeps its own table.
 
-Below the hero, four ruled rows explain the daily ritual, AI judgment of understanding alongside word-for-word exact texts, the 30 starter sets and book/topic creation, and private ownership (naming external scripts or tools rather than unexplained "agents"). Public pages end with a quiet hairline footer naming Misty Step and Scry's plain privacy commitment.
+Below the hero, four ruled rows (each with its icon) explain the daily ritual, AI judgment of understanding alongside word-for-word exact texts, the 30 starter sets, Markdown capture and deck imports, and private ownership (naming external scripts or tools rather than unexplained "agents"). Public pages end with a quiet hairline footer naming Misty Step and Scry's plain privacy commitment.
 
 ### Sign-up and trial
 
@@ -158,10 +160,10 @@ The review reads top to bottom:
    - "Stability" ("3.7 days") and "Difficulty" ("5.2 / 10").
    - "Reviews": the total and the split ("3 · 2 correct · 0 almost · 1 incorrect") and, beside it, the trail of this card's most recent verdicts (up to 8, oldest first) as 14 px verdict icons in their verdict colors, each with its word for screen readers. It is a record, not a streak: no count of a run, flames, points or praise.
    After a practice attempt at an exact text a meta line says the schedule did not move. The date uses the learner's stored time zone, the same one that decides what is due today: it is taken from the browser at sign-up and when the study profile is saved in Settings (UTC if none was ever stored). Viewing a page never changes it, so every device and browser shows the learner the same date and the same queue.
-6. **Edit card.** A bordered secondary toggle that opens two fields in place, "Question" and "Correct answer", with "Save card". Saving keeps the learner in the review: the question and correct answer on screen update, and a mono "Saved" appears beside the button. An empty question or answer is refused in words under the fields. A meta line says "Edits apply from the next review. This grade and its schedule stay as they are." Without JavaScript the same form posts and the review returns with "Saved".
+6. **Edit card, Snooze, Delete.** Bordered secondary controls, each a 16 px icon and its word. "Edit card" (or E) opens three fields in place, "Question", "Correct answer" and "Idea" (an existing idea or a new name), with "Save card". Saving keeps the learner in the review: the question, correct answer and place on screen update, and a mono "Saved" appears beside the button. An empty field is refused in words under it. A meta line says "This grade and its schedule stay as they are." "Snooze" (or S) and "Delete" act at once and open the next card (or session end) under one Meta line ("Snoozed until tomorrow." / "Card removed · Restore"). While a card waits, Snooze and Delete sit as quiet text actions under the answer line. Without JavaScript the same form posts and the review returns with "Saved".
 7. **Next card**, the review's one filled action ("Finish session" on the last card), with an arrow. It is filled in archival ink, not the electric accent: an `ink` ground with `page` text in both modes (hover underlines the label). The accent is kept for due facts, the focal point and the keyboard focus ring. Next card is focused by script when the review opens, without a ring unless the learner is navigating by keyboard. For an exact text, "Again" sits beside it as a text button (a practice attempt that does not move the schedule).
 
-Keys: Enter or Space for Next card whenever focus is not in a field or on another control; A for Again where offered. Hint line: "enter or space for next card".
+Keys: Enter or Space for Next card whenever focus is not in a field or on another control; A for Again where offered; E and S as above. Hint line: "enter or space for next card".
 
 ### Struggling cards and bridge cards
 
@@ -183,12 +185,11 @@ Every top-level destination opens with its name and one plain line saying what i
 | --- | --- |
 | Study | Recall what's due today |
 | Library | Every card you have, grouped by idea. |
-| Inbox | Cards suggested by external scripts or tools wait here until you approve them. |
 | Create | Generate cards with AI |
 | Billing | Your plan, what you have used and what you have been charged. |
 | Settings | Appearance, your study profile, API tokens and your data. |
 
-The navigation reads Study, Library, Inbox, Create, Billing, Settings, each with its icon (on phones, see Phones, as six compact columns). "Create" is the page at /learn (it was labelled "Learn"); Study and Create never share an icon or a verb, so recalling and making cards cannot be confused. Active navigation underlines the label text only (never splitting under an Inbox badge count).
+The navigation reads Study, Library, Create, Billing, Settings, each with its icon (on phones, see Phones, as five columns). There is no Inbox: `/inbox` answers 303 to Library. "Create" is the page at /learn (it was labelled "Learn"); Study and Create never share an icon or a verb, so recalling and making cards cannot be confused. Active navigation underlines the label text only.
 
 ### Library and concept links
 
@@ -197,15 +198,13 @@ A slim header (name and purpose line), then two panes split by a hairline on wid
 - **Left:** a numbered outline of ideas in tabular mono numbers and text titles, like a table of contents. The open idea has an accent rule at its left edge; sub-ideas nest one level.
 - **Right:** the idea page. Title, a one-line summary, then its links: a small diagram of the idea and its related ideas, drawn as thin accent lines to hairline-boxed labels (never a glowing node graph), each label a link. Then "Items", ruled rows of questions, each with a mono due label ("due today", "in 6 days").
 
-States: empty library (the starter shelf), an idea with no links (the diagram is omitted, not drawn empty), search results (same rows, matched words highlighted cleanly).
-
-### Inbox
-
-Cards suggested through the learner's API tokens. Header "Inbox" with a mono count ("7 suggestions"), the purpose line "Cards suggested by external scripts or tools wait here until you approve them." (always on its own row beneath the title, including when empty), and "Approve all" as a text action at the right. Dense ruled rows: the suggested question in body text, under it a mono source line ("from reading agent · The Federalist Papers"), the idea it would join at the right, then approve (accent, 4 px square control) and dismiss (quiet). The focused row is raised and shows "A approve · D dismiss". No icon sidebar. States: empty ("Nothing waiting." and one line pointing to API Tokens in Settings), approving (the row collapses upward), approved all.
+States: empty library (the starter shelf), an idea with no links (the diagram is omitted, not drawn empty), search results (same rows, matched words highlighted cleanly). No hand-written card forms ("Add an item", "Add an exact text"); an existing card is edited on its own page or in Study. The outline ends with "Starter shelf · Create or import cards" (`/shelf`, `/learn`).
 
 ### Create, and a book's core ideas
 
-Header "Create" with its sparkle icon and the purpose line "Generate cards with AI". Then one prompt field at Display size (scaling down smoothly on phones so its placeholder never clips): "What do you want to know?" with a mono hint underneath ("A topic, a question, or a book's title"), followed by a compact row of quiet bordered example prompts (e.g. a book title, a mental model, a technical topic) that fill the field on tap so a blank page never stalls the learner. The result arrives as a draft outline: ideas with their items, laid out cleanly without repeating the idea heading on every row, each approvable on its own or all at once. Nothing enters the library until approved. States: writing (a mono "drafting" line with the ideas appearing as they are ready), draft ready, nothing useful found (said plainly, with a suggestion to narrow the topic), allowance reached (says so and links to Billing).
+Header "Create" with its sparkle icon and the purpose line "Generate cards with AI". Then one multi-line `<textarea>` in Body type, about six lines and growing, up to 16,000 characters, never clipping its placeholder at 390 px: "What do you want to know?" with a mono hint ("A topic, a question, a book's title, or pasted Markdown or notes"), then a compact row of quiet bordered example prompts (e.g. a book title, a mental model, a technical topic) that fill the field on tap, then the one accent action "Draft cards" (Cmd/Ctrl+Enter also sends). The result arrives as a draft outline: ideas with their items, laid out cleanly without repeating the idea heading on every row, each approvable on its own or all at once. Nothing enters the library until approved. States: writing (a mono "drafting" line with the ideas appearing as they are ready), draft ready, nothing useful found (said plainly, with a suggestion to narrow the topic), allowance reached (says so and links to Billing).
+
+**Import a deck**, after a 1 px rule: a mono line ("Anki .apkg, CSV or Markdown · up to 20 MiB"), a file field, an optional "Idea title" and a bordered "Import". States: importing, imported (Library opens on the idea: "Imported 42 cards."), sent to drafting (unstructured Markdown), refused in words.
 
 ### Billing and allowance
 
@@ -217,14 +216,14 @@ Submitting the card step (/signup/card, /billing/card) or Top up never leaves an
 
 ### Settings
 
-A reading page of plain sections: Appearance (selecting a mode applies immediately as well as saving); "Study profile" ("Background and goals used to tailor AI-generated cards."); "API Tokens" ("Programmatic access to your account. A token lets your own scripts or tools suggest cards through the Scry API; suggestions wait in your Inbox until you approve them."), with one field, "Token name", and "Create token" (no other options); Recently removed; Your data; Account. Section buttons stay content-sized on desktop rather than stretching full width.
+A reading page of plain sections: Appearance (selecting a mode applies immediately as well as saving); "Study profile" ("Background and goals used to tailor AI-generated cards."); "API Tokens" ("Programmatic access to your account. A token lets your own scripts or tools add cards to your library through the Scry API."), "Token name", "Create token" and a `curl` example for `POST /api/v1/items`; Recently removed (ideas and cards, each with "Restore"); Your data ("Download Markdown", "Download CSV", "Download JSON" on any plan state; a link to Import a deck); Account. Section buttons stay content-sized on desktop rather than stretching full width.
 
 ## Keys
 
-Outside text fields: g s Study, g l Library, g i Inbox, g n Create, g b Billing; / focuses search where shown. Escape leaves a text field so navigation keys can be used without changing the answer. In study, Enter checks the answer; in the post-answer review Enter or Space continues to the next card (not while typing in the Edit card fields); while a card waits, Space starts or stops listening (on an empty answer line, or outside fields); A repeats an exact text when Again is available. Focused controls retain their normal Enter and Space actions. Hints use Micro in the existing footer and study hint line.
+Outside text fields: g s Study, g l Library, g n Create, g b Billing; / focuses search where shown. Escape leaves a text field so navigation keys can be used without changing the answer. In study, Enter checks the answer; in the post-answer review Enter or Space continues to the next card (not while typing in the Edit card fields); while a card waits, Space starts or stops listening (on an empty answer line, or outside fields); A repeats an exact text when Again is available. Focused controls retain their normal Enter and Space actions. Hints use Micro in the existing footer and study hint line.
 
-Top up, cancel, + Add, item rows, Settings and similar actions use Tab and Enter; they do not need dedicated shortcuts. Existing inbox and draft row keys remain: J/K or arrows move, A approves, D dismisses.
+Top up, cancel, + Add, item rows, Settings and similar actions use Tab and Enter; they do not need dedicated shortcuts. Draft row keys remain: J/K or arrows move, A approves, D dismisses.
 
 ## Phones
 
-Everything stacks into one column. The signed-out header keeps the Scry mark+wordmark and Sign in on one horizontal row (`56 px`). When signed in, the brand row (`48 px`: mark, wordmark and any trial line) sits above one compact navigation row (`52 px`) that holds all six destinations at once as equal columns: each a 16 px icon over its Micro mono label, a full-height touch target, the active one in ink with its label underlined. Nothing in it scrolls sideways or wraps into a second row, so every destination stays in view and reachable by Tab. On the study session, the rail does not repeat "Study" and its purpose line under the navigation that already marks Study: it keeps only the spoiler-safe place and the count. Empty Study likewise hides its "Study · Recall what's due today" kicker visually (it stays for screen readers) and opens on its visible heading, "No cards to study yet." While a card waits the session keeps the scrollback with two receded items above and one below, with compact vertical spacing above the prompt; the post-answer review shows the current card only. Judgment size drops to 72 px. Key hints are hidden; the mic and Check, and Next card in the review, are thumb-reachable at the bottom with safe-area bottom clearance. The starter shelf is one column with its "Start studying" bar pinned to the bottom above safe-area insets. Nothing scrolls sideways at 390 px.
+Everything stacks into one column. The signed-out header keeps the Scry mark+wordmark and Sign in on one horizontal row (`56 px`). When signed in, the brand row (`48 px`: mark, wordmark and any trial line) sits above one compact navigation row (`52 px`) that holds all five destinations at once as equal columns: each a 16 px icon over its Micro mono label, a full-height touch target, the active one in ink with its label underlined. Nothing in it scrolls sideways or wraps into a second row, so every destination stays in view and reachable by Tab. On the study session, the rail does not repeat "Study" and its purpose line under the navigation that already marks Study: it keeps only the spoiler-safe place and the count. Empty Study likewise hides its "Study · Recall what's due today" kicker visually (it stays for screen readers) and opens on its visible heading, "No cards to study yet." While a card waits the session keeps the scrollback with two receded items above and one below, with compact vertical spacing above the prompt; the post-answer review shows the current card only. Judgment size drops to 72 px. Key hints are hidden; the mic and Check, and Next card in the review, are thumb-reachable at the bottom with safe-area bottom clearance; Snooze, Edit card and Delete sit above that clearance. The starter shelf is one column with its "Start studying" bar pinned to the bottom above safe-area insets. Nothing scrolls sideways at 390 px.
