@@ -183,7 +183,7 @@ and the bytes differ.
 | - | - | - |
 | 4A | Scry's `speech.OpenRouter.Transcribe` unchanged (chat + `input_audio`) | `google/gemini-2.5-flash` (production), `google/gemini-4-hydrogen`, `google/gemini-3.8-flash`, `google/gemini-3.1-flash-lite` |
 | 4B | OpenRouter's dedicated `POST /api/v1/audio/transcriptions`. A format probe on clip-01 tries base64 JSON `{model, input_audio:{data, format}}` and a multipart upload, and the bench uses JSON if it works | `x-ai/grok-stt-2.0`, `deepgram/nova-3`, `openai/whisper-large-v3-turbo`, `openai/gpt-4o-mini-transcribe`; `microsoft/mai-transcribe-2` is probed on the shortest clip first and runs on the rest only if that worked and cost ≤ $0.01 |
-| 4C | Audio straight into a Decisions model: `POST /api/alpha/decisions` with the clip as an `input_audio` part of the top-level `state` array, plus Jev's exact instructions, criteria and gates (mirrored in `speech.go`; a test fails if they drift from `internal/ai/jev.go`) | `google/gemini-decision-1` |
+| 4C | Audio straight into a Decisions model: `POST /api/alpha/decisions` with the clip as an `input_audio` part of the top-level `state` array, plus Jev's exact instructions and criteria (mirrored in `speech.go`; a test fails if they drift from `internal/ai/jev.go`) and its gates (production's `ai.Decide` itself) | `google/gemini-decision-1` |
 | 4D | Today's pipeline: 4A's production-model transcript, graded by `ai.Jev.Judge` with the production default Decisions model | `openai/gpt-6-luna-decisions` |
 
 Metrics: WER is computed after normalizing both sides (lowercase, diacritics
