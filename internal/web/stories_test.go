@@ -4,12 +4,9 @@ package web_test
 // drives the real HTTP surface with test-mode adapters.
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -190,7 +187,7 @@ func TestStory_AskForAnyTopic_AndGetItShapedToMe(t *testing.T) {
 	b.post("/settings/about", "about", "I am a nurse learning to cook for a family of five.")
 
 	ask := b.mustGet("/learn")
-	has(t, ask, `placeholder="What do you want to know?"`, "A topic, a question, or a book's title")
+	has(t, ask, `placeholder="What do you want to know?"`, "A topic, a question, a book's title, or pasted Markdown or notes")
 	b.post("/learn", "q", "mental models")
 	w.app.WaitDrafts()
 	draftPath := b.path
@@ -288,123 +285,6 @@ func TestStory_TurnAFavoriteBookIntoASetOfItsCoreIdeas(t *testing.T) {
 		t.Errorf("%q has no links", outline[1].Title)
 	}
 	has(t, b.mustGet("/library"), "Meditations", "1.1", "The dichotomy of control")
-}
-
-// Story: As a learner whose agents do work for me, my agents can add
-// material to my library or suggest items from my conversations and
-// reading. Suggestions wait in an inbox until I approve them with one tap.
-func TestStory_Agents_SuggestToInboxOrAdd_ApprovedWithOneTap(t *testing.T) {
-	w := newWorld(t)
-	b := w.browser()
-	b.signUp("owner@example.com")
-	lib := w.lib("owner@example.com")
-
-	// The learner makes a token for an agent; it is shown once.
-	b.get("/settings")
-	_, page := b.post("/settings/tokens", "name", "reading agent")
-	token := regexp.MustCompile(`scry_[A-Za-z0-9_-]{20,}`).FindString(page)
-	if token == "" {
-		t.Fatal("no token on the page")
-	}
-	hasNot(t, b.mustGet("/settings"), token)
-
-	api := func(method, path, bearer, body string) (int, map[string]any) {
-		req, _ := http.NewRequest(method, w.srv.URL+path, bytes.NewBufferString(body))
-		if bearer != "" {
-			req.Header.Set("Authorization", "Bearer "+bearer)
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		var out map[string]any
-		_ = json.NewDecoder(resp.Body).Decode(&out)
-		return resp.StatusCode, out
-	}
-	payload := `{"source": "The Federalist Papers", "items": [
-		{"question": "Which Federalist paper is about faction?", "answer": "Federalist No. 10", "idea": "Faction", "summary": "Groups against the common good."},
-		{"question": "Who wrote Federalist No. 10?", "answer": "James Madison", "idea": "Faction"}]}`
-
-	// The agent suggests items from the learner's reading.
-	status, out := api("POST", "/api/v1/suggestions", token, payload)
-	if status != http.StatusCreated || out["suggested"] != float64(2) {
-		t.Fatalf("suggest: %d %v", status, out)
-	}
-	// They wait in the inbox; the library has not changed.
-	if n, _, _ := lib.Counts(ctx, w.now()); n != 0 {
-		t.Fatalf("suggestions entered the library without approval (%d items)", n)
-	}
-	inbox := b.mustGet("/inbox")
-	has(t, inbox, "2 suggestions", "Which Federalist paper is about faction?", "from reading agent · The Federalist Papers", "Faction", "Approve all")
-
-	// One tap approves one.
-	pending, _ := lib.Suggestions(ctx, 0)
-	_, inbox = b.post(fmt.Sprintf("/suggestions/%d/approve", pending[0].ID))
-	has(t, inbox, "1 suggestion")
-	items, _ := lib.Search(ctx, "faction")
-	if len(items) != 1 || items[0].IdeaTitle != "Faction" || items[0].Source != "from reading agent · The Federalist Papers" {
-		t.Fatalf("approved item = %+v", items)
-	}
-	// Dismiss drops the other.
-	_, inbox = b.post(fmt.Sprintf("/suggestions/%d/dismiss", pending[1].ID))
-	has(t, inbox, "Nothing waiting.")
-
-	// Approve all, in one tap.
-	api("POST", "/api/v1/suggestions", token, payload)
-	_, inbox = b.post("/inbox/approve-all")
-	has(t, inbox, "All approved. 2 items joined your library.")
-
-	// A suggest-only token may not add directly...
-	status, _ = api("POST", "/api/v1/items", token, payload)
-	if status != http.StatusForbidden {
-		t.Errorf("suggest-only token adding directly: status %d, want 403", status)
-	}
-	// ...and Settings no longer offers "may add": a token made there goes
-	// through the inbox even when the old checkbox value is posted.
-	settings := b.mustGet("/settings")
-	has(t, settings, `<h2 class="title">API Tokens</h2>`, "Programmatic access to your account.", "Token name")
-	hasNot(t, settings, "can_add", "May add straight to my library", ">Agents<")
-	_, page = b.post("/settings/tokens", "name", "research script", "can_add", "1")
-	posted := regexp.MustCompile(`scry_[A-Za-z0-9_-]{20,}`).FindString(page)
-	if status, _ = api("POST", "/api/v1/items", posted, payload); posted == "" || status != http.StatusForbidden {
-		t.Errorf("a token made in Settings added directly: status %d, want 403", status)
-	}
-	// A token that may add, made before the option was removed, keeps
-	// working: it puts material straight in.
-	adder, err := w.app.CreateAgentToken(ctx, w.user("owner@example.com").ID, "research agent", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	has(t, b.mustGet("/settings"), "adds to library", "suggests to inbox")
-	n0, _, _ := lib.Counts(ctx, w.now())
-	status, out = api("POST", "/api/v1/items", adder, `{"source": "Chat, Nov 16", "items": [{"question": "What is 75% hydration?", "answer": "75 g water per 100 g flour", "idea": "Bread"}]}`)
-	if n1, _, _ := lib.Counts(ctx, w.now()); status != http.StatusCreated || n1 != n0+1 {
-		t.Errorf("direct add: status %d %v, items %d -> %d", status, out, n0, n1)
-	}
-	// The agent can see which ideas exist, to file things well.
-	status, out = api("GET", "/api/v1/ideas", adder, "")
-	if status != 200 || len(out["ideas"].([]any)) < 2 {
-		t.Errorf("ideas: %d %v", status, out)
-	}
-
-	// No token, a wrong token, or a revoked token gets nothing.
-	if status, _ = api("POST", "/api/v1/suggestions", "", payload); status != http.StatusUnauthorized {
-		t.Errorf("no token: %d", status)
-	}
-	if status, _ = api("POST", "/api/v1/suggestions", "scry_not_a_real_token_at_all_0000", payload); status != http.StatusUnauthorized {
-		t.Errorf("wrong token: %d", status)
-	}
-	tokens, _ := lib.Tokens(ctx)
-	b.get("/settings")
-	b.post(fmt.Sprintf("/settings/tokens/%d/revoke", tokens[0].ID))
-	if status, _ = api("POST", "/api/v1/suggestions", token, payload); status != http.StatusUnauthorized {
-		t.Errorf("revoked token: %d", status)
-	}
-	// Malformed material is refused with a reason.
-	if status, out = api("POST", "/api/v1/suggestions", adder, `{"items": [{"question": "No answer?", "idea": "X"}]}`); status != http.StatusUnprocessableEntity || out["error"] == "" {
-		t.Errorf("bad item: %d %v", status, out)
-	}
 }
 
 // Story: As a learner, I open Scry, get what's due, answer by typing or
@@ -576,9 +456,11 @@ func TestStory_TextsIMarkExactAreJudgedWordForWord(t *testing.T) {
 	b.signUp("learner@example.com")
 	lib := w.lib("learner@example.com")
 
-	// Mark a text exact: paste it, one line per line.
-	has(t, b.mustGet("/library/texts/new"), "Add an exact text")
-	_, page := b.post("/library/texts", "title", "Nicene Creed", "text", "I believe in one God, the Father Almighty,\nMaker of heaven and earth,", "parent", "0")
+	// A text marked exact, one card per line. There is no hand-written
+	// form (S106-2): exact texts come from starter sets, imports and the
+	// API's "exact", so the test files one directly.
+	textID := w.addExactText("learner@example.com", "Nicene Creed", "I believe in one God, the Father Almighty,\nMaker of heaven and earth,")
+	page := b.mustGet(fmt.Sprintf("/library/ideas/%d", textID))
 	has(t, page, "Nicene Creed", "exact")
 
 	body := b.mustGet("/study")
@@ -737,7 +619,6 @@ func TestStory_MyLibraryAndHistoryAreMineAlone(t *testing.T) {
 	}
 	for _, path := range []string{
 		fmt.Sprintf("/library/ideas/%d/remove", ideas[0].ID),
-		fmt.Sprintf("/library/ideas/%d/items", ideas[0].ID),
 		fmt.Sprintf("/library/items/%d", first.ID),
 		fmt.Sprintf("/library/items/%d/remove", first.ID),
 		fmt.Sprintf("/suggestions/%d/approve", sugs[0].ID),

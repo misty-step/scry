@@ -179,7 +179,7 @@
 
   // ---- Global keys -------------------------------------------------------
 
-  var go = { s: "/study", l: "/library", i: "/inbox", n: "/learn", b: "/billing" };
+  var go = { s: "/study", l: "/library", n: "/learn", b: "/billing" };
   var pendingG = 0;
   doc.addEventListener("keydown", function (e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -567,7 +567,7 @@
     });
   }
 
-  // ---- Inbox and drafts --------------------------------------------------
+  // ---- Draft rows --------------------------------------------------------
 
   function initRows() {
     var rows = $$("[data-row]");
@@ -624,16 +624,34 @@
     }, 700);
   }
 
-  // ---- Create: example prompts -------------------------------------------
+  // ---- Create: the composer and its example prompts ----------------------
 
-  // Tapping an example fills the field (it is a plain link without script).
+  // The field is about six lines tall and grows with what is typed or
+  // pasted, up to the CSS max-height (then it scrolls). Cmd/Ctrl+Enter
+  // sends; a plain Enter is a new line. Tapping an example fills the field
+  // (each is a plain link without script).
   function initExamples() {
-    var input = $("#q.ask-input");
+    var input = $("[data-ask-input]");
     if (!input) return;
+    var grow = function () {
+      input.style.height = "auto";
+      var max = parseFloat(getComputedStyle(input).maxHeight) || Infinity;
+      var h = input.scrollHeight + (input.offsetHeight - input.clientHeight);
+      input.style.height = Math.min(h, max) + "px";
+    };
+    input.addEventListener("input", grow);
+    grow();
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        if (input.form.reportValidity()) input.form.requestSubmit();
+      }
+    });
     $$("[data-example]").forEach(function (a) {
       a.addEventListener("click", function (e) {
         e.preventDefault();
         input.value = a.getAttribute("data-example");
+        grow();
         input.focus();
         input.setSelectionRange(input.value.length, input.value.length);
       });

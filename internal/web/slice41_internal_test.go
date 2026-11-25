@@ -378,7 +378,7 @@ func TestSlice41_Icons_OneFamilyOfInlineLineIcons(t *testing.T) {
 			t.Errorf("starter icon %q is not drawn", name)
 		}
 	}
-	for _, name := range []string{"cards", "library", "inbox", "create", "billing", "settings", "plus", "check", "arrow", "help", "pencil",
+	for _, name := range []string{"cards", "library", "create", "billing", "settings", "plus", "check", "arrow", "help", "pencil",
 		"calendar", "spinner", "verdict-right", "verdict-close", "verdict-missed"} {
 		if _, ok := iconPaths[name]; !ok {
 			t.Errorf("interface icon %q is not drawn", name)
@@ -414,7 +414,7 @@ func TestSlice41_Icons_TemplatesUseOnlyDrawnIconsAndNoEmoji(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"cards", "library", "inbox", "create", "billing", "settings", "plus", "check", "arrow", "help", "pencil", "calendar", "spinner"} {
+	for _, name := range []string{"cards", "library", "create", "billing", "settings", "plus", "check", "arrow", "help", "pencil", "calendar", "spinner"} {
 		if !used[name] {
 			t.Errorf("no template uses the icon %q", name)
 		}

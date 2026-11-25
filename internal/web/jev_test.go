@@ -38,8 +38,7 @@ func TestStory_JevAbstainsOnceAndExactBypassesJev(t *testing.T) {
 	// A separate learner starts directly with an exact text.
 	exact := w.browser()
 	exact.signUp("exactjev@example.com")
-	exact.mustGet("/library/texts/new")
-	exact.post("/library/texts", "title", "Plain text", "text", "Carpe diem", "parent", "0")
+	w.addExactText("exactjev@example.com", "Plain text", "Carpe diem")
 	item, _ := exact.current(exact.mustGet("/study"))
 	exact.answer(item, "Wrong words")
 	if calls != 1 {

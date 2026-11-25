@@ -692,8 +692,7 @@ func TestExplain_NotOfferedOnExactTexts(t *testing.T) {
 	w.app.Explainer = &ai.FakeExplainer{}
 	b := w.browser()
 	b.signUp("exactwhy@example.com")
-	b.mustGet("/library/texts/new")
-	b.post("/library/texts", "title", "Key", "text", "Remember this line.")
+	w.addExactText("exactwhy@example.com", "Key", "Remember this line.")
 	it, _ := b.current(b.mustGet("/study"))
 	page := b.answer(it, "wrong")
 	has(t, page, "Exact text")

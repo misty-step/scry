@@ -172,7 +172,7 @@ func TestSlice70_Design_InkNextCardKeyboardRingCompactNav(t *testing.T) {
 	}
 	phone := css[strings.Index(css, "@media (max-width: 760px)"):]
 	phone = phone[:strings.Index(phone, "\n}\n")]
-	has(t, phone, "grid-template-columns: repeat(6, minmax(0, 1fr));", ".margin-mode, .margin-purpose { display: none; }",
+	has(t, phone, "grid-template-columns: repeat(5, minmax(0, 1fr));", ".margin-mode, .margin-purpose { display: none; }",
 		".telemetry { grid-template-columns: repeat(2, minmax(0, 1fr)); }")
 	hasNot(t, phone, "overflow-x: auto;")
 	js, _ := staticAsset(t, w, "/static/app.js")

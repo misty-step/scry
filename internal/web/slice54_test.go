@@ -182,14 +182,13 @@ func TestStory_Create_TapAStarterExampleUnderTheField(t *testing.T) {
 	has(t, page, `data-example="Meditations by Marcus Aurelius"`, `data-example="Second-order thinking"`)
 	// Without script an example opens Create with the field filled.
 	filled := b.mustGet("/learn?q=" + links[0][1])
-	has(t, filled, `value="Meditations by Marcus Aurelius"`)
+	has(t, filled, `data-ask-input>Meditations by Marcus Aurelius</textarea>`)
 	// The book example drafts its core ideas; rows do not repeat the idea.
 	b.post("/learn", "q", "Meditations by Marcus Aurelius")
 	w.app.WaitDrafts()
 	draft := b.mustGet(b.path)
 	has(t, draft, "The dichotomy of control", "8 items in 4 ideas")
 	hasNot(t, draft, "sug-idea", "new idea")
-	// The inbox, where suggestions come from outside, still names the idea.
 	js, _ := staticAsset(t, w, "/static/app.js")
 	has(t, js, "initExamples", `input.value = a.getAttribute("data-example")`)
 }
@@ -253,16 +252,19 @@ func TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline(t *testi
 	has(t, js, `search.offsetParent === null && picker && picker.offsetParent !== null`, `search = $("[data-picker-search]", picker);`, "picker.open = true;")
 }
 
-// DESIGN.md, Inbox: the purpose line is always on its own row beneath the
-// title, including when the inbox is empty.
-func TestDesign_InboxPurposeLineOnItsOwnRowEvenWhenEmpty(t *testing.T) {
+// DESIGN.md, purpose lines (S106-4): there is no Inbox page or purpose
+// line; its address opens Library, whose purpose line is its own.
+func TestDesign_NoInboxPurposeLine_InboxOpensLibrary(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 	b.signUp("empty@example.com")
+	b.addSet("kitchen-numbers")
 	page := b.mustGet("/inbox")
-	has(t, page, "Nothing waiting.", `<p class="purpose list-purpose">Cards suggested by external scripts or tools wait here until you approve them.</p>`)
-	css, _ := staticAsset(t, w, "/static/app.css")
-	has(t, css, ".list-purpose { order: 1; flex-basis: 100%; }")
+	if !strings.HasPrefix(b.path, "/library") {
+		t.Fatalf("/inbox ended at %s", b.path)
+	}
+	has(t, page, `<p class="purpose">Every card you have, grouped by idea.</p>`)
+	hasNot(t, page, "Nothing waiting.", "Cards suggested by external scripts or tools wait here until you approve them.")
 }
 
 // DESIGN.md, Settings: choosing a mode applies at once as well as saving;
@@ -331,11 +333,14 @@ func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 	}
 	phone := css[strings.Index(css, "@media (max-width: 760px)"):]
 	phone = phone[:strings.Index(phone, "\n}\n")]
-	// Slice 70: signed in, one compact 52 px row holds all six destinations
-	// (no sideways scroll), and the session clears the pinned bar.
-	has(t, phone, "min-height: 56px;", ".top-app .nav {", "grid-template-columns: repeat(6, minmax(0, 1fr));", "height: 52px;",
-		"calc(var(--s3) + env(safe-area-inset-bottom, 0px))", "body.in-session { padding-bottom: calc(var(--touch) + 2 * var(--s3) + 1px + var(--s4) + env(safe-area-inset-bottom, 0px)); }",
-		".ask-input { font-size: min(var(--display), 6.4vw); }")
+	// Slice 70: signed in, one compact 52 px row holds all five destinations
+	// (S106-4; no sideways scroll), and the session clears the pinned bar.
+	has(t, phone, "min-height: 56px;", ".top-app .nav {", "grid-template-columns: repeat(5, minmax(0, 1fr));", "height: 52px;",
+		"calc(var(--s3) + env(safe-area-inset-bottom, 0px))", "body.in-session { padding-bottom: calc(var(--touch) + 2 * var(--s3) + 1px + var(--s4) + env(safe-area-inset-bottom, 0px)); }")
+	// S106-2: the Create field is Body type on every screen, so its
+	// placeholder never clips at 390 px (no Display size to scale down).
+	hasNot(t, phone, ".ask-input")
+	has(t, css, "padding: var(--s3); font: 400 var(--body)/1.55 var(--text); color: var(--ink);")
 	page := w.browser().mustGet("/")
 	has(t, page, `content="width=device-width, initial-scale=1, viewport-fit=cover"`)
 }

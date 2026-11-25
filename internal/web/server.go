@@ -148,7 +148,6 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.Handle("GET /library", s.member(s.library))
 	mux.Handle("GET /library/ideas/{id}", s.member(s.library))
 	mux.Handle("POST /library/ideas/{id}/remove", s.member(s.ideaRemove))
-	mux.Handle("POST /library/ideas/{id}/items", s.member(s.itemAdd))
 	mux.Handle("GET /library/items/{id}", s.member(s.itemPage))
 	mux.Handle("POST /library/items/{id}", s.member(s.itemSave))
 	mux.Handle("POST /library/items/{id}/remove", s.member(s.itemRemove))
@@ -157,11 +156,18 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.Handle("POST /library/items/{id}/bridges/preview", s.member(s.bridgesPreview))
 	mux.Handle("POST /library/items/{id}/bridges", s.member(s.bridgesAccept))
 	mux.Handle("POST /library/items/{id}/bridges/release", s.member(s.bridgesRelease))
-	mux.Handle("GET /library/texts/new", s.member(s.textForm))
-	mux.Handle("POST /library/texts", s.member(s.textSave))
+	// S106-2: no hand-written card forms. The old "Add an item" and "Add an
+	// exact text" addresses send the learner to Create (303), where Scry's
+	// drafting agent writes the cards; nothing is added from them.
+	mux.HandleFunc("/library/texts/new", seeOther("/learn"))
+	mux.HandleFunc("/library/texts", seeOther("/learn"))
+	mux.HandleFunc("POST /library/ideas/{id}/items", seeOther("/learn"))
 
-	mux.Handle("GET /inbox", s.member(s.inbox))
-	mux.Handle("POST /inbox/approve-all", s.member(s.inboxApproveAll))
+	// S106-4: there is no Inbox. Its addresses answer 303 to Library; old
+	// pending suggestions were moved into the library when the store opened.
+	mux.HandleFunc("/inbox", seeOther("/library"))
+	mux.HandleFunc("/inbox/", seeOther("/library"))
+	// Draft outlines still approve and dismiss their items one by one.
 	mux.Handle("POST /suggestions/{id}/approve", s.member(s.suggestionApprove))
 	mux.Handle("POST /suggestions/{id}/dismiss", s.member(s.suggestionDismiss))
 
@@ -421,9 +427,6 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, c *rc, status in
 		data["User"] = c.user
 		data["CSRF"] = c.sess.CSRF
 		data["Theme"] = c.user.Theme
-		if n, err := c.us.InboxCount(r.Context()); err == nil {
-			data["InboxCount"] = n
-		}
 		if sub, err := c.us.Subscription(r.Context()); err == nil && sub.NoCard() {
 			data["Trial"] = s.trialChip(sub)
 		}
@@ -532,6 +535,12 @@ func (s *Server) tooMany(key string) bool {
 		s.attempts = map[string][]time.Time{}
 	}
 	return len(keep) > 10
+}
+
+// seeOther answers every request with a 303 to a fixed page: the
+// addresses of retired pages (the Inbox, the hand-written card forms).
+func seeOther(to string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, to, http.StatusSeeOther) }
 }
 
 func back(w http.ResponseWriter, r *http.Request, to string) error {
