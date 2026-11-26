@@ -3,11 +3,13 @@
   <div class="hero-copy">
     <h1 class="display">Keep what's worth knowing.</h1>
     <p class="lede">Scry is active recall with spaced repetition: each day it asks you what's due, you answer by typing or speaking, and every answer is judged at once, so what matters stays in your head for about five minutes a day.</p>
-    <p class="actions">
-      <a class="btn btn-accent" href="/signup">Start the {{.TrialDays}}-day trial</a>
-      <a class="btn" href="/signin">Sign in</a>
-    </p>
-    <p class="meta trial-terms-line">{{.TrialDays}} days free · no card needed · then <span class="nowrap">{{money .Price}} a month</span> if you keep it</p>
+    {{/* S135-1: one hero action; "Sign in" lives once, in the header. The
+         terms keep each phrase whole: a separator is glued to the phrase
+         before it, so the line breaks only after a " · ". */}}
+    <div class="hero-act">
+      <p class="actions"><a class="btn btn-accent" href="/signup">Start the {{.TrialDays}}-day trial</a></p>
+      <p class="meta trial-terms-line" data-trial-terms><span class="nowrap">{{.TrialDays}} days free</span><span class="nowrap"> ·</span> <span class="nowrap">no card needed</span><span class="nowrap"> ·</span> <span class="nowrap">{{money .Price}}/month after</span></p>
+    </div>
   </div>
   {{with .Specimen}}
   <figure class="specimen" aria-label="An example: one card from its prompt to its judgment" data-specimen>
@@ -16,17 +18,20 @@
       <button type="button" class="specimen-step" data-specimen-step="answer" aria-pressed="false" disabled>2 · Answer</button>
       <button type="button" class="specimen-step" data-specimen-step="judged" aria-pressed="true" disabled>3 · Judged</button>
     </div>
-    <p class="micro specimen-place"><span>Study · {{.Place}}</span> <span class="specimen-count">{{.Count}}</span></p>
+    {{/* S131-1: the subject header, the same in every stage. */}}
+    <p class="specimen-place" data-subject-header><span class="specimen-deck">{{icon .DeckIcon}}<span class="specimen-deck-text"><span class="specimen-deck-name">{{.Deck}}</span> <span class="specimen-section">· {{.Section}}</span></span></span> <span class="specimen-count"><span aria-hidden="true">{{.Count}}</span><span class="sr">{{.CountSpoken}}</span></span></p>
     <div class="specimen-stages">
       <div class="specimen-stage" data-specimen-stage="prompt">
         <p class="specimen-prompt">{{.Prompt}}</p>
-        <p class="specimen-line"><span class="specimen-caret"></span><span class="sr">An empty answer line</span></p>
-        <p class="micro specimen-hint">type or speak your answer</p>
+        <p class="specimen-line specimen-desk"><span class="specimen-caret"></span><span class="sr">An empty answer line</span></p>
+        <p class="micro specimen-hint specimen-desk">type or speak your answer</p>
+        {{template "specimen-study" (dict "Stage" "prompt" "S" .)}}
       </div>
       <div class="specimen-stage" data-specimen-stage="answer">
         <p class="specimen-prompt">{{.Prompt}}</p>
-        <p class="specimen-line"><span class="specimen-typed">{{.Answer}}</span></p>
-        <p class="micro specimen-hint">enter to check</p>
+        <p class="specimen-line specimen-desk"><span class="specimen-typed">{{.Answer}}</span></p>
+        <p class="micro specimen-hint specimen-desk">enter to check</p>
+        {{template "specimen-study" (dict "Stage" "answer" "S" .)}}
       </div>
       <div class="specimen-stage is-shown" data-specimen-stage="judged">
         <p class="specimen-prompt">{{.Prompt}}</p>
@@ -52,4 +57,23 @@
   <div class="plain-row"><h2 class="title plain-title">{{icon "books"}}Start with something good.</h2><p>Thirty starter sets, from the NATO alphabet to the core ideas of every major subject. Or paste your notes or Markdown and Scry drafts the cards, or import a deck from Anki, CSV or Markdown.</p></div>
   <div class="plain-row"><h2 class="title plain-title">{{icon "lock"}}Yours alone.</h2><p>Your library and history are private to you, and you can export them anytime as Markdown, CSV or JSON. Your own scripts or tools can add cards through an API token, straight into your library.</p></div>
 </section>
+{{end}}
+
+{{/* S135-1, phones: Prompt and Answer drawn as the phone's own Study
+     screen. The field, "Return to check", the mic, Check and one card
+     coming up are a picture of Study: aria-hidden, not focusable. Hidden
+     above 760 px, where the desktop Specimen is unchanged. */}}
+{{define "specimen-study"}}
+<div class="specimen-study" data-specimen-study>
+  {{if eq .Stage "prompt"}}
+  <div class="specimen-field" aria-hidden="true"><span class="specimen-field-caret"></span><span class="specimen-placeholder">Type your answer</span></div>
+  {{else}}
+  <div class="specimen-field"><span class="specimen-typed">{{.S.Answer}}</span></div>
+  {{end}}
+  <div class="specimen-controls" aria-hidden="true">
+    <span class="micro specimen-return">Return to check</span>
+    <span class="specimen-buttons"><span class="specimen-mic"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></span><span class="specimen-check">Check</span></span>
+  </div>
+  <p class="specimen-next" aria-hidden="true">{{.S.Next}}</p>
+</div>
 {{end}}

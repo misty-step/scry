@@ -29,11 +29,12 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	home := b.mustGet("/")
 
 	// At a glance: the headline, a lede naming active recall and spaced
-	// repetition, one filled accent action beside a quiet secondary Sign in,
-	// and the trial terms with "$5 a month" kept unbroken.
+	// repetition, one filled accent action (Sign in lives once, in the
+	// header: [S135-1]), and the trial terms with each phrase kept whole.
 	has(t, home, `<h1 class="display">Keep what's worth knowing.</h1>`, "active recall", "spaced repetition",
-		`<a class="btn btn-accent" href="/signup">Start the 7-day trial</a>`, `<a class="btn" href="/signin">Sign in</a>`,
-		`then <span class="nowrap">$5 a month</span> if you keep it`)
+		`<a class="btn btn-accent" href="/signup">Start the 7-day trial</a>`, `<a href="/signin">Sign in</a>`,
+		`<span class="nowrap">7 days free</span><span class="nowrap"> ·</span> <span class="nowrap">no card needed</span><span class="nowrap"> ·</span> <span class="nowrap">$5/month after</span>`)
+	hasNot(t, home, `<a class="btn" href="/signin">`)
 	if n := strings.Count(home, "btn-accent"); n != 1 {
 		t.Errorf("the landing page has %d filled accent controls, want 1", n)
 	}

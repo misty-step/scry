@@ -68,8 +68,11 @@ func TestS106_1_LandingSpecimenStepsAndRestsOnJudged(t *testing.T) {
 	prompt := spec[strings.Index(spec, `data-specimen-stage="prompt"`):strings.Index(spec, `data-specimen-stage="answer"`)]
 	answer := spec[strings.Index(spec, `data-specimen-stage="answer"`):strings.Index(spec, `data-specimen-stage="judged"`)]
 	judged := spec[strings.Index(spec, `data-specimen-stage="judged"`):]
-	has(t, spec, "Study · Mental models · Set 1", `<span class="specimen-count">4 / 11</span>`)
-	has(t, prompt, `<p class="specimen-prompt">Hanlon's razor</p>`, `class="specimen-line"`, `class="specimen-caret"`)
+	// [S131-1] / [S135-1]: the subject header, never a "Study ·" prefix.
+	has(t, spec, `<span class="specimen-deck-name">Mental models</span> <span class="specimen-section">· Set 1</span>`,
+		`<span class="specimen-count"><span aria-hidden="true">4 / 11</span><span class="sr">Card 4 of 11</span></span>`)
+	hasNot(t, spec, "Study · ")
+	has(t, prompt, `<p class="specimen-prompt">Hanlon's razor</p>`, `class="specimen-line specimen-desk"`, `class="specimen-caret"`)
 	hasNot(t, prompt, "assume malice")
 	has(t, answer, `<span class="specimen-typed">don't assume malice when carelessness or stupidity explains it</span>`)
 	has(t, judged, "Your answer", "Correct answer", `verdict-badge verdict-right`, `class="icon icon-verdict-right"`, ">Correct</span>",
@@ -90,7 +93,7 @@ func TestS106_1_LandingSpecimenStepsAndRestsOnJudged(t *testing.T) {
 	has(t, cssRule(t, css, ".specimen"), "padding: var(--s4) 28px 28px;", "background: var(--raised);", "border: 1px solid var(--line);", "border-radius: var(--radius-surface);")
 	phone := css[strings.Index(css, "@media (max-width: 760px)"):]
 	phone = phone[:strings.Index(phone, "\n}\n")]
-	has(t, phone, ".specimen { padding: var(--s3) 18px 20px; }")
+	has(t, phone, ".specimen { padding: var(--s1) var(--s3) var(--s3); gap: 12px; }")
 
 	// The hero grid and its drafting band: sunken wash, 1 px line frame,
 	// the dot grid and ruler ticks; one column at 760 px and below.
@@ -99,7 +102,7 @@ func TestS106_1_LandingSpecimenStepsAndRestsOnJudged(t *testing.T) {
 	hasNot(t, hero, "gradient", "shadow")
 	has(t, cssRule(t, css, ".hero::before"), `mask: url("/static/grid.svg")`, "opacity: var(--grid-opacity);")
 	has(t, cssRule(t, css, ".hero::after"), `url("/static/tick.svg") left top`, `url("/static/tick.svg") right top`, `url("/static/tick-major.svg")`)
-	has(t, phone, ".hero { grid-template-columns: minmax(0, 1fr);")
+	has(t, phone, "grid-template-columns: minmax(0, 1fr); gap: var(--s5);")
 	if svg, _ := staticAsset(t, w, "/static/tick-major.svg"); !strings.Contains(svg, `<svg`) {
 		t.Error("the long ruler tick is missing")
 	}

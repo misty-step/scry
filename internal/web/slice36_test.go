@@ -47,7 +47,7 @@ func TestSlice36_PublicCopySaysNoCardUpFront(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 	home := b.mustGet("/")
-	has(t, home, "Start the 7-day trial", `7 days free · no card needed · then <span class="nowrap">$5 a month</span> if you keep it`)
+	has(t, home, "Start the 7-day trial", `<span class="nowrap">7 days free</span><span class="nowrap"> ·</span> <span class="nowrap">no card needed</span><span class="nowrap"> ·</span> <span class="nowrap">$5/month after</span>`)
 	hasNot(t, home, "card up front")
 	signup := b.mustGet("/signup")
 	has(t, signup, "7-day trial · no card needed", "No card up front", "Start the 7-day trial")
