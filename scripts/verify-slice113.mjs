@@ -294,6 +294,9 @@ async function reviewShot(page, config, name) {
   const op = await settledOpacity(page);
   check(config, `S113-2: ${name} is captured settled (judged card and verdict fully opaque)`, op.judged === "1" && op.verdict === "1", JSON.stringify(op));
   await page.screenshot({ path: path.join(MEDIA, `${config}-${name}.png`) });
+  // The whole review too: on a phone the verdict sits below the framed
+  // question and answer.
+  await page.screenshot({ path: path.join(MEDIA, `${config}-${name}-full.png`), fullPage: true });
 }
 
 // ---- motion rules -------------------------------------------------------
