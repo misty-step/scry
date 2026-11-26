@@ -5,7 +5,7 @@
 //
 //   make build BUILD_SHA=$(git rev-parse --short HEAD)
 //   DISPLAY=:0 node scripts/verify-slice130.mjs --bin ./bin/scry --sha <sha> \
-//        --media ~/chief-evidence/media [--port 18130]
+//        --media ~/chief-evidence/media [--port 18130] [--slowmo 120] [--hold 1200]
 //
 // For each of desktop 1440x900 and phone 390x844, light and dark, it starts
 // its own Scry (--bin) in SCRY_MODE=test with the demo learner seeded on a
@@ -45,6 +45,9 @@ const MEDIA = path.resolve(args.media || path.join(os.homedir(), "chief-evidence
 const PORT0 = Number(args.port || 18130);
 const SHA = args.sha || "";
 const CHROME = process.env.CHROME_BIN || "/usr/bin/google-chrome";
+// Slowed so the recorded walkthrough can be followed by eye.
+const SLOWMO = Number(args.slowmo || 120);
+const HOLD = Number(args.hold || 1200);
 const CONFIGS = [
   { name: "desktop-light", viewport: { width: 1440, height: 900 }, colorScheme: "light" },
   { name: "desktop-dark", viewport: { width: 1440, height: 900 }, colorScheme: "dark" },
@@ -135,6 +138,7 @@ async function settle(page) {
 }
 async function shot(page, name, opts = {}) {
   await settle(page);
+  await sleep(HOLD);
   await page.screenshot({ path: path.join(MEDIA, name + ".png"), ...opts });
 }
 
@@ -239,9 +243,8 @@ async function journey(browser, c, port) {
       if (verdict === "close") {
         closeItem = rv.item;
         check(config, "S130-1: the review trail names the verdict \"Almost\"", /oldest first: .*\bAlmost$/.test(rv.trail) && !/Almost Correct/.test(rv.trail), rv.trail);
+        await sleep(HOLD);
         await page.screenshot({ path: path.join(MEDIA, `${config}-review-almost.png`) });
-        const badge = await page.$("[data-judged] .verdict");
-        if (badge) await badge.screenshot({ path: path.join(MEDIA, `${config}-review-almost-badge.png`) }).catch(() => {});
         await pageHealth(page, config, "review (Almost)");
       }
       await Promise.all([page.waitForSelector("[data-asking], [data-session-end], .session-end", { timeout: 10000 }), page.click("[data-next]")]);
@@ -249,7 +252,7 @@ async function journey(browser, c, port) {
       if (verdict === "close") {
         const tags = await page.evaluate(() => [...document.querySelectorAll(".scrollback .tag")].map((t) => [t.className, t.textContent.trim()]));
         check(config, "S130-1: once the next card waits the scrollback tag reads \"almost\"", tags.length >= 1 && tags[tags.length - 1][0].includes("tag-close") && tags[tags.length - 1][1] === "almost", JSON.stringify(tags));
-        await shot(page, `${config}-scrollback-almost`);
+        await sleep(HOLD);
         await pageHealth(page, config, "waiting card with scrollback");
       }
     }
@@ -277,7 +280,7 @@ async function journey(browser, c, port) {
   }
 }
 
-const browser = await chromium.launch({ executablePath: CHROME, headless: false, args: ["--no-first-run", "--disable-extensions"] });
+const browser = await chromium.launch({ executablePath: CHROME, headless: false, slowMo: SLOWMO, args: ["--no-first-run", "--disable-extensions"] });
 console.log("browser", browser.version(), "headless: false, DISPLAY", process.env.DISPLAY);
 for (let i = 0; i < CONFIGS.length; i++) await journey(browser, CONFIGS[i], PORT0 + i);
 await browser.close();
