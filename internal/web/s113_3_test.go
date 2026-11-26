@@ -9,34 +9,27 @@ import (
 	"testing"
 )
 
-// PRODUCT.md [S113-3] "One mark everywhere: the S3-A deck of cards": the
-// same brand mark meets me in the browser tab, the header and on my home
-// screen: a small deck of cards whose top card is Signal Cobalt with a short
-// prompt bar, beside the lowercase `scry` wordmark. It replaces the earlier
-// lens mark everywhere (favicon, header, app icon, social preview).
+// PRODUCT.md [S113-3] [S125-1] "One mark everywhere: the L3-S3 fanned deck
+// with its cobalt top card tilted": the same brand mark meets me in the
+// browser tab, the header and on my home screen, drawn from the one
+// canonical SVG in DESIGN.md, beside the lowercase `scry` wordmark. It
+// replaces the earlier lens mark and the interim S3-A outline deck
+// everywhere (favicon, header, app icon, social preview).
 func TestStory_S113_3_OneMarkEverywhere(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
 
-	// The header: the 24 px S3-A mark, exactly, 8 px before "scry" (the
-	// style sheet's gap), on every page signed in or out; on a 1x screen the
-	// style sheet swaps in the same deck hinted to whole pixels.
+	// The header: the 24 px L3-S3 mark ([S125-1]), the canonical 32 x 32
+	// drawing in both fill sets (the style sheet shows the active mode's), 8 px
+	// before "scry" (the style sheet's gap), on every page signed in or out.
+	lightMark := `<rect x="5" y="10" width="16" height="19" rx="2.5" fill="#CBD5E1"/><rect x="7" y="7.5" width="16" height="19" rx="2.5" fill="#1E293B"/>` +
+		`<g transform="rotate(10 19 14)"><rect x="11" y="3.5" width="16" height="19" rx="2.5" fill="#0562EF"/><rect x="14.5" y="7" width="9" height="2" rx="1" fill="#FFFFFF" opacity="0.85"/></g>`
+	darkMark := `<rect x="5" y="10" width="16" height="19" rx="2.5" fill="#334155"/><rect x="7" y="7.5" width="16" height="19" rx="2.5" fill="#64748B"/>` +
+		`<g transform="rotate(10 19 14)"><rect x="11" y="3.5" width="16" height="19" rx="2.5" fill="#3B82F6"/><rect x="14.5" y="7" width="9" height="2" rx="1" fill="#DBEAFE" opacity="0.85"/></g>`
 	mark := `<a class="wordmark" href="/" aria-label="scry, home">` +
-		`<svg class="mark" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><g class="mark-exact">` +
-		`<rect class="mark-far" x="7.5" y="4.5" width="14" height="10" rx="1.5" fill="#AAABAD"/>` +
-		`<rect class="mark-face" x="9" y="6" width="11" height="7" fill="#FFFFFF"/>` +
-		`<rect class="mark-near" x="5" y="7" width="14" height="10" rx="1.5" fill="#6D7073"/>` +
-		`<rect class="mark-face" x="6.5" y="8.5" width="11" height="7" fill="#FFFFFF"/>` +
-		`<rect class="mark-top" x="2.5" y="9.5" width="14" height="10" rx="1.5" fill="#0562EF"/>` +
-		`<rect class="mark-bar" x="5.5" y="13.5" width="6.5" height="2" rx="1" fill="#FFFFFF"/>` +
-		`</g><g class="mark-hinted" display="none" shape-rendering="crispEdges">` +
-		`<path class="mark-far" d="M9 4H21V5H22V13H21V14H9V13H8V5H9Z" fill="#AAABAD"/>` +
-		`<rect class="mark-face" x="10" y="6" width="10" height="6" fill="#FFFFFF"/>` +
-		`<path class="mark-near" d="M6 7H18V8H19V16H18V17H6V16H5V8H6Z" fill="#6D7073"/>` +
-		`<rect class="mark-face" x="7" y="9" width="10" height="6" fill="#FFFFFF"/>` +
-		`<path class="mark-top" d="M3 10H15V11H16V19H15V20H3V19H2V11H3Z" fill="#0562EF"/>` +
-		`<rect class="mark-bar" x="5" y="14" width="7" height="2" fill="#FFFFFF"/>` +
-		`</g></svg><span class="wordmark-text">scry</span></a>`
+		`<svg class="mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true" focusable="false">` +
+		`<g class="mark-light">` + lightMark + `</g><g class="mark-dark">` + darkMark + `</g>` +
+		`</svg><span class="wordmark-text">scry</span></a>`
 	head := []string{
 		`<link rel="icon" href="/favicon.ico" sizes="32x32">`,
 		`<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">`,
@@ -64,19 +57,20 @@ func TestStory_S113_3_OneMarkEverywhere(t *testing.T) {
 		if !strings.Contains(top, mark) {
 			t.Errorf("%s: the mark is not in the header beside scry", path)
 		}
-		hasNot(t, page, "mark-focal", `r="2.25"`, "/static/icon.svg", "<animate")
+		hasNot(t, page, "mark-focal", `r="2.25"`, "/static/icon.svg", "<animate", "mark-hinted", "mark-top", `width="14" height="10"`)
 	}
 	// The Study navigation keeps its own monochrome line icon.
 	has(t, pages["/study"], `<a href="/study" aria-current="page" title="Study: recall what's due today"><svg class="icon icon-cards"`)
 
-	// The browser tab: the adaptive SVG favicon (its hinted 16 px deck in
-	// both modes) and /favicon.ico with the hinted 16 and 32 px PNGs.
+	// The browser tab: the adaptive SVG favicon (both canonical drawings,
+	// switched by prefers-color-scheme) and /favicon.ico with the hinted 16
+	// and 32 px PNGs.
 	fav, ct := staticAsset(t, w, "/static/favicon.svg")
 	if ct != "image/svg+xml" {
 		t.Errorf("favicon.svg Content-Type = %q", ct)
 	}
-	has(t, fav, `<path class="mark-top" d="M2 6H10V7H11V12H10V13H2V12H1V7H2Z"/>`, `<rect class="mark-bar" x="3" y="9" width="5" height="1"/>`,
-		".mark-top{fill:#0562EF}", "@media (prefers-color-scheme:dark)", ".mark-top{fill:#4D8DFF}")
+	has(t, fav, `viewBox="0 0 32 32"`, `<g class="mark-light">`+lightMark+`</g>`, `<g class="mark-dark">`+darkMark+`</g>`,
+		"@media (prefers-color-scheme:dark){.mark-light{display:none}.mark-dark{display:inline}}")
 	if ico, ct := staticAsset(t, w, "/favicon.ico"); ct != "image/x-icon" || !strings.HasPrefix(ico, "\x00\x00\x01\x00\x02\x00") {
 		t.Errorf("/favicon.ico = %q, %d bytes", ct, len(ico))
 	}
@@ -88,7 +82,7 @@ func TestStory_S113_3_OneMarkEverywhere(t *testing.T) {
 		if ct != "image/svg+xml" {
 			t.Errorf("%s Content-Type = %q", svg, ct)
 		}
-		has(t, body, `<rect class="mark-top" x="16" y="27" width="24" height="17" rx="2.5"/>`, `<path class="ground" d="M`)
+		has(t, body, `<g class="mark" transform="translate(12 12) scale(1.25)"><rect x="5" y="10" width="16" height="19" rx="2.5"`, `<g transform="rotate(10 19 14)"><rect x="11" y="3.5" width="16" height="19" rx="2.5"`, `<path class="ground" d="M`)
 	}
 
 	// The home screen: the dark app icon at 192 and 512 for "any", the

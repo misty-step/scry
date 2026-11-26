@@ -1211,18 +1211,16 @@ a.row-main { min-height: var(--touch); }
 .study-idea .icon { width: 16px; height: 16px; }
 @media (max-width: 760px) { .margin-focus { flex: 1 1 100%; } }
 
-/* S113-3 brand ---------------------------------------------------------
-   The S3-A deck of cards, 24 px, centred on the wordmark. The receding
-   cards are ink steps mixed over page (opaque, so each hides the card
-   behind it); the top card is the accent with its prompt bar in page. A
-   brand shape, not an icon: it never animates. */
+/* S113-3 / S125-1 brand -----------------------------------------------
+   The L3-S3 fanned deck, 24 px, centred on the wordmark: the canonical
+   32 x 32 drawing scaled whole. Its fills are the mark's own fixed brand
+   colors (never theme tokens); only the light/dark pair switches, with the
+   active mode. A brand shape, not an icon: it never animates. */
 .mark { width: 24px; height: 24px; flex: none; display: block; }
-.mark-far { fill: color-mix(in srgb, var(--ink) 35%, var(--page)); }
-.mark-near { fill: color-mix(in srgb, var(--ink) 60%, var(--page)); }
-.mark-face, .mark-bar { fill: var(--page); }
-.mark-top { fill: var(--accent); }
-/* On a 1x screen the hinted drawing (whole pixels) replaces the exact one. */
-@media (max-resolution: 1dppx) {
-  .mark-exact { display: none; }
-  .mark-hinted { display: inline; }
+.mark-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .mark-light { display: none; }
+  :root:not([data-theme="light"]) .mark-dark { display: inline; }
 }
+:root[data-theme="dark"] .mark-light { display: none; }
+:root[data-theme="dark"] .mark-dark { display: inline; }

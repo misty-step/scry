@@ -499,12 +499,14 @@ async function journey(browser, c, port) {
       const mb = m.getBoundingClientRect(), wb = w.getBoundingClientRect(), hb = document.querySelector("header").getBoundingClientRect();
       const icons = [...document.querySelectorAll("link[rel~=icon], link[rel=apple-touch-icon], link[rel=manifest], meta[property='og:image']")].map((l) => (l.getAttribute("href") || l.getAttribute("content")) + (l.sizes && l.sizes.value ? "@" + l.sizes.value : ""));
       return { w: mb.width, h: mb.height, gap: wb.left - mb.right, dy: (mb.top + mb.height / 2) - (wb.top + wb.height / 2), header: hb.height, icons,
-        top: getComputedStyle(m.querySelector(getComputedStyle(m.querySelector(".mark-exact")).display === "none" ? ".mark-hinted .mark-top" : ".mark-exact .mark-top")).fill,
-        rects: m.querySelectorAll(".mark-exact rect").length, retired: new RegExp(["le" + "ns", "fo" + "cal"].join("|"), "i").test(document.documentElement.outerHTML) };
+        // [S125-1] the shown drawing (light or dark by the active mode) and its top card.
+        shown: [...m.querySelectorAll(":scope > g")].filter((g) => getComputedStyle(g).display !== "none").map((g) => g.getAttribute("class")),
+        top: (() => { const g = [...m.querySelectorAll(":scope > g")].find((g) => getComputedStyle(g).display !== "none"); const r = g && g.querySelector("g[transform] rect"); return r ? getComputedStyle(r).fill + " " + r.parentNode.getAttribute("transform") : ""; })(),
+        rects: m.querySelectorAll(":scope > g.mark-light rect").length, retired: new RegExp(["le" + "ns", "fo" + "cal"].join("|"), "i").test(document.documentElement.outerHTML) };
     });
-    const accent = c.colorScheme === "dark" ? "rgb(77, 141, 255)" : "rgb(5, 98, 239)";
+    const accent = c.colorScheme === "dark" ? "rgb(59, 130, 246) rotate(10 19 14)" : "rgb(5, 98, 239) rotate(10 19 14)";
     check(config, "S113-3: header mark is 24 px, 8 px before scry, centred on the wordmark", mark.w === 24 && mark.h === 24 && Math.abs(mark.gap - 8) < 0.6 && Math.abs(mark.dy) <= 1, JSON.stringify({ w: mark.w, gap: mark.gap, dy: mark.dy, header: mark.header }));
-    check(config, "S113-3: top card in Signal Cobalt for this mode", mark.top === accent, mark.top);
+    check(config, "S125-1: the L3-S3 mark for this mode: four canonical shapes, cobalt top card tilted 10°", mark.top === accent && mark.rects === 4 && mark.shown.length === 1 && mark.shown[0] === "mark-" + (c.colorScheme === "dark" ? "dark" : "light"), JSON.stringify({ top: mark.top, rects: mark.rects, shown: mark.shown }));
     check(config, "S113-3: no retired scrying mark left in the page", !mark.retired);
     const assets = await page.evaluate(async (urls) => {
       const out = {};
@@ -518,7 +520,7 @@ async function journey(browser, c, port) {
     check(config, "S113-3: favicon SVG, 16/32 px PNGs, 64 px app icons and home-screen icons decode at their sizes",
       assets["/static/favicon-16.png"]?.[0] === 16 && assets["/static/favicon-32.png"]?.[0] === 32 && assets["/static/app-icon-64.png"]?.[0] === 64 && assets["/static/icon-512.png"]?.[0] === 512 && Array.isArray(assets["/static/favicon.svg"]),
       JSON.stringify(assets));
-    check(config, "S113-3: head links the S3-A favicon, apple-touch icon, manifest and social preview", mark.icons.some((i) => i.includes("favicon.svg")) && mark.icons.some((i) => i.includes("icon-180")) && mark.icons.some((i) => i.includes("manifest")), mark.icons.join(" "));
+    check(config, "S113-3: head links the L3-S3 favicon, apple-touch icon, manifest and social preview", mark.icons.some((i) => i.includes("favicon.svg")) && mark.icons.some((i) => i.includes("icon-180")) && mark.icons.some((i) => i.includes("manifest")), mark.icons.join(" "));
     await shot(page, `${config}-landing-header-mark`, { clip: { x: 0, y: 0, width: c.viewport.width, height: 72 } });
     await pageHealth(page, config, "landing");
     // Landing Specimen: let it step once (its 200 ms cross-fade is sampled).

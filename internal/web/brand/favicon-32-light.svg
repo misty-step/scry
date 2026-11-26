@@ -1,1 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" shape-rendering="crispEdges"><style>.mark-far{fill:#AAABAD}.mark-near{fill:#6D7073}.mark-face,.mark-bar{fill:#FFFFFF}.mark-top{fill:#0562EF}</style><path class="mark-far" d="M11 6H27V7H28V18H27V19H11V18H10V7H11Z"/><rect class="mark-face" x="12" y="8" width="14" height="9"/><path class="mark-near" d="M8 9H24V10H25V21H24V22H8V21H7V10H8Z"/><rect class="mark-face" x="9" y="11" width="14" height="9"/><path class="mark-top" d="M5 12H21V13H22V24H21V25H5V24H4V13H5Z"/><path class="mark-bar" d="M9 17H16V18H17V19H16V20H9V19H8V18H9Z"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect x="5" y="10" width="16" height="19" rx="2.5" fill="#CBD5E1"/>
+  <rect x="7" y="8" width="16" height="19" rx="2.5" fill="#1E293B"/>
+  <g transform="rotate(10 19 14)">
+    <rect x="11" y="3.5" width="16" height="19" rx="2.5" fill="#0562EF"/>
+    <rect x="14.5" y="7" width="9" height="2" rx="1" fill="#FFFFFF" opacity="0.85"/>
+  </g>
+</svg>

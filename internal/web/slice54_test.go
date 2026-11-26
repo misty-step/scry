@@ -130,8 +130,8 @@ func TestDesign_BrandMarkBesideTheWordmark(t *testing.T) {
 	b.addSet("kitchen-numbers")
 	pages = append(pages, b.mustGet("/study"), b.mustGet("/library"))
 	for _, page := range pages {
-		has(t, page, `<a class="wordmark" href="/" aria-label="scry, home"><svg class="mark" viewBox="0 0 24 24" width="24" height="24"`,
-			`<rect class="mark-top" x="2.5" y="9.5" width="14" height="10" rx="1.5"`,
+		has(t, page, `<a class="wordmark" href="/" aria-label="scry, home"><svg class="mark" viewBox="0 0 32 32" width="24" height="24"`,
+			`<g transform="rotate(10 19 14)"><rect x="11" y="3.5" width="16" height="19" rx="2.5" fill="#0562EF"/>`,
 			`</g></svg><span class="wordmark-text">scry</span>`)
 	}
 	body, ct := staticAsset(t, w, "/favicon.ico")
@@ -316,7 +316,7 @@ func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 		".session-margin { display: flex; flex-direction: column; gap: var(--s1); align-self: start;",
 		"grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);",
 		".hero::before", `mask: url("/static/grid.svg")`,
-		".mark { width: 24px; height: 24px;", ".mark-top { fill: var(--accent); }",
+		".mark { width: 24px; height: 24px;", ":root[data-theme=\"dark\"] .mark-dark { display: inline; }",
 		".wordmark { gap: var(--s2); }",
 		".example {", "border: 1px solid var(--line); border-radius: var(--radius-control);",
 	)
