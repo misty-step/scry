@@ -485,7 +485,8 @@ func (s *Server) errorPage(w http.ResponseWriter, r *http.Request, status int) {
 // healthz is the readiness report scry-lib.sh and scry-watch poll. It keeps
 // "status" and "database" ("ok"/"ok" on 200, "unhealthy"/"failing" on 503)
 // and adds what is wired: build, mode, each adapter's label, the model
-// each AI capability calls and the speech route. It never includes a key,
+// each AI capability calls, the grading chain (primary, fallbacks and
+// escalation, [S113-1]) and the speech route. It never includes a key,
 // secret, DSN or token.
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	rd := s.App.Readiness()
@@ -494,7 +495,7 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 		"build_sha": rd.BuildSHA, "mode": rd.Mode,
 		"grading": rd.Grading, "drafting": rd.Drafting, "explainer": rd.Explainer, "speech": rd.Speech,
 		"billing_mode": rd.BillingMode, "auth_mode": rd.AuthMode,
-		"providers": rd.Providers, "models": rd.Models, "speech_route": rd.SpeechRoute, "warnings": rd.Warnings,
+		"providers": rd.Providers, "models": rd.Models, "grading_chain": rd.GradingChain, "speech_route": rd.SpeechRoute, "warnings": rd.Warnings,
 	}
 	if err := s.App.Health(r.Context()); err != nil {
 		s.Log.ErrorContext(r.Context(), "health check failed", "err", err)

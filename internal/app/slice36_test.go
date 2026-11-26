@@ -556,10 +556,13 @@ func TestSlice36_TranscribeMetersBothSpeechRoutes(t *testing.T) {
 func TestSlice36_TrialGradesWithAModelAwareHold(t *testing.T) {
 	w := newTrialWorld(t)
 	w.app.Model = &ai.Fake{Verdicts: []srs.Verdict{srs.Right}}
-	if _, err := w.us.ChangeSubscription(w.ctx, func(s *store.Subscription) { s.UsedMicros = s.AllowanceMicros - 2000 }); err != nil {
+	// [S113-1] The hold covers the whole fixture chain (four test models
+	// at $0.10/$0.50, 5,736 micros), still far under the old ceiling.
+	left := int64(6000)
+	if _, err := w.us.ChangeSubscription(w.ctx, func(s *store.Subscription) { s.UsedMicros = s.AllowanceMicros - left }); err != nil {
 		t.Fatal(err)
 	}
-	if w.app.JudgeBudget() > 2000 || ai.JudgeBudgetMicros <= 2000 {
+	if w.app.JudgeBudget() > left || ai.JudgeBudgetMicros <= left {
 		t.Fatalf("judge budget %d", w.app.JudgeBudget())
 	}
 	id := fmt.Sprintf("judge-%d", time.Now().UnixNano())

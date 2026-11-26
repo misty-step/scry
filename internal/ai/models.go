@@ -16,12 +16,72 @@ func JudgeModel(m any) string {
 		if v != nil {
 			return v.RequestedModel()
 		}
+	case *Chain:
+		if v != nil && v.Primary() != nil {
+			return JudgeModel(v.Primary())
+		}
+		return ""
 	case *Fake:
 		if v != nil {
-			return "test-judge"
+			return FakeJudgeModel
+		}
+	case *LLMJudge:
+		if v != nil {
+			return v.RequestedModel()
 		}
 	}
 	return named(m)
+}
+
+// ChainInfo is the grading chain a grader walks, by model ([S113-1]).
+type ChainInfo struct {
+	Primary            string   `json:"primary"`
+	Fallbacks          []string `json:"fallbacks"`
+	Escalation         string   `json:"escalation"`          // "" when there is none
+	EscalationProvider string   `json:"escalation_provider"` // openrouter, anthropic, test or none
+}
+
+// JudgeChain describes the chain a grader walks. A bare decisions model
+// is a chain of one with no escalation; the test adapter is its fixture
+// chain.
+func JudgeChain(m any) ChainInfo {
+	switch v := m.(type) {
+	case Split:
+		return JudgeChain(v.JudgeProvider)
+	case *Fake:
+		if v != nil {
+			return JudgeChain(v.Chain())
+		}
+	case *Chain:
+		if v == nil {
+			break
+		}
+		info := ChainInfo{Fallbacks: []string{}, EscalationProvider: "none"}
+		for i, d := range v.Decisions {
+			if i == 0 {
+				info.Primary = JudgeModel(d)
+			} else {
+				info.Fallbacks = append(info.Fallbacks, JudgeModel(d))
+			}
+		}
+		if v.Escalation != nil && named(v.Escalation) != "" {
+			info.Escalation = JudgeModel(v.Escalation)
+			info.EscalationProvider = providerName(v.Escalation)
+		}
+		return info
+	}
+	return ChainInfo{Primary: JudgeModel(m), Fallbacks: []string{}, EscalationProvider: "none"}
+}
+
+// JudgeModels is every model one submission may be charged for, in the
+// order the chain asks them: what a judgment reservation is sized for.
+func JudgeModels(m any) []string {
+	c := JudgeChain(m)
+	out := append([]string{c.Primary}, c.Fallbacks...)
+	if c.Escalation != "" {
+		out = append(out, c.Escalation)
+	}
+	return out
 }
 
 // DraftModel names the model that drafts study material.
@@ -69,6 +129,9 @@ func named(v any) string {
 	}
 	if m, ok := v.(interface{ ModelName() string }); ok {
 		return m.ModelName()
+	}
+	if m, ok := v.(interface{ RequestedModel() string }); ok {
+		return m.RequestedModel()
 	}
 	return "unknown"
 }

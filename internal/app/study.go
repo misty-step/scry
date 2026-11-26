@@ -90,6 +90,14 @@ func (a *App) Study(ctx context.Context, u store.User) (*store.StudySession, err
 // verdict and a one-line reason. If the model cannot be reached the
 // answer is not judged at all.
 //
+// [S113-1] Models only: a non-exact answer always reaches the grading
+// chain (ai.Chain in production and in test mode), even one identical to
+// the expected answer; there is no string-equality or other shortcut. One
+// submission is one reservation, sized for the whole chain (JudgeBudget),
+// settled once with the usage of every model it asked. ErrJudgeUnavailable
+// is returned only when no model in the chain nor the escalation gave a
+// usable verdict.
+//
 // Answering is a session transition (see store.StudySession): a scored
 // answer is taken only in PhaseAsking for the current item, a practice
 // attempt only in PhaseRetryingExact for the exact text being retried.
@@ -135,14 +143,7 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 			return store.Review{}, ErrStale
 		}
 	}
-	answer = strings.Join(strings.Fields(answer), " ")
-	if len(answer) > 2000 {
-		end := 2000
-		for end > 0 && !utf8.RuneStart(answer[end]) {
-			end--
-		}
-		answer = answer[:end]
-	}
+	answer = NormalizeAnswer(answer)
 	if via != "spoken" {
 		via = "typed"
 	}
@@ -205,6 +206,41 @@ func (a *App) Answer(ctx context.Context, u store.User, itemID int64, answer, vi
 	}
 	r.ID = id
 	return r, nil
+}
+
+// NormalizeAnswer tidies a submitted answer while keeping the line breaks
+// the learner typed, pasted or dictated (S111-2): \r\n and \r become \n,
+// spaces and tabs within a line collapse to one space, more than one blank
+// line between paragraphs becomes one, the whole is trimmed, and it is cut
+// at 2,000 bytes on a rune boundary. Nothing here judges the answer; an
+// exact text's word diff still treats a line break as any other space.
+func NormalizeAnswer(answer string) string {
+	answer = strings.ReplaceAll(answer, "\r\n", "\n")
+	answer = strings.ReplaceAll(answer, "\r", "\n")
+	lines := strings.Split(answer, "\n")
+	out := make([]string, 0, len(lines))
+	blank := 0
+	for _, l := range lines {
+		l = strings.Join(strings.Fields(l), " ")
+		if l == "" {
+			blank++
+			if blank > 1 {
+				continue
+			}
+		} else {
+			blank = 0
+		}
+		out = append(out, l)
+	}
+	answer = strings.Trim(strings.Join(out, "\n"), "\n")
+	if len(answer) > MaxAnswerLen {
+		end := MaxAnswerLen
+		for end > 0 && !utf8.RuneStart(answer[end]) {
+			end--
+		}
+		answer = strings.TrimRight(answer[:end], " \n")
+	}
+	return answer
 }
 
 // Limits on a card's text, shared by every way of writing one.
@@ -270,7 +306,10 @@ func (a *App) judge(ctx context.Context, userID, itemID int64, reservation strin
 			panic(r)
 		}
 	}()
-	jctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	// The whole grading chain runs inside this deadline: each decisions
+	// model has 8 s and the escalation 15 s (ai.Chain), well under the
+	// server's 90 s write timeout.
+	jctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	called = true
 	j, use, err := a.Model.Judge(jctx, in)

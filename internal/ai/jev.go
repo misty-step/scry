@@ -79,7 +79,8 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	}
 	resolved, costSource := "unavailable", "unknown"
 	defer func() {
-		retErr = safeerr.Redact(retErr, j.APIKey)
+		// Redaction may rewrite the message; the chain still needs its class.
+		retErr = keepClass(retErr, safeerr.Redact(retErr, j.APIKey))
 		log := j.Log
 		if log == nil {
 			log = slog.Default()
@@ -96,10 +97,10 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 		if j.APIKey != "" {
 			resolved = strings.ReplaceAll(resolved, j.APIKey, "[redacted]")
 		}
-		log.InfoContext(ctx, "judge decision", "requested_model", requested, "resolved_model", resolved, "usage_cost", usageCost, "cost_micros", cost, "cost_source", costSource, "latency_ms", time.Since(start).Milliseconds(), "accepted", retErr == nil)
+		log.InfoContext(ctx, "judge decision", "requested_model", requested, "resolved_model", resolved, "usage_cost", usageCost, "cost_micros", cost, "cost_source", costSource, "latency_ms", time.Since(start).Milliseconds(), "accepted", retErr == nil, "outcome", outcomeOf(retErr))
 	}()
 	if j.APIKey == "" {
-		return out, use, errors.New("Jev key is missing")
+		return out, use, notSent("Jev key is missing")
 	}
 	criteria := map[string]string{}
 	for _, o := range judgeOptions {
@@ -111,10 +112,10 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	}
 	body, err := json.Marshal(map[string]any{"model": requested, "state": map[string]any{"card_prompt": in.Question, "accepted_answers": accepted, "learner_answer": in.Answer}, "questions": map[string]any{"judgment": map[string]any{"type": "choice", "instructions": jevInstructions, "criteria": criteria}}})
 	if err != nil {
-		return out, use, err
+		return out, use, notSent("Jev state could not be encoded")
 	}
 	if len(body) > 8192 {
-		return out, use, errors.New("Jev state exceeds request budget")
+		return out, use, notSent("Jev state exceeds request budget")
 	}
 	if j.BaseURL != "" {
 		base = j.BaseURL
@@ -123,7 +124,7 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(body))
 	if err != nil {
-		return out, use, errors.New("invalid Jev endpoint")
+		return out, use, notSent("invalid Jev endpoint")
 	}
 	req.Header.Set("Authorization", "Bearer "+j.APIKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -134,15 +135,15 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req) // one attempt, no redirect or fallback
 	if err != nil {
-		return out, use, errors.New("Jev request failed")
+		return out, use, unavailable("Jev request failed")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return out, use, fmt.Errorf("Jev returned status %d", resp.StatusCode)
+		return out, use, unavailable(fmt.Sprintf("Jev returned status %d", resp.StatusCode))
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 65537))
 	if err != nil || len(raw) > 65536 {
-		return out, use, errors.New("invalid Jev response")
+		return out, use, unavailable("invalid Jev response")
 	}
 	var result struct {
 		Model   string
@@ -158,10 +159,15 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 		}
 	}
 	if json.Unmarshal(raw, &result) != nil {
-		return out, use, errors.New("invalid Jev JSON")
+		return out, use, unavailable("invalid Jev JSON")
 	}
 	resolved = result.Model
-	invalid := errors.New("Jev decision unavailable or ambiguous")
+	// Two kinds of no verdict: a response that cannot be read (invalid:
+	// the chain asks the next decisions model) and a readable decision
+	// below its certainty bars or "none of these" (uncertain: the chain
+	// escalates to the LLM and never shops it to another decisions model).
+	invalid := unavailable("Jev decision unreadable")
+	uncertain := func(why string) error { return fmt.Errorf("%w: Jev %s", ErrDecisionUncertain, why) }
 	if result.Model == "" || len(result.Model) > 200 || result.Usage == nil || result.Usage.Input == nil || result.Usage.Output == nil || *result.Usage.Input < 0 || *result.Usage.Output < 0 {
 		return out, use, invalid
 	}
@@ -176,7 +182,14 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	if !ok || len(result.Answers) != 1 || a.Type != "choice" {
 		return out, use, invalid
 	}
-	if a.Confidence != nil && (*a.Confidence < minJevConfidence || *a.Confidence > 1) {
+	if a.Confidence != nil && (math.IsNaN(*a.Confidence) || *a.Confidence < 0 || *a.Confidence > 1) {
+		return out, use, invalid
+	}
+	known := a.Choice == "none_of_these"
+	for _, o := range judgeOptions {
+		known = known || o.ID == a.Choice
+	}
+	if !known {
 		return out, use, invalid
 	}
 	if a.Probabilities != nil {
@@ -195,9 +208,21 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 				second = p
 			}
 		}
-		if !known || math.Abs(sum-1) > 1e-6 || chosen < minJevProbability || chosen-second < minJevMargin {
+		if !known || math.Abs(sum-1) > 1e-6 {
 			return out, use, invalid
 		}
+		if a.Choice != "none_of_these" && chosen < minJevProbability {
+			return out, use, uncertain("probability below its bar")
+		}
+		if a.Choice != "none_of_these" && chosen-second < minJevMargin {
+			return out, use, uncertain("margin below its bar")
+		}
+	}
+	if a.Choice == "none_of_these" {
+		return out, use, uncertain("chose none of these")
+	}
+	if a.Confidence != nil && *a.Confidence < minJevConfidence {
+		return out, use, uncertain("confidence below its bar")
 	}
 	for _, o := range judgeOptions {
 		if o.ID == a.Choice && o.Verdict != "" {

@@ -42,10 +42,21 @@ var rates = map[string]rate{
 	ai.DefaultOpenRouterExplainModel: {0.1, 0.5}, // openai/gpt-6-luna
 	ai.DefaultOpenRouterJudgeModel:   {0.1, 1},   // typesafe/jev-1.14
 	"anthropic/claude-sonnet-5.5":    {2, 10},
+	// [S113-1] The default fallback decisions models and escalation LLM.
+	// Not read from the catalog (no network during development): the
+	// decisions models are priced like jev-1.14's margin, the fast LLM at
+	// $1/$5, a margin over a flash-class model. A provider-reported
+	// usage.cost always wins when it settles (Cost).
+	"openai/gpt-6-luna-decisions":  {0.1, 1},
+	"google/gemini-decision-1":     {0.1, 1},
+	ai.DefaultJudgeEscalationModel: {1, 5}, // google/gemini-4-hydrogen
 
-	"test-judge":   {0.10, 0.50},
-	"test-draft":   {4, 20},
-	"test-explain": {0.10, 0.50},
+	ai.FakeFallbackModel1:  {0.10, 0.50},
+	ai.FakeFallbackModel2:  {0.10, 0.50},
+	ai.FakeEscalationModel: {0.10, 0.50},
+	"test-judge":           {0.10, 0.50},
+	"test-draft":           {4, 20},
+	"test-explain":         {0.10, 0.50},
 }
 
 // ceilingRate prices a model Scry has no entry for, so costs cannot run away.
@@ -95,7 +106,25 @@ const MaxSpeechSeconds = 120
 
 // Cost prices one model call in micro-dollars. A model Scry has no price
 // for is charged at the highest rate it knows, so costs cannot run away.
+//
+// A submission the grading chain sent to several models ([S113-1]) costs
+// the sum of its attempts: each at its reported cost, an attempt that was
+// never sent at nothing, and one whose outcome is unknown (sent, with no
+// usage back) at its worst case, so a lost reply is never unmetered.
 func Cost(u ai.Usage) int64 {
+	if u.Attempts != nil {
+		var total int64
+		for _, a := range *u.Attempts {
+			switch {
+			case !a.Sent:
+			case !a.Known():
+				total += BudgetMicros(a.Requested, judgeInTokens, judgeOutTokens)
+			default:
+				total += Cost(a.Usage)
+			}
+		}
+		return total
+	}
 	if u.CostMicros != nil {
 		return *u.CostMicros
 	}
@@ -120,10 +149,19 @@ func BudgetMicros(model string, inTokens, outTokens int64) int64 {
 	return int64(math.Ceil(float64(inTokens)*r.in + float64(outTokens)*r.out))
 }
 
-// JudgeBudget is what one judgment reserves with the configured grader
-// (about $0.002 for typesafe/jev-1.14; $0.115 for an unknown model).
+// JudgeBudget is what one judgment reserves with the configured grader:
+// one hold sized for the costliest path the grading chain may take, every
+// decisions model and the escalation ([S113-1]), so one submission is one
+// judgment and is never charged twice (about $0.002 for typesafe/jev-1.14
+// alone, about $0.02 for the default chain; $0.115 for each unknown model).
+// The escalation's input and output are bounded like a decision's
+// (ai.EscalationMaxInput, ai.EscalationMaxTokens).
 func (a *App) JudgeBudget() int64 {
-	return BudgetMicros(ai.JudgeModel(a.Model), judgeInTokens, judgeOutTokens)
+	var total int64
+	for _, m := range ai.JudgeModels(a.Model) {
+		total += BudgetMicros(m, judgeInTokens, judgeOutTokens)
+	}
+	return total
 }
 
 // DraftBudget is what one draft reserves with the configured drafting
