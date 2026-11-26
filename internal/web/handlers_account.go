@@ -24,7 +24,7 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, c *rc) error {
 		return back(w, r, "/study")
 	}
 	return s.render(w, r, c, http.StatusOK, "landing.html", map[string]any{
-		"Title": "Keep what's worth knowing", "Price": s.App.Cfg.PriceCents, "TrialDays": s.App.Cfg.TrialDays, "Bare": true,
+		"Title": "Remember everything", "Price": s.App.Cfg.PriceCents, "TrialDays": s.App.Cfg.TrialDays, "Bare": true,
 		"Specimen": landingSpecimen(),
 	})
 }

@@ -185,7 +185,7 @@ async function setup(browser, c) {
   // [S113-3] [S125-1]: the L3-S3 fanned deck, 24 px, centred on the wordmark.
   check(c.name + " landing: brand mark svg beside 'scry', 24px square, 8px gap, centred", land.mark && Math.round(land.markW) === 24 && Math.round(land.markH) === 24 && land.gap === 8 && land.centred, land);
   check(c.name + " landing: favicon, apple-touch icon and manifest linked", land.icon === "/static/favicon.svg" && land.ico === "/favicon.ico" && land.apple === "/static/icon-180.png" && land.manifest === "/static/manifest.webmanifest", land);
-  check(c.name + " landing: headline and one accent action", land.headline === "Keep what's worth knowing." && /Start the 7-day trial/.test(land.cta || ""), land);
+  check(c.name + " landing: headline and one accent action", land.headline === "Remember everything." && /Start the 7-day trial/.test(land.cta || ""), land);
   if (c.mobile) check("phone landing: hero stacks (specimen below copy)", land.side && land.side.specTop >= land.side.copyBottom - 1, land.side);
   else check("desktop landing: two columns, specimen right of copy", land.side && land.side.specLeft >= land.side.copyRight - 1 && land.side.specTop < land.side.copyBottom, land.side);
   check(c.name + " landing: Study Specimen shows a verdict in words, a reason and the schedule", /Correct|Almost Correct|Incorrect/.test(land.verdict || "") && !!land.why && land.schedule, land);
