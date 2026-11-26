@@ -8,7 +8,8 @@
 <title>{{if .Title}}{{.Title}} · {{end}}scry</title>
 <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#12101A" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/static/icon-180.png">
 <link rel="manifest" href="/static/manifest.webmanifest">
 <meta name="apple-mobile-web-app-title" content="scry">
@@ -17,7 +18,10 @@
 <meta property="og:site_name" content="scry">
 <meta property="og:title" content="{{if .Title}}{{.Title}} · {{end}}scry">
 <meta property="og:description" content="Scry gets what's worth knowing into your head and keeps it there, for the fewest minutes a day.">
-<meta property="og:image" content="{{.SiteOrigin}}/static/icon-512.png">
+<meta property="og:image" content="{{.SiteOrigin}}/static/icon-maskable-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta property="og:image:alt" content="scry">
 <meta name="twitter:card" content="summary">
 <link rel="preload" href="/static/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/GeistMono-Variable.woff2" as="font" type="font/woff2" crossorigin>

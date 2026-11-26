@@ -171,7 +171,8 @@ async function setup(browser, c) {
     const top = q("header.top"), signin = [...document.querySelectorAll("header.top a")].find(a => /sign in/i.test(a.textContent));
     return {
       mark: !!mark, markW: r(mark)?.width, markH: r(mark)?.height, gap: mark && text ? Math.round(r(text).left - r(mark).right) : null,
-      icon: q('link[rel=icon]')?.getAttribute("href"), apple: q('link[rel=apple-touch-icon]')?.getAttribute("href"), manifest: q('link[rel=manifest]')?.getAttribute("href"),
+      centred: mark && text ? Math.abs((r(mark).top + r(mark).height / 2) - (r(text).top + r(text).height / 2)) <= 1 : false,
+      icon: q('link[rel=icon][type="image/svg+xml"]')?.getAttribute("href"), ico: q('link[rel=icon][sizes="32x32"]')?.getAttribute("href"), apple: q('link[rel=apple-touch-icon]')?.getAttribute("href"), manifest: q('link[rel=manifest]')?.getAttribute("href"),
       headline: q(".hero h1")?.textContent.trim(), cta: q(".hero .btn-accent")?.textContent.trim(),
       side: copy && spec ? { copyRight: r(copy).right, specLeft: r(spec).left, copyBottom: r(copy).bottom, specTop: r(spec).top } : null,
       verdict: q(".specimen .verdict-badge")?.textContent.trim(), why: q(".specimen .why")?.textContent.trim(), schedule: !!q(".specimen-schedule"),
@@ -181,8 +182,9 @@ async function setup(browser, c) {
       oneRow: signin && mark ? Math.abs((r(signin).top + r(signin).height / 2) - (r(mark).top + r(mark).height / 2)) < 12 : false,
     };
   });
-  check(c.name + " landing: brand mark svg beside 'scry', 20px square, 8px gap", land.mark && Math.round(land.markW) === 20 && Math.round(land.markH) === 20 && land.gap === 8, land);
-  check(c.name + " landing: favicon, apple-touch icon and manifest linked", land.icon === "/static/icon.svg" && land.apple === "/static/icon-180.png" && land.manifest === "/static/manifest.webmanifest", land);
+  // [S113-3]: the S3-A deck of cards, 24 px, centred on the wordmark.
+  check(c.name + " landing: brand mark svg beside 'scry', 24px square, 8px gap, centred", land.mark && Math.round(land.markW) === 24 && Math.round(land.markH) === 24 && land.gap === 8 && land.centred, land);
+  check(c.name + " landing: favicon, apple-touch icon and manifest linked", land.icon === "/static/favicon.svg" && land.ico === "/favicon.ico" && land.apple === "/static/icon-180.png" && land.manifest === "/static/manifest.webmanifest", land);
   check(c.name + " landing: headline and one accent action", land.headline === "Keep what's worth knowing." && /Start the 7-day trial/.test(land.cta || ""), land);
   if (c.mobile) check("phone landing: hero stacks (specimen below copy)", land.side && land.side.specTop >= land.side.copyBottom - 1, land.side);
   else check("desktop landing: two columns, specimen right of copy", land.side && land.side.specLeft >= land.side.copyRight - 1 && land.side.specTop < land.side.copyBottom, land.side);
@@ -199,7 +201,7 @@ async function setup(browser, c) {
   }
   const assets = await page.evaluate(async () => {
     const out = {};
-    for (const p of ["/static/icon.svg", "/static/icon-dark.svg", "/static/icon-180.png", "/static/icon-192.png", "/static/icon-512.png", "/static/manifest.webmanifest"]) {
+    for (const p of ["/static/favicon.svg", "/favicon.ico", "/static/favicon-16.png", "/static/favicon-32.png", "/static/app-icon.svg", "/static/app-icon-dark.svg", "/static/icon-180.png", "/static/icon-192.png", "/static/icon-512.png", "/static/icon-maskable-192.png", "/static/icon-maskable-512.png", "/static/manifest.webmanifest"]) {
       const r = await fetch(p); out[p] = r.status + " " + (r.headers.get("content-type") || "");
       if (p.endsWith("webmanifest")) { const m = await r.json(); out.manifest = { start_url: m.start_url, display: m.display, icons: (m.icons || []).map(i => i.src + " " + i.sizes) }; }
     }
