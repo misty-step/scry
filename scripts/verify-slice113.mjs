@@ -18,7 +18,7 @@
 // and the verdicts are scripted (SCRY_TEST_JUDGMENTS). The server's own
 // "judge chain" log lines prove which models each submission reached.
 //
-//   S113-3 the S3-A mark: 24 px in the header, 8 px before `scry`, centred;
+//   S113-3 the L3-S3 mark ([S125-1]): 24 px in the header, 8 px before `scry`, centred;
 //          favicon SVG + 16/32 px PNGs and the 64 px app icon decode.
 //   S111-1 /study opens straight on a card across every deck; decks
 //          alternate; "Study this idea" focuses; the navigation's Study
@@ -499,8 +499,8 @@ async function journey(browser, c, port) {
       const mb = m.getBoundingClientRect(), wb = w.getBoundingClientRect(), hb = document.querySelector("header").getBoundingClientRect();
       const icons = [...document.querySelectorAll("link[rel~=icon], link[rel=apple-touch-icon], link[rel=manifest], meta[property='og:image']")].map((l) => (l.getAttribute("href") || l.getAttribute("content")) + (l.sizes && l.sizes.value ? "@" + l.sizes.value : ""));
       return { w: mb.width, h: mb.height, gap: wb.left - mb.right, dy: (mb.top + mb.height / 2) - (wb.top + wb.height / 2), header: hb.height, icons,
-        top: getComputedStyle(m.querySelector(getComputedStyle(m.querySelector(".mark-exact")).display === "none" ? ".mark-hinted .mark-top" : ".mark-exact .mark-top")).fill,
-        rects: m.querySelectorAll(".mark-exact rect").length, retired: new RegExp(["le" + "ns", "fo" + "cal"].join("|"), "i").test(document.documentElement.outerHTML) };
+        top: getComputedStyle(m.querySelector(".mark-top")).fill,
+        rects: m.querySelectorAll("rect").length, retired: new RegExp(["le" + "ns", "fo" + "cal"].join("|"), "i").test(document.documentElement.outerHTML) };
     });
     const accent = c.colorScheme === "dark" ? "rgb(77, 141, 255)" : "rgb(5, 98, 239)";
     check(config, "S113-3: header mark is 24 px, 8 px before scry, centred on the wordmark", mark.w === 24 && mark.h === 24 && Math.abs(mark.gap - 8) < 0.6 && Math.abs(mark.dy) <= 1, JSON.stringify({ w: mark.w, gap: mark.gap, dy: mark.dy, header: mark.header }));
@@ -518,7 +518,7 @@ async function journey(browser, c, port) {
     check(config, "S113-3: favicon SVG, 16/32 px PNGs, 64 px app icons and home-screen icons decode at their sizes",
       assets["/static/favicon-16.png"]?.[0] === 16 && assets["/static/favicon-32.png"]?.[0] === 32 && assets["/static/app-icon-64.png"]?.[0] === 64 && assets["/static/icon-512.png"]?.[0] === 512 && Array.isArray(assets["/static/favicon.svg"]),
       JSON.stringify(assets));
-    check(config, "S113-3: head links the S3-A favicon, apple-touch icon, manifest and social preview", mark.icons.some((i) => i.includes("favicon.svg")) && mark.icons.some((i) => i.includes("icon-180")) && mark.icons.some((i) => i.includes("manifest")), mark.icons.join(" "));
+    check(config, "S113-3: head links the L3-S3 favicon, apple-touch icon, manifest and social preview", mark.icons.some((i) => i.includes("favicon.svg")) && mark.icons.some((i) => i.includes("icon-180")) && mark.icons.some((i) => i.includes("manifest")), mark.icons.join(" "));
     await shot(page, `${config}-landing-header-mark`, { clip: { x: 0, y: 0, width: c.viewport.width, height: 72 } });
     await pageHealth(page, config, "landing");
     // Landing Specimen: let it step once (its 200 ms cross-fade is sampled).

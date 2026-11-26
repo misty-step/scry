@@ -182,7 +182,7 @@ async function setup(browser, c) {
       oneRow: signin && mark ? Math.abs((r(signin).top + r(signin).height / 2) - (r(mark).top + r(mark).height / 2)) < 12 : false,
     };
   });
-  // [S113-3]: the S3-A deck of cards, 24 px, centred on the wordmark.
+  // [S113-3] [S125-1]: the L3-S3 fanned deck, 24 px, centred on the wordmark.
   check(c.name + " landing: brand mark svg beside 'scry', 24px square, 8px gap, centred", land.mark && Math.round(land.markW) === 24 && Math.round(land.markH) === 24 && land.gap === 8 && land.centred, land);
   check(c.name + " landing: favicon, apple-touch icon and manifest linked", land.icon === "/static/favicon.svg" && land.ico === "/favicon.ico" && land.apple === "/static/icon-180.png" && land.manifest === "/static/manifest.webmanifest", land);
   check(c.name + " landing: headline and one accent action", land.headline === "Keep what's worth knowing." && /Start the 7-day trial/.test(land.cta || ""), land);
