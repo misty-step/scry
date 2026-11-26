@@ -51,7 +51,7 @@ const activeBridges = ` FROM item_bridges hb
 	  AND hbi.deleted_at = 0 AND hbd.deleted_at = 0`
 
 // notHeld is a condition on the item aliased t: it is not held by bridges.
-// Every due queue path (DueItems, StartSession, the entries of an open
+// Every due queue path (DueItems, StudyCandidates, StartSession, the entries of an open
 // session, the guard on an answer, the due count and the next due date)
 // applies it.
 const notHeld = ` NOT EXISTS (SELECT 1` + activeBridges + `)`

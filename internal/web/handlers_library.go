@@ -48,6 +48,8 @@ var libraryFlash = map[string]string{
 	"held":      "Bridges added. This card is held until each bridge is answered Correct or Almost Correct once.",
 	"released":  "Hold released. The card is due again on its own schedule; its bridges stay in your library.",
 	"nobridges": "This card isn't offered bridge cards right now.",
+	// S111-1: "Study this idea" with nothing eligible in it.
+	"nothingdue": "Nothing in this idea is due today.",
 }
 
 func (s *Server) library(w http.ResponseWriter, r *http.Request, c *rc) error {

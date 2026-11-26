@@ -101,8 +101,9 @@
   <aside class="session-margin meta" aria-label="Where you are">
     <span class="margin-mode">{{icon "cards"}}Study</span>
     <span class="margin-purpose">{{.Purpose}}</span>
-    {{if .Item}}<span class="margin-idea" data-study-header>{{.Header}}</span>
+    {{if .Item}}<span class="margin-idea" data-deck-tag data-study-header>{{.Header}}</span>
     <span class="margin-count">{{.Position}} / {{.Total}}</span>{{end}}
+    {{with .Focused}}<span class="margin-focus" data-focused>{{.}} · <a class="link quiet" href="/study?all=1" data-study-all>Study all decks</a></span>{{end}}
   </aside>
 
   <div class="session-flow">

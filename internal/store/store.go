@@ -95,6 +95,8 @@ func (s *Store) migrateAdded() error {
 		// Slice 75: bridge cards and the holds they put on a parent card.
 		bridgesSchema,
 		bridgesIndex,
+		// S111-1: the day's first presentations of new cards.
+		firstPresentationsSchema,
 	} {
 		if _, err := s.db.Exec(q); err != nil {
 			return err
@@ -128,6 +130,10 @@ func (s *Store) migrateAdded() error {
 		return err
 	}
 	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS topups_pending ON topups(status, created_at)`); err != nil {
+		return err
+	}
+	// S111-1: the idea a focused session is over (0: every deck).
+	if err := s.addColumn("study_sessions", "scope_idea_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	for _, c := range reviewColumns {
@@ -307,7 +313,7 @@ func LatestSnapshot(dir string) (string, time.Time) {
 // Export, per-user restore and the privacy tests all walk this list.
 var userTables = []string{
 	"subscriptions", "subscription_attempts", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items", "item_bridges",
-	"study_sessions", "session_items", "reviews", "drafts", "suggestions", "agent_tokens",
+	"study_sessions", "session_items", "first_presentations", "reviews", "drafts", "suggestions", "agent_tokens",
 }
 
 // UserTables returns the names of the tables that hold learner-owned rows.
