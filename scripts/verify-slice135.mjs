@@ -130,10 +130,12 @@ const heroMetrics = () => {
   const vw = document.documentElement.clientWidth;
   const visible = (e) => { const s = getComputedStyle(e); const b = e.getBoundingClientRect(); return s.display !== "none" && s.visibility !== "hidden" && b.width > 0 && b.height > 0; };
   const heroBtns = [...hero.querySelectorAll("a, button")].filter((e) => !e.closest("[data-specimen]") && visible(e));
-  const btn = q(".hero .btn-accent"), terms = q("[data-trial-terms]"), h1 = q(".hero h1"), spec = q("[data-specimen]");
+  const btn = q(".hero .btn-accent"), terms = q("[data-trial-terms]") || q(".trial-terms-line"), h1 = q(".hero h1"), spec = q("[data-specimen]");
   const label = document.createRange(); label.selectNodeContents(btn);
   const lb = label.getBoundingClientRect(), bb = btn.getBoundingClientRect();
   const termTops = [...new Set([...terms.querySelectorAll(".nowrap")].flatMap((s) => [...s.getClientRects()].map((r) => Math.round(r.top))))];
+  const all = document.createRange(); all.selectNodeContents(terms);
+  const lineCount = new Set([...all.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size;
   const phraseRects = [...terms.querySelectorAll(".nowrap")].map((s) => s.getClientRects().length);
   const signins = [...document.querySelectorAll("a, button")].filter((e) => /^\s*sign in\s*$/i.test(e.textContent) && visible(e));
   const wm = q("header .wordmark");
@@ -147,7 +149,7 @@ const heroMetrics = () => {
     dots: before.maskImage || before.webkitMaskImage || "",
     heroBtns: heroBtns.map((e) => e.textContent.trim()), btn: box(btn), btnBg: getComputedStyle(btn).backgroundColor,
     labelCentre: (lb.left + lb.width / 2) - (bb.left + bb.width / 2),
-    terms: box(terms), termsText: terms.textContent.replace(/\s+/g, " ").trim(), termLines: termTops.length, lines, phraseRects, lineH,
+    terms: box(terms), termsText: terms.textContent.replace(/\s+/g, " ").trim(), termLines: lineCount, lines, phraseRects, lineH,
     termsColor: getComputedStyle(terms).color, termsFont: getComputedStyle(terms).fontFamily, termsWrap: getComputedStyle(terms).textWrap || getComputedStyle(terms).textWrapStyle || "",
     h1: box(h1), spec: box(spec), lede: box(q(".hero .lede")),
     signins: signins.map((e) => ({ inHeader: !!e.closest("header"), ...box(e) })), wordmark: box(wm),
@@ -179,7 +181,7 @@ const stageMetrics = () => {
   const study = s.querySelector("[data-specimen-study]");
   if (study && vis(study)) gaps(study, [...study.children].filter(vis), "study picture");
   const fb = fig.getBoundingClientRect(), cs = getComputedStyle(fig);
-  const head = fig.querySelector("[data-subject-header]").getBoundingClientRect();
+  const head = (fig.querySelector("[data-subject-header]") || fig.querySelector(".specimen-place")).getBoundingClientRect();
   const field = s.querySelector(".specimen-field"), mic = s.querySelector(".specimen-mic"), chk = s.querySelector(".specimen-check"), next = s.querySelector(".specimen-next");
   const focusable = study ? study.querySelectorAll("a, button, input, textarea, select, [tabindex]").length : 0;
   const steps = fig.querySelector(".specimen-steps").getBoundingClientRect();
@@ -200,7 +202,8 @@ const stageMetrics = () => {
 };
 
 const headerMetrics = () => {
-  const h = document.querySelector("[data-subject-header]");
+  const h = document.querySelector("[data-subject-header]") || document.querySelector(".specimen-place");
+  if (!h.querySelector("svg.icon") || !h.querySelector(".specimen-deck-name")) return { text: h.textContent.replace(/\s+/g, " ").trim(), missing: true };
   const icon = h.querySelector("svg.icon");
   const name = h.querySelector(".specimen-deck-name"), sec = h.querySelector(".specimen-section"), count = h.querySelector(".specimen-count");
   const ib = icon.getBoundingClientRect(), nb = name.getBoundingClientRect(), cb = count.getBoundingClientRect();
@@ -427,7 +430,7 @@ const CONFIGS = [
 
 let port = PORT0;
 for (const c of CONFIGS) await journey(c, port++);
-if (!ONLY) await edges(port++);
+if (!ONLY) await edges(port++).catch((e) => check("edge-cases", "edge cases ran to the end", false, e.stack || String(e)));
 fs.writeFileSync(path.join(MEDIA, "s135-results.json"), JSON.stringify({ sha: SHA, checks: results.length, failed, results }, null, 2));
 console.log(`\n${results.length - failed}/${results.length} checks PASS`);
 process.exit(failed ? 1 : 0);
