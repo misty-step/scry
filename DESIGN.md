@@ -2,7 +2,7 @@
 
 Scry is for someone who wants what matters to stay in their head, for about five minutes a day. It should feel like a precise, warm instrument: closer to Warp and Supermemory than to a book or a game. [PRODUCT.md](PRODUCT.md) owns what Scry does. This file owns how it looks and feels.
 
-Accepted by Phaedrus on 2026-11-17 (chat with Draper, shaped under [MIS-1210](https://linear.app/misty-step/issue/MIS-1210)), refined with Scry's custom brand mark and craft pass on 2026-11-23, and on 2026-11-26 with model-only grading, named waits and recovery, universal subtle motion and the S3-A brand mark ([S113-1] to [S113-3]). The tokens and rules below are what bind.
+Accepted by Phaedrus on 2026-11-17 (chat with Draper, shaped under [MIS-1210](https://linear.app/misty-step/issue/MIS-1210)), refined with Scry's custom brand mark and craft pass on 2026-11-23, and on 2026-11-26 with model-only grading, named waits and recovery, universal subtle motion and a new brand mark ([S113-1] to [S113-3]), and later on 2026-11-26 by restoring that mark exactly as approved in Visual Lab 1, the L3-S3 Fanned Scry Reveal · Cobalt Tilt ([S125-1]). The tokens and rules below are what bind.
 
 ## Principles
 
@@ -60,7 +60,7 @@ Ink steps are the base ink at fixed opacity, so both modes keep the same hierarc
 | ink-muted | ink at 60% | ink at 60% | Labels, sources, receded items, upcoming items |
 | ink-ghost | ink at 20% | ink at 22% | Control hairlines, disabled, the dot grid; never visible text |
 | line | ink at 12% | ink at 16% | Hairlines and rules |
-| accent | `#0562EF` | `#4D8DFF` | Signal Cobalt: the one main action, anything due, concept links, focus ring, the brand mark's top card |
+| accent | `#0562EF` | `#4D8DFF` | Signal Cobalt: the one main action, anything due, concept links, focus ring (the brand mark's top card uses its own fixed `#0562EF` / `#3B82F6`; see Brand mark) |
 | right | `#1E7F4E` | `#5FD39A` | The "right" tag |
 | close | `#EEF17C` fill, ink text | `#EEF17C` at 30% fill, ink text | Highlighter mark behind missing words in an exact text, and matched words in search |
 | missed | `#C23B26` | `#FF7A66` | The strike through a wrong answer and the "missed" tag |
@@ -100,14 +100,51 @@ Only three things repeat: the landing Study Specimen (the one ambient demonstrat
 
 **Reduced motion.** Under `prefers-reduced-motion: reduce` every transition becomes its final state or a plain opacity fade of at most 120 ms: nothing translates, scales, nudges, pulses, draws or loops (the strike shows already drawn, "checking" sits still, the Specimen rests on Judged, the spinner and progress line are still), and every state still says itself in words.
 
-## Brand mark and wordmark ([S113-3])
+## Brand mark and wordmark ([S113-3], restored exactly in [S125-1])
 
-Scry's mark is **S3-A**, the Signal Cobalt prompt-bar deck: a clean geometric stack of three cards, a quiet nod to scrying, looking at the top card of a library. It pairs with the lowercase Geist Mono wordmark (`scry`, ink). The earlier scrying-lens mark is retired from every surface.
+Scry's mark is **L3-S3, the Fanned Scry Reveal · Cobalt Tilt**, exactly as Phaedrus approved it in Visual Lab 1: three solid portrait playing cards fanned up and to the right, the top one in Signal Cobalt tilted 10° clockwise to reveal its prompt bar, a quiet nod to scrying, turning up the top card of a deck. It pairs with the lowercase Geist Mono wordmark (`scry`, ink). It replaces both the earlier scrying-lens mark and the interim flat-outline deck of PR #515 on every surface; neither may ship anywhere.
 
-- **Geometry (24 px grid).** Three identical 14 × 10 cards with 1.5 px corners, each 2.5 px up and 2.5 px right of the one in front: the top card at (2.5, 9.5), the nearer receding card at (5, 7), the farther at (7.5, 4.5), so the deck sits centred on the grid.
-- **Receding cards.** Outline only, 1.5 px stroke: the nearer in `ink-muted`, the farther in ink at 35%. Each is filled with `page` so it hides the one behind it; only their top and right edges show.
-- **Top card.** A solid `accent` fill (Signal Cobalt, `#0562EF` light, `#4D8DFF` dark) with one minimal horizontal prompt bar knocked out in `page`: 2 px tall with round caps, from x 5.5 to 12, centred on the card's height (y 14.5).
-- **Sizes.** 16 px favicon: one SVG that follows the system mode, plus 16 and 32 px PNGs hinted so every card edge lands on whole pixels, card edges stay at least 1 px apart and the prompt bar stays at least 1 px tall and clear of the card's edges. 24 px in the top bar, 8 px before `scry`, centred on the wordmark (in the 56 px signed-out header and the 48 px phone brand row alike). 64 px app icon: the mark at 40 px, centred in a continuous-corner squircle, `#FFFFFF` ground with a 1 px `line` edge in light and `#12101A` in dark; the dark icon is the home-screen and maskable icon (the mark inside the safe zone) and the social preview icon.
+**Canonical SVG (binding, verbatim).** This geometry is the mark. Every surface draws it from these numbers on a 32 × 32 grid, with no reinterpretation, redrawing, re-proportioning or rounding: three solid **portrait** cards, each `width="16" height="19" rx="2.5"` (taller than wide), stacked back to front, the top card rotated **10° clockwise** around (19, 14). Only the fills change between light and dark.
+
+Light (`page` `#FFFFFF`):
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect x="5" y="10" width="16" height="19" rx="2.5" fill="#CBD5E1"/>
+  <rect x="7" y="7.5" width="16" height="19" rx="2.5" fill="#1E293B"/>
+  <g transform="rotate(10 19 14)">
+    <rect x="11" y="3.5" width="16" height="19" rx="2.5" fill="#0562EF"/>
+    <rect x="14.5" y="7" width="9" height="2" rx="1" fill="#FFFFFF" opacity="0.85"/>
+  </g>
+</svg>
+```
+
+Dark (`page` `#12101A`):
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect x="5" y="10" width="16" height="19" rx="2.5" fill="#334155"/>
+  <rect x="7" y="7.5" width="16" height="19" rx="2.5" fill="#64748B"/>
+  <g transform="rotate(10 19 14)">
+    <rect x="11" y="3.5" width="16" height="19" rx="2.5" fill="#3B82F6"/>
+    <rect x="14.5" y="7" width="9" height="2" rx="1" fill="#DBEAFE" opacity="0.85"/>
+  </g>
+</svg>
+```
+
+| Layer | Geometry | Light | Dark |
+| --- | --- | --- | --- |
+| Back card | `<rect x="5" y="10" width="16" height="19" rx="2.5"/>`, upright | `#CBD5E1` | `#334155` |
+| Middle card | `<rect x="7" y="7.5" width="16" height="19" rx="2.5"/>`, upright | `#1E293B` | `#64748B` |
+| Top card | `<rect x="11" y="3.5" width="16" height="19" rx="2.5"/>` inside `<g transform="rotate(10 19 14)">` | `#0562EF` | `#3B82F6` |
+| Prompt bar | `<rect x="14.5" y="7" width="9" height="2" rx="1" opacity="0.85"/>` inside the same rotated group | `#FFFFFF` | `#DBEAFE` |
+
+- **What must survive at every size.** Portrait cards (16 wide by 19 tall, never landscape), solid layered slabs (filled, never outlined or stroked), the back and middle cards upright and the cobalt top card tilted 10° clockwise with its prompt bar riding the tilt. The whole mark sits inside the 32 × 32 grid with nothing clipped. These fills are the mark's own fixed brand colors: they do not follow the theme tokens (the dark top card is `#3B82F6`, not the `accent` `#4D8DFF`), and only the light/dark pair switches.
+- **Surfaces.** Each one uses the canonical SVG above, scaled whole:
+  - **Header:** 24 px square in the top bar, 8 px before the `scry` wordmark and centred on it (in the 56 px signed-out header and the 48 px phone brand row alike), light or dark fills by the active mode.
+  - **SVG favicon:** one `viewBox="0 0 32 32"` SVG carrying both fill sets, switched by `prefers-color-scheme`.
+  - **PNG favicons, 16 px and 32 px:** rasterised from the canonical SVG and hinted for crispness: the upright cards' edges land on whole pixels, and the portrait proportion, the three solid layered slabs and the tilted cobalt top card with its lighter prompt bar all stay readable. Hinting may snap edges but never turns the cards landscape, outlines them, drops a card or straightens the tilt.
+  - **App icons, 64, 180, 192 and 512 px:** the mark centred in a continuous-corner squircle with a safe-zone margin (the mark at 62.5% of the icon, 40 px on the 64 px icon, so it stays inside the maskable safe zone), on `#FFFFFF` with a 1 px `line` edge using the light fills, or on `#12101A` using the dark fills. The dark icon is the home-screen (`apple-touch-icon` at 180 px), manifest and maskable icon (192 and 512 px) and the social preview icon.
 - **Rules.** The mark is a brand shape, not an interface icon: the rule against filled or colored icon tiles governs icons, and the Study icon (a stack of cards) stays a monochrome line glyph in its text color, so the two are never confused. The mark never animates, never sits on the accent and never appears without `scry` in the header. The squircle is the one rounded surface Scry ships, and only as the app icon.
 
 ## Key screens and states
