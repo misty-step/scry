@@ -1,9 +1,7 @@
 package web
 
 import (
-	"bytes"
 	"encoding/binary"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -17,222 +15,275 @@ import (
 	"testing"
 )
 
-// [S113-3] One mark everywhere: the S3-A deck of cards. These tests pin the
-// drawing itself (geometry, palette, hinting, app icons); the served side
-// (header, favicon, manifest, apple-touch icon) is
-// TestStory_S113_3_OneMarkEverywhere.
+// [S113-3] [S125-1] One mark everywhere: the L3-S3 fanned deck with its
+// cobalt top card tilted, drawn on every surface from DESIGN.md's one
+// canonical SVG, verbatim. These tests pin the drawing itself (geometry,
+// fills, hinting, app icons); the served side (header, favicon, manifest,
+// apple-touch icon) is TestStory_S113_3_S125_1_OneL3S3MarkEverywhere.
 
-// The S3-A palette (DESIGN.md, Color): receding cards are ink at 35% and 60%
-// (ink-muted) composited over page.
+// The layer table's fixed brand fills (DESIGN.md, Brand mark and wordmark).
 var (
-	s3aLight = map[string]string{"page": "#FFFFFF", "accent": "#0562EF", "near": "#6D7073", "far": "#AAABAD"}
-	s3aDark  = map[string]string{"page": "#12101A", "accent": "#4D8DFF", "near": "#A09FA3", "far": "#65646A"}
+	l3Light = map[string]string{"back": "#CBD5E1", "middle": "#1E293B", "top": "#0562EF", "bar": "#FFFFFF"}
+	l3Dark  = map[string]string{"back": "#334155", "middle": "#64748B", "top": "#3B82F6", "bar": "#DBEAFE"}
 )
 
 func hexColor(s string) color.NRGBA {
 	var c color.NRGBA
 	c.A = 255
 	for i, p := range []*uint8{&c.R, &c.G, &c.B} {
-		var v uint8
-		for _, ch := range strings.ToLower(s[1+2*i : 3+2*i]) {
-			v *= 16
-			if ch >= 'a' {
-				v += uint8(ch-'a') + 10
-			} else {
-				v += uint8(ch - '0')
-			}
-		}
-		*p = v
+		v, _ := strconv.ParseUint(s[1+2*i:3+2*i], 16, 8)
+		*p = uint8(v)
 	}
 	return c
 }
 
-func TestDesign_S113_3_InkStepsAreOverPage(t *testing.T) {
-	mix := func(fg, bg string, a float64) string {
-		f, b := hexColor(fg), hexColor(bg)
-		ch := func(x, y uint8) uint8 { return uint8(math.Round(float64(y) + a*(float64(x)-float64(y)))) }
-		return fmt.Sprintf("#%02X%02X%02X", ch(f.R, b.R), ch(f.G, b.G), ch(f.B, b.B))
+func readRepo(t *testing.T, name string) string {
+	t.Helper()
+	b, err := staticFS.ReadFile(name)
+	if err != nil {
+		b, err = os.ReadFile(name)
 	}
-	for name, p := range map[string]map[string]string{"light": s3aLight, "dark": s3aDark} {
-		ink := map[string]string{"light": "#0B1015", "dark": "#FFFFFF"}[name]
-		if got := mix(ink, p["page"], 0.60); got != p["near"] {
-			t.Errorf("%s ink-muted over page = %s, palette says %s", name, got, p["near"])
-		}
-		if got := mix(ink, p["page"], 0.35); got != p["far"] {
-			t.Errorf("%s ink 35%% over page = %s, palette says %s", name, got, p["far"])
-		}
-	}
-}
-
-// The 24 px drawing: three identical 14 x 10 cards (rx 1.5), back to front,
-// each 2.5 px up and right of the one in front; receding cards are an ink
-// step with a page face inset by the 1.5 px outline; the top card is the
-// accent with a 2 px round-capped prompt bar in page from x 5.5 to 12,
-// centred on y 14.5. The inline mark and the raster sources are one drawing.
-func TestDesign_S113_3_MarkGeometryIsOneDrawing(t *testing.T) {
-	want := []string{
-		`<rect class="mark-far" x="7.5" y="4.5" width="14" height="10" rx="1.5"`,
-		`<rect class="mark-face" x="9" y="6" width="11" height="7"`,
-		`<rect class="mark-near" x="5" y="7" width="14" height="10" rx="1.5"`,
-		`<rect class="mark-face" x="6.5" y="8.5" width="11" height="7"`,
-		`<rect class="mark-top" x="2.5" y="9.5" width="14" height="10" rx="1.5"`,
-		`<rect class="mark-bar" x="5.5" y="13.5" width="6.5" height="2" rx="1"`,
-	}
-	inline := string(brandMark())
-	if !strings.HasPrefix(inline, `<svg class="mark" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">`) {
-		t.Errorf("inline mark opens %.120q", inline)
-	}
-	at := 0
-	for _, w := range want {
-		i := strings.Index(inline[at:], w)
-		if i < 0 {
-			t.Fatalf("inline mark is missing %q (in back-to-front order)", w)
-		}
-		at += i + len(w)
-	}
-	// Fallback fills are the light palette (the style sheet sets the theme's).
-	has := func(where, body string, wants ...string) {
-		t.Helper()
-		for _, w := range wants {
-			if !strings.Contains(body, w) {
-				t.Errorf("%s is missing %q", where, w)
-			}
-		}
-	}
-	has("inline mark", inline, `mark-far" x="7.5" y="4.5" width="14" height="10" rx="1.5" fill="#AAABAD"`,
-		`mark-near" x="5" y="7" width="14" height="10" rx="1.5" fill="#6D7073"`, `mark-top" x="2.5" y="9.5" width="14" height="10" rx="1.5" fill="#0562EF"`,
-		`mark-bar" x="5.5" y="13.5" width="6.5" height="2" rx="1" fill="#FFFFFF"`)
-	split := strings.Index(inline, `<g class="mark-hinted" display="none" shape-rendering="crispEdges">`)
-	if split < 0 {
-		t.Fatal("the inline mark has no 1x drawing")
-	}
-	exact, hinted := inline[:split], inline[split:]
-	for _, bad := range []string{"<animate", "stroke=", "<circle", "<path"} {
-		if strings.Contains(exact, bad) || (bad != "<path" && strings.Contains(hinted, bad)) {
-			t.Errorf("inline mark contains %q", bad)
-		}
-	}
-
-	// The rule, read back from the drawing: three identical 14 x 10 cards
-	// with 1.5 px corners, each 2.5 px up and right of the one in front, the
-	// deck centred on the grid, a 1.5 px outline, and a 2 px round-capped bar
-	// from x 5.5 to 12 centred on the top card's height.
-	rect := regexp.MustCompile(`<rect class="(mark-[a-z]+)" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"(?: rx="([\d.]+)")?`)
-	type box struct{ x, y, w, h, rx float64 }
-	var cards, faces []box
-	var bar box
-	for _, m := range rect.FindAllStringSubmatch(exact, -1) {
-		var v [5]float64
-		for i := range v {
-			v[i], _ = strconv.ParseFloat(m[2+i], 64)
-		}
-		b := box{v[0], v[1], v[2], v[3], v[4]}
-		switch m[1] {
-		case "mark-far", "mark-near", "mark-top":
-			cards = append(cards, b)
-		case "mark-face":
-			faces = append(faces, b)
-		case "mark-bar":
-			bar = b
-		}
-	}
-	if len(cards) != 3 || len(faces) != 2 {
-		t.Fatalf("%d cards and %d faces", len(cards), len(faces))
-	}
-	for i, c := range cards {
-		if c.w != 14 || c.h != 10 || c.rx != 1.5 {
-			t.Errorf("card %d is %vx%v rx %v", i, c.w, c.h, c.rx)
-		}
-		if i > 0 && (cards[i-1].x-c.x != 2.5 || c.y-cards[i-1].y != 2.5) {
-			t.Errorf("card %d is not 2.5 px down-left of the one behind", i)
-		}
-		if i < 2 && faces[i] != (box{c.x + 1.5, c.y + 1.5, c.w - 3, c.h - 3, 0}) {
-			t.Errorf("card %d's outline is not 1.5 px: face %+v", i, faces[i])
-		}
-	}
-	if cards[2].x+cards[0].x+cards[0].w != 24 || cards[0].y+cards[2].y+cards[2].h != 24 {
-		t.Error("the deck is not centred on the 24 px grid")
-	}
-	if top := cards[2]; bar.h != 2 || bar.rx != 1 || bar.x != 5.5 || bar.x+bar.w != 12 || bar.y+bar.h/2 != 14.5 || top.y+top.h/2 != 14.5 {
-		t.Errorf("the prompt bar is %+v on the top card %+v", bar, top)
-	}
-
-	// The 1x drawing: the same deck on whole pixels, 3 px steps, 2 px
-	// outlines 1 px apart, the bar 2 px tall and clear of the card's edges;
-	// its raster source draws the same shapes.
-	src, err := os.ReadFile("brand/mark-24-hinted-light.svg")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, w := range []string{
-		`<path class="mark-far" d="M9 4H21V5H22V13H21V14H9V13H8V5H9Z"`, `<rect class="mark-face" x="10" y="6" width="10" height="6"`,
-		`<path class="mark-near" d="M6 7H18V8H19V16H18V17H6V16H5V8H6Z"`, `<rect class="mark-face" x="7" y="9" width="10" height="6"`,
-		`<path class="mark-top" d="M3 10H15V11H16V19H15V20H3V19H2V11H3Z"`, `<rect class="mark-bar" x="5" y="14" width="7" height="2"`,
+	return string(b)
+}
+
+// designMarks returns DESIGN.md's two canonical SVG blocks (light, dark),
+// verbatim, from the "Brand mark and wordmark" section.
+func designMarks(t *testing.T) (light, dark string) {
+	t.Helper()
+	doc := readRepo(t, "../../DESIGN.md")
+	start := strings.Index(doc, "\n## Brand mark and wordmark")
+	if start < 0 {
+		t.Fatal("DESIGN.md has no Brand mark and wordmark section")
+	}
+	sec := doc[start+1:]
+	if end := strings.Index(sec, "\n## "); end >= 0 {
+		sec = sec[:end]
+	}
+	blocks := regexp.MustCompile("(?s)```svg\n(.*?)```").FindAllStringSubmatch(sec, -1)
+	if len(blocks) != 2 {
+		t.Fatalf("DESIGN.md's brand section has %d svg blocks, want 2", len(blocks))
+	}
+	if !strings.Contains(sec, "Light (`page` `#FFFFFF`):\n\n```svg") || !strings.Contains(sec, "Dark (`page` `#12101A`):\n\n```svg") {
+		t.Fatal("DESIGN.md's svg blocks are not labelled Light then Dark")
+	}
+	return blocks[0][1], blocks[1][1]
+}
+
+// inner is an SVG's drawing without its <svg> wrapper, the whitespace
+// between tags or any class attribute: the geometry and fills alone.
+func inner(svg string) string {
+	svg = regexp.MustCompile(`>\s+<`).ReplaceAllString(strings.TrimSpace(svg), "><")
+	svg = regexp.MustCompile(` class="[^"]*"`).ReplaceAllString(svg, "")
+	svg = regexp.MustCompile(`(?s)<style>.*?</style>`).ReplaceAllString(svg, "")
+	svg = strings.TrimSuffix(svg[strings.Index(svg, ">")+1:], "</svg>")
+	return svg
+}
+
+// The canonical SVG is binding and verbatim: DESIGN.md's light and dark
+// blocks are byte for byte the committed sources, and every surface (the
+// inline header mark, the SVG favicon, the 64 px app icons and the maskable
+// icon) draws exactly the same elements with the same numbers and fills.
+func TestDesign_S125_1_CanonicalSVGIsDesignVerbatim(t *testing.T) {
+	light, dark := designMarks(t)
+	if got := readRepo(t, "brand/mark-light.svg"); got != light {
+		t.Errorf("brand/mark-light.svg is not DESIGN.md's light block:\n%s\nwant\n%s", got, light)
+	}
+	if got := readRepo(t, "brand/mark-dark.svg"); got != dark {
+		t.Errorf("brand/mark-dark.svg is not DESIGN.md's dark block:\n%s\nwant\n%s", got, dark)
+	}
+	// The blocks themselves say what the layer table says: three portrait
+	// 16 x 19 cards (rx 2.5) back to front, the top one and its bar inside
+	// one 10 degree clockwise rotation about (19, 14); only fills differ.
+	for name, c := range map[string]struct {
+		svg string
+		pal map[string]string
+	}{"light": {light, l3Light}, "dark": {dark, l3Dark}} {
+		want := `<rect x="5" y="10" width="16" height="19" rx="2.5" fill="` + c.pal["back"] + `"/>` +
+			`<rect x="7" y="7.5" width="16" height="19" rx="2.5" fill="` + c.pal["middle"] + `"/>` +
+			`<g transform="rotate(10 19 14)">` +
+			`<rect x="11" y="3.5" width="16" height="19" rx="2.5" fill="` + c.pal["top"] + `"/>` +
+			`<rect x="14.5" y="7" width="9" height="2" rx="1" fill="` + c.pal["bar"] + `" opacity="0.85"/>` +
+			`</g>`
+		if got := inner(c.svg); got != want {
+			t.Errorf("DESIGN.md %s block draws\n%s\nwant the layer table's\n%s", name, got, want)
+		}
+		if !strings.HasPrefix(c.svg, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">`) {
+			t.Errorf("DESIGN.md %s block is not on the 32 x 32 grid", name)
+		}
+	}
+	lightInner, darkInner := inner(light), inner(dark)
+
+	// The header: the canonical light drawing scaled whole to 24 px (the
+	// style sheet switches the fills to the dark pair in dark mode).
+	header := string(brandMark())
+	if !strings.HasPrefix(header, `<svg class="mark" viewBox="0 0 32 32" width="24" height="24" fill="none" aria-hidden="true" focusable="false">`) {
+		t.Errorf("header mark opens %.120q", header)
+	}
+	if got := inner(header); got != lightInner {
+		t.Errorf("header mark draws\n%s\nwant\n%s", got, lightInner)
+	}
+	for _, cls := range []string{"mark-back", "mark-middle", "mark-top", "mark-bar"} {
+		if strings.Count(header, `class="`+cls+`"`) != 1 {
+			t.Errorf("header mark has no single %s layer", cls)
+		}
+	}
+
+	// The SVG favicon: the same grid and drawing, both fill sets switched by
+	// prefers-color-scheme.
+	fav := readRepo(t, "static/favicon.svg")
+	if !strings.HasPrefix(fav, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"`) {
+		t.Errorf("favicon.svg opens %.100q", fav)
+	}
+	if got := inner(fav); got != lightInner {
+		t.Errorf("favicon.svg draws\n%s\nwant\n%s", got, lightInner)
+	}
+	if !strings.Contains(fav, "<style>@media (prefers-color-scheme:dark){.mark-back{fill:#334155}.mark-middle{fill:#64748B}.mark-top{fill:#3B82F6}.mark-bar{fill:#DBEAFE}}</style>") {
+		t.Error("favicon.svg does not switch to the dark fills by prefers-color-scheme")
+	}
+
+	// The app icons: the canonical drawing scaled whole to 62.5% (40 px on
+	// 64), centred: light fills on the light icon, dark on the dark and
+	// maskable ones.
+	group := regexp.MustCompile(`<g class="mark" transform="translate\(12 12\) scale\(1\.25\)">(.*)</g></svg>`)
+	for file, want := range map[string]string{
+		"static/app-icon.svg": lightInner, "static/app-icon-dark.svg": darkInner, "brand/icon-maskable.svg": darkInner,
 	} {
-		if !strings.Contains(hinted, w+" fill=") {
-			t.Errorf("hinted header mark is missing %q", w)
+		m := group.FindStringSubmatch(readRepo(t, file))
+		if m == nil {
+			t.Errorf("%s has no mark scaled whole to 40 px", file)
+			continue
 		}
-		if !strings.Contains(string(src), w+"/>") {
-			t.Errorf("brand/mark-24-hinted-light.svg is missing %q", w)
+		if m[1] != want {
+			t.Errorf("%s draws\n%s\nwant\n%s", file, m[1], want)
 		}
 	}
 
-	for file, pal := range map[string]map[string]string{"brand/mark-24-light.svg": s3aLight, "brand/mark-24-dark.svg": s3aDark} {
-		b, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
+	// The hinted favicon sources: the tilted top card and its bar exactly as
+	// drawn; the two upright cards only snapped so their edges land on whole
+	// pixels at the favicon's size, still portrait, still fanned up and
+	// right (middle 2 units right of and above the back card), each within
+	// half a pixel of the canonical position.
+	rotated := lightInner[strings.Index(lightInner, "<g "):]
+	rect := regexp.MustCompile(`^<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" rx="2.5" fill="(#[0-9A-F]{6})"/>`)
+	for _, tc := range []struct {
+		file string
+		size float64
+		pal  map[string]string
+	}{
+		{"brand/favicon-16-light.svg", 16, l3Light}, {"brand/favicon-16-dark.svg", 16, l3Dark},
+		{"brand/favicon-32-light.svg", 32, l3Light}, {"brand/favicon-32-dark.svg", 32, l3Dark},
+	} {
+		src := readRepo(t, tc.file)
+		if !strings.Contains(src, `viewBox="0 0 32 32" width="`+strconv.Itoa(int(tc.size))+`"`) {
+			t.Errorf("%s is not the 32 grid at %v px", tc.file, tc.size)
 		}
-		s := string(b)
-		for _, w := range want {
-			has(file, s, w+"/>")
+		body := inner(src)
+		wantRot := rotated
+		if tc.pal["top"] != l3Light["top"] {
+			wantRot = darkInner[strings.Index(darkInner, "<g "):]
 		}
-		has(file, s, ".mark-far{fill:"+pal["far"]+"}", ".mark-near{fill:"+pal["near"]+"}",
-			".mark-face,.mark-bar{fill:"+pal["page"]+"}", ".mark-top{fill:"+pal["accent"]+"}")
+		if !strings.HasSuffix(body, wantRot) {
+			t.Errorf("%s does not draw the canonical tilted top card: %s", tc.file, body)
+		}
+		px := tc.size / 32
+		var cards [2][4]float64
+		rest := body
+		for i, layer := range []string{"back", "middle"} {
+			m := rect.FindStringSubmatch(rest)
+			if m == nil {
+				t.Fatalf("%s: no upright %s card in %s", tc.file, layer, rest)
+			}
+			if m[5] != tc.pal[layer] {
+				t.Errorf("%s %s card fill %s, want %s", tc.file, layer, m[5], tc.pal[layer])
+			}
+			for k := 0; k < 4; k++ {
+				cards[i][k], _ = strconv.ParseFloat(m[1+k], 64)
+			}
+			x, y, w, h := cards[i][0], cards[i][1], cards[i][2], cards[i][3]
+			for _, edge := range []float64{x, y, x + w, y + h} {
+				if v := edge * px; v != math.Round(v) {
+					t.Errorf("%s %s card edge %v lands on %v px", tc.file, layer, edge, v)
+				}
+			}
+			if !(h > w) || w != 16 {
+				t.Errorf("%s %s card is %vx%v, not a portrait 16-wide card", tc.file, layer, w, h)
+			}
+			canon := map[string][2]float64{"back": {5, 10}, "middle": {7, 7.5}}[layer]
+			if math.Abs(x-canon[0])*px > 0.5 || math.Abs(y-canon[1])*px > 0.5 || math.Abs(h-19)*px > 0.5 {
+				t.Errorf("%s %s card moved more than half a pixel: %v", tc.file, layer, cards[i])
+			}
+			rest = rest[len(m[0]):]
+		}
+		if cards[1][0]-cards[0][0] != 2 || cards[0][1]-cards[1][1] != 2 {
+			t.Errorf("%s: the middle card is not fanned up and right of the back card: %v", tc.file, cards)
+		}
 	}
 }
 
-// The style sheet colours the inline mark from the theme's own tokens and
-// never animates it.
-func TestDesign_S113_3_MarkFollowsTheThemeAndNeverAnimates(t *testing.T) {
-	b, err := staticFS.ReadFile("static/app.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	css := string(b)
+// The style sheet gives each layer its fixed brand fill for the active mode
+// (light by default, the dark pair under a dark system setting unless
+// Settings says light, and under Settings' dark), never the theme's accent,
+// and never animates the mark.
+func TestDesign_S125_1_MarkFillsFollowTheModeAndNeverAnimate(t *testing.T) {
+	css := readRepo(t, "static/app.css")
 	for _, w := range []string{
 		".mark { width: 24px; height: 24px; flex: none;",
-		".mark-far { fill: color-mix(in srgb, var(--ink) 35%, var(--page)); }",
-		".mark-near { fill: color-mix(in srgb, var(--ink) 60%, var(--page)); }",
-		".mark-face, .mark-bar { fill: var(--page); }",
-		".mark-top { fill: var(--accent); }",
+		".mark-back { fill: var(--mark-back); }",
+		".mark-middle { fill: var(--mark-middle); }",
+		".mark-top { fill: var(--mark-top); }",
+		".mark-bar { fill: var(--mark-bar); }",
 		".wordmark { gap: var(--s2); }",
-		"@media (max-resolution: 1dppx) {\n  .mark-exact { display: none; }\n  .mark-hinted { display: inline; }\n}",
 	} {
 		if !strings.Contains(css, w) {
 			t.Errorf("app.css is missing %q", w)
 		}
 	}
+	block := func(open string) string {
+		i := strings.Index(css, open)
+		if i < 0 {
+			t.Fatalf("app.css has no %q block", open)
+		}
+		j := strings.Index(css[i:], "\n}")
+		return css[i : i+j]
+	}
+	for open, pal := range map[string]map[string]string{
+		":root {\n": l3Light, ":root:not([data-theme=\"light\"]) {": l3Dark, ":root[data-theme=\"dark\"] {": l3Dark,
+	} {
+		b := block(open)
+		for _, layer := range []string{"back", "middle", "top", "bar"} {
+			if !strings.Contains(b, "--mark-"+layer+": "+pal[layer]+";") {
+				t.Errorf("%s sets no --mark-%s: %s", open, layer, pal[layer])
+			}
+		}
+	}
+	if !strings.Contains(css, "@media (prefers-color-scheme: dark) {\n  :root:not([data-theme=\"light\"]) {") {
+		t.Error("the dark mark fills do not follow the system setting")
+	}
 	// Every rule whose selector names the mark (not .trail-mark, not the
-	// highlighter <mark>) sets no motion.
+	// highlighter <mark>) sets no motion and no theme accent.
 	rule := regexp.MustCompile(`([^{}]*)\{([^{}]*)\}`)
 	sel := regexp.MustCompile(`(^|[\s,>+~(])\.mark([\s,.:{\[>)-]|$)`)
 	for _, m := range rule.FindAllStringSubmatch(css, -1) {
 		if !sel.MatchString(m[1]) {
 			continue
 		}
-		for _, motion := range []string{"animation", "transition", "transform", "view-transition"} {
-			if strings.Contains(m[2], motion) {
-				t.Errorf("the mark moves: %s{%s}", strings.TrimSpace(m[1]), m[2])
+		for _, bad := range []string{"animation", "transition", "transform", "view-transition", "--accent"} {
+			if strings.Contains(m[2], bad) {
+				t.Errorf("the mark rule sets %s: %s{%s}", bad, strings.TrimSpace(m[1]), m[2])
 			}
 		}
 	}
 }
 
-// The 16 and 32 px favicons are hand-hinted: every pixel is exactly one of
-// the palette's colours or fully transparent (no anti-aliased edge), parallel
-// card edges are at least 1 px apart and the prompt bar is at least 1 px tall
-// and clear of the top card's edges.
-func TestDesign_S113_3_FaviconsAreHintedToWholePixels(t *testing.T) {
+// The 16 and 32 px PNG favicons are rasterised from the canonical SVG and
+// hinted: the upright cards' edges land on whole pixels (each pixel on
+// either side of an edge is wholly one layer), the cards stay portrait and
+// solid, the cobalt top card stays tilted with its lighter prompt bar, and
+// nothing is clipped at the image's edge.
+func TestDesign_S125_1_FaviconsAreHintedAndKeepTheMark(t *testing.T) {
 	type probe struct {
 		x, y int
 		part string
@@ -241,129 +292,121 @@ func TestDesign_S113_3_FaviconsAreHintedToWholePixels(t *testing.T) {
 		file   string
 		size   int
 		probes []probe
+		back   [4]int // x0, y0, x1, y1 in pixels (exclusive end)
+		middle [4]int
 	}{
 		{"static/favicon-16.png", 16, []probe{
-			// Column 8, top to bottom: far edge, gap, near edge, gap, top card,
-			// bar, top card.
-			{8, 1, ""}, {8, 2, "far"}, {8, 3, "page"}, {8, 4, "near"}, {8, 5, "page"},
-			{8, 6, "accent"}, {8, 8, "accent"}, {5, 9, "page"}, {3, 9, "page"}, {7, 9, "page"}, {5, 10, "accent"}, {5, 12, "accent"}, {5, 13, ""},
-			// Row 5, right to left: far edge, gap, near edge, gap.
-			{15, 5, ""}, {14, 5, "far"}, {13, 5, "page"}, {12, 5, "near"}, {11, 5, "page"},
-			// The bar is clear of the card's edges.
-			{2, 9, "accent"}, {8, 9, "accent"}, {10, 9, "accent"},
-			// Corners are notched: the hinted small radius.
-			{1, 6, ""}, {2, 6, "accent"},
-		}},
+			// Row 9: nothing, back's 1 px left edge, the middle card.
+			{1, 9, ""}, {2, 9, "back"}, {3, 9, "middle"}, {4, 9, "middle"},
+			// Column 6: the back card's 1 px foot below the middle card.
+			{6, 13, "middle"}, {6, 14, "back"}, {6, 15, ""},
+		}, [4]int{2, 5, 10, 15}, [4]int{3, 4, 11, 14}},
 		{"static/favicon-32.png", 32, []probe{
-			{15, 5, ""}, {15, 6, "far"}, {15, 7, "far"}, {15, 8, "page"}, {15, 9, "near"}, {15, 10, "near"}, {15, 11, "page"},
-			{15, 12, "accent"}, {15, 16, "accent"}, {12, 17, "page"}, {12, 18, "page"}, {12, 19, "page"}, {12, 20, "accent"}, {12, 24, "accent"}, {12, 25, ""},
-			{28, 14, ""}, {27, 14, "far"}, {26, 14, "far"}, {25, 14, "page"}, {24, 14, "near"}, {23, 14, "near"}, {22, 14, "page"}, {21, 14, "accent"},
-			{8, 17, "accent"}, {7, 18, "accent"}, {8, 18, "page"}, {16, 18, "page"}, {17, 18, "accent"},
-			{4, 12, ""}, {5, 12, "accent"},
-		}},
+			{4, 20, ""}, {5, 20, "back"}, {6, 20, "back"}, {7, 20, "middle"}, {8, 20, "middle"},
+			{12, 26, "middle"}, {12, 27, "back"}, {12, 28, "back"}, {12, 29, ""},
+		}, [4]int{5, 10, 21, 29}, [4]int{7, 8, 23, 27}},
 	} {
-		b, err := staticFS.ReadFile(tc.file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		img, err := png.Decode(bytes.NewReader(b))
+		img, err := png.Decode(strings.NewReader(readRepo(t, tc.file)))
 		if err != nil {
 			t.Fatalf("%s: %v", tc.file, err)
 		}
 		if r := img.Bounds(); r.Dx() != tc.size || r.Dy() != tc.size {
 			t.Fatalf("%s is %v, want %dx%d", tc.file, r, tc.size, tc.size)
 		}
+		at := func(x, y int) color.NRGBA { return color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA) }
 		part := func(x, y int) string {
-			c := color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
+			c := at(x, y)
 			if c.A == 0 {
 				return ""
 			}
-			for name, hex := range s3aLight {
-				if c == hexColor(hex) {
+			for _, name := range []string{"back", "middle", "top"} {
+				if c == hexColor(l3Light[name]) {
 					return name
 				}
 			}
-			return "off-palette"
-		}
-		for y := 0; y < tc.size; y++ {
-			for x := 0; x < tc.size; x++ {
-				if part(x, y) == "off-palette" {
-					t.Fatalf("%s pixel (%d,%d) is anti-aliased: %v", tc.file, x, y, img.At(x, y))
-				}
-			}
+			return "blend"
 		}
 		for _, p := range tc.probes {
 			if got := part(p.x, p.y); got != p.part {
-				t.Errorf("%s pixel (%d,%d) is %q, want %q", tc.file, p.x, p.y, got, p.part)
+				t.Errorf("%s pixel (%d,%d) is %q %v, want %q", tc.file, p.x, p.y, got, at(p.x, p.y), p.part)
+			}
+		}
+		// Whole-pixel upright edges: along each card's straight left and
+		// bottom edges (clear of the rounded corners and the tilted card),
+		// the pixel just inside is solid and the one just outside is not that
+		// card's colour at partial coverage.
+		// (Rows start below both cards' rounded top corners, so the pixel
+		// outside the middle card is the back card's solid face.)
+		for name, b := range map[string][4]int{"back": tc.back, "middle": tc.middle} {
+			solid := 0
+			for y := max(b[1], tc.back[1]) + 2; y < b[3]-2; y++ {
+				if part(b[0], y) == name {
+					solid++
+				}
+				if out := part(b[0]-1, y); out == "blend" || out == name {
+					t.Errorf("%s: the %s card's left edge bleeds into x %d at y %d: %v", tc.file, name, b[0]-1, y, at(b[0]-1, y))
+				}
+			}
+			if solid < (b[3]-b[1])/2 {
+				t.Errorf("%s: the %s card's left edge is solid on only %d rows", tc.file, name, solid)
+			}
+			if w, h := b[2]-b[0], b[3]-b[1]; !(h > w) {
+				t.Errorf("%s: the %s card is %dx%d, not portrait", tc.file, name, w, h)
+			}
+		}
+		// The top card is tilted clockwise: its left edge runs down and to
+		// the left (in a canonical 10 degree tilt, x falls by about 3.3 grid
+		// units over its 19-unit height).
+		left := func(y int) int {
+			for x := 0; x < tc.size; x++ {
+				if part(x, y) == "top" {
+					return x
+				}
+			}
+			return -1
+		}
+		hi, lo := left(tc.size*7/32), left(tc.size*19/32)
+		if hi < 0 || lo < 0 || hi-lo < tc.size/16 {
+			t.Errorf("%s: the top card is not tilted (left edge x %d at the top, %d lower down)", tc.file, hi, lo)
+		}
+		// The prompt bar: opaque pixels clearly lighter than the cobalt
+		// card, inside its upper part.
+		top := hexColor(l3Light["top"])
+		bar := 0
+		for y := 0; y < tc.size/2; y++ {
+			for x := tc.size / 3; x < tc.size; x++ {
+				if c := at(x, y); c.A == 255 && int(c.R) > int(top.R)+90 && int(c.G) > int(top.G)+60 {
+					bar++
+				}
+			}
+		}
+		if bar < tc.size/8 {
+			t.Errorf("%s: the prompt bar is not readable (%d light pixels)", tc.file, bar)
+		}
+		// Nothing clipped: the image's outermost ring is empty.
+		for i := 0; i < tc.size; i++ {
+			for _, p := range [][2]int{{i, 0}, {i, tc.size - 1}, {0, i}, {tc.size - 1, i}} {
+				if at(p[0], p[1]).A != 0 {
+					t.Errorf("%s: the mark touches the edge at %v", tc.file, p)
+				}
 			}
 		}
 	}
-
-	// The adaptive SVG favicon is the same hinted 16 px drawing, in both
-	// palettes, and /favicon.ico holds the 16 and 32 px images.
-	fav, err := staticFS.ReadFile("static/favicon.svg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	src, err := os.ReadFile("brand/favicon-16-light.svg")
-	if err != nil {
-		t.Fatal(err)
-	}
-	drawing := func(s string) string { return s[strings.Index(s, "</style>"):] }
-	if drawing(string(fav)) != drawing(string(src)) {
-		t.Error("static/favicon.svg is not the hinted 16 px drawing")
-	}
-	for _, w := range []string{
-		`viewBox="0 0 16 16"`, `shape-rendering="crispEdges"`,
-		`<path class="mark-far" d="M6 2H14V3H15V8H14V9H6V8H5V3H6Z"/>`, `<rect class="mark-face" x="6" y="3" width="8" height="5"/>`,
-		`<path class="mark-near" d="M4 4H12V5H13V10H12V11H4V10H3V5H4Z"/>`, `<rect class="mark-face" x="4" y="5" width="8" height="5"/>`,
-		`<path class="mark-top" d="M2 6H10V7H11V12H10V13H2V12H1V7H2Z"/>`, `<rect class="mark-bar" x="3" y="9" width="5" height="1"/>`,
-		".mark-far{fill:#AAABAD}.mark-near{fill:#6D7073}.mark-face,.mark-bar{fill:#FFFFFF}.mark-top{fill:#0562EF}",
-		"@media (prefers-color-scheme:dark){.mark-far{fill:#65646A}.mark-near{fill:#A09FA3}.mark-face,.mark-bar{fill:#12101A}.mark-top{fill:#4D8DFF}}",
-	} {
-		if !strings.Contains(string(fav), w) {
-			t.Errorf("favicon.svg is missing %q", w)
-		}
-	}
-	ico, err := staticFS.ReadFile("static/favicon.ico")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ico) < 6+32 || binary.LittleEndian.Uint16(ico[2:]) != 1 || binary.LittleEndian.Uint16(ico[4:]) != 2 || ico[6] != 16 || ico[6+16] != 32 {
-		t.Errorf("favicon.ico is not the 16 and 32 px icon (% x)", ico[:min(len(ico), 24)])
+	ico := readRepo(t, "static/favicon.ico")
+	if len(ico) < 6+32 || binary.LittleEndian.Uint16([]byte(ico[2:])) != 1 || binary.LittleEndian.Uint16([]byte(ico[4:])) != 2 || ico[6] != 16 || ico[6+16] != 32 {
+		t.Errorf("favicon.ico is not the 16 and 32 px icon")
 	}
 }
 
-// The 64 px app icon: the mark at 40 px centred in a continuous-corner
-// superellipse; #FFFFFF with a 1 px line edge in light, #12101A in dark. The
-// dark icon is the home-screen icon (192, 512), the maskable icon (mark
-// inside the central 80% circle) and the apple-touch and social preview
-// image.
-func TestDesign_S113_3_AppIconsSquircleAndMaskable(t *testing.T) {
-	read := func(name string) string {
-		b, err := staticFS.ReadFile(name)
-		if err != nil {
-			b, err = os.ReadFile(name)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(b)
-	}
-	mark := []string{
-		`<rect class="mark-far" x="24" y="19" width="24" height="17" rx="2.5"/>`,
-		`<rect class="mark-near" x="20" y="23" width="24" height="17" rx="2.5"/>`,
-		`<rect class="mark-top" x="16" y="27" width="24" height="17" rx="2.5"/>`,
-		`<rect class="mark-bar" x="21" y="34" width="11" height="3" rx="1.5"/>`,
-	}
+// The app icons, 64, 180, 192 and 512 px: the mark at 62.5% of the icon,
+// centred in a continuous-corner superellipse; #FFFFFF with a 1 px line edge
+// and the light fills, or #12101A with the dark fills. The dark icon is the
+// home-screen (192, 512), the maskable icon (mark inside the central 80%
+// circle) and the apple-touch and social preview image.
+func TestDesign_S125_1_AppIconsSquircleAndMaskable(t *testing.T) {
 	ground := regexp.MustCompile(`<path class="ground" d="M([^"]+)Z" fill="(#[0-9A-F]{6})"( stroke="(#[0-9A-F]{6})" stroke-width="1")?/>`)
 	for file, want := range map[string][2]string{"static/app-icon.svg": {"#FFFFFF", "#E2E2E3"}, "static/app-icon-dark.svg": {"#12101A", ""}} {
-		s := read(file)
-		for _, w := range mark {
-			if !strings.Contains(s, w) {
-				t.Errorf("%s is missing %q", file, w)
-			}
-		}
+		s := readRepo(t, file)
 		m := ground.FindStringSubmatch(s)
 		if m == nil {
 			t.Fatalf("%s has no superellipse ground", file)
@@ -371,20 +414,19 @@ func TestDesign_S113_3_AppIconsSquircleAndMaskable(t *testing.T) {
 		if m[2] != want[0] || m[4] != want[1] {
 			t.Errorf("%s ground %s edge %q, want %s edge %q", file, m[2], m[4], want[0], want[1])
 		}
-		// A superellipse, not a rounded rect: many points, and its diagonal
-		// sits between a circle's and a square's.
+		// A superellipse, not a rounded rect: many points, no arcs or curves.
 		pts := strings.Split(m[1], "L")
 		if len(pts) < 64 || strings.Contains(m[1], "A") || strings.Contains(m[1], "C") {
 			t.Errorf("%s ground is not a sampled superellipse (%d points)", file, len(pts))
 		}
 	}
-	if s := read("brand/icon-maskable.svg"); !strings.Contains(s, `<rect class="ground" width="64" height="64" fill="#12101A"/>`) || !strings.Contains(s, mark[2]) {
+	if s := readRepo(t, "brand/icon-maskable.svg"); !strings.Contains(s, `<rect class="ground" width="64" height="64" fill="#12101A"/>`) {
 		t.Error("the maskable source is not the full-bleed dark icon")
 	}
 
 	decode := func(name string, size int) image.Image {
 		t.Helper()
-		img, err := png.Decode(strings.NewReader(read(name)))
+		img, err := png.Decode(strings.NewReader(readRepo(t, name)))
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -402,54 +444,49 @@ func TestDesign_S113_3_AppIconsSquircleAndMaskable(t *testing.T) {
 		file   string
 		size   int
 		ground string
+		pal    map[string]string
 		bleed  bool
 	}{
-		{"static/app-icon-64.png", 64, "#FFFFFF", false},
-		{"static/app-icon-64-dark.png", 64, "#12101A", false},
-		{"static/icon-192.png", 192, "#12101A", false},
-		{"static/icon-512.png", 512, "#12101A", false},
-		{"static/icon-180.png", 180, "#12101A", true},
-		{"static/icon-maskable-192.png", 192, "#12101A", true},
-		{"static/icon-maskable-512.png", 512, "#12101A", true},
+		{"static/app-icon-64.png", 64, "#FFFFFF", l3Light, false},
+		{"static/app-icon-64-dark.png", 64, "#12101A", l3Dark, false},
+		{"static/icon-192.png", 192, "#12101A", l3Dark, false},
+		{"static/icon-512.png", 512, "#12101A", l3Dark, false},
+		{"static/icon-180.png", 180, "#12101A", l3Dark, true},
+		{"static/icon-maskable-192.png", 192, "#12101A", l3Dark, true},
+		{"static/icon-maskable-512.png", 512, "#12101A", l3Dark, true},
 	} {
 		img := decode(tc.file, tc.size)
 		corner := color.NRGBAModel.Convert(img.At(0, 0)).(color.NRGBA)
 		if tc.bleed != (corner.A == 255) {
 			t.Errorf("%s corner alpha %d: full bleed %v", tc.file, corner.A, tc.bleed)
 		}
-		mid := tc.size / 8
-		if !near(img.At(tc.size/2, mid), tc.ground) {
-			t.Errorf("%s ground is %v, want %s", tc.file, img.At(tc.size/2, mid), tc.ground)
+		if !near(img.At(tc.size/2, tc.size/8), tc.ground) {
+			t.Errorf("%s ground is %v, want %s", tc.file, img.At(tc.size/2, tc.size/8), tc.ground)
 		}
-		// Every pixel of the mark lies inside the maskable safe zone: the
-		// central circle whose diameter is 80% of the icon.
+		// Every layer shows in its mode's fill, and every mark pixel lies
+		// inside the maskable safe zone (the central circle whose diameter
+		// is 80% of the icon).
 		safe := 0.4 * float64(tc.size)
 		c := float64(tc.size) / 2
-		accent := false
+		seen := map[string]bool{}
 		for y := 0; y < tc.size; y++ {
 			for x := 0; x < tc.size; x++ {
 				px := img.At(x, y)
-				if near(px, "#4D8DFF") || near(px, "#0562EF") {
-					accent = true
-				}
-				if math.Hypot(float64(x)+0.5-c, float64(y)+0.5-c) <= safe {
-					continue
-				}
-				// A mark pixel is one of the mark's colours (the squircle's own
-				// anti-aliased edge is not).
-				part := false
-				for _, pal := range []map[string]string{s3aLight, s3aDark} {
-					for _, k := range []string{"accent", "near", "far"} {
-						part = part || near(px, pal[k])
+				in := math.Hypot(float64(x)+0.5-c, float64(y)+0.5-c) <= safe
+				for _, k := range []string{"back", "middle", "top"} {
+					if near(px, tc.pal[k]) {
+						seen[k] = true
+						if !in {
+							t.Fatalf("%s: mark pixel (%d,%d) %v outside the safe zone", tc.file, x, y, px)
+						}
 					}
-				}
-				if part {
-					t.Fatalf("%s: mark pixel (%d,%d) %v outside the safe zone", tc.file, x, y, px)
 				}
 			}
 		}
-		if !accent {
-			t.Errorf("%s has no accent top card", tc.file)
+		for _, k := range []string{"back", "middle", "top"} {
+			if !seen[k] {
+				t.Errorf("%s shows no %s card in %s", tc.file, k, tc.pal[k])
+			}
 		}
 	}
 	// The light icon's 1 px line edge runs along the top of the squircle.
@@ -458,10 +495,15 @@ func TestDesign_S113_3_AppIconsSquircleAndMaskable(t *testing.T) {
 	}
 }
 
-// The scrying lens is retired from every surface: no template, static file
-// or Go source still draws it, and its old files are gone.
-func TestDesign_S113_3_NoLensMarkRemains(t *testing.T) {
-	needles := []string{"le" + "ns", "fo" + "cal", "view" + "finder", "aper" + "ture", `r="2` + `.25"`, "M3 8V3" + "h5", "mark-" + "focal"}
+// The scrying lens and the interim flat outline deck of PR #515 are retired
+// from every surface ([S125-1]: "neither may ship anywhere"): no template,
+// static file, brand source, script or Go source still draws either, and the
+// lens's old files are gone.
+func TestDesign_S125_1_NoLensOrInterimDeckRemains(t *testing.T) {
+	needles := []string{"le" + "ns", "fo" + "cal", "view" + "finder", "aper" + "ture", `r="2` + `.25"`, "M3 8V3" + "h5", "mark-" + "focal",
+		// The interim S3-A deck: landscape 14 x 10 outlined cards with
+		// page-filled faces and a 1x hinted twin.
+		"s3" + "-a", "mark-" + "far", "mark-" + "near", "mark-" + "face", "mark-" + "hinted", "mark-" + "exact", `width="14` + `" height="10"`}
 	check := func(name string, b []byte) {
 		s := strings.ToLower(string(b))
 		for _, n := range needles {

@@ -1,32 +1,38 @@
 #!/usr/bin/env python3
-"""render-brand.py: draw Scry's S3-A brand mark ([S113-3]) at every size.
+"""render-brand.py: draw Scry's L3-S3 brand mark ([S113-3], [S125-1]) at every size.
 
-DESIGN.md, "Brand mark and wordmark": three identical 14 x 10 cards with
-1.5 px corners on a 24 px grid, each 2.5 px up and right of the one in front.
-The top card is a solid accent fill with a page-coloured prompt bar knocked
-out of it; the two receding cards are 1.5 px outlines (nearer ink-muted,
-farther ink at 35%) filled with page so each hides the one behind.
+DESIGN.md, "Brand mark and wordmark": the mark is L3-S3, the Fanned Scry
+Reveal · Cobalt Tilt, exactly as approved in Visual Lab 1. Its canonical SVG
+is binding and verbatim: three solid portrait cards (16 x 19, rx 2.5) on a
+32 x 32 grid, back to front, the top card rotated 10 degrees clockwise
+around (19, 14) with its prompt bar riding the tilt. Only the fills change
+between light and dark, and they are the mark's own fixed brand colours, not
+theme tokens.
 
-The 24 px drawing is internal/web/brand.go's inline header mark. The small
-sizes are hand-hinted redrawings on their own pixel grid (every edge on a
-whole pixel, parallel edges at least 1 px apart, the prompt bar at least
-1 px tall and clear of the card's edges, no anti-aliased pixel at all):
+Every surface draws that one geometry, scaled whole:
 
-  16 px  cards 10 x 7, step 2, 1 px outline, corners notched 1 px, bar 5 x 1
-  24 px  cards 14 x 10, step 3, 2 px outline, corners notched 1 px, bar 7 x 2
-         (the header mark on a 1x screen; brand.go's markHinted)
-  32 px  cards 18 x 13, step 3, 2 px outline, corners notched 1 px, bar 9 x 3
-  64 px  cards 24 x 17, step 4, 2 px outline, rx 2.5, bar 11 x 3 rx 1.5
-         (the app icon's 40 px mark, centred in a 64 px superellipse)
+  header       internal/web/brand.go renders it inline at 24 px (the same
+               numbers; TestDesign_S125_1_CanonicalSVGIsDesignVerbatim)
+  favicon.svg  the 32 x 32 grid with both fill sets, switched by
+               prefers-color-scheme
+  16/32 px     PNG favicons rasterised from the canonical SVG, hinted: the
+               two upright cards snapped so their edges land on whole pixels
+               (16 x 19 stays portrait), the tilted top card and its prompt
+               bar untouched
+  app icons    the mark at 62.5% (translate 12, scale 1.25: 40 px on 64)
+               centred in a continuous-corner superellipse, light (#FFFFFF,
+               1 px line edge, light fills) and dark (#12101A, dark fills);
+               the dark one is the 192/512 home-screen icon, and its
+               full-bleed form the maskable, apple-touch (180) and social
+               preview icon
 
 Run from the repository root (needs rsvg-convert and ImageMagick convert):
 
   python3 scripts/render-brand.py            # rewrite the committed assets
   python3 scripts/render-brand.py --evidence ~/chief-evidence/media
 
-It rewrites the served files in internal/web/static/ and the raster-only
-sources in internal/web/brand/. TestStory_S113_3_OneMarkEverywhere pins the
-results.
+It rewrites the served files in internal/web/static/ and the sources in
+internal/web/brand/. The Go tests in internal/web pin the results.
 """
 
 import argparse
@@ -39,22 +45,14 @@ import tempfile
 STATIC = "internal/web/static"
 SOURCES = "internal/web/brand"
 
+# DESIGN.md, Brand mark and wordmark: the layer table, back to front.
+LIGHT = {"back": "#CBD5E1", "middle": "#1E293B", "top": "#0562EF", "bar": "#FFFFFF", "page": "#FFFFFF"}
+DARK = {"back": "#334155", "middle": "#64748B", "top": "#3B82F6", "bar": "#DBEAFE", "page": "#12101A"}
+# The light app icon's 1 px `line` edge: ink #0B1015 at 12% over #FFFFFF.
+LINE = "#E2E2E3"
 
-def mix(fg, bg, alpha):
-    """fg over bg at alpha, as an opaque #RRGGBB (ink steps over page)."""
-    f = [int(fg[i:i + 2], 16) for i in (1, 3, 5)]
-    b = [int(bg[i:i + 2], 16) for i in (1, 3, 5)]
-    return "#" + "".join("%02X" % round(bb + alpha * (ff - bb)) for ff, bb in zip(f, b))
-
-
-# DESIGN.md, Color. Receding cards use the ink steps composited over page, so
-# they stay opaque on a transparent favicon ground and hide the card behind.
-LIGHT = {"page": "#FFFFFF", "ink": "#0B1015", "accent": "#0562EF"}
-DARK = {"page": "#12101A", "ink": "#FFFFFF", "accent": "#4D8DFF"}
-for p in (LIGHT, DARK):
-    p["near"] = mix(p["ink"], p["page"], 0.60)  # ink-muted
-    p["far"] = mix(p["ink"], p["page"], 0.35)
-LIGHT["line"] = mix(LIGHT["ink"], LIGHT["page"], 0.12)  # the light icon's 1 px edge
+BACK = (5, 10)      # x, y of the upright back card
+MIDDLE = (7, 7.5)   # x, y of the upright middle card
 
 
 def num(v):
@@ -62,72 +60,60 @@ def num(v):
     return "0" if s == "-0" else s
 
 
-def notched(x, y, w, h):
-    """A w x h pixel block with its four corner pixels left out: the
-    crisp, hinted stand-in for a small rounded corner."""
-    return (f"M{x + 1} {y}H{x + w - 1}V{y + 1}H{x + w}V{y + h - 1}H{x + w - 1}V{y + h}"
-            f"H{x + 1}V{y + h - 1}H{x}V{y + 1}H{x + 1}Z")
+def canonical(pal):
+    """DESIGN.md's canonical SVG, verbatim, in one palette."""
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">\n'
+        f'  <rect x="5" y="10" width="16" height="19" rx="2.5" fill="{pal["back"]}"/>\n'
+        f'  <rect x="7" y="7.5" width="16" height="19" rx="2.5" fill="{pal["middle"]}"/>\n'
+        '  <g transform="rotate(10 19 14)">\n'
+        f'    <rect x="11" y="3.5" width="16" height="19" rx="2.5" fill="{pal["top"]}"/>\n'
+        f'    <rect x="14.5" y="7" width="9" height="2" rx="1" fill="{pal["bar"]}" opacity="0.85"/>\n'
+        '  </g>\n'
+        '</svg>\n'
+    )
 
 
-def style(pal, dark=None):
-    css = (f".mark-far{{fill:{pal['far']}}}.mark-near{{fill:{pal['near']}}}"
-           f".mark-face,.mark-bar{{fill:{pal['page']}}}.mark-top{{fill:{pal['accent']}}}")
-    if dark:
-        css += ("@media (prefers-color-scheme:dark){"
-                f".mark-far{{fill:{dark['far']}}}.mark-near{{fill:{dark['near']}}}"
-                f".mark-face,.mark-bar{{fill:{dark['page']}}}.mark-top{{fill:{dark['accent']}}}}}")
-    return f"<style>{css}</style>"
+def body(pal, back=BACK, middle=MIDDLE, classes=False, h=19):
+    """The four layers, with optional classes (so a style sheet can switch
+    the fill pair) and optionally hinted upright card positions."""
+    def c(name):
+        return f' class="mark-{name}"' if classes else ""
+    return (
+        f'<rect{c("back")} x="{num(back[0])}" y="{num(back[1])}" width="16" height="{h}" rx="2.5" fill="{pal["back"]}"/>'
+        f'<rect{c("middle")} x="{num(middle[0])}" y="{num(middle[1])}" width="16" height="{h}" rx="2.5" fill="{pal["middle"]}"/>'
+        '<g transform="rotate(10 19 14)">'
+        f'<rect{c("top")} x="11" y="3.5" width="16" height="19" rx="2.5" fill="{pal["top"]}"/>'
+        f'<rect{c("bar")} x="14.5" y="7" width="9" height="2" rx="1" fill="{pal["bar"]}" opacity="0.85"/>'
+        '</g>'
+    )
 
 
-def hinted(cards, w, h, stroke, bar, bar_notch):
-    """The hinted 16 and 32 px drawing: back to front, farther, nearer, top."""
-    out = []
-    for cls, (x, y) in zip(("mark-far", "mark-near"), cards[:2]):
-        out.append(f'<path class="{cls}" d="{notched(x, y, w, h)}"/>')
-        out.append(f'<rect class="mark-face" x="{x + stroke}" y="{y + stroke}" width="{w - 2 * stroke}" height="{h - 2 * stroke}"/>')
-    x, y = cards[2]
-    out.append(f'<path class="mark-top" d="{notched(x, y, w, h)}"/>')
-    bx, by, bw, bh = bar
-    if bar_notch:
-        out.append(f'<path class="mark-bar" d="{notched(bx, by, bw, bh)}"/>')
-    else:
-        out.append(f'<rect class="mark-bar" x="{bx}" y="{by}" width="{bw}" height="{bh}"/>')
-    return "".join(out)
+def favicon_svg():
+    """The served SVG favicon: the canonical grid, light fills, switched to
+    the dark pair by prefers-color-scheme."""
+    css = ("@media (prefers-color-scheme:dark){"
+           f".mark-back{{fill:{DARK['back']}}}.mark-middle{{fill:{DARK['middle']}}}"
+           f".mark-top{{fill:{DARK['top']}}}.mark-bar{{fill:{DARK['bar']}}}}}")
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">'
+            f'<style>{css}</style>{body(LIGHT, classes=True)}</svg>\n')
 
 
-FAV16 = dict(cards=[(5, 2), (3, 4), (1, 6)], w=10, h=7, stroke=1, bar=(3, 9, 5, 1), bar_notch=False)
-HINT24 = dict(cards=[(8, 4), (5, 7), (2, 10)], w=14, h=10, stroke=2, bar=(5, 14, 7, 2), bar_notch=False)
-FAV32 = dict(cards=[(10, 6), (7, 9), (4, 12)], w=18, h=13, stroke=2, bar=(8, 17, 9, 3), bar_notch=True)
+# Hinting: at 16 px one grid unit is half a pixel, so the upright cards'
+# x 5 / 7, y 7.5 and 19-unit height (9.5 px) fall between pixels. Snap each
+# edge to the nearest even grid unit (a whole pixel): the cards become 8 x 10
+# px (still portrait), the back at (2, 5) px and the middle at (3, 4) px, one
+# pixel fanned up and right as in the canonical drawing. At 32 px one unit is
+# one pixel: only the middle card's y 7.5 snaps (to 8; 16 x 19 kept). The
+# tilted top card and its prompt bar cannot sit on a pixel grid and are
+# drawn exactly, tilt and all.
+HINT = {16: {"back": (4, 10), "middle": (6, 8), "h": 20}, 32: {"back": (5, 10), "middle": (7, 8), "h": 19}}
 
 
-def favicon(size, geo, pal, dark=None):
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}" width="{size}" height="{size}" '
-            f'shape-rendering="crispEdges">{style(pal, dark)}{hinted(**geo)}</svg>\n')
-
-
-def mark24(pal):
-    """The exact 24 px grid drawing, as brand.go renders it inline."""
-    body = (f'<rect class="mark-far" x="7.5" y="4.5" width="14" height="10" rx="1.5"/>'
-            f'<rect class="mark-face" x="9" y="6" width="11" height="7"/>'
-            f'<rect class="mark-near" x="5" y="7" width="14" height="10" rx="1.5"/>'
-            f'<rect class="mark-face" x="6.5" y="8.5" width="11" height="7"/>'
-            f'<rect class="mark-top" x="2.5" y="9.5" width="14" height="10" rx="1.5"/>'
-            f'<rect class="mark-bar" x="5.5" y="13.5" width="6.5" height="2" rx="1"/>')
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">'
-            f'{style(pal)}{body}</svg>\n')
-
-
-def mark64():
-    """The app icon's mark: 40 px, centred on the 64 px canvas, hinted to
-    whole pixels at 64."""
-    W, H, S = 24, 17, 2
-    out = []
-    for cls, (x, y) in (("mark-far", (24, 19)), ("mark-near", (20, 23))):
-        out.append(f'<rect class="{cls}" x="{x}" y="{y}" width="{W}" height="{H}" rx="2.5"/>')
-        out.append(f'<rect class="mark-face" x="{x + S}" y="{y + S}" width="{W - 2 * S}" height="{H - 2 * S}" rx="0.5"/>')
-    out.append(f'<rect class="mark-top" x="16" y="27" width="{W}" height="{H}" rx="2.5"/>')
-    out.append('<rect class="mark-bar" x="21" y="34" width="11" height="3" rx="1.5"/>')
-    return "".join(out)
+def favicon_hinted(size, pal):
+    h = HINT[size]
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="{size}" height="{size}" fill="none">'
+            f'{body(pal, h["back"], h["middle"], h=h["h"])}</svg>\n')
 
 
 def squircle(a, cx=32.0, cy=32.0, n=5.0, steps=96):
@@ -142,20 +128,24 @@ def squircle(a, cx=32.0, cy=32.0, n=5.0, steps=96):
     return "M" + "L".join(pts) + "Z"
 
 
+# The mark at 62.5% of the icon: the 32 grid scaled 1.25 to 40 px, centred.
+ICON_MARK = '<g class="mark" transform="translate(12 12) scale(1.25)">{}</g>'
+
+
 def app_icon(pal, edge=None):
     if edge:  # light: white ground, a 1 px `line` edge drawn just inside
         ground = f'<path class="ground" d="{squircle(31.5)}" fill="{pal["page"]}" stroke="{edge}" stroke-width="1"/>'
     else:
         ground = f'<path class="ground" d="{squircle(32)}" fill="{pal["page"]}"/>'
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">'
-            f'{style(pal)}{ground}{mark64()}</svg>\n')
+            f'{ground}{ICON_MARK.format(body(pal))}</svg>\n')
 
 
 def maskable(pal):
     """Full-bleed ground: the platform supplies the mask; the mark sits well
     inside the central 80% safe circle."""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">'
-            f'{style(pal)}<rect class="ground" width="64" height="64" fill="{pal["page"]}"/>{mark64()}</svg>\n')
+            f'<rect class="ground" width="64" height="64" fill="{pal["page"]}"/>{ICON_MARK.format(body(pal))}</svg>\n')
 
 
 def write(path, text):
@@ -174,22 +164,26 @@ def strip(png):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--evidence", help="also write 8x nearest-neighbour proofs here")
+    ap.add_argument("--evidence", help="also write magnified proofs here")
     args = ap.parse_args()
     if not os.path.isdir(STATIC):
         sys.exit("run from the repository root")
     os.makedirs(SOURCES, exist_ok=True)
+    for old in os.listdir(SOURCES):  # retire the interim deck's sources
+        if old.endswith(".svg"):
+            os.remove(os.path.join(SOURCES, old))
 
     # Served vectors.
-    write(f"{STATIC}/favicon.svg", favicon(16, FAV16, LIGHT, DARK))
-    write(f"{STATIC}/app-icon.svg", app_icon(LIGHT, edge=LIGHT["line"]))
+    write(f"{STATIC}/favicon.svg", favicon_svg())
+    write(f"{STATIC}/app-icon.svg", app_icon(LIGHT, edge=LINE))
     write(f"{STATIC}/app-icon-dark.svg", app_icon(DARK))
-    # Raster-only sources (one per mode; rsvg has no prefers-color-scheme).
+    # Sources: the canonical mark itself (byte for byte DESIGN.md's blocks),
+    # the hinted favicon drawings (one per mode; rsvg has no
+    # prefers-color-scheme) and the full-bleed maskable icon.
     src = {
-        "mark-24-light.svg": mark24(LIGHT), "mark-24-dark.svg": mark24(DARK),
-        "mark-24-hinted-light.svg": favicon(24, HINT24, LIGHT), "mark-24-hinted-dark.svg": favicon(24, HINT24, DARK),
-        "favicon-16-light.svg": favicon(16, FAV16, LIGHT), "favicon-16-dark.svg": favicon(16, FAV16, DARK),
-        "favicon-32-light.svg": favicon(32, FAV32, LIGHT), "favicon-32-dark.svg": favicon(32, FAV32, DARK),
+        "mark-light.svg": canonical(LIGHT), "mark-dark.svg": canonical(DARK),
+        "favicon-16-light.svg": favicon_hinted(16, LIGHT), "favicon-16-dark.svg": favicon_hinted(16, DARK),
+        "favicon-32-light.svg": favicon_hinted(32, LIGHT), "favicon-32-dark.svg": favicon_hinted(32, DARK),
         "icon-maskable.svg": maskable(DARK),
     }
     for name, text in src.items():
@@ -220,22 +214,21 @@ def main():
                 (f"{SOURCES}/favicon-16-dark.svg", 16, "brand-favicon16-dark-8x.png"),
                 (f"{SOURCES}/favicon-32-light.svg", 32, "brand-favicon32-light-8x.png"),
                 (f"{SOURCES}/favicon-32-dark.svg", 32, "brand-favicon32-dark-8x.png"),
-                (f"{SOURCES}/mark-24-hinted-light.svg", 24, "brand-header24-light-8x.png"),
-                (f"{SOURCES}/mark-24-hinted-dark.svg", 24, "brand-header24-dark-8x.png"),
-                (f"{SOURCES}/mark-24-light.svg", 24, "brand-header24-exact-1x-light-8x.png"),
-                (f"{SOURCES}/mark-24-light.svg", 48, "brand-header24-light-2xdpr-4x.png"),
-                (f"{SOURCES}/mark-24-dark.svg", 48, "brand-header24-dark-2xdpr-4x.png"),
-                (f"{STATIC}/app-icon.svg", 64, "brand-appicon64-light.png"),
-                (f"{STATIC}/app-icon-dark.svg", 64, "brand-appicon64-dark.png"),
-                (f"{SOURCES}/icon-maskable.svg", 64, "brand-maskable64-dark.png"),
+                (f"{SOURCES}/mark-light.svg", 24, "brand-header24-light-8x.png"),
+                (f"{SOURCES}/mark-dark.svg", 24, "brand-header24-dark-8x.png"),
+                (f"{SOURCES}/mark-light.svg", 256, "brand-canonical-light-256.png"),
+                (f"{SOURCES}/mark-dark.svg", 256, "brand-canonical-dark-256.png"),
+                (f"{STATIC}/app-icon.svg", 64, "brand-appicon64-light-4x.png"),
+                (f"{STATIC}/app-icon-dark.svg", 64, "brand-appicon64-dark-4x.png"),
+                (f"{SOURCES}/icon-maskable.svg", 64, "brand-maskable64-dark-4x.png"),
             ]
             for svg, size, name in proofs:
                 small = os.path.join(tmp, name)
                 raster(svg, small, size)
-                scale = "400%" if size == 48 else "800%"
+                scale = "100%" if size == 256 else "400%" if size == 64 else "800%"
                 # Favicons and the header mark on their mode's page; app
                 # icons on a neutral grey so the squircle's outline shows.
-                bg = "#8A8A90" if "appicon" in name else "#12101A" if "dark" in name else "#FFFFFF"
+                bg = "#8A8A90" if "appicon" in name or "maskable" in name else "#12101A" if "dark" in name else "#FFFFFF"
                 subprocess.run(["convert", small, "-background", bg, "-alpha", "remove", "-alpha", "off",
                                 "-filter", "point", "-resize", scale, "-strip",
                                 os.path.join(args.evidence, name)], check=True)

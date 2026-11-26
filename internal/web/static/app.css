@@ -35,6 +35,12 @@
   --close-fill: #EEF17C;
   --missed: #C23B26;
   --grid-opacity: 0.06;
+  /* The brand mark's own fixed fills (DESIGN.md, Brand mark; [S125-1]):
+     not theme tokens, only the light/dark pair switches. */
+  --mark-back: #CBD5E1;
+  --mark-middle: #1E293B;
+  --mark-top: #0562EF;
+  --mark-bar: #FFFFFF;
 
   /* Type */
   --text: "Geist", ui-sans-serif, system-ui, sans-serif;
@@ -99,6 +105,10 @@
     --right: #5FD39A;
     --close-fill: rgb(238 241 124 / 30%);
     --missed: #FF7A66;
+    --mark-back: #334155;
+    --mark-middle: #64748B;
+    --mark-top: #3B82F6;
+    --mark-bar: #DBEAFE;
   }
 }
 :root[data-theme="dark"] {
@@ -115,6 +125,10 @@
   --right: #5FD39A;
   --close-fill: rgb(238 241 124 / 30%);
   --missed: #FF7A66;
+  --mark-back: #334155;
+  --mark-middle: #64748B;
+  --mark-top: #3B82F6;
+  --mark-bar: #DBEAFE;
 }
 
 @media (max-width: 640px) {
@@ -1211,18 +1225,13 @@ a.row-main { min-height: var(--touch); }
 .study-idea .icon { width: 16px; height: 16px; }
 @media (max-width: 760px) { .margin-focus { flex: 1 1 100%; } }
 
-/* S113-3 brand ---------------------------------------------------------
-   The S3-A deck of cards, 24 px, centred on the wordmark. The receding
-   cards are ink steps mixed over page (opaque, so each hides the card
-   behind it); the top card is the accent with its prompt bar in page. A
-   brand shape, not an icon: it never animates. */
+/* S113-3 / S125-1 brand ------------------------------------------------
+   L3-S3, the canonical 32 x 32 mark scaled whole to 24 px, centred on the
+   wordmark. Each layer takes its fixed brand fill for the active mode (the
+   --mark-* pair above), never the theme's accent. A brand shape, not an
+   icon: it never animates. */
 .mark { width: 24px; height: 24px; flex: none; display: block; }
-.mark-far { fill: color-mix(in srgb, var(--ink) 35%, var(--page)); }
-.mark-near { fill: color-mix(in srgb, var(--ink) 60%, var(--page)); }
-.mark-face, .mark-bar { fill: var(--page); }
-.mark-top { fill: var(--accent); }
-/* On a 1x screen the hinted drawing (whole pixels) replaces the exact one. */
-@media (max-resolution: 1dppx) {
-  .mark-exact { display: none; }
-  .mark-hinted { display: inline; }
-}
+.mark-back { fill: var(--mark-back); }
+.mark-middle { fill: var(--mark-middle); }
+.mark-top { fill: var(--mark-top); }
+.mark-bar { fill: var(--mark-bar); }
