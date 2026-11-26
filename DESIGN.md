@@ -77,7 +77,7 @@ The accent appears at most once as a filled control per screen. Controls come in
 
 ## Motion ([S113-2])
 
-Every action and every state change moves, subtly. Each is one deliberate transition of 120–240 ms on a crisp ease-out (`cubic-bezier(0.2, 0, 0, 1)`), moving at most 8 px and never scaling. No springs, bounces, overshoot, parallax, staggered cascades or decorative loops. Motion backs up what the words already say: nothing waits on an animation (keys, input and focus act at once), and a new transition takes over from wherever the last one is. Only opacity, transform, color, border and a drawn stroke animate, plus the answer field's height and the Edit card drawer.
+Every action and every state change moves, subtly. Each is one deliberate transition of 120–240 ms on a crisp ease-out (`cubic-bezier(0.2, 0, 0, 1)`), moving at most 8 px and never scaling text, controls or cards (underlines and strikes draw by clip). No springs, bounces, overshoot, parallax, staggered cascades or decorative loops. Motion backs up what the words already say: nothing waits on an animation (keys, input and focus act at once), and a new transition takes over from wherever the last one is. Only opacity, transform, color, border and a drawn stroke animate, plus the answer field's height and the Edit card drawer.
 
 | Moment | Motion |
 | --- | --- |
