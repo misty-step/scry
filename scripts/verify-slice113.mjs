@@ -502,9 +502,10 @@ async function journey(browser, c, port) {
         top: getComputedStyle(m.querySelector(".mark-top")).fill,
         rects: m.querySelectorAll("rect").length, retired: new RegExp(["le" + "ns", "fo" + "cal"].join("|"), "i").test(document.documentElement.outerHTML) };
     });
-    const accent = c.colorScheme === "dark" ? "rgb(77, 141, 255)" : "rgb(5, 98, 239)";
+    // [S125-1]: the top card's own fixed fill (#0562EF light, #3B82F6 dark), not the theme accent.
+    const accent = c.colorScheme === "dark" ? "rgb(59, 130, 246)" : "rgb(5, 98, 239)";
     check(config, "S113-3: header mark is 24 px, 8 px before scry, centred on the wordmark", mark.w === 24 && mark.h === 24 && Math.abs(mark.gap - 8) < 0.6 && Math.abs(mark.dy) <= 1, JSON.stringify({ w: mark.w, gap: mark.gap, dy: mark.dy, header: mark.header }));
-    check(config, "S113-3: top card in Signal Cobalt for this mode", mark.top === accent, mark.top);
+    check(config, "S113-3: top card in the mark's cobalt for this mode, four layers", mark.top === accent && mark.rects === 4, mark.top);
     check(config, "S113-3: no retired scrying mark left in the page", !mark.retired);
     const assets = await page.evaluate(async (urls) => {
       const out = {};
