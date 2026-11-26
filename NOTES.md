@@ -1822,3 +1822,9 @@ Owner brief (2026-11-24). Choices where the brief left room:
 - **Retired everywhere.** The interim S3-A drawings (`mark-24-*.svg` sources, the `mark-far`/`mark-near`/`mark-face` classes, the 1x `mark-hinted` twin, the landscape 14 x 10 cards) are deleted, and `TestDesign_S125_1_NoLensOrInterimDeckRemains` fails if any template, static file, script or Go source draws either retired mark.
 - **Light back card.** The canonical light back card (`#CBD5E1`) is faint on the white page and in the light favicon; it is DESIGN.md's colour and is kept exactly.
 
+## S135-1: the landing page is clean on a phone
+- **Desktop Specimen.** DESIGN.md says desktop is unchanged by [S135-1] apart from the single hero action and the terms line, while Prompt and Answer on phones are drawn as the phone's Study screen. Both pictures are in the markup: the desktop answer line and hint (`.specimen-desk`) show above 760 px, and the phone's picture of Study (`.specimen-study`: field, Return to check, mic, Check, one card coming up) shows at 760 px and below. The phone picture is `aria-hidden` apart from the typed answer, and holds no focusable element.
+- **Terms line breaks.** Each phrase is a `white-space: nowrap` span, and each " ·" separator is its own nowrap span with no space before it, so the only break opportunities are the spaces after a separator. The text reads exactly "7 days free · no card needed · $5/month after".
+- **Subject header on the Specimen ([S131-1]).** The Specimen shows the S131-1 header (layers icon, "Mental models", "· Set 1", "4 / 11"; screen readers hear "Card 4 of 11"), which this slice's Landing text requires. This slice does not add the S131-1 header to real Study cards (the deck icons per starter set, the neutral tag icon and the cross-fade). That still needs its own reconcile.
+- **Upcoming card.** The Specimen's one upcoming card is the literal "NATO alphabet: K" from DESIGN.md. It is a picture, not a real queue.
+

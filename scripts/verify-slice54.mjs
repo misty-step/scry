@@ -177,7 +177,7 @@ async function setup(browser, c) {
       side: copy && spec ? { copyRight: r(copy).right, specLeft: r(spec).left, copyBottom: r(copy).bottom, specTop: r(spec).top } : null,
       verdict: q(".specimen .verdict-badge")?.textContent.trim(), why: q(".specimen .why")?.textContent.trim(), schedule: !!q(".specimen-schedule"),
       grid: before ? (before.maskImage || before.webkitMaskImage || "") + " " + (before.maskSize || before.webkitMaskSize || "") : "",
-      price: q(".trial-terms-line .nowrap") ? getComputedStyle(q(".trial-terms-line .nowrap")).whiteSpace + " " + q(".trial-terms-line .nowrap").textContent : "",
+      price: q(".trial-terms-line .nowrap:last-child") ? getComputedStyle(q(".trial-terms-line .nowrap:last-child")).whiteSpace + " " + q(".trial-terms-line .nowrap:last-child").textContent : "",
       foot: q("[data-public-foot]")?.textContent.trim() || "", topH: r(top)?.height,
       oneRow: signin && mark ? Math.abs((r(signin).top + r(signin).height / 2) - (r(mark).top + r(mark).height / 2)) < 12 : false,
     };
@@ -190,7 +190,7 @@ async function setup(browser, c) {
   else check("desktop landing: two columns, specimen right of copy", land.side && land.side.specLeft >= land.side.copyRight - 1 && land.side.specTop < land.side.copyBottom, land.side);
   check(c.name + " landing: Study Specimen shows a verdict in words, a reason and the schedule", /Correct|Almost Correct|Incorrect/.test(land.verdict || "") && !!land.why && land.schedule, land);
   check(c.name + " landing: specimen sits on the 22px dot grid", /grid\.svg/.test(land.grid) && /22px/.test(land.grid), land.grid);
-  check(c.name + " landing: '$5 a month' unbroken", /^nowrap \$5 a month$/.test(land.price), land.price);
+  check(c.name + " landing: '$5/month after' unbroken ([S135-1])", /^nowrap \$5\/month after$/.test(land.price), land.price);
   check(c.name + " landing: public footer names Misty Step and privacy", /Misty Step/.test(land.foot) && /yours alone/.test(land.foot), land.foot);
   if (c.mobile) check("phone landing: signed-out header is one 56px row with Sign in", Math.round(land.topH) === 56 && land.oneRow, { h: land.topH, oneRow: land.oneRow });
   await common(page, c, "landing");

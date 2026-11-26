@@ -371,6 +371,12 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .hero-copy { display: grid; gap: var(--s4); align-content: center; }
 .hero .display { max-width: 16ch; }
 .nowrap { white-space: nowrap; }
+/* S135-1: the one hero action over the trial terms. Each phrase of the
+   terms stays whole (its separator glued to it), and the line breaks only
+   after a " · ", balanced, so no word is ever alone on a line. */
+.hero-act { display: grid; gap: var(--s4); justify-items: start; }
+.hero-act .actions { max-width: none; }
+.trial-terms-line { max-width: none; text-wrap: balance; }
 /* The Study Specimen: one card stepped from its prompt to its judgment, in
    type, hairlines and line icons on a raised panel. The three stages share
    one grid cell, so the panel keeps the tallest stage's height and nothing
@@ -387,8 +393,22 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 }
 .specimen-step[aria-pressed="true"] { color: var(--ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 6px; }
 .specimen-step:disabled { cursor: default; }
-.specimen-place { display: flex; justify-content: space-between; gap: var(--s3); max-width: none; }
-.specimen-count { flex: none; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* S131-1: the Specimen's subject header, as on a Study card: the deck's
+   16 px icon 8 px before its name (Text, 17 px, 500, ink), the section in
+   Meta mono ink-muted, and the count at the right on the name's first
+   line. No "Study ·" prefix, no fill, badge or border. */
+.specimen-place {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s3);
+  min-height: var(--s4); max-width: none; font: 500 var(--reading)/1.4 var(--text); color: var(--ink);
+}
+.specimen-deck { display: flex; align-items: flex-start; gap: var(--s2); min-width: 0; }
+.specimen-deck .icon { width: 16px; height: 16px; margin-top: calc((1.4em - 16px) / 2); color: var(--ink); }
+.specimen-deck-text { min-width: 0; overflow-wrap: anywhere; }
+.specimen-section { font: 400 var(--meta)/1 var(--mono); color: var(--ink-muted); white-space: nowrap; }
+.specimen-count {
+  flex: none; font: 400 var(--meta)/calc(var(--reading) * 1.4) var(--mono); color: var(--ink);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 .specimen-stages { display: grid; min-width: 0; }
 .specimen-stage {
   grid-area: 1 / 1; display: flex; flex-direction: column; gap: var(--s3); min-width: 0;
@@ -407,6 +427,9 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 @keyframes settle { from { opacity: 0; transform: translateY(calc(-1 * var(--rise))); } to { opacity: 1; transform: none; } }
 .specimen-hint { margin-top: auto; max-width: none; }
 .specimen .compare-answer { font-size: var(--reading); line-height: 1.35; }
+/* S135-1: the phone's picture of Study inside Prompt and Answer; above
+   760 px the desktop Specimen keeps its answer line and hint. */
+.specimen-study { display: none; }
 .specimen .why { font-size: var(--body); }
 /* The Specimen's schedule: a flush 2x2 grid of cells sharing 1 px rules at
    every width. Each label stays on one line beside its icon, over its value;
@@ -1019,9 +1042,62 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .top-app .nav .nav-label { max-width: 100%; }
   .top-app .nav a[aria-current] .nav-label { text-underline-offset: 3px; }
   .js-focus.kbd-nav .top-app .nav a:focus-visible, .top-app .nav a:focus-visible { outline-offset: -3px; }
-  .hero { grid-template-columns: minmax(0, 1fr); gap: var(--s5); padding: var(--s4) var(--s3); }
-  .specimen { padding: var(--s3) 18px 20px; }
+  /* S135-1, Landing on phones: one clean column with one frame. The band
+     runs to both screen edges (cancelling the page's 16 px padding) with
+     only top and bottom rules and no ruler ticks; its content sits 16 px
+     from the edges, aligned with the header and the rows below. */
+  .hero {
+    grid-template-columns: minmax(0, 1fr); gap: var(--s5);
+    margin-inline: calc(-1 * var(--s3)); padding: var(--s4) var(--s3) var(--s5);
+    border-inline: 0;
+  }
+  .hero::after { display: none; }
+  .hero-act { gap: var(--s3); justify-items: stretch; }
+  .hero-act .actions .btn { flex: 1 1 100%; min-height: var(--s6); }
+  /* The Specimen: 16 px inside (4 px above the 44 px steps), parts 12 px
+     apart, the subject header 12 px above the prompt. */
+  .specimen { padding: var(--s1) var(--s3) var(--s3); gap: 12px; }
+  .specimen-place { font-size: var(--body); }
+  .specimen-count { line-height: calc(var(--body) * 1.4); }
+  .specimen-stage { gap: 12px; }
   .specimen-prompt { font-size: 28px; }
+  .specimen-desk { display: none; }
+  /* Prompt and Answer: the phone's own Study screen. The field takes the
+     height the stage has left (at least four rows), so its frame, not
+     blank card, fills the space Judged needs. */
+  .specimen-study { display: flex; flex: 1 1 auto; flex-direction: column; gap: 12px; min-height: 0; }
+  .specimen-field {
+    flex: 1 1 auto; min-height: 134px; padding: 12px var(--s3);
+    background: var(--page); border: 1px solid var(--line); border-radius: var(--radius-control);
+    font: 400 18px/1.5 var(--text); color: var(--ink); overflow-wrap: anywhere;
+  }
+  .specimen-field-caret { display: inline-block; width: 2px; height: 1.2em; margin-right: 1px; vertical-align: -0.2em; background: var(--accent); }
+  .specimen-placeholder { color: var(--ink-muted); }
+  .specimen-controls { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+  .specimen-return { max-width: none; }
+  .specimen-buttons { display: flex; align-items: center; gap: var(--s3); }
+  .specimen-mic {
+    display: inline-flex; align-items: center; justify-content: center; width: var(--touch); height: var(--touch);
+    border: 1px solid var(--ink-ghost); border-radius: 50%; color: var(--ink);
+  }
+  .specimen-check {
+    display: inline-flex; align-items: center; justify-content: center; min-height: var(--touch); padding: 0 var(--s4);
+    border: 1px solid var(--ink-ghost); border-radius: var(--radius-control); color: var(--ink); font: 500 var(--body)/1 var(--text);
+  }
+  .specimen-next {
+    max-width: none; padding-top: 12px; border-top: 1px solid var(--line);
+    font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* Judged: the question recedes to Title size as in the real review; the
+     answers stack 8 px apart at Body size inside 12 px between the rules;
+     the badge sits 6 px over the one-line why. */
+  .specimen [data-specimen-stage="judged"] .specimen-prompt { font: 500 var(--title)/1.25 var(--text); color: var(--ink-body); }
+  .specimen .compare { gap: var(--s2); padding: 12px 0; }
+  .specimen .compare-answer { font-size: var(--body); line-height: 1.35; }
+  .specimen .verdict { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .specimen .verdict-badge { align-self: flex-start; }
+  .specimen .why { font-size: 15px; line-height: 1.35; }
   .specimen-fact { padding: 12px; }
   .setting .form > .btn { justify-self: stretch; }
   .idea-picker { display: block; margin-bottom: var(--s4); }

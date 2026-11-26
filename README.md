@@ -306,6 +306,7 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Operator story: continuous monitoring, incident triage, fix proposal and fault drill | `TestStory_ContinuousMonitoringFaultDrillRestartRecovery`, `TestMonitoringDedupTriageFixQuietDurability` (internal/watch) |
 | Story: signup, trial and study within a minute; understand Scry at a glance, see one judged card on the landing page, add Scry to the home screen | TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen; TestDesign_BrandMarkBesideTheWordmark |
 | [S113-3] [S125-1] One mark everywhere, the exact L3-S3 fanned deck (DESIGN.md's canonical SVG, verbatim): the 24 px header mark beside `scry` on every page in the active mode's fixed fills, the adaptive 32-grid SVG favicon and hinted 16/32 px PNGs (`/favicon.ico`), the 64 px squircle app icon light and dark, the dark 180/192/512 home-screen, maskable (inside the 80% safe zone) and social preview icons; neither the lens nor the interim flat outline deck left anywhere; the Study icon stays a line glyph; the mark never animates | TestStory_S113_3_S125_1_OneL3S3MarkEverywhere; TestDesign_S125_1_CanonicalSVGIsDesignVerbatim; TestDesign_S125_1_MarkFillsFollowTheModeAndNeverAnimate; TestDesign_S125_1_FaviconsAreHintedAndKeepTheMark; TestDesign_S125_1_AppIconsSquircleAndMaskable; TestDesign_S125_1_NoLensOrInterimDeckRemains; TestDesign_S113_3_StudyIconStaysALineGlyph; TestDesign_BrandMarkBesideTheWordmark; scripts/render-brand.py redraws every asset; scripts/verify-slice125.mjs checks every surface headed |
+| [S135-1] The landing page is clean on a phone: at 760 px and below the drafting band runs edge to edge with only top and bottom rules and no ruler ticks, content 16 px from the screen edges; one full-width 48 px "Start the 7-day trial" (no hero "Sign in" on any width; Sign in stays once in the header); the terms "7 days free · no card needed · $5/month after" on one line, breaking only after a " · "; Prompt and Answer drawn as the phone's own Study screen (field, Return to check, mic, bordered Check, one card coming up), so no stage leaves a blank run over 24 px and the Specimen keeps one height. Also the Specimen's [S131-1] subject header (layers icon, "Mental models · Set 1", "4 / 11", no "Study ·") | TestStory_S135_1_TheLandingPageIsCleanOnAPhone; TestDesign_S135_1_LandingOnPhones; TestDesign_S131_1_SpecimenSubjectHeader; headed: scripts/verify-slice135.mjs |
 | [S106-1] Landing hero and Study Specimen: the Specimen steps Prompt, Answer, Judged on its own or by its step controls, holds on hover or focus, rests on Judged without script or under reduced motion; four schedule facts on one line each in a flush 2x2 grid; four How Scry works rows with icons (Slice 106) | TestS106_1_LandingSpecimenStepsAndRestsOnJudged; TestS106_1_SpecimenScheduleGridCSS; TestS106_1_HowScryWorksRowsHaveIcons; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen |
 | Story: forgot password: email on Sign in, then "Forgot password" on the password step | TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep; TestClerkFrontendStandIn (these cover the Sign in guidance and Scry's "Reset your password" copy on Clerk's forgot/reset-password routes; Clerk itself completes the emailed reset and the sign-in with the new password, which stay outside automated test coverage — the stand-in simulates no reset) |
 | Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
@@ -415,6 +416,18 @@ walkthrough video (the video needs `npx playwright-core install ffmpeg`).
 
     SCRY_MODE=test SCRY_TEST_JUDGMENTS=right,missed,close SCRY_DB=/tmp/s41.db PORT=18080 go run ./cmd/scry &
     node scripts/verify-slice41.mjs --url http://127.0.0.1:18080 --evidence /tmp/slice41
+
+`scripts/verify-slice135.mjs` checks the clean phone landing ([S135-1]) and
+the Specimen's subject header ([S131-1]) in a real headed Chrome at desktop
+1440x900 and phone 390x844 (touch, DPR 2), light and dark, each against its
+own fresh test-mode Scry: hero edges, frames and ticks, the one action, the
+terms line, the Specimen stepping on its own and by tap or click with one
+height and no blank run over 24 px, then sign-up, header Sign in and a typed
+sign-in into Study; plus a 320 px phone (terms in two phrase-whole lines),
+reduced motion and no script. It records a walkthrough per config:
+
+    make build BUILD_SHA=$(git rev-parse HEAD)
+    DISPLAY=:0 node scripts/verify-slice135.mjs --bin ./bin/scry --sha $(git rev-parse HEAD) --media /tmp/s135
 
 `scripts/verify-slice125.mjs` checks the brand mark ([S113-3], [S125-1]) in a
 real headed Chrome at desktop 1440x900 and phone 390x844 (touch, DPR 2), light

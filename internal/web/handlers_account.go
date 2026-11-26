@@ -34,19 +34,26 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request, c *rc) error {
 // The card is the starter set's Hanlon's razor card asked the other way
 // round (the razor, answered with what it says), the typed answer says the
 // same thing in other words, and the one-line why is the grader's own plain
-// sentence for the verdict. The place is the spoiler-safe "Set N" a study
-// session shows.
+// sentence for the verdict. Its subject header ([S131-1]) is the one a
+// study session shows for the card while it waits: the starter set's layers
+// icon and name, the spoiler-safe "Set 1" and the count, never a "Study ·"
+// prefix. Next is the one card coming up on the phone's picture of Study
+// ([S135-1]).
 func landingSpecimen() map[string]string {
 	return map[string]string{
-		"Place":    "Mental models · Set 1",
-		"Count":    "4 / 11",
-		"Prompt":   "Hanlon's razor",
-		"Answer":   "don't assume malice when carelessness or stupidity explains it",
-		"Expected": "Never attribute to malice what is adequately explained by carelessness or stupidity",
-		"Verdict":  string(srs.Right),
-		"Icon":     "verdict-right",
-		"Badge":    "Correct",
-		"Why":      ai.PlainWhy(srs.Right),
+		"DeckIcon":    "layers",
+		"Deck":        "Mental models",
+		"Section":     "Set 1",
+		"Count":       "4 / 11",
+		"CountSpoken": "Card 4 of 11",
+		"Next":        "NATO alphabet: K",
+		"Prompt":      "Hanlon's razor",
+		"Answer":      "don't assume malice when carelessness or stupidity explains it",
+		"Expected":    "Never attribute to malice what is adequately explained by carelessness or stupidity",
+		"Verdict":     string(srs.Right),
+		"Icon":        "verdict-right",
+		"Badge":       "Correct",
+		"Why":         ai.PlainWhy(srs.Right),
 	}
 }
 
