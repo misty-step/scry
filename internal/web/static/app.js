@@ -207,6 +207,7 @@
     w.textContent = word;
     box.appendChild(w);
     if (old) {
+      old.classList.remove("is-pulsing");
       old.classList.add("is-leaving");
       old.setAttribute("aria-hidden", "true");
       setTimeout(function () { old.remove(); }, still.matches ? 0 : 120);

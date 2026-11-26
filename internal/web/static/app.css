@@ -1118,8 +1118,10 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
 .wait-words { display: inline-grid; vertical-align: top; }
 .wait-words > * { grid-area: 1 / 1; }
 .wait-word { font: 400 var(--meta)/1.4 var(--mono); animation: fade-in var(--motion-status) var(--ease) both; }
-.wait-word.is-leaving { animation: status-out var(--motion-quick) var(--ease) both; }
 .wait-word.is-pulsing { animation: fade-in var(--motion-status) var(--ease) both, breathe var(--motion-pulse) ease-in-out var(--motion-status) infinite; }
+/* Leaving comes after pulsing so a leaving "checking" always fades out
+   (same specificity: the later rule wins), and it never takes a click. */
+.wait-word.is-leaving { animation: status-out var(--motion-quick) var(--ease) both; pointer-events: none; }
 @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 [data-waiting] { cursor: progress; }
 

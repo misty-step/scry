@@ -13,7 +13,7 @@
 // environment (no provider keys: the grading chain, speech and drafting are
 // fixed fixtures; auth and billing the local fakes; nothing leaves the
 // machine). The grading chain is forced down a scripted path per model
-// submission (SCRY_TEST_JUDGE_PATHS), each judgment waits 3.3 s
+// submission (SCRY_TEST_JUDGE_PATHS), each judgment waits 3.6 s
 // (SCRY_TEST_JUDGE_DELAY) so "checking" and "still checking" can be seen,
 // and the verdicts are scripted (SCRY_TEST_JUDGMENTS). The server's own
 // "judge chain" log lines prove which models each submission reached.
@@ -113,7 +113,7 @@ function startServer(config, port) {
   const proc = spawn(BIN, [], {
     env: {
       PATH: process.env.PATH, HOME: dir, SCRY_MODE: "test", SCRY_SEED_DEMO: "1", SCRY_DB: path.join(dir, "s113.db"), PORT: String(port),
-      SCRY_TEST_JUDGE_PATHS: PATHS.join(","), SCRY_TEST_JUDGMENTS: VERDICTS.join(","), SCRY_TEST_JUDGE_DELAY: "3300ms",
+      SCRY_TEST_JUDGE_PATHS: PATHS.join(","), SCRY_TEST_JUDGMENTS: VERDICTS.join(","), SCRY_TEST_JUDGE_DELAY: "3600ms",
       SCRY_TEST_SPEECH: SPOKEN,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -174,6 +174,17 @@ const initScript = () => {
   document.addEventListener("securitypolicyviolation", (e) => window.__csp.push(e.violatedDirective + " " + e.blockedURI));
   window.__vt = [];
   window.addEventListener("pagereveal", (e) => window.__vt.push(!!e.viewTransition));
+  // Every wait word that starts leaving: its classes and the animation the
+  // cascade gives it at that moment (must be status-out, never the pulse).
+  window.__leaving = [];
+  new MutationObserver((ms) => {
+    for (const m of ms) {
+      const t = m.target;
+      if (t.classList && t.classList.contains("wait-word") && t.classList.contains("is-leaving") && !(m.oldValue || "").includes("is-leaving")) {
+        window.__leaving.push({ word: t.dataset.waitWord, pulsing: t.classList.contains("is-pulsing"), anim: getComputedStyle(t).animationName });
+      }
+    }
+  }).observe(document, { subtree: true, attributes: true, attributeFilter: ["class"], attributeOldValue: true });
   window.__anims = new Map();
   const props = (a) => {
     try {
@@ -238,8 +249,51 @@ async function pageHealth(page, config, label) {
   check(config, `${label}: 0 CSP violations`, h.csp.length === 0, h.csp.join("; "));
 }
 
+// settle waits (at most `cap` ms) until nothing on the page is mid-motion:
+// no card view transition in flight (app.js clears html[data-vt] when it
+// finishes), every finite animation finished (the endless loops, such as
+// the checking pulse, are left running), and two frames painted. A
+// screenshot taken straight after a selector appears would otherwise catch
+// frame 0 of a fade at opacity 0.
+async function settle(page, cap = 1500) {
+  await page.evaluate(async (cap) => {
+    const until = performance.now() + cap;
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+    const timeout = (ms) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
+    while (performance.now() < until) {
+      const moving = document.getAnimations().filter((a) => a.playState !== "finished" && a.playState !== "idle" && a.effect?.getTiming().iterations !== Infinity);
+      if (!moving.length && !document.documentElement.hasAttribute("data-vt")) break;
+      await Promise.race([Promise.all(moving.map((a) => a.finished.catch(() => {}))), timeout(until - performance.now())]);
+      await frame();
+    }
+    await frame();
+    await frame();
+  }, cap).catch(() => {});
+}
+
+// settledOpacity is what a review's judged card and verdict compute to
+// once settled ("1" each when fully drawn).
+const settledOpacity = (page) => page.evaluate(() => {
+  const o = (sel) => { const e = document.querySelector(sel); return e ? getComputedStyle(e).opacity : "missing"; };
+  return { judged: o("[data-judged]"), verdict: o("[data-judged] .verdict") };
+}).catch(() => ({}));
+
 async function shot(page, name, opts = {}) {
+  await settle(page);
   await page.screenshot({ path: path.join(MEDIA, name + ".png"), ...opts });
+}
+
+// reviewShot settles a post-answer review until the judged card and its
+// verdict are fully opaque, checks that, then captures it.
+async function reviewShot(page, config, name) {
+  await settle(page);
+  await page.waitForFunction(() => {
+    const j = document.querySelector("[data-judged]"), v = document.querySelector("[data-judged] .verdict");
+    return j && v && getComputedStyle(j).opacity === "1" && getComputedStyle(v).opacity === "1";
+  }, null, { timeout: 3000 }).catch(() => {});
+  const op = await settledOpacity(page);
+  check(config, `S113-2: ${name} is captured settled (judged card and verdict fully opaque)`, op.judged === "1" && op.verdict === "1", JSON.stringify(op));
+  await page.screenshot({ path: path.join(MEDIA, `${config}-${name}.png`) });
 }
 
 // ---- motion rules -------------------------------------------------------
@@ -350,9 +404,18 @@ async function submit(page, config, srv, k, lines, opts = {}) {
   });
   await sleep(450);
   const w1 = await statusWord(page);
-  await sleep(2450); // ~3.05 s after Enter; the fixture answers at 3.3 s
+  await sleep(2450); // ~3.05 s after Enter; the fixture answers at 3.6 s
   const w2 = await statusWord(page);
-  if (k <= 1 || opts.shots) await shot(page, `${config}-study-still-checking`);
+  if (k <= 1 || opts.shots) {
+    // Capture once the cross-fade is over: one word left, fully faded in.
+    await page.waitForFunction(() => document.querySelectorAll("#status .wait-word").length === 1, null, { timeout: 400 }).catch(() => {});
+    await settle(page, 300);
+    const ww = await page.evaluate(() => [...document.querySelectorAll("#status .wait-word")].map((w) => ({ word: w.dataset.waitWord, cls: w.className, op: Number(getComputedStyle(w).opacity) })));
+    check(config, `S113-2 submission ${k + 1}: "still checking" stands alone when captured (no overlap with "checking")`, ww.length === 1 && ww[0].word === "still checking" && ww[0].op >= 0.6, JSON.stringify(ww));
+    await page.screenshot({ path: path.join(MEDIA, `${config}-study-still-checking.png`) });
+    const leaving = await page.evaluate(() => window.__leaving || []);
+    check(config, `S113-2 submission ${k + 1}: the leaving "checking" drops its pulse and fades out (status-out)`, leaving.length > 0 && leaving.every((l) => !l.pulsing && /^status-out/.test(l.anim)), JSON.stringify(leaving.slice(-2)));
+  }
   if (path_ === "all-fail") {
     await page.waitForSelector("#status[data-failed]", { timeout: 15000 });
   } else {
@@ -427,12 +490,12 @@ async function journey(browser, c, port) {
       const icons = [...document.querySelectorAll("link[rel~=icon], link[rel=apple-touch-icon], link[rel=manifest], meta[property='og:image']")].map((l) => (l.getAttribute("href") || l.getAttribute("content")) + (l.sizes && l.sizes.value ? "@" + l.sizes.value : ""));
       return { w: mb.width, h: mb.height, gap: wb.left - mb.right, dy: (mb.top + mb.height / 2) - (wb.top + wb.height / 2), header: hb.height, icons,
         top: getComputedStyle(m.querySelector(getComputedStyle(m.querySelector(".mark-exact")).display === "none" ? ".mark-hinted .mark-top" : ".mark-exact .mark-top")).fill,
-        rects: m.querySelectorAll(".mark-exact rect").length, lens: /lens|focal/i.test(document.documentElement.outerHTML) };
+        rects: m.querySelectorAll(".mark-exact rect").length, retired: new RegExp(["le" + "ns", "fo" + "cal"].join("|"), "i").test(document.documentElement.outerHTML) };
     });
     const accent = c.colorScheme === "dark" ? "rgb(77, 141, 255)" : "rgb(5, 98, 239)";
     check(config, "S113-3: header mark is 24 px, 8 px before scry, centred on the wordmark", mark.w === 24 && mark.h === 24 && Math.abs(mark.gap - 8) < 0.6 && Math.abs(mark.dy) <= 1, JSON.stringify({ w: mark.w, gap: mark.gap, dy: mark.dy, header: mark.header }));
     check(config, "S113-3: top card in Signal Cobalt for this mode", mark.top === accent, mark.top);
-    check(config, "S113-3: no lens mark left in the page", !mark.lens);
+    check(config, "S113-3: no retired scrying mark left in the page", !mark.retired);
     const assets = await page.evaluate(async (urls) => {
       const out = {};
       for (const u of urls) {
@@ -483,8 +546,8 @@ async function journey(browser, c, port) {
     let k = 0;
     for (; k < 9; k++) {
       const r = await submit(page, config, srv, k, ANSWERS[k % ANSWERS.length], { shots: k === 0 });
-      if (k === 0) { await shot(page, `${config}-study-review-multiline`); await pageHealth(page, config, "study review"); }
-      if (k === 4) await shot(page, `${config}-study-review-escalated`);
+      if (k === 0) { await reviewShot(page, config, "study-review-multiline"); await pageHealth(page, config, "study review"); }
+      if (k === 4) await reviewShot(page, config, "study-review-escalated");
       await collectAnims(page, anims);
       await next(page);
       tags.push(await deckTag(page));

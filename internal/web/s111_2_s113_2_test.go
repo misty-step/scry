@@ -479,3 +479,36 @@ func TestStory_S113_2_BackRestoredPagesGiveEveryControlBack(t *testing.T) {
 		`$$("[data-answer-input]").forEach(function (i) { i.readOnly = false; });`, "if (growAnswer) growAnswer();")
 	has(t, funcBody(t, js, "release"), `control.removeAttribute("aria-busy");`, `control.removeAttribute("data-waiting");`, "control.disabled = false;")
 }
+
+// When "still checking" cross-fades in over "checking", the leaving word
+// must fade out, not keep pulsing on top of the new one. Both rules have the
+// same specificity, so .is-leaving must come after .is-pulsing in the sheet
+// (the later rule wins for a span holding both classes), it takes no
+// pointer events, and waitWord drops the pulse from the word it retires
+// before marking it leaving.
+func TestStory_S113_2_LeavingWaitWordFadesOutAndNeverPulsesOverTheNext(t *testing.T) {
+	w := newWorld(t)
+	css, _ := staticAsset(t, w, "/static/app.css")
+	pulsing := strings.Index(css, ".wait-word.is-pulsing {")
+	leaving := strings.Index(css, ".wait-word.is-leaving {")
+	if pulsing < 0 || leaving < 0 {
+		t.Fatalf("app.css is missing a wait-word rule (pulsing at %d, leaving at %d)", pulsing, leaving)
+	}
+	if leaving < pulsing {
+		t.Error(".wait-word.is-leaving comes before .wait-word.is-pulsing, so a leaving pulsing word keeps breathing over the next word")
+	}
+	if strings.Count(css, ".wait-word.is-leaving") != 1 {
+		t.Error(".wait-word.is-leaving is declared more than once")
+	}
+	rule := css[leaving:]
+	rule = rule[:strings.Index(rule, "}")+1]
+	has(t, rule, "animation: status-out var(--motion-quick) var(--ease) both;", "pointer-events: none;")
+
+	js, _ := staticAsset(t, w, "/static/app.js")
+	ww := funcBody(t, js, "waitWord")
+	drop := strings.Index(ww, `old.classList.remove("is-pulsing");`)
+	mark := strings.Index(ww, `old.classList.add("is-leaving");`)
+	if drop < 0 || mark < 0 || drop > mark {
+		t.Errorf("waitWord must remove is-pulsing from the old word before adding is-leaving (remove at %d, add at %d)", drop, mark)
+	}
+}
