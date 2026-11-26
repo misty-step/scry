@@ -123,7 +123,9 @@ function startServer(config, port) {
   return { proc, logPath, base: `http://127.0.0.1:${port}` };
 }
 async function waitHealthy(base) {
-  for (let i = 0; i < 100; i++) {
+  // Up to 30 s: seeding the demo learner is disk-bound and can pass 10 s
+  // on a sandbox disk still flushing the previous config's video.
+  for (let i = 0; i < 300; i++) {
     try {
       const r = await fetch(base + "/healthz");
       if (r.ok) return r.json();
@@ -294,9 +296,14 @@ async function reviewShot(page, config, name) {
   const op = await settledOpacity(page);
   check(config, `S113-2: ${name} is captured settled (judged card and verdict fully opaque)`, op.judged === "1" && op.verdict === "1", JSON.stringify(op));
   await page.screenshot({ path: path.join(MEDIA, `${config}-${name}.png`) });
-  // The whole review too: on a phone the verdict sits below the framed
-  // question and answer.
-  await page.screenshot({ path: path.join(MEDIA, `${config}-${name}-full.png`), fullPage: true });
+  // The verdict itself too: on a phone it sits below the framed question
+  // and answer (a full-page capture would pin the fixed Next card bar over
+  // it), so scroll it into view, capture, and put the page back.
+  await page.evaluate(() => document.querySelector("[data-judged] .verdict")?.scrollIntoView({ block: "center" }));
+  await settle(page, 500);
+  await page.screenshot({ path: path.join(MEDIA, `${config}-${name}-verdict.png`) });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await settle(page, 300);
 }
 
 // ---- motion rules -------------------------------------------------------
