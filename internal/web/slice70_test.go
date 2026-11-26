@@ -140,7 +140,7 @@ func TestSlice70_Review_ScheduleIconsAndVerdictTrail(t *testing.T) {
 	for _, name := range []string{"calendar", "interval", "anchor", "gauge", "history"} {
 		has(t, review, `class="icon icon-`+name+`"`)
 	}
-	has(t, review, `data-trail role="img" aria-label="Recent verdicts, oldest first: Almost Correct"`, `data-trail-verdict="close"`)
+	has(t, review, `data-trail role="img" aria-label="Recent verdicts, oldest first: Almost"`, `data-trail-verdict="close"`)
 	hasNot(t, strings.ToLower(visibleText(review)), "streak", "points", "🔥")
 }
 

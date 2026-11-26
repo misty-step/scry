@@ -40,7 +40,7 @@
 //      ("Held by 2 bridges"), then "Release hold" by hand.
 //   5. The next session holds A (released, due) and B's and A's bridges,
 //      never B (held). B's bridge 1 Incorrect -> B stays held by 2; bridge 2
-//      Correct -> held by 1; later bridge 1 Almost Correct -> B is released
+//      Correct -> held by 1; later bridge 1 Almost -> B is released
 //      automatically with its schedule unchanged, and the next Study
 //      session opens on B. While B's first bridge waits nothing names B;
 //      its Incorrect review says "Bridge card · leads up to NATO alphabet:
@@ -688,13 +688,13 @@ async function runConfig(c, port) {
     await answer(page, c, "Talking"); // missed
     f = await facts(page);
     check(`${tag}: bridge Incorrect: B stays held by 2, the review says the card stays held`, (await verdictOf(page)) === "Incorrect" && heldBy(db, s.B.id) === 2 &&
-      f.text.includes("stays held until this is answered Correct or Almost Correct"), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
+      f.text.includes("stays held until this is answered Correct or Almost"), { held: heldBy(db, s.B.id), text: f.text.slice(0, 300) });
     // DESIGN.md (Held): an active bridge's review says "Bridge card · leads
     // up to …" with the card it leads to linked, its question only.
     out.bridgeReview = await parentLinkFacts(page, s.B.id);
     check(`${tag}: active bridge review: "Bridge card · leads up to NATO alphabet: B", linked to B's page`,
       out.bridgeReview.notes === 1 && out.bridgeReview.links === 1 && out.bridgeReview.linkText === "NATO alphabet: B" &&
-      /^Bridge card · leads up to NATO alphabet: B\. The card it leads to stays held until this is answered Correct or Almost Correct\.$/.test(out.bridgeReview.note), out.bridgeReview);
+      /^Bridge card · leads up to NATO alphabet: B\. The card it leads to stays held until this is answered Correct or Almost\.$/.test(out.bridgeReview.note), out.bridgeReview);
     check(`${tag}: active bridge review never shows the parent's answer`, !/\bBravo\b/.test(f.text) && !out.bridgeReview.noteHasAnswer, f.text.slice(0, 300));
     layoutChecks(tag, f, c, "active bridge review with its parent link");
     await inView(page, tag, "[data-bridge-note]", "bridge Incorrect review");
@@ -751,11 +751,11 @@ async function runConfig(c, port) {
     check(`${tag}: third session: only the missed bridge (B still held)`, JSON.stringify(sessionItems(db, s.uid)) === JSON.stringify([bB[0].id]) && p === "What is a phonetic alphabet for?", { ids: sessionItems(db, s.uid), p });
     await answer(page, c, "Spelling letters"); // close
     f = await facts(page);
-    check(`${tag}: bridge Almost Correct: B released automatically, schedule untouched`, (await verdictOf(page)) === "Almost Correct" && heldBy(db, s.B.id) === 0 &&
+    check(`${tag}: bridge Almost: B released automatically, schedule untouched`, (await verdictOf(page)) === "Almost" && heldBy(db, s.B.id) === 0 &&
       JSON.stringify(sched(db, s.B.id)) === JSON.stringify(bBefore) && f.text.includes("Bridge cleared · the card it leads to is back in your reviews, on its own schedule."),
       { before: bBefore, after: sched(db, s.B.id), text: f.text.slice(0, 300) });
     layoutChecks(tag, f, c, "bridge cleared review");
-    await inView(page, tag, "[data-bridge-cleared]", "bridge Almost Correct review");
+    await inView(page, tag, "[data-bridge-cleared]", "bridge Almost review");
     await shot(page, c, "bridge-cleared-parent-back", { fullPage: false });
     await next(page, c);
     await go(page, `${base}/study`);

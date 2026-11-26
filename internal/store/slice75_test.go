@@ -241,7 +241,7 @@ func TestSlice75_Store_BridgesRespectAccountOwnership(t *testing.T) {
 }
 
 // Slice 75: an Incorrect on a bridge keeps the hold; the first Correct or
-// Almost Correct on each bridge ends it; the parent comes back once no
+// Almost on each bridge ends it; the parent comes back once no
 // bridge is left, due exactly when its own schedule says.
 func TestSlice75_Store_SuccessfulRatingsReleaseTheParentAutomatically(t *testing.T) {
 	ctx := context.Background()
@@ -277,7 +277,7 @@ func TestSlice75_Store_SuccessfulRatingsReleaseTheParentAutomatically(t *testing
 	}
 	review(b1, srs.Close, now.Add(4*time.Minute))
 	if s, _ := us.BridgeState(ctx, p); s.HeldBy != 0 {
-		t.Fatalf("after an Almost Correct: held by %d, want 0", s.HeldBy)
+		t.Fatalf("after an Almost: held by %d, want 0", s.HeldBy)
 	}
 	if !contains(dueIDs(t, us, now.Add(time.Hour)), p) {
 		t.Fatal("the parent should be back in the due queue")

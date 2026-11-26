@@ -35,7 +35,7 @@ func TestStory_S113_1_StudyThroughEveryChainPath(t *testing.T) {
 			if status != http.StatusOK {
 				t.Fatalf("status %d, want 200 on a fallback or escalation path", status)
 			}
-			has(t, page, `data-verdict="close"`, "Almost Correct", `class="why"`)
+			has(t, page, `data-verdict="close"`, "<span data-verdict-label>Almost</span>", `class="why"`)
 			hist, err := w.lib("chain@example.com").History(ctx, it.ID)
 			if err != nil || len(hist) != 1 || hist[0].Answer != answer || hist[0].Reason != ai.CriterionSentence(srs.Close) {
 				t.Fatalf("history %+v %v", hist, err)

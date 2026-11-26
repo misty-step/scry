@@ -482,7 +482,7 @@ func (u *UserStore) RecordReview(ctx context.Context, r Review, next srs.State, 
 		}
 		id, _ = res.LastInsertId()
 		if !r.Practice && (r.Verdict == srs.Right || r.Verdict == srs.Close) {
-			// A bridge card's first Correct or Almost Correct ends its
+			// A bridge card's first Correct or Almost ends its
 			// bridge; the parent it held is released once none is left.
 			if err := u.masterBridge(ctx, tx, r.ItemID, r.At); err != nil {
 				return err

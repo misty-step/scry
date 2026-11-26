@@ -381,7 +381,7 @@ func (v Verdict) Label() string {
 	case Right:
 		return "correct"
 	case Close:
-		return "almost correct"
+		return "almost"
 	case Missed:
 		return "incorrect"
 	}

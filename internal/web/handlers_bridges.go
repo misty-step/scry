@@ -204,7 +204,7 @@ func bridgeViewFor(ctx context.Context, c *rc, it store.Item, st app.Struggle, f
 }
 
 // clearedLine says, on the review of a bridge card answered Correct or
-// Almost Correct, what clearing it did to the card it leads to.
+// Almost, what clearing it did to the card it leads to.
 func clearedLine(ctx context.Context, c *rc, rv store.Review) string {
 	if rv.Practice || (rv.Verdict != "right" && rv.Verdict != "close") {
 		return ""

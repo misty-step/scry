@@ -23,7 +23,7 @@ import (
 // itself an active bridge is offered bridge cards: two or three atomic
 // prerequisite cards, drafted by the model, edited by the learner, then
 // added to the card's idea while the card is held out of every due queue.
-// Each bridge's first Correct or Almost Correct ends it; when none is left
+// Each bridge's first Correct or Almost ends it; when none is left
 // the card is due again exactly when its own schedule says. The learner can
 // release the hold by hand at any time.
 

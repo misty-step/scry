@@ -125,7 +125,7 @@ type answeredRow struct {
 type judgedView struct {
 	Kind        string // right, close, missed, exact
 	Verdict     srs.Verdict
-	Badge       string // Correct, Almost Correct, Incorrect
+	Badge       string // Correct, Almost, Incorrect
 	Icon        string // the verdict's icon
 	Why         string // the fixed criterion sentence (or the exact diff count)
 	Answer      string // what the learner submitted
@@ -144,7 +144,7 @@ func verdictBadge(v srs.Verdict) (label, icon string) {
 	case srs.Right:
 		return "Correct", "verdict-right"
 	case srs.Close:
-		return "Almost Correct", "verdict-close"
+		return "Almost", "verdict-close"
 	}
 	return "Incorrect", "verdict-missed"
 }
@@ -176,7 +176,7 @@ type telemetryView struct {
 // happened, oldest first, never a streak count.
 type trailMark struct {
 	Verdict srs.Verdict
-	Label   string // Correct, Almost Correct, Incorrect
+	Label   string // Correct, Almost, Incorrect
 	Icon    string
 }
 

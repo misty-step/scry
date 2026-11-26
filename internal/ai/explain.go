@@ -113,6 +113,17 @@ func (f *FakeExplainer) Explain(ctx context.Context, in ExplainInput) (string, U
 	return fmt.Sprintf("What differed: you %s, and the card expects “%s”. (Test explainer: a side-by-side, not an assessment.)", given, in.Expected), use, nil
 }
 
+// gradeWord is the grade as the explaining model reads it: the grader's own
+// vocabulary ("almost correct" for the middle verdict), which is clearer to a
+// model than the learner's shorter word "Almost" ([S130-1] renames only the
+// word the learner sees).
+func gradeWord(v srs.Verdict) string {
+	if v == srs.Close {
+		return "almost correct"
+	}
+	return v.Label()
+}
+
 // DefaultExplainModel writes on-demand explanations; SCRY_EXPLAIN_MODEL overrides it.
 const DefaultExplainModel = "claude-opus-5-5"
 

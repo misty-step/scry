@@ -45,7 +45,7 @@ var libraryFlash = map[string]string{
 	"saved":    "Saved.",
 	"approved": "Approved. It's in your library.",
 	// Slice 75: bridge cards.
-	"held":      "Bridges added. This card is held until each bridge is answered Correct or Almost Correct once.",
+	"held":      "Bridges added. This card is held until each bridge is answered Correct or Almost once.",
 	"released":  "Hold released. The card is due again on its own schedule; its bridges stay in your library.",
 	"nobridges": "This card isn't offered bridge cards right now.",
 	// S111-1: "Study this idea" with nothing eligible in it.

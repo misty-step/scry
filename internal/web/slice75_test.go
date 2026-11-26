@@ -316,7 +316,7 @@ func TestSlice75_Web_BridgeReviewNamesTheCardItLeadsTo(t *testing.T) {
 	w.model.mu.Unlock()
 	review := alice.answer(cur, "wrong")
 	has(t, review, "data-review", "data-bridge-note", "Bridge card · "+link,
-		"The card it leads to stays held until this is answered Correct or Almost Correct.")
+		"The card it leads to stays held until this is answered Correct or Almost.")
 	hasNot(t, review, ">"+p.Answer+"<", "data-bridge-cleared")
 	if st, _ := w.lib("alice@example.com").BridgeState(context.Background(), p.ID); st.HeldBy != 2 {
 		t.Fatalf("held by %d after a missed bridge, want 2", st.HeldBy)

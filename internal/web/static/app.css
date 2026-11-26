@@ -605,7 +605,7 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
    its column; a multi-sentence answer reads at Body line height. */
 .compare-answer[data-submitted] { white-space: pre-wrap; line-height: 1.55; }
 /* The verdict badge, restrained: a 1 px hairline in the verdict's colour,
-   Meta mono, a 16 px icon; no fill but the Almost Correct highlighter. */
+   Meta mono, a 16 px icon; no fill but the Almost highlighter. */
 .verdict-badge {
   display: inline-flex; align-items: center; gap: 6px; align-self: center;
   padding: 3px 8px 3px 6px; border: 1px solid currentColor; border-radius: var(--radius-control);

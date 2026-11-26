@@ -36,8 +36,8 @@ func TestSlice75_Detection_Boundaries(t *testing.T) {
 		{"one Incorrect", 0, []srs.Verdict{M}, false},
 		{"latest two Incorrect", 0, []srs.Verdict{M, M}, true},
 		{"latest two Incorrect after a Correct", 1, []srs.Verdict{M, M, R}, true},
-		{"Incorrect then Almost Correct (newest)", 0, []srs.Verdict{C, M}, false},
-		{"Almost Correct then Incorrect (newest)", 0, []srs.Verdict{M, C}, false},
+		{"Incorrect then Almost (newest)", 0, []srs.Verdict{C, M}, false},
+		{"Almost then Incorrect (newest)", 0, []srs.Verdict{M, C}, false},
 		{"Correct between two Incorrect", 0, []srs.Verdict{M, R, M}, false},
 		{"two lapses and one Incorrect", 2, []srs.Verdict{M, R}, false},
 	} {
@@ -226,7 +226,7 @@ func TestSlice75_Accept_ValidatesAndIsIdempotent(t *testing.T) {
 }
 
 // Slice 75, end to end through Study: a held parent is not in any session;
-// an Incorrect on a bridge keeps it held; Correct and Almost Correct on the
+// an Incorrect on a bridge keeps it held; Correct and Almost on the
 // two bridges release it automatically, with its schedule untouched; a
 // manual release brings a held card straight back.
 func TestSlice75_Journey_HoldBridgesAndAutomaticReentry(t *testing.T) {
@@ -281,7 +281,7 @@ func TestSlice75_Journey_HoldBridgesAndAutomaticReentry(t *testing.T) {
 	}
 	w.answerOnce(t, b1, srs.Close, "b1-ish")
 	if st, _ := w.us.BridgeState(w.ctx, p); st.HeldBy != 0 {
-		t.Fatalf("Almost Correct on the last bridge: held by %d", st.HeldBy)
+		t.Fatalf("Almost on the last bridge: held by %d", st.HeldBy)
 	}
 	parentAfter, _ := w.us.Item(w.ctx, p)
 	if parentAfter.Sched != parentBefore.Sched {

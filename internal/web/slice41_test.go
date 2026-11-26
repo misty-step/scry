@@ -519,7 +519,7 @@ func TestSlice41_Review_EveryAnswerStopsOnTheReviewWithItsFacts(t *testing.T) {
 		typed       string
 	}{
 		{srs.Right, "right", "Correct", "alfa"},
-		{srs.Close, "close", "Almost Correct", "Brave"},
+		{srs.Close, "close", "Almost", "Brave"},
 		{srs.Missed, "missed", "Incorrect", "no idea"},
 	} {
 		body := b.mustGet("/study")

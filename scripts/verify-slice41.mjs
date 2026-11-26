@@ -17,7 +17,7 @@
 //      title or "Coming up" until the line has been given, even on Again
 //      after editing the question to repeat the answer; a title and answer
 //      of "Exact text" cannot leak through the neutral fallback either);
-//   2. a correct, an incorrect and an almost correct answer each stop on the
+//   2. a correct, an incorrect and an almost answer each stop on the
 //      post-answer review (no auto-skip): both answers, the verdict in
 //      words, Ask Why?, the stored schedule (next review, interval,
 //      stability, difficulty, review count), an inline edit that is saved and
@@ -297,7 +297,7 @@ async function run(browser, c) {
     if (n === "desktop-light") await shot(page, "04-study-active-spoilerfree.png");
 
     const answers = { right: "Alfa", missed: "Bananas", close: "Charly" };
-    const labels = { right: "Correct", missed: "Incorrect", close: "Almost Correct" };
+    const labels = { right: "Correct", missed: "Incorrect", close: "Almost" };
     for (const wanted of ["right", "missed", "close"]) {
       const r = await answerFor(page, c, wanted, answers);
       if (!r) continue;
@@ -368,7 +368,7 @@ async function run(browser, c) {
       check(at + ": Next card moves on to a new card", (await text(page, "#prompt")) !== r.prompt);
     }
     const scroll = await page.$$eval(".answered .tag", ts => ts.map(t => t.textContent.trim()));
-    check(n + " (2) answered cards recede to one line each with a verdict tag", scroll.length >= 3 && scroll.every(t => ["correct", "almost correct", "incorrect"].includes(t)), scroll);
+    check(n + " (2) answered cards recede to one line each with a verdict tag", scroll.length >= 3 && scroll.every(t => ["correct", "almost", "incorrect"].includes(t)), scroll);
 
     // 4, 8. Create, Inbox, Library, Settings.
     await page.goto(base + "/learn", { waitUntil: "load" });

@@ -391,7 +391,7 @@ func TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason(t 
 	third, _ := b.current(body)
 	w.model.script = []ai.Judgment{{Verdict: srs.Close, Reason: "Right word, but it is spelled Charlie."}}
 	body = b.answer(third, "Charly")
-	has(t, body, `data-verdict="close"`, `<span data-verdict-label>Almost Correct</span>`, "Charly", "Right word, but it is spelled Charlie.", "data-explain", "Ask Why?")
+	has(t, body, `data-verdict="close"`, `<span data-verdict-label>Almost</span>`, "Charly", "Right word, but it is spelled Charlie.", "data-explain", "Ask Why?")
 	hasNot(t, body, "<mark>")
 	b.next()
 

@@ -11,7 +11,7 @@ import (
 // Bridge cards (Slice 75, the Strugglometer). When a card keeps being
 // missed, the learner can add two or three smaller prerequisite cards
 // ("bridges") and hold the card they lead to (the "parent") out of every
-// due queue until each bridge has been answered Correct or Almost Correct
+// due queue until each bridge has been answered Correct or Almost
 // once. The parent's schedule is never touched: holding only hides it, and
 // when the hold ends it is due exactly when it was.
 //
@@ -195,8 +195,8 @@ func (u *UserStore) ReleaseHold(ctx context.Context, parentID int64, now time.Ti
 	return int(n), err
 }
 
-// masterBridge ends the bridge row of an item answered Correct or Almost
-// Correct, inside the transaction that records the answer. Once a parent's
+// masterBridge ends the bridge row of an item answered Correct or Almost,
+// inside the transaction that records the answer. Once a parent's
 // last active bridge is mastered it is no longer held.
 func (u *UserStore) masterBridge(ctx context.Context, tx *sql.Tx, itemID int64, at time.Time) error {
 	_, err := tx.ExecContext(ctx, `UPDATE item_bridges SET ended_at = ?, end_reason = 'mastered'

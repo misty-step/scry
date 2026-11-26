@@ -188,7 +188,7 @@ async function setup(browser, c) {
   check(c.name + " landing: headline and one accent action", land.headline === "Keep what's worth knowing." && /Start the 7-day trial/.test(land.cta || ""), land);
   if (c.mobile) check("phone landing: hero stacks (specimen below copy)", land.side && land.side.specTop >= land.side.copyBottom - 1, land.side);
   else check("desktop landing: two columns, specimen right of copy", land.side && land.side.specLeft >= land.side.copyRight - 1 && land.side.specTop < land.side.copyBottom, land.side);
-  check(c.name + " landing: Study Specimen shows a verdict in words, a reason and the schedule", /Correct|Almost Correct|Incorrect/.test(land.verdict || "") && !!land.why && land.schedule, land);
+  check(c.name + " landing: Study Specimen shows a verdict in words, a reason and the schedule", /Correct|Almost|Incorrect/.test(land.verdict || "") && !!land.why && land.schedule, land);
   check(c.name + " landing: specimen sits on the 22px dot grid", /grid\.svg/.test(land.grid) && /22px/.test(land.grid), land.grid);
   check(c.name + " landing: '$5 a month' unbroken", /^nowrap \$5 a month$/.test(land.price), land.price);
   check(c.name + " landing: public footer names Misty Step and privacy", /Misty Step/.test(land.foot) && /yours alone/.test(land.foot), land.foot);
@@ -387,7 +387,7 @@ async function run(browser, c, state) {
   });
   check(c.name + " review: question and judgment in view, Next card focused without scrolling", rev.focused && rev.promptTop >= 0 && rev.promptBottom <= c.height && rev.verdictTop < c.height && rev.topBar >= 0 && rev.scrollY === 0, rev);
   summary.reviewVerdicts = Object.assign(summary.reviewVerdicts || {}, { [c.name]: rev.label });
-  check(c.name + " review: verdict in words", /^(Correct|Almost Correct|Incorrect)$/.test(rev.label || ""), rev.label);
+  check(c.name + " review: verdict in words", /^(Correct|Almost|Incorrect)$/.test(rev.label || ""), rev.label);
   await common(page, c, "review");
   if (!c.mobile) await shot(page, "desktop-study-review.png");
   if (await page.$("[data-explain]")) {
@@ -918,7 +918,7 @@ async function longQuestionPhone(browser, c) {
         docHeight: document.documentElement.scrollHeight };
     });
     check("phone long question: tapping Check opens the review at scrollY 0, question top on screen, Next/Finish focused",
-      rev.scrollY === 0 && rev.promptTop >= 0 && rev.topBar >= 0 && rev.nextFocused && /^(Correct|Almost Correct|Incorrect)$/.test(rev.label || ""), Object.assign({ waitingScrollY: waiting.scrollY }, rev));
+      rev.scrollY === 0 && rev.promptTop >= 0 && rev.topBar >= 0 && rev.nextFocused && /^(Correct|Almost|Incorrect)$/.test(rev.label || ""), Object.assign({ waitingScrollY: waiting.scrollY }, rev));
     summary.longQuestion = { waitingScrollY: waiting.scrollY, reviewScrollY: rev.scrollY, promptTop: rev.promptTop, verdict: rev.label, next: rev.nextLabel };
     await common(page, c, "long-question review");
     await shot(page, "phone-long-question-review-top.png");

@@ -270,7 +270,7 @@ func TestSlice41_Telemetry_IsFormattedFromTheStoredSchedule(t *testing.T) {
 	if got := telemetry(u, it, store.ReviewCounts{Total: 1, Right: 1}, nil, false, now); got.NextDate != "Thu, Jan 21, 2027" || got.NextRel != "in 60 days" {
 		t.Errorf("next year: %+v", got)
 	}
-	for v, want := range map[srs.Verdict][2]string{srs.Right: {"Correct", "verdict-right"}, srs.Close: {"Almost Correct", "verdict-close"}, srs.Missed: {"Incorrect", "verdict-missed"}} {
+	for v, want := range map[srs.Verdict][2]string{srs.Right: {"Correct", "verdict-right"}, srs.Close: {"Almost", "verdict-close"}, srs.Missed: {"Incorrect", "verdict-missed"}} {
 		if label, icon := verdictBadge(v); label != want[0] || icon != want[1] {
 			t.Errorf("verdictBadge(%s) = %q, %q", v, label, icon)
 		}
