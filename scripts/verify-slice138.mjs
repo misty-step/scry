@@ -144,16 +144,36 @@ async function readHeadline(page) {
         r.setStart(node, m.index);
         r.setEnd(node, m.index + m[0].length);
         const rects = [...r.getClientRects()].filter((b) => b.width > 0);
-        words.push({ word: m[0], lines: rects.length, top: rects[0] ? Math.round(rects[0].top) : null, left: rects[0]?.left, right: rects[rects.length - 1]?.right });
+        const all = r.getBoundingClientRect();
+        words.push({ word: m[0], lines: rects.length, top: rects[0] ? Math.round(rects[0].top) : null, left: rects[0]?.left, right: rects[rects.length - 1]?.right,
+          box: { left: all.left, right: all.right, top: all.top, bottom: all.bottom } });
       }
     }
     const lineTops = [...new Set(words.map((w) => w.top))];
     const lines = lineTops.map((t) => words.filter((w) => w.top === t).map((w) => w.word).join(" "));
-    const display = getComputedStyle(document.documentElement).getPropertyValue("--display").trim();
+    // --display resolved for this viewport, and 16ch of this face, read
+    // from probe elements set the same way as the headline.
+    const probe = document.createElement("span");
+    probe.className = "display";
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:nowrap;width:16ch";
+    h.parentElement.appendChild(probe);
+    const display = getComputedStyle(probe).fontSize, ch16 = probe.getBoundingClientRect().width;
+    probe.remove();
+    // Clipping: every ancestor that does not let overflow show, and the
+    // viewport, must hold every word's full line box.
+    const clippers = [];
+    for (let el = h; el && el !== document.documentElement; el = el.parentElement) {
+      const o = getComputedStyle(el);
+      if (o.overflowX !== "visible" || o.overflowY !== "visible" || (o.clipPath && o.clipPath !== "none")) clippers.push(el);
+    }
     return {
       count: h1s.length, text: h.textContent, cls: h.className, tag: h.tagName,
       family: cs.fontFamily, weight: cs.fontWeight, size: cs.fontSize, lineHeight: cs.lineHeight, maxWidth: cs.maxWidth, display,
-      lines, words, clipped: h.scrollWidth > h.clientWidth + 0.5 || h.scrollHeight > h.clientHeight + 0.5,
+      lines, words, ch16, clipperCount: clippers.length,
+      clipped: h.scrollWidth > h.clientWidth + 0.5 || words.some((w) => w.box && (w.box.left < -0.5 || w.box.right > window.innerWidth + 0.5 || clippers.some((c) => {
+        const b = c.getBoundingClientRect();
+        return w.box.left < b.left - 0.5 || w.box.right > b.right + 0.5 || w.box.top < b.top - 0.5 || w.box.bottom > b.bottom + 0.5;
+      }))),
       box: { left: hb.left, right: hb.right, top: hb.top, bottom: hb.bottom, width: hb.width, height: hb.height }, vw: window.innerWidth,
       parentRight: h.parentElement.getBoundingClientRect().right,
       inkInBox: words.every((w) => w.left >= hb.left - 0.5 && w.right <= hb.right + 0.5),
@@ -178,7 +198,7 @@ async function readRest(page) {
       ledeBox: r(q(".hero .lede")), actionsBox: r(q(".hero .actions")), termsBox: r(q(".hero .trial-terms-line")),
       rows: [...document.querySelectorAll(".plain-list .plain-row")].map((x) => x.innerText.replace(/\s+/g, " ").trim()),
       description: meta('meta[name="description"]'), ogDescription: meta('meta[property="og:description"]'),
-      ogImage: meta('meta[property="og:image"]'), header: q("header.top")?.innerText.replace(/\s+/g, " ").trim(),
+      ogImage: (meta('meta[property="og:image"]') || "").replace(location.origin, ""), header: q("header.top")?.innerText.replace(/\s+/g, " ").trim(),
       foot: q("[data-public-foot]")?.innerText.replace(/\s+/g, " ").trim() ?? null,
     };
   });
@@ -246,11 +266,11 @@ async function journey(c, port) {
     check(config, "[S138-1] Display type: .display, Geist, weight 500, the --display size, line-height 1.1",
       h.cls === "display" && /^Geist/.test(h.family) && h.weight === "500" && h.size === h.display && Math.abs(parseFloat(h.lineHeight) - 1.1 * parseFloat(h.size)) < 0.6,
       { cls: h.cls, family: h.family.slice(0, 20), weight: h.weight, size: h.size, display: h.display, lineHeight: h.lineHeight });
-    check(config, "[S138-1] in the hero's 16ch headline measure", /px$/.test(h.maxWidth) && Math.abs(parseFloat(h.maxWidth) - h.box.width) < 1, { maxWidth: h.maxWidth, width: h.box.width });
+    check(config, "[S138-1] in the hero's existing 16ch headline measure (max-width 16ch, never wider)", Math.abs(parseFloat(h.maxWidth) - h.ch16) < 0.6 && h.box.width <= parseFloat(h.maxWidth) + 0.5, { maxWidth: h.maxWidth, ch16: h.ch16, width: h.box.width });
     check(config, '[S138-1] sets as two lines, "Remember" over "everything."', JSON.stringify(h.lines) === JSON.stringify(["Remember", "everything."]), h.lines);
     check(config, "[S138-1] no word broken across lines", h.words.length === 2 && h.words.every((w) => w.lines === 1), h.words.map((w) => `${w.word}:${w.lines}`));
-    check(config, "[S138-1] nothing clipped (no overflow in the h1, every glyph inside its box and the viewport)",
-      !h.clipped && h.inkInBox && h.box.left >= 0 && h.box.right <= h.vw && h.box.right <= h.parentRight + 0.5 && h.visible, { box: h.box, vw: h.vw, clipped: h.clipped });
+    check(config, "[S138-1] nothing clipped (no sideways overflow in the h1; every word's line box inside the h1's width, the viewport and any clipping ancestor)",
+      !h.clipped && h.inkInBox && h.box.left >= 0 && h.box.right <= h.vw && h.box.right <= h.parentRight + 0.5 && h.visible, { box: h.box, vw: h.vw, clippers: h.clipperCount, clipped: h.clipped });
     const head = await page.evaluate(() => ({ title: document.title, og: document.querySelector('meta[property="og:title"]')?.getAttribute("content"), html: document.documentElement.outerHTML, text: document.body.innerText }));
     check(config, `[S138-1] document.title is "${TITLE}"`, head.title === TITLE, head.title);
     check(config, `[S138-1] og:title is "${TITLE}"`, head.og === TITLE, head.og);
