@@ -374,17 +374,17 @@ func TestSlice30ClientErrorForwardsNoCallerData(t *testing.T) {
 		name, host, contentType, body, want string
 	}{
 		{"unknown route collapses to /other", cspRigHost, "application/json",
-			`{"kind":"js_error","route":"/my-diagnosis/hiv-positive/bob","errorClass":"TypeError","message":"bob has hiv"}`,
-			"client js_error route=/other code=TypeError build=abc1234"},
+			`{"kind":"js_error","route":"/my-diagnosis/hiv-positive/bob","errorClass":"TypeError","message":"bob has hiv","sourceFile":"/static/app.js"}`,
+			"client js_error route=/other code=TypeError source=/static/app.js build=abc1234"},
 		{"unknown route in a native report", cspRigHost, "application/csp-report",
 			`{"csp-report":{"document-uri":"https://scry.example/reset/4242424242424242/alice-smith","violated-directive":"img-src","blocked-uri":"https://evil.example/x"}}`,
 			"client csp_violation route=/other directive=img-src blocked=external build=abc1234"},
 		{"known route with an id keeps only its template", cspRigHost, "application/json",
-			`{"kind":"js_error","route":"/learn/my-private-topic","errorClass":"RangeError"}`,
-			"client js_error route=/learn/:id code=RangeError build=abc1234"},
+			`{"kind":"js_error","route":"/learn/my-private-topic","errorClass":"RangeError","sourceFile":"/static/app.js"}`,
+			"client js_error route=/learn/:id code=RangeError source=/static/app.js build=abc1234"},
 		{"free-text messages are never read", cspRigHost, "application/json",
-			`{"kind":"js_error","route":"/signup","message":"Alice Smith's diary: redirect /signup?token=zqsecret77 path?email=a@b.com ?code=xyz789 //proto.example/p 4242 4242 4242 4242"}`,
-			"client js_error route=/signup code=UnknownError build=abc1234"},
+			`{"kind":"js_error","route":"/signup","sourceFile":"/static/clerk.js","message":"Alice Smith's diary: redirect /signup?token=zqsecret77 path?email=a@b.com ?code=xyz789 //proto.example/p 4242 4242 4242 4242"}`,
+			"client js_error route=/signup code=UnknownError source=/static/clerk.js build=abc1234"},
 		{"rejection reason text is never read", cspRigHost, "application/json",
 			`{"kind":"unhandled_rejection","route":"/billing/card","errorClass":"Alice Smith","message":"declined 4242424242424242 for alice"}`,
 			"client unhandled_rejection route=/billing/card code=UnhandledRejection build=abc1234"},
@@ -404,8 +404,8 @@ func TestSlice30ClientErrorForwardsNoCallerData(t *testing.T) {
 			`{"kind":"csp_violation","route":"/","violatedDirective":"img-src","blockedURI":"//alice-proto.example/static/app.js"}`,
 			"client csp_violation route=/ directive=img-src blocked=external build=abc1234"},
 		{"protocol-relative routes are /other", cspRigHost, "application/json",
-			`{"kind":"js_error","route":"//alice-proto.example/study","errorClass":"Error"}`,
-			"client js_error route=/other code=Error build=abc1234"},
+			`{"kind":"js_error","route":"//alice-proto.example/study","errorClass":"Error","sourceFile":"/static/app.js"}`,
+			"client js_error route=/other code=Error source=/static/app.js build=abc1234"},
 		{"a forged Host header never makes a host first-party", "alice-forged.example", "application/json",
 			`{"kind":"js_error","route":"/","errorClass":"TypeError","sourceFile":"https://alice-forged.example/static/app.js","line":2}`,
 			"client js_error route=/ code=TypeError source=external build=abc1234"},
@@ -549,6 +549,48 @@ func TestSlice30ClientErrorDedupesAndKeepsExtensionsLocal(t *testing.T) {
 	}
 }
 
+// Sentry scry #7869461637: "client js_error route=/signup code=TypeError"
+// with no source paged the operator. A script error with no source file
+// was not thrown by any script Scry serves or loads (all are src= files
+// the browser names; CSP allows no inline script or eval): it came from
+// code injected into the page, such as an in-app browser shim. It stays a
+// local warn line. The same error from a Scry file, an integration origin
+// or an unknown third-party file still pages.
+func TestClientErrorWithoutSourceStaysLocal(t *testing.T) {
+	r := newCSPRig(t, true, true)
+	// Exactly what app.js sends for an error event with an empty filename.
+	incident := `{"kind":"js_error","errorClass":"TypeError","sourceFile":"","line":0,"column":0,"route":"/signup"}`
+	for _, body := range []string{incident, incident, `{"kind":"error","route":"/signup","errorClass":"TypeError"}`} {
+		if status := r.report("application/json", body); status != http.StatusNoContent {
+			t.Fatalf("status %d, want 204", status)
+		}
+	}
+	if got := r.captured(); len(got) != 0 {
+		t.Fatalf("an error no Scry script threw reached Sentry: %v", got)
+	}
+	has(t, r.logs.String(), `"level":"WARN"`, "client js_error route=/signup code=TypeError build=abc1234", `"forwarded":false`)
+	hasNot(t, r.logs.String(), `"level":"ERROR"`)
+
+	for _, c := range []struct{ body, want string }{
+		{`{"kind":"js_error","errorClass":"TypeError","sourceFile":"http://127.0.0.1:18080/static/clerk.js","line":95,"column":3,"route":"/signup"}`,
+			"client js_error route=/signup code=TypeError source=/static/clerk.js:95:3 build=abc1234"},
+		{`{"kind":"js_error","errorClass":"TypeError","sourceFile":"https://js.stripe.com/v3/","line":1,"route":"/signup/card"}`,
+			"client js_error route=/signup/card code=TypeError source=https://js.stripe.com:1 build=abc1234"},
+		{`{"kind":"js_error","errorClass":"TypeError","sourceFile":"https://cdn.example/x.js","line":1,"route":"/signup"}`,
+			"client js_error route=/signup code=TypeError source=external build=abc1234"},
+		{`{"kind":"unhandled_rejection","errorClass":"TypeError","route":"/signup"}`,
+			"client unhandled_rejection route=/signup code=TypeError build=abc1234"},
+	} {
+		before := len(r.captured())
+		if status := r.report("application/json", c.body); status != http.StatusNoContent {
+			t.Fatalf("status %d", status)
+		}
+		if got := r.captured(); len(got) != before+1 || got[len(got)-1] != c.want {
+			t.Fatalf("captured %v, want %q to page", got, c.want)
+		}
+	}
+}
+
 // A signed-in browser posts telemetry without a CSRF token: the endpoint
 // is exempt, and a CSP report (which browsers send without one) works too.
 func TestSlice30ClientErrorIsCSRFExempt(t *testing.T) {
@@ -556,7 +598,7 @@ func TestSlice30ClientErrorIsCSRFExempt(t *testing.T) {
 	b := w.browser()
 	b.signUp("telemetry@example.com")
 	req, _ := http.NewRequest(http.MethodPost, w.srv.URL+"/api/client-error",
-		strings.NewReader(`{"kind":"js_error","route":"/study","errorClass":"TypeError"}`))
+		strings.NewReader(`{"kind":"js_error","route":"/study","errorClass":"TypeError","sourceFile":"/static/app.js"}`))
 	req.Header.Set("Content-Type", "application/json")
 	if status, _ := b.do(req); status != http.StatusNoContent {
 		t.Fatalf("signed-in report without CSRF = %d, want 204", status)

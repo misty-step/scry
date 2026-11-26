@@ -202,6 +202,9 @@ func (s *Server) clientError(w http.ResponseWriter, r *http.Request) {
 	case ev.extension:
 		// Browser extensions trip the policy on their own; keep them local.
 		level = slog.LevelWarn
+	case ev.unattributed:
+		// No script Scry serves or loads threw this; keep it local.
+		level = slog.LevelWarn
 	case !s.clientErrs.first(msg, now):
 		level = slog.LevelWarn // already sent to Sentry in this window
 	}
@@ -224,6 +227,15 @@ type clientEvent struct {
 	kind, route, violated, effective, blocked, source, code, disposition string
 	line, column                                                         int
 	extension                                                            bool
+	// unattributed is a js_error with no source file. Every script Scry
+	// runs is a src= file (CSP allows no inline script or eval), and the
+	// browser names that file, or the integration's origin, on its errors;
+	// cross-origin scripts without CORS send only "Script error.", which
+	// app.js drops. An error with no file at all therefore came from code
+	// the browser injected into the page (in-app browser shims, autofill,
+	// page-world extensions, bookmarklets, the console): it is logged
+	// locally at warn level and never pages the operator.
+	unattributed bool
 }
 
 func (e clientEvent) summary(build string) string {
@@ -314,6 +326,7 @@ func sanitizeClientReport(r clientReport, p uriPolicy) (clientEvent, bool) {
 	case "js_error", "unhandled_rejection":
 		e.code = errorClass(r.ErrorClass, kind)
 		e.source, e.extension = p.uri(r.SourceFile)
+		e.unattributed = kind == "js_error" && e.source == ""
 		if e.source != "" && e.source != externalURI {
 			if r.Line > 0 && r.Line < 1e7 {
 				e.line = r.Line

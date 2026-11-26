@@ -1112,8 +1112,13 @@ Pass 2 (cold critic remediation):
   trial logic are unchanged.
 - /api/client-error logs at error level (forwarded to Sentry, and to
   scry-watch when configured) once per distinct sanitized message per 10
-  minutes; repeats and reports blamed on browser extensions are warn-level
-  local logs. Sentry receives only the message line, which is built from
+  minutes; repeats, reports blamed on browser extensions and `js_error`
+  reports with no source file are warn-level local logs. A fileless script
+  error cannot come from Scry: its scripts are all `src=` files the browser
+  names (CSP allows no inline script or eval) and opaque cross-origin errors
+  arrive as "Script error.", which app.js drops; Sentry scry #7869461637
+  (`client js_error route=/signup code=TypeError`, no source) was such an
+  injected-script error. Sentry receives only the message line, which is built from
   closed allowlists alone; `script-sample`, `original-policy`, `referrer`
   and any `message` field are never read. Routes are reduced to Scry's
   route templates or `/other` (the brief's list plus `/library/texts/:id`; a
