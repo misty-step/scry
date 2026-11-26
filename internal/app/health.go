@@ -28,6 +28,10 @@ type Readiness struct {
 	// (grading, explainer, drafting, speech), after SCRY_*_MODEL overrides
 	// and route defaults; "" when the capability is not wired.
 	Models map[string]string
+	// GradingChain is the ordered grading chain ([S113-1]): the primary
+	// decisions model, the fallback decisions models in order, and the
+	// escalation LLM with the route it calls.
+	GradingChain ai.ChainInfo
 	// SpeechRoute is where recordings are sent: audio/transcriptions or
 	// chat/completions on OpenRouter, test for the fake, "" when unwired.
 	SpeechRoute string
@@ -52,9 +56,10 @@ func (a *App) Readiness() Readiness {
 	}
 	r.Providers["grading"] = judgeLabel(judge)
 	r.Providers["drafting"] = label(draft)
-	if j, ok := judge.(*ai.Jev); ok && j != nil {
+	if j, ok := primaryJudge(judge).(*ai.Jev); ok && j != nil {
 		r.Grading = true
 	}
+	r.GradingChain = ai.JudgeChain(judge)
 	if c, ok := draft.(*ai.Claude); ok && c != nil {
 		r.Drafting = true
 	}
@@ -135,11 +140,20 @@ func label(v any) string {
 // judgeLabel names Jev with the route it calls, since the two routes are
 // billed and fail separately.
 func judgeLabel(v any) string {
-	if j, ok := v.(*ai.Jev); ok && j != nil {
+	if j, ok := primaryJudge(v).(*ai.Jev); ok && j != nil {
 		if j.OpenRouter {
 			return "jev-openrouter"
 		}
 		return "jev-typesafe"
 	}
 	return label(v)
+}
+
+// primaryJudge is the first decisions model of a grading chain; any other
+// grader is itself.
+func primaryJudge(v any) any {
+	if c, ok := v.(*ai.Chain); ok && c != nil {
+		return c.Primary()
+	}
+	return v
 }

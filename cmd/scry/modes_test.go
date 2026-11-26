@@ -52,6 +52,7 @@ func modeEnv(t *testing.T, mode string, sets ...map[string]string) {
 	t.Setenv("SCRY_SPEECH_MODEL", "")
 	t.Setenv("SCRY_SPEECH_ROUTE", "")
 	t.Setenv("SENTRY_DSN", "")
+	unsetChainEnv(t)
 	for _, set := range sets {
 		for k, v := range set {
 			t.Setenv(k, v)
@@ -165,7 +166,7 @@ func TestJudgeModeSelection(t *testing.T) {
 			if !ok {
 				t.Fatalf("model is %T", a.Model)
 			}
-			jev, ok := split.JudgeProvider.(*ai.Jev)
+			jev, ok := primaryJev(split.JudgeProvider)
 			if !ok || jev.Model != "custom/decisions-model" {
 				t.Fatalf("judge %T %+v", split.JudgeProvider, jev)
 			}
@@ -402,7 +403,7 @@ func assertAllRouter(t *testing.T, a *app.App) {
 	if !ok {
 		t.Fatalf("model is %T", a.Model)
 	}
-	if j, ok := split.JudgeProvider.(*ai.Jev); !ok || !j.OpenRouter {
+	if j, ok := primaryJev(split.JudgeProvider); !ok || !j.OpenRouter {
 		t.Fatalf("judge %T %+v", split.JudgeProvider, split.JudgeProvider)
 	}
 	if c, ok := split.DraftProvider.(*ai.Claude); !ok || !c.OpenRouter || c.DraftModel != ai.DefaultOpenRouterDraftModel || c.ExplainModel != ai.DefaultOpenRouterExplainModel {

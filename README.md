@@ -28,6 +28,11 @@ use only test card 4242 4242 4242 4242, a future expiry, and CVC 123.
 fixture, not a correctness assessment. Tests inject close/missed results;
 SCRY_TEST_JUDGMENTS=close,missed,right hands out that verdict sequence in turn
 (answer-independent) so the running app can show close/missed and “Why?”.
+Every non-exact answer still walks the real grading chain ([S113-1]) over
+fixture steps; SCRY_TEST_JUDGE_PATHS=primary-unavailable,primary-none,all-fail
+forces each submission down a path in turn, and SCRY_TEST_JUDGE_DELAY=3500ms
+holds each judgment long enough to see “still checking”, e.g.
+`SCRY_MODE=test SCRY_SEED_DEMO=1 SCRY_TEST_JUDGMENTS=close SCRY_TEST_JUDGE_PATHS=chain-unavailable,all-fail SCRY_TEST_JUDGE_DELAY=3500ms make run`.
 The test explainer sets the two answers side by side; it assesses nothing.
 Exact texts use the real word diff. Drafts use built-in examples or labelled
 placeholders, not general knowledge generation; pasted Markdown, prose or notes
@@ -50,12 +55,16 @@ SCRY_TEST_SPEECH supplies a reproducible phrase for voice demos.
 | SCRY_BASE_URL | External HTTPS origin; forces Secure cookies, and is the origin (besides scry.mistystep.io and loopback) whose /static/ assets client telemetry attributes to Scry |
 | SCRY_TEST_SPEECH | Optional fixed test transcription |
 | SCRY_TEST_JUDGMENTS | Test mode only: comma-separated verdict script (right, close, missed) |
+| SCRY_TEST_JUDGE_PATHS | Test mode only ([S113-1]): comma-separated grading-chain path script, one per submission in turn, whatever the answer says; any other value stops the boot. `primary` (the default: the primary answers), `primary-unavailable` / `primary-error` / `primary-unparseable` (the first fallback decisions model answers), `chain-unavailable` (every decisions model is unavailable; the escalation LLM answers), `primary-low-confidence` / `primary-low-probability` / `primary-thin-margin` / `primary-none` (the escalation LLM answers and no fallback is asked), `all-fail` (no verdict: "Couldn't check that just now"). Verdicts still come from SCRY_TEST_JUDGMENTS. Each step is a fixture in the real chain orchestrator, with no network call |
+| SCRY_TEST_JUDGE_DELAY | Test mode only: a Go duration (0 to 40s, e.g. 3500ms) each judgment waits before the chain starts, so "checking" and "still checking" can be watched |
 | SCRY_TEST_EXPLAIN | Test mode only: fail or slow exercises the explanation fallback |
 | SCRY_TEST_CLOCK | Test mode only: start the app clock at an RFC 3339 instant (zone kept) |
 | SCRY_TEST_CHARGE_DELAY | Test mode only: hold each fake top-up charge (e.g. 4s) |
 | OPENROUTER_API_KEY | Live: the one AI key. When set it carries all four AI capabilities (Jev grading, Claude drafting, the “Why?” explainer, speech) and no ANTHROPIC_API_KEY or OPENAI_API_KEY is needed or read. A JWT-shaped value stops the boot. |
 | TYPESAFE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY | Live, optional direct fallbacks used only when OPENROUTER_API_KEY is unset: Jev on Typesafe, drafting and explanations on Anthropic, speech on OpenAI. Each missing one is named at boot; a JWT-shaped one stops the boot. |
-| SCRY_JUDGE_MODEL | Live: Decisions model Jev grades with. Default typesafe/jev-1.14 on OpenRouter (POST /api/alpha/decisions; must be a vendor/model slug there, or the boot stops), jev-latest on Typesafe |
+| SCRY_JUDGE_MODEL | Live: the primary decisions model of the grading chain (Jev). Default typesafe/jev-1.14 on OpenRouter (POST /api/alpha/decisions; must be a vendor/model slug there, or the boot stops), jev-latest on Typesafe |
+| SCRY_JUDGE_FALLBACK_MODELS | Live, OpenRouter only ([S113-1]): comma-separated fallback decisions models, asked in order when the one before is unavailable, errors or replies unreadably. Unset: openai/gpt-6-luna-decisions,google/gemini-decision-1. Set but empty: no fallbacks. Each must be a vendor/model slug or the boot stops. Ignored (with a warning) without OPENROUTER_API_KEY |
+| SCRY_JUDGE_ESCALATION_MODEL | Live, OpenRouter only ([S113-1]): the fast LLM asked once (chat completions, strict JSON schema, three-way verdict) when a decisions model is uncertain or none gives a verdict. Default google/gemini-4-hydrogen; must be a vendor/model slug or the boot stops. Without OPENROUTER_API_KEY the escalation is the drafting model (SCRY_DRAFT_MODEL, default claude-opus-5-5) on Anthropic with ANTHROPIC_API_KEY, and this setting is ignored with a warning |
 | SCRY_DRAFT_MODEL | Live: drafting model. Default openai/gpt-6.2-sol on OpenRouter (must be a vendor/model slug there), claude-opus-5-5 on Anthropic |
 | SCRY_EXPLAIN_MODEL | Live: model for on-demand “Why?” explanations. Default openai/gpt-6-luna on OpenRouter (vendor/model slug), claude-opus-5-5 with low effort on Anthropic |
 | SCRY_SPEECH_MODEL | Live: transcription model. Default microsoft/mai-transcribe-2 on OpenRouter (vendor/model slug). Dedicated speech-to-text slugs (`speech.UsesTranscriptionsRoute`: elevenlabs/\* (scribe-v2 ...), deepgram/\*, assemblyai/\*, mistralai/voxtral\*, \*transcribe\*, \*whisper\*, \*scribe\*, \*-stt\*) are uploaded as multipart `file` + `model` to POST /api/v1/audio/transcriptions; any other slug (an audio-input chat model such as google/gemini-3.1-flash-lite) gets the recording as input_audio on /api/v1/chat/completions. gpt-4o-mini-transcribe on OpenAI |
@@ -81,7 +90,7 @@ SCRY_SPEECH_MODEL). /healthz reports each surface's configured model under `mode
 (`grading`, `explainer`, `drafting`, `speech`) and the speech route under `speech_route`, next to
 every key it already had. Only without OPENROUTER_API_KEY do they fall back to direct keys: Jev on
 TYPESAFE_API_KEY, Anthropic drafting and explanations on ANTHROPIC_API_KEY, OpenAI speech on
-OPENAI_API_KEY. Model overrides: SCRY_JUDGE_MODEL, SCRY_DRAFT_MODEL, SCRY_EXPLAIN_MODEL,
+OPENAI_API_KEY. Model overrides: SCRY_JUDGE_MODEL, SCRY_JUDGE_FALLBACK_MODELS, SCRY_JUDGE_ESCALATION_MODEL, SCRY_DRAFT_MODEL, SCRY_EXPLAIN_MODEL,
 SCRY_SPEECH_MODEL. Stripe (STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY,
 STRIPE_PRICE_ID, STRIPE_WEBHOOK_SECRET). Do not enable them for this delivery.
 Stripe is mode-matched: a live adapter (stripe-live) accepts only sk_live_/rk_live_ and pk_live_ keys
@@ -116,7 +125,10 @@ GET /healthz verifies database writes and returns 200 or 503. It keeps
 and `make docker` set it), `mode`, `db`, `grading`/`drafting`/`explainer`/`speech`
 (true only when the real Jev, Claude and OpenAI adapters are wired), `billing_mode`
 (stripe-live, stripe-test, test), `auth_mode` (clerk-live, clerk-test, local),
-`providers` (the exact adapter label for each) and `warnings` (deliberate unusual
+`providers` (the exact adapter label for each), `grading_chain` ([S113-1]: `primary`,
+`fallbacks` in order, `escalation` and `escalation_provider`, e.g.
+`{"primary":"typesafe/jev-1.14","fallbacks":["openai/gpt-6-luna-decisions","google/gemini-decision-1"],"escalation":"google/gemini-4-hydrogen","escalation_provider":"openrouter"}`)
+and `warnings` (deliberate unusual
 wirings such as the Stripe staged cutover). It never contains a key, secret, DSN
 or token. Structured logs include request IDs, latency, status and user IDs
 (local and Clerk auth alike), not submitted answers.
@@ -303,7 +315,9 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | [S106-6] Nothing else changes; every change is proved headed: the whole suite stays green, and scripts/verify-slice106.mjs walks the landing Specimen, Create from Markdown, imports, exports round-trip, five-destination navigation, /inbox, the API, and Snooze / Edit card / Delete / restore in a headed Chrome at 1440×900 and 390×844, light and dark, with 0 console/page/CSP/request problems and no sideways scroll | go test ./...; scripts/verify-slice106.mjs |
 | [S106-4] No Inbox; the API adds to the library: five destinations, `/inbox` 303 to Library, every token adds (old can_add = 0 too) via /api/v1/items and its /api/v1/suggestions alias, 1–50 per request, old pending suggestions moved into the library | TestS106_4_InboxRedirects303ToLibrary; TestS106_4_NavHasFiveDestinations; TestS106_4_EveryTokenAddsToLibrary; TestS106_4_ItemsBatchLimits1To50; internal/store.TestS106_4_PendingInboxSuggestionsMigrateToLibrary; internal/store.TestS106_4_AddFromAgentFilesStraightIntoTheLibrary; TestDesign_NoInboxPurposeLine_InboxOpensLibrary |
 | Story: due items, typing/speaking, five minutes | TestStory_OpenScry_GetWhatsDue_AnswerByTypingOrSpeaking_DoneInAboutFiveMinutes |
-| Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries |
+| Story: model judging, reason, exact word diff | TestStory_NeverGradeMyself_EveryAnswerJudgedByTheModelWithAOneLineReason; TestStory_TextsIMarkExactAreJudgedWordForWord; TestStory_JevAbstainsOnceAndExactBypassesJev; internal/ai.TestDecisionCorrection_ConfigurableModelAndGradeOnly; internal/ai.TestJev_RoutesAndUntrustedInjection; internal/ai.TestJev_EachFixedChoiceAndRouteSelection; internal/ai.TestJev_FailsClosedWithoutRetries; internal/app.TestStory_S113_1_IdenticalNonExactAnswerStillReachesTheModel |
+| [S111-3] [S113-1] Long explanations get a semantic verdict, from models only: one ordered chain (Jev, then the fallback decisions models in order on unavailable / errored / unparseable, then one escalation to the fast LLM on any low-certainty verdict or no verdict, never shopping an uncertain verdict to another decisions model); a non-exact answer identical to the correct one still reaches a model; every model a vendor/model slug on OpenRouter (SCRY_JUDGE_MODEL, SCRY_JUDGE_FALLBACK_MODELS may be empty, SCRY_JUDGE_ESCALATION_MODEL), Jev on Typesafe plus the drafting model without it; each attempt logged without the answer or a key; one judgment reservation sized for the costliest path, settled once; every path updates the FSRS schedule with no 503; only when every path fails "Couldn't check that just now", and a retry after a lost response opens the recorded review with no second charge; test mode a fixture chain (SCRY_TEST_JUDGE_PATHS, SCRY_TEST_JUDGE_DELAY) | internal/ai.TestStory_S113_1_PrimaryDecisionsModelAnswers; internal/ai.TestStory_S113_1_PrimaryUnavailableErroredOrUnparseable_NextDecisionsModelAnswers; internal/ai.TestStory_S113_1_EveryDecisionsModelUnavailable_EscalationLLMAnswers; internal/ai.TestStory_S113_1_LowCertaintyGoesStraightToTheLLMAndIsNeverShopped; internal/ai.TestStory_S113_1_EscalationFailingTooIsNoVerdict; internal/ai.TestStory_S113_1_UnknownOutcomesAreReportedForTheHold; internal/ai.TestStory_S113_1_JevSeparatesUnavailableFromUncertain; internal/ai.TestStory_S113_1_DirectEscalationUsesTheDraftingModel; internal/ai.TestStory_S113_1_TestFixtureChainPaths; internal/app.TestStory_S113_1_EveryChainPathUpdatesTheScheduleAsOneJudgment; internal/app.TestStory_S113_1_AWalkThroughTheWholeChainIsChargedAsExactlyOneJudgment; internal/app.TestStory_S113_1_IdenticalNonExactAnswerStillReachesTheModel; internal/app.TestStory_S113_1_RetryAfterALostResponseOpensTheRecordedReviewWithoutASecondCharge; TestStory_S113_1_StudyThroughEveryChainPath; cmd/scry.TestStory_S113_1_ChainConfigurationAndSlugChecksAtBoot; cmd/scry.TestStory_S113_1_TestModeChainFixtureSettings |
+| [S111-2] (server side) Line breaks the learner types, pastes or dictates are kept in the stored review; an exact text's word diff still reads them as spaces | internal/app.TestStory_S111_2_LineBreaksAreKeptInTheReview |
 | Story: connected ideas; each item belongs to an idea; on phones the opened idea comes first with a compact collapsible outline | TestStory_SeeHowIdeasConnect_AndEachItemBelongsToAnIdea; TestStory_Library_OnPhonesTheIdeaComesFirstWithACollapsibleOutline |
 | Story: every answer stops on a review that stays framed at the question and judgment | TestStory_Review_StaysFramedAtTheQuestionAndJudgment (plus the real-browser walkthrough below) |
 | Story: the review shows only the current card; an empty answer says "No answer given." and "Skipped — review the answer above." (still graded, G10); the why is in plain words, never the grader's rubric | TestSlice70_Review_ShowsTheCurrentCardOnly; TestSlice70_Review_SkipSaysNoAnswerGivenInPlainWords; TestSlice70_Review_GradedWhyIsPlainNeverTheRubric; TestG10_EmptyAnswerCallsJudgeOnce; internal/ai.TestWhy_PlainSentencesReplaceTheGraderRubric; `scripts/verify-slice70.mjs` |
@@ -503,7 +517,8 @@ https://api.typesafe.ai/v1/systemone, default jev-latest; SCRY_JUDGE_MODEL overr
 that model too. OpenRouter wins if both keys exist. Both routes send one choice
 question and structured state: card_prompt, accepted_answers, learner_answer.
 Learner text stays untrusted data, never instructions or criteria. No redirects,
-implicit retries, fallback classifier or explanation-provider call.
+implicit retries, heuristic classifier or explanation-provider call; each model is
+asked at most once per submission ([S113-1], below).
 
 The four choices use Scry's existing verdict vocabulary:
 
@@ -525,11 +540,33 @@ It reads the review and item and never writes them. Any failure, refusal,
 timeout, missing explainer or exhausted allowance returns the criterion sentence
 as a fallback. There are no fixed verdict-plus-reason subclasses. Exact word diff is unchanged.
 
-Refusal, missing required answer keys, unexpected types, unknown choices or
-none_of_these use the existing not-answered path once. Optional confidence and
+Refusal, missing required answer keys, unexpected types and unknown choices are
+*unavailable* (ai.ErrDecisionUnavailable); none_of_these and a decision below a
+gate are *uncertain* (ai.ErrDecisionUncertain). Optional confidence and
 probabilities are accepted when absent (the Decisions schema does not require
 them for every model); if supplied they must be valid and meet the existing
 abstention gates: confidence >= 0.5, winner >= 0.8 and margin >= 0.2.
+
+**One ordered grading chain ([S113-1]).** ai.Chain asks the primary (Jev); an
+unavailable, errored or unreadable reply goes to the next decisions model of
+SCRY_JUDGE_FALLBACK_MODELS (same Decisions API on OpenRouter, default
+openai/gpt-6-luna-decisions then google/gemini-decision-1); as soon as any
+decisions model is uncertain, or none gives a verdict, it escalates once to
+SCRY_JUDGE_ESCALATION_MODEL (default google/gemini-4-hydrogen; OpenRouter chat
+completions with a strict three-way JSON schema and the same question, accepted
+answers and criteria). An uncertain verdict is never shopped to another decisions
+model. Without OPENROUTER_API_KEY the chain is Jev on Typesafe and the escalation
+is the drafting model on Anthropic (output_config.format). Each decisions model has
+8 s and the escalation 15 s, inside the app's 45 s judging deadline. Every attempt
+logs `judge attempt` (step, position, requested_model, resolved_model, latency_ms,
+cost_micros, usage_cost, tokens, outcome) and every walk `judge chain` (path,
+escalated_because, verdict_by), never the answer text or a key. One submission
+takes one reservation sized for every model in the chain (app.JudgeBudget, about
+$0.02 with the defaults) and settles it once at the sum of its attempts; an
+attempt whose reply was lost is metered at its worst case, and if the chain fails
+with any such attempt the hold is kept (G2). Only when no step gives a verdict
+does Study say "Couldn't check that just now" (the existing 503 Study page that
+keeps the answer).
 
 Every response reads usage.cost, logged as its numeric dollar value (or the
 explicit string unknown when absent), preserved as dollars for evaluation and

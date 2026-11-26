@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -30,28 +31,192 @@ type Fake struct {
 	// mode), each with that verdict's fixed criterion sentence. It lets the
 	// running app show close and missed verdicts without any matcher.
 	Verdicts []srs.Verdict
+	// Paths, when set, is a scripted sequence of grading-chain paths
+	// (SCRY_TEST_JUDGE_PATHS, see FakeJudgePaths), one per submission in
+	// turn, whatever the answer says. Every submission runs through the
+	// real Chain orchestrator with fixture steps; the default path is
+	// "primary".
+	Paths []string
+	// JudgeDelay is how long each judgment waits before the chain starts
+	// (SCRY_TEST_JUDGE_DELAY), so "checking" and "still checking" can be
+	// seen in a browser. Tests leave it zero.
+	JudgeDelay time.Duration
+	// Log receives the chain's attempt logs; nil is slog.Default().
+	Log      *slog.Logger
 	mu       sync.Mutex
 	next     int
+	nextPath int
+	calls    map[string]int
 }
 
 func (f *Fake) Name() string { return "test" }
 
-func (f *Fake) Judge(_ context.Context, in JudgeInput) (Judgment, Usage, error) {
-	use := Usage{Model: "test-judge", InputTokens: int64(60 + len(in.Question+in.Expected+in.Answer)/4), OutputTokens: 40}
+// The fixture models of the test chain: a primary, two fallbacks and the
+// escalation LLM.
+const (
+	FakeJudgeModel      = "test-judge"
+	FakeFallbackModel1  = "test-judge-fallback-1"
+	FakeFallbackModel2  = "test-judge-fallback-2"
+	FakeEscalationModel = "test-judge-escalation"
+)
+
+// FakeJudgePaths are the chain paths the test adapter can be forced
+// through ([S113-1]):
+//
+//	primary                  the primary decisions model answers
+//	primary-unavailable      the primary cannot be reached; the first fallback answers
+//	primary-error            the primary errors; the first fallback answers
+//	primary-unparseable      the primary's reply cannot be read; the first fallback answers
+//	chain-unavailable        every decisions model is unavailable; the escalation LLM answers
+//	primary-low-confidence   below the confidence bar; the LLM answers, no fallback is asked
+//	primary-low-probability  below the probability bar; the LLM answers, no fallback is asked
+//	primary-thin-margin      below the margin bar; the LLM answers, no fallback is asked
+//	primary-none             "none of these"; the LLM answers, no fallback is asked
+//	all-fail                 every decisions model and the LLM fail: no verdict
+var FakeJudgePaths = []string{"primary", "primary-unavailable", "primary-error", "primary-unparseable", "chain-unavailable",
+	"primary-low-confidence", "primary-low-probability", "primary-thin-margin", "primary-none", "all-fail"}
+
+// IsFakeJudgePath reports whether p is one of FakeJudgePaths.
+func IsFakeJudgePath(p string) bool {
+	for _, k := range FakeJudgePaths {
+		if k == p {
+			return true
+		}
+	}
+	return false
+}
+
+// Calls reports how many times each fixture model was asked, by model.
+func (f *Fake) Calls() map[string]int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]int{}
+	for k, v := range f.calls {
+		out[k] = v
+	}
+	return out
+}
+
+// Chain is the test grading chain: the real orchestrator over fixture steps.
+func (f *Fake) Chain() *Chain {
+	return &Chain{
+		Decisions: []GradingStep{
+			&fakeStep{f: f, model: FakeJudgeModel, pos: 0},
+			&fakeStep{f: f, model: FakeFallbackModel1, pos: 1},
+			&fakeStep{f: f, model: FakeFallbackModel2, pos: 2},
+		},
+		Escalation: &fakeStep{f: f, model: FakeEscalationModel, pos: -1},
+		Log:        f.Log,
+	}
+}
+
+type fixtureKey struct{}
+
+// fixture is what one submission was scripted to do. It is chosen before
+// the chain starts, and never from the answer.
+type fixture struct {
+	path string
+	j    Judgment
+	use  Usage
+}
+
+func (f *Fake) Judge(ctx context.Context, in JudgeInput) (Judgment, Usage, error) {
+	use := Usage{Model: FakeJudgeModel, InputTokens: int64(60 + len(in.Question+in.Expected+in.Answer)/4), OutputTokens: 40}
 	if f.Err != nil {
 		return Judgment{}, Usage{}, f.Err
 	}
-	if f.Judgment != nil {
-		return *f.Judgment, use, nil
-	}
-	if len(f.Verdicts) > 0 {
-		f.mu.Lock()
+	fx := fixture{path: "primary", use: use}
+	f.mu.Lock()
+	switch {
+	case f.Judgment != nil:
+		fx.j = *f.Judgment
+	case len(f.Verdicts) > 0:
 		v := f.Verdicts[f.next%len(f.Verdicts)]
 		f.next++
-		f.mu.Unlock()
-		return Judgment{Verdict: v, Reason: CriterionSentence(v)}, use, nil
+		fx.j = Judgment{Verdict: v, Reason: CriterionSentence(v)}
+	default:
+		fx.j = Judgment{Verdict: srs.Right, Reason: "Test fixture: right (not an assessment of your answer)."}
 	}
-	return Judgment{Verdict: srs.Right, Reason: "Test fixture: right (not an assessment of your answer)."}, use, nil
+	if len(f.Paths) > 0 {
+		fx.path = f.Paths[f.nextPath%len(f.Paths)]
+		f.nextPath++
+	}
+	f.mu.Unlock()
+	if f.JudgeDelay > 0 {
+		select {
+		case <-ctx.Done():
+			return Judgment{}, Usage{}, ctx.Err()
+		case <-time.After(f.JudgeDelay):
+		}
+	}
+	return f.Chain().Judge(context.WithValue(ctx, fixtureKey{}, fx), in)
+}
+
+// fakeStep is one fixture model of the test chain. What it does depends
+// only on the submission's scripted path and its own place in the chain.
+type fakeStep struct {
+	f     *Fake
+	model string
+	pos   int // 0 the primary, 1 and 2 the fallbacks, -1 the escalation
+}
+
+func (s *fakeStep) Name() string           { return "test" }
+func (s *fakeStep) RequestedModel() string { return s.model }
+
+func (s *fakeStep) Judge(ctx context.Context, _ JudgeInput) (Judgment, Usage, error) {
+	s.f.mu.Lock()
+	if s.f.calls == nil {
+		s.f.calls = map[string]int{}
+	}
+	s.f.calls[s.model]++
+	s.f.mu.Unlock()
+	fx, ok := ctx.Value(fixtureKey{}).(fixture)
+	if !ok {
+		return Judgment{}, Usage{}, notSent("no test fixture for this submission")
+	}
+	use := fx.use
+	use.Model = s.model
+	answer := func() (Judgment, Usage, error) { return fx.j, use, nil }
+	billed := func(why string) (Judgment, Usage, error) { return Judgment{}, use, unavailable("test fixture: " + why) }
+	down := func() (Judgment, Usage, error) {
+		return Judgment{}, Usage{Model: s.model}, unavailable("test fixture: unavailable")
+	}
+	escalation := s.pos < 0
+	switch fx.path {
+	case "primary":
+		return answer()
+	case "primary-unavailable", "primary-error", "primary-unparseable":
+		switch {
+		case s.pos != 0:
+			return answer()
+		case fx.path == "primary-unavailable":
+			return down()
+		case fx.path == "primary-error":
+			return billed("error")
+		}
+		return billed("unparseable reply")
+	case "chain-unavailable":
+		if escalation {
+			return answer()
+		}
+		return down()
+	case "primary-low-confidence", "primary-low-probability", "primary-thin-margin", "primary-none":
+		switch {
+		case escalation:
+			return answer()
+		case s.pos == 0:
+			return Judgment{}, use, fmt.Errorf("%w: test fixture: %s", ErrDecisionUncertain, strings.TrimPrefix(fx.path, "primary-"))
+		}
+		// Never reached: an uncertain verdict is never shopped to another
+		// decisions model. If it were, Calls would show it.
+		return billed("a fallback was asked after an uncertain verdict")
+	case "all-fail":
+		if escalation {
+			return billed("escalation failed")
+		}
+		return down()
+	}
+	return Judgment{}, Usage{}, notSent("unknown test fixture path " + fx.path)
 }
 
 // books is the small shelf the test model can turn into core ideas.

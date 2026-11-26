@@ -15,6 +15,10 @@ type Usage struct {
 	Model        string
 	InputTokens  int64
 	OutputTokens int64
+	// Attempts lists every model the grading chain asked for one
+	// submission, when it asked more than one ([S113-1]); the tokens above
+	// are their sum and the submission is settled once for all of them.
+	Attempts *[]Attempt // a pointer, so Usage stays comparable
 }
 
 // JudgeInput is one answer to judge.
