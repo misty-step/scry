@@ -370,6 +370,12 @@ mark { border-radius: 0; -webkit-box-decoration-break: clone; box-decoration-bre
 .hero > * { position: relative; z-index: 1; }
 .hero-copy { display: grid; gap: var(--s4); align-content: center; }
 .hero .display { max-width: 16ch; }
+/* S138-1: "Remember everything." sets as "Remember" over "everything." on
+   every width. Since [S135-1] the phone column is the full 16ch (345 px at
+   32 px), wide enough for both words on one line, so the headline is only
+   as wide as its longest word, still inside the 16ch measure: it can break
+   only between words, never inside one. */
+.hero .display { width: min-content; }
 .nowrap { white-space: nowrap; }
 /* S135-1: the one hero action over the trial terms. Each phrase of the
    terms stays whole (its separator glued to it), and the line breaks only

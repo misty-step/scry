@@ -31,7 +31,7 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	// At a glance: the headline, a lede naming active recall and spaced
 	// repetition, one filled accent action (Sign in lives once, in the
 	// header: [S135-1]), and the trial terms with each phrase kept whole.
-	has(t, home, `<h1 class="display">Keep what's worth knowing.</h1>`, "active recall", "spaced repetition",
+	has(t, home, `<h1 class="display">Remember everything.</h1>`, "active recall", "spaced repetition",
 		`<a class="btn btn-accent" href="/signup">Start the 7-day trial</a>`, `<a href="/signin">Sign in</a>`,
 		`<span class="nowrap">7 days free</span><span class="nowrap"> ·</span> <span class="nowrap">no card needed</span><span class="nowrap"> ·</span> <span class="nowrap">$5/month after</span>`)
 	hasNot(t, home, `<a class="btn" href="/signin">`)

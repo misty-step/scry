@@ -310,6 +310,7 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | Story: signup, trial and study within a minute; understand Scry at a glance, see one judged card on the landing page, add Scry to the home screen | TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen; TestDesign_BrandMarkBesideTheWordmark |
 | [S113-3] [S125-1] One mark everywhere, the exact L3-S3 fanned deck (DESIGN.md's canonical SVG, verbatim): the 24 px header mark beside `scry` on every page in the active mode's fixed fills, the adaptive 32-grid SVG favicon and hinted 16/32 px PNGs (`/favicon.ico`), the 64 px squircle app icon light and dark, the dark 180/192/512 home-screen, maskable (inside the 80% safe zone) and social preview icons; neither the lens nor the interim flat outline deck left anywhere; the Study icon stays a line glyph; the mark never animates | TestStory_S113_3_S125_1_OneL3S3MarkEverywhere; TestDesign_S125_1_CanonicalSVGIsDesignVerbatim; TestDesign_S125_1_MarkFillsFollowTheModeAndNeverAnimate; TestDesign_S125_1_FaviconsAreHintedAndKeepTheMark; TestDesign_S125_1_AppIconsSquircleAndMaskable; TestDesign_S125_1_NoLensOrInterimDeckRemains; TestDesign_S113_3_StudyIconStaysALineGlyph; TestDesign_BrandMarkBesideTheWordmark; scripts/render-brand.py redraws every asset; scripts/verify-slice125.mjs checks every surface headed |
 | [S135-1] The landing page is clean on a phone: at 760 px and below the drafting band runs edge to edge with only top and bottom rules and no ruler ticks, content 16 px from the screen edges; one full-width 48 px "Start the 7-day trial" (no hero "Sign in" on any width; Sign in stays once in the header); the terms "7 days free · no card needed · $5/month after" on one line, breaking only after a " · "; Prompt and Answer drawn as the phone's own Study screen (field, Return to check, mic, bordered Check, one card coming up), so no stage leaves a blank run over 24 px and the Specimen keeps one height. Also the Specimen's [S131-1] subject header (layers icon, "Mental models · Set 1", "4 / 11", no "Study ·") | TestStory_S135_1_TheLandingPageIsCleanOnAPhone; TestDesign_S135_1_LandingOnPhones; TestDesign_S131_1_SpecimenSubjectHeader; headed: scripts/verify-slice135.mjs |
+| [S138-1] The landing page says "Remember everything.": the one `h1` reads exactly "Remember everything." in Display type within the hero's 16ch measure (two lines, "Remember" over "everything."); the page `<title>` and `og:title` read "Remember everything · scry"; "Keep what's worth knowing" appears nowhere a visitor can see it; the lede, trial action, trial terms, Specimen, rows and site description are unchanged | TestStory_S138_1_TheLandingPageSaysRememberEverything; TestDesign_S138_1_HeadlineKeepsDisplayAndItsMeasure; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen; scripts/verify-slice138.mjs checks it headed against the pre-change build |
 | [S106-1] Landing hero and Study Specimen: the Specimen steps Prompt, Answer, Judged on its own or by its step controls, holds on hover or focus, rests on Judged without script or under reduced motion; four schedule facts on one line each in a flush 2x2 grid; four How Scry works rows with icons (Slice 106) | TestS106_1_LandingSpecimenStepsAndRestsOnJudged; TestS106_1_SpecimenScheduleGridCSS; TestS106_1_HowScryWorksRowsHaveIcons; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen |
 | Story: forgot password: email on Sign in, then "Forgot password" on the password step | TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep; TestClerkFrontendStandIn (these cover the Sign in guidance and Scry's "Reset your password" copy on Clerk's forgot/reset-password routes; Clerk itself completes the emailed reset and the sign-in with the new password, which stay outside automated test coverage — the stand-in simulates no reset) |
 | Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
@@ -446,6 +447,23 @@ records a walkthrough per config and an icon board (needs
 
     make build BUILD_SHA=$(git rev-parse HEAD)
     DISPLAY=:0 node scripts/verify-slice125.mjs --bin ./bin/scry --sha $(git rev-parse HEAD) --media /tmp/s125
+
+`scripts/verify-slice138.mjs` checks the landing headline ([S138-1]) in a real
+headed Chrome at desktop 1440x900 and phone 390x844 (touch, DPR 2), light and
+dark, each against its own fresh test-mode Scry: the page's one `h1` reads
+exactly "Remember everything." in Display type, sets as "Remember" over
+"everything." with no word broken and nothing clipped or scrolling sideways;
+`document.title` and `og:title` are "Remember everything · scry"; neither the
+page text nor the served HTML holds "Keep what's worth knowing". With
+`--baseline-bin` (a build of the commit before the change) it reads the rest of
+the hero, the four rows, the header, footer and head from that build too and
+requires them to be identical. The walkthrough steps the Specimen, opens
+"Start the 7-day trial", returns, and signs in from the header into Study.
+`--expect-fail` turns it into a negative control against an old build.
+
+    make build BUILD_SHA=$(git rev-parse HEAD)
+    DISPLAY=:0 node scripts/verify-slice138.mjs --bin ./bin/scry --sha $(git rev-parse HEAD) \
+         --baseline-bin /tmp/scry-before --media /tmp/s138
 
 `scripts/verify-slice54.mjs` checks the Slice 54 brand and craft pass the same
 way, as the seeded demo learner, at desktop 1440x900 and phone 390x844 (touch):
