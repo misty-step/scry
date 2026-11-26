@@ -200,7 +200,7 @@ func TestS111_1_Web_StudyThisIdeaOpensAFocusedSessionOverOnlyThatIdea(t *testing
 	if b.path != "/study" {
 		t.Fatalf("Study this idea ended at %s", b.path)
 	}
-	has(t, body, "data-focused", "Focused · ", `href="/study?all=1"`, "Study all decks")
+	has(t, body, "data-focused", "Focused · ", `href="/study" data-study-all`, "Study all decks")
 	sess, _ := lib.ActiveSession(ctx)
 	if sess.Scope != kitchen.ID || len(sess.Entries) == 0 {
 		t.Fatalf("focused session: scope %d, %d cards", sess.Scope, len(sess.Entries))
@@ -214,8 +214,10 @@ func TestS111_1_Web_StudyThisIdeaOpensAFocusedSessionOverOnlyThatIdea(t *testing
 	it, _ := b.current(body)
 	body = b.answerNext(it, "x")
 	has(t, body, "data-focused")
-	// Study all decks: back to every deck, with no focused line.
-	body = b.mustGet("/study?all=1")
+	// Study all decks, the navigation's Study and "g s" are all plain
+	// /study, which always opens every deck interleaved: the focused
+	// session gives way, with no focused line.
+	body = b.mustGet("/study")
 	hasNot(t, body, "data-focused")
 	if s, _ := lib.ActiveSession(ctx); s == nil || s.Scope != 0 {
 		t.Fatal("Study all decks did not open a session across every deck")

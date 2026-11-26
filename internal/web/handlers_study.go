@@ -481,10 +481,16 @@ func (s *Server) focusedLine(ctx context.Context, c *rc, sess *store.StudySessio
 }
 
 func (s *Server) study(w http.ResponseWriter, r *http.Request, c *rc) error {
-	start := s.App.Study
-	if r.URL.Query().Get("all") == "1" {
-		// "Study all decks" from a focused session ([S111-1]).
-		start = s.App.StudyAll
+	// /study, the navigation's Study and "g s" always open every deck
+	// interleaved ([S111-1]; DESIGN.md: Library's "Study this idea" is
+	// secondary to the navigation's Study, which always opens every deck),
+	// so a focused session open from Library gives way to one across every
+	// deck. Only a study action's own redirect (studyOn) goes on with the
+	// open session whatever its scope, so answering, Next, Snooze, Delete or
+	// Edit card inside a focused session stays in it.
+	start := s.App.StudyAll
+	if r.URL.Query().Get("on") == "1" {
+		start = s.App.Study
 	}
 	sess, err := start(r.Context(), c.user)
 	if err != nil {
@@ -559,11 +565,11 @@ func (s *Server) studyEdit(w http.ResponseWriter, r *http.Request, c *rc) error 
 		}
 		sess, serr := c.us.ActiveSession(r.Context())
 		if serr != nil || sess == nil {
-			return back(w, r, "/study")
+			return back(w, r, studyOn(""))
 		}
 		data := s.studyData(r.Context(), c, sess)
 		if _, judged := data["Judged"]; !judged {
-			return back(w, r, "/study")
+			return back(w, r, studyOn(""))
 		}
 		data["EditOpen"], data["EditError"], data["EditField"], data["EditPrompt"], data["EditAnswer"] = true, fe.Msg, fe.Field, prompt, answer
 		if withIdea {
@@ -586,7 +592,7 @@ func (s *Server) studyEdit(w http.ResponseWriter, r *http.Request, c *rc) error 
 			"idea": it.IdeaTitle, "header": s.studyHeader(r.Context(), c, it, true)})
 		return nil
 	}
-	return back(w, r, "/study?saved=1")
+	return back(w, r, studyOn("saved=1"))
 }
 
 // Snooze and Delete in Study (S106-5). Each acts at once on one of the
@@ -646,7 +652,7 @@ func (s *Server) afterManage(w http.ResponseWriter, r *http.Request, c *rc, note
 	if sess == nil {
 		return back(w, r, "/study/done?"+note)
 	}
-	return back(w, r, "/study?"+note)
+	return back(w, r, studyOn(note))
 }
 
 func (s *Server) studySnooze(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -673,7 +679,7 @@ func (s *Server) studyRestore(w http.ResponseWriter, r *http.Request, c *rc) err
 	if err := s.App.RestoreCard(r.Context(), c.user, id); err != nil {
 		return err
 	}
-	return back(w, r, "/study?note=restored")
+	return back(w, r, studyOn("note=restored"))
 }
 
 // renderRest is the study page when nothing is due.
@@ -701,7 +707,7 @@ func (s *Server) afterStudy(w http.ResponseWriter, r *http.Request, c *rc) error
 	if sess == nil {
 		return back(w, r, "/study/done")
 	}
-	return back(w, r, "/study")
+	return back(w, r, studyOn(""))
 }
 
 func (s *Server) studyAnswer(w http.ResponseWriter, r *http.Request, c *rc) error {
@@ -729,7 +735,7 @@ func (s *Server) studyAnswer(w http.ResponseWriter, r *http.Request, c *rc) erro
 	}
 	sess, serr := c.us.ActiveSession(r.Context())
 	if serr != nil || sess == nil {
-		return back(w, r, "/study")
+		return back(w, r, studyOn(""))
 	}
 	data := s.studyData(r.Context(), c, sess)
 	data["Message"], data["MessageLink"], data["MessageHref"], data["Draft"] = msg, link, href, answer
@@ -753,9 +759,9 @@ func (s *Server) studyDone(w http.ResponseWriter, r *http.Request, c *rc) error 
 		// itself says what is next (another card, nothing due, or an empty
 		// library), keeping the one quiet line.
 		if q := noteQuery(r); q != "" {
-			return back(w, r, "/study?"+q)
+			return back(w, r, studyOn(q))
 		}
-		return back(w, r, "/study")
+		return back(w, r, studyOn(""))
 	}
 	sum := s.App.Summarize(c.user, sess)
 	line := strconv.Itoa(sum.Reviewed) + " reviewed"
@@ -777,7 +783,7 @@ func (s *Server) studyExplain(w http.ResponseWriter, r *http.Request, c *rc) err
 	if err != nil {
 		if !asJSON {
 			if errors.Is(err, store.ErrNotFound) || errors.Is(err, app.ErrNotExplainable) {
-				return back(w, r, "/study")
+				return back(w, r, studyOn(""))
 			}
 			return err
 		}
@@ -801,7 +807,7 @@ func (s *Server) studyExplain(w http.ResponseWriter, r *http.Request, c *rc) err
 		return err
 	}
 	if sess == nil {
-		return back(w, r, "/study")
+		return back(w, r, studyOn(""))
 	}
 	data := s.studyData(r.Context(), c, sess)
 	if j, ok := data["Judged"].(judgedView); ok && j.ReviewID == id {
@@ -860,5 +866,14 @@ func (s *Server) studyIdea(w http.ResponseWriter, r *http.Request, c *rc) error 
 	if sess == nil {
 		return back(w, r, "/library/ideas/"+strconv.FormatInt(id, 10)+"?ok=nothingdue")
 	}
-	return back(w, r, "/study")
+	return back(w, r, studyOn(""))
+}
+
+// studyOn is where a study action returns: /study, going on with the open
+// session (focused or not) rather than opening every deck afresh.
+func studyOn(q string) string {
+	if q == "" {
+		return "/study?on=1"
+	}
+	return "/study?on=1&" + q
 }
