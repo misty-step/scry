@@ -64,6 +64,12 @@ func TestDesign_S138_1_HeadlineKeepsDisplayAndItsMeasure(t *testing.T) {
 	if !regexp.MustCompile(`\.hero \.display \{ max-width: 16ch; \}`).Match(css) {
 		t.Error("the hero headline lost its 16ch measure")
 	}
+	// Since [S135-1] the phone column is the whole 16ch, which holds both
+	// words on one line; the headline is as wide as its longest word so it
+	// always sets as "Remember" over "everything.".
+	if !regexp.MustCompile(`\.hero \.display \{ width: min-content; \}`).Match(css) {
+		t.Error("the hero headline is not min-content wide, so it can set on one line on phones")
+	}
 	if !regexp.MustCompile(`\.display \{ font: 500 var\(--display\)/1\.1 var\(--text\);`).Match(css) {
 		t.Error("the Display type role changed")
 	}
