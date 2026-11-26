@@ -1,23 +1,23 @@
 {
  "schemaVersion": 1,
  "repository": "misty-step/scry",
- "intentRange": "b3879541f3b1e779e23e2c8e0812342b6610e11c..574828c2488bd7203900e72cb8f2beb07658114b",
+ "intentRange": "9927c039a4b7e62b1880206f072c454bd04b82e9..b88761963962bef72d870882ff535755c4183b75",
  "intentFiles": [
   "PRODUCT.md",
   "DESIGN.md"
  ],
- "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
- "verifiedAt": "2026-11-26T20:49:06Z",
+ "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
+ "verifiedAt": "2026-11-26T22:30:00Z",
  "criticVerdict": "PENDING_COLD_CRITIC",
  "evidenceRoot": "Builder evidence bundle (media/ collected from ~/chief-evidence/media); Cold Critic review pending",
  "realPath": {
-  "build": "make build BUILD_SHA=e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8 (bin/scry); later commits on the branch change only scripts/verify-slice135.mjs (negative-control robustness) and evidence/",
-  "run": "each verify script starts ./bin/scry itself per config: SCRY_MODE=test, SCRY_SEED_DEMO=1, fresh SQLite in a new temp dir, minimal env, no provider keys; terminated at the end",
-  "healthz": "200 status ok, build_sha e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8, mode test",
-  "walkthrough": "DISPLAY=:0 node scripts/verify-slice135.mjs (playwright-core + system Chrome headed on the sandbox desktop :0; desktop 1440x900 DPR 1 and phone 390x844 touch DPR 2, light and dark, plus 320 px phone, reduced motion and no-script): 223/223 PASS, exit 0; regressions verify-slice106.mjs 339/339, verify-slice113.mjs 609/609, verify-slice125.mjs 470/470 PASS, exit 0; verify-slice54.mjs 95/103 (the same 8 stale pre-S106 checks fail on master, 93/103 there)",
-  "negativeControl": "verify-slice135.mjs against a master (574828c2) binary: 55 of 136 checks FAIL (terms, hero action, Sign in, subject header, phone band/edges/ticks, Specimen void), exit 1",
-  "tests": "gofmt clean; go vet ./... ok; go test ./... all packages ok (internal/store TestReserveRacingPlanEnd hit SQLITE_BUSY once under full parallel load with headed Chrome running, then passed alone: ok 66.6s)",
-  "media": "4 S135 walkthrough videos (mp4), hero/landing/Specimen-per-stage/Study screenshots per config, 320 px terms screenshots, S106/S113/S125 regression videos, S125 header and icon boards, results JSON for every script, master baseline/negative-control results; no tokens or secrets",
+  "build": "make build BUILD_SHA=08befd4b2b084a9629d60b49f10a53a23138d606 (bin/scry), the HEAD of reconcile/b8876196 after rebasing onto origin/master e701ff4d (Slice 135 PR #524) and the S138-1 phone two-line fix; the ledger commit after it changes only evidence/. Baseline: origin/master e701ff4d built the same way.",
+  "run": "each verify script starts the binary itself per config: SCRY_MODE=test, SCRY_SEED_DEMO=1, fresh SQLite in a new temp dir, minimal env, no provider keys; terminated at the end",
+  "healthz": "build_sha 08befd4b2b084a9629d60b49f10a53a23138d606, mode test (served by each verify script's own server)",
+  "walkthrough": "DISPLAY=:0 node scripts/verify-slice138.mjs --bin bin/scry --baseline-bin <e701ff4d build> (playwright-core + system Chrome headed on the sandbox desktop :0; desktop 1440x900 DPR 1 and phone 390x844 touch DPR 2, light and dark): 142/142 PASS, exit 0; negative control: the same script against the e701ff4d build with --expect-fail fails 28 [S138-1] checks, exit 0; DISPLAY=:0 node scripts/verify-slice135.mjs on 08befd4b: 223/223 PASS, exit 0 (zero [S135-1]/[S131-1] Specimen regressions); verify-slice106.mjs 339/339 PASS, exit 0.",
+  "negativeControl": "verify-slice138.mjs against origin/master e701ff4d with --expect-fail: 28 [S138-1] checks fail (old headline and title), everything else passes; s138-negative-results.json",
+  "tests": "gofmt -l . empty; go vet ./... exit 0; go test -timeout 40m ./internal/web/... ok (469 s; the package needs more than the default 10m timeout when headed Chrome runs at the same time on this 4-CPU sandbox); go test of every other package ok except internal/store TestReserveRacingPlanEnd (SQLITE_BUSY), which fails identically on unmodified origin/master e701ff4d in this sandbox and is untouched by this change",
+  "media": "4 S138 and 4 S135 walkthrough videos (mp4), S138 landing/headline/browser-tab screenshots and S135 hero/Specimen/Study screenshots per config, s138-results.json, s138-negative-results.json, s135-results.json, verify-slice106-results.json, evidence-card.html; no tokens or secrets",
   "notLive": "No live deploy from this Boat sandbox (D-187): scry.mistystep.io /healthz and landing readback run post-merge from the credentialed host. No real model provider was called."
  },
  "entries": [
@@ -25,13 +25,14 @@
    "requirementId": "PRODUCT.newcomer-glance-specimen-homescreen",
    "source": "PRODUCT.md :: User stories (newcomer)",
    "intent": "Understand at a glance that Scry is an AI-judged active-recall instrument, see one real judged card on the landing page, add Scry to the home screen to launch into daily recall.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
+   "verifiedAt": "2026-11-26T22:30:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
     "TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen",
-    "TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute"
+    "TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute",
+    "TestStory_S138_1_TheLandingPageSaysRememberEverything"
    ],
    "walkthroughChecks": [
     "[desktop-light] landing: served resting on Judged",
@@ -41,7 +42,10 @@
     "[phone-light] landing: served resting on Judged",
     "[phone-light] landing: four how-it-works rows, each with its icon",
     "[phone-dark] landing: served resting on Judged",
-    "[phone-dark] landing: four how-it-works rows, each with its icon"
+    "[phone-dark] landing: four how-it-works rows, each with its icon",
+    "[desktop-light] [S138-1] the h1 reads exactly \"Remember everything.\"",
+    "[phone-dark] [S138-1] sets as two lines, \"Remember\" over \"everything.\"",
+    "[desktop-dark] [S138-1] the rest of the hero, the four rows, the header, footer and head are identical to the pre-change build (text and layout)"
    ],
    "evidence": [
     {
@@ -55,9 +59,17 @@
     {
      "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
      "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
     }
    ],
-   "note": "Home-screen install itself (OS prompt) was not exercised; the manifest (start_url /study, standalone), icons and apple-touch-icon are served and checked. Landing is checked signed out in an unrecorded context (screenshots, no video). Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Home-screen install itself (OS prompt) was not exercised; the manifest (start_url /study, standalone), icons and apple-touch-icon are served and checked. Landing is checked signed out in an unrecorded context (screenshots, no video). Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json. Re-verified 2026-11-26 at 08befd4b after [S138-1] was rebased onto [S135-1] (e701ff4d): verify-slice138.mjs 142/142 (rest of the hero identical to the e701ff4d build), verify-slice135.mjs 223/223 and verify-slice106.mjs 339/339, headed."
   },
   {
    "requirementId": "PRODUCT.forgot-password-two-step",
@@ -324,9 +336,9 @@
   {
    "requirementId": "DESIGN.landing",
    "source": "DESIGN.md :: Landing",
-   "intent": "Two-column desktop hero (minmax(0,1fr) minmax(0,1.08fr)) on the drafting band, lede naming active recall and spaced repetition, one accent action \"Start the 7-day trial\" with no hero Sign in ([S135-1]), the trial terms \"7 days free \u00b7 no card needed \u00b7 $5/month after\", the Study Specimen with its [S131-1] subject header, four ruled rows, quiet public footer; at 760 px and below the clean phone hero of [S135-1].",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "intent": "Two-column desktop hero (minmax(0,1fr) minmax(0,1.08fr)) on the drafting band, the one h1 \"Remember everything.\" in Display within the 16ch measure ([S138-1]), lede naming active recall and spaced repetition, one accent action \"Start the 7-day trial\" with no hero Sign in ([S135-1]), the trial terms \"7 days free \u00b7 no card needed \u00b7 $5/month after\", the Study Specimen with its [S131-1] subject header, four ruled rows, quiet public footer; at 760 px and below the clean phone hero of [S135-1].",
+   "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
+   "verifiedAt": "2026-11-26T22:30:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -334,7 +346,9 @@
     "TestDesign_S135_1_LandingOnPhones",
     "TestSlice36_PublicCopySaysNoCardUpFront",
     "TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen",
-    "TestStory_S135_1_TheLandingPageIsCleanOnAPhone"
+    "TestStory_S135_1_TheLandingPageIsCleanOnAPhone",
+    "TestStory_S138_1_TheLandingPageSaysRememberEverything",
+    "TestDesign_S138_1_HeadlineKeepsDisplayAndItsMeasure"
    ],
    "walkthroughChecks": [
     "[desktop-light] landing: served resting on Judged",
@@ -348,7 +362,10 @@
     "[desktop-light] landing: \"Interval\" on one line beside its icon, not clipped",
     "[desktop-light] landing: \"Interval\" \u2265 12 px clear of every rule",
     "[desktop-light] landing: \"Stability\" on one line beside its icon, not clipped",
-    "[desktop-light] landing: \"Stability\" \u2265 12 px clear of every rule"
+    "[desktop-light] landing: \"Stability\" \u2265 12 px clear of every rule",
+    "[desktop-light] [S138-1] the h1 reads exactly \"Remember everything.\"",
+    "[phone-dark] [S138-1] sets as two lines, \"Remember\" over \"everything.\"",
+    "[desktop-dark] [S138-1] the rest of the hero, the four rows, the header, footer and head are identical to the pre-change build (text and layout)"
    ],
    "evidence": [
     {
@@ -398,9 +415,13 @@
     {
      "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
      "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
     }
    ],
-   "note": "Superseded by S106-1: hero minmax(0,1fr) minmax(0,1.08fr) on the drafting band; stepping Specimen. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json / verify-slice113-results.json / s125-results.json / s135-results.json."
+   "note": "Superseded by S106-1: hero minmax(0,1fr) minmax(0,1.08fr) on the drafting band; stepping Specimen. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json / verify-slice113-results.json / s125-results.json / s135-results.json. Re-verified 2026-11-26 at 08befd4b after [S138-1] was rebased onto [S135-1] (e701ff4d): verify-slice138.mjs 142/142 (rest of the hero identical to the e701ff4d build), verify-slice135.mjs 223/223 and verify-slice106.mjs 339/339, headed."
   },
   {
    "requirementId": "DESIGN.controls-inputs-hover",
@@ -1010,8 +1031,8 @@
    "requirementId": "S106-6",
    "source": "PRODUCT.md :: [S106-6]",
    "intent": "Everything else unchanged (full suite green); every change proved in a headed browser at 1440\u00d7900 and 390\u00d7844, light and dark, with no console/page/CSP errors and no sideways scroll. Post-deploy live check of scry.mistystep.io runs from the credentialed host after merge.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
+   "verifiedAt": "2026-11-26T22:30:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -1019,7 +1040,8 @@
     "scripts/verify-slice106.mjs",
     "scripts/verify-slice113.mjs",
     "scripts/verify-slice125.mjs",
-    "scripts/verify-slice135.mjs"
+    "scripts/verify-slice135.mjs",
+    "scripts/verify-slice138.mjs"
    ],
    "walkthroughChecks": [
     "[desktop-light] landing: 0 CSP violations",
@@ -1083,9 +1105,13 @@
     {
      "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
      "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
     }
    ],
-   "note": "[S125-1] added to the exceptions; brand change proved headed at 1440x900 and 390x844, light and dark (verify-slice125.mjs 470/470), and everything else re-proved unchanged (verify-slice106.mjs 339/339, verify-slice113.mjs 609/609). Live scry.mistystep.io check runs post-merge from the credentialed host (D-187). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json / verify-slice113-results.json / s125-results.json / s135-results.json. [S135-1] added to the exceptions; proved headed at 1440x900 and 390x844, light and dark (verify-slice135.mjs 223/223), everything else re-proved unchanged (106 339/339, 113 609/609, 125 470/470)."
+   "note": "[S125-1] added to the exceptions; brand change proved headed at 1440x900 and 390x844, light and dark (verify-slice125.mjs 470/470), and everything else re-proved unchanged (verify-slice106.mjs 339/339, verify-slice113.mjs 609/609). Live scry.mistystep.io check runs post-merge from the credentialed host (D-187). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json / verify-slice113-results.json / s125-results.json / s135-results.json. [S135-1] added to the exceptions; proved headed at 1440x900 and 390x844, light and dark (verify-slice135.mjs 223/223), everything else re-proved unchanged (106 339/339, 113 609/609, 125 470/470). Re-verified 2026-11-26 at 08befd4b after [S138-1] was rebased onto [S135-1] (e701ff4d): verify-slice138.mjs 142/142 (rest of the hero identical to the e701ff4d build), verify-slice135.mjs 223/223 and verify-slice106.mjs 339/339, headed."
   },
   {
    "requirementId": "S111-1",
@@ -1828,6 +1854,149 @@
    "walkthroughChecks": [],
    "evidence": [],
    "note": "Out of scope for intent range b3879541..574828c2. Implemented and headed-verified in open PR #521 (reconcile/e3c444c7, verify-slice130.mjs 144/144 per its description). master at this branch's base still says \"Almost Correct\". Re-verify after #521 merges."
+  },
+  {
+   "requirementId": "S138-1",
+   "source": "PRODUCT.md :: [S138-1] (and [S106-6]); DESIGN.md :: Landing, Left ([S138-1])",
+   "intent": "The landing page's one h1 reads exactly \"Remember everything.\" (Display, sentence case, full stop) in the hero's existing 16ch measure, set as \"Remember\" over \"everything.\" at 1440x900 and 390x844 with no word broken; document.title and og:title read \"Remember everything \u00b7 scry\"; \"Keep what's worth knowing\" appears nowhere a visitor can see; lede, trial action, trial terms, Specimen, rows and site description unchanged.",
+   "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
+   "verifiedAt": "2026-11-26T22:30:00Z",
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "tests": [
+    "TestStory_S138_1_TheLandingPageSaysRememberEverything",
+    "TestDesign_S138_1_HeadlineKeepsDisplayAndItsMeasure",
+    "TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen"
+   ],
+   "walkthroughChecks": [
+    "[desktop-light] [S138-1] the landing page has exactly one h1",
+    "[desktop-light] [S138-1] the h1 reads exactly \"Remember everything.\"",
+    "[desktop-light] [S138-1] Display type: .display, Geist, weight 500, the --display size, line-height 1.1",
+    "[desktop-light] [S138-1] in the hero's existing 16ch headline measure (max-width 16ch, never wider)",
+    "[desktop-light] [S138-1] sets as two lines, \"Remember\" over \"everything.\"",
+    "[desktop-light] [S138-1] no word broken across lines",
+    "[desktop-light] [S138-1] nothing clipped (no sideways overflow in the h1; every word's line box inside the h1's width, the viewport and any clipping ancestor)",
+    "[desktop-light] [S138-1] document.title is \"Remember everything \u00b7 scry\"",
+    "[desktop-light] [S138-1] og:title is \"Remember everything \u00b7 scry\"",
+    "[desktop-light] [S138-1] the page text contains no \"Keep what's worth knowing\"",
+    "[desktop-light] [S138-1] the served HTML (head included) contains no \"Keep what's worth knowing\" in any escaping",
+    "[desktop-light] [S138-1] the rest of the hero, the four rows, the header, footer and head are identical to the pre-change build (text and layout)",
+    "[desktop-light] landing: 0 px sideways scroll",
+    "[desktop-light] 0 console errors, page errors, failed requests or responses >= 400",
+    "[desktop-dark] [S138-1] the landing page has exactly one h1",
+    "[desktop-dark] [S138-1] the h1 reads exactly \"Remember everything.\"",
+    "[desktop-dark] [S138-1] Display type: .display, Geist, weight 500, the --display size, line-height 1.1",
+    "[desktop-dark] [S138-1] in the hero's existing 16ch headline measure (max-width 16ch, never wider)",
+    "[desktop-dark] [S138-1] sets as two lines, \"Remember\" over \"everything.\"",
+    "[desktop-dark] [S138-1] no word broken across lines",
+    "[desktop-dark] [S138-1] nothing clipped (no sideways overflow in the h1; every word's line box inside the h1's width, the viewport and any clipping ancestor)",
+    "[desktop-dark] [S138-1] document.title is \"Remember everything \u00b7 scry\"",
+    "[desktop-dark] [S138-1] og:title is \"Remember everything \u00b7 scry\"",
+    "[desktop-dark] [S138-1] the page text contains no \"Keep what's worth knowing\"",
+    "[desktop-dark] [S138-1] the served HTML (head included) contains no \"Keep what's worth knowing\" in any escaping",
+    "[desktop-dark] [S138-1] the rest of the hero, the four rows, the header, footer and head are identical to the pre-change build (text and layout)",
+    "[desktop-dark] landing: 0 px sideways scroll",
+    "[desktop-dark] 0 console errors, page errors, failed requests or responses >= 400",
+    "[phone-light] [S138-1] the landing page has exactly one h1",
+    "[phone-light] [S138-1] the h1 reads exactly \"Remember everything.\"",
+    "[phone-light] [S138-1] Display type: .display, Geist, weight 500, the --display size, line-height 1.1",
+    "[phone-light] [S138-1] in the hero's existing 16ch headline measure (max-width 16ch, never wider)",
+    "[phone-light] [S138-1] sets as two lines, \"Remember\" over \"everything.\"",
+    "[phone-light] [S138-1] no word broken across lines",
+    "[phone-light] [S138-1] nothing clipped (no sideways overflow in the h1; every word's line box inside the h1's width, the viewport and any clipping ancestor)",
+    "[phone-light] [S138-1] document.title is \"Remember everything \u00b7 scry\"",
+    "[phone-light] [S138-1] og:title is \"Remember everything \u00b7 scry\"",
+    "[phone-light] [S138-1] the page text contains no \"Keep what's worth knowing\"",
+    "[phone-light] [S138-1] the served HTML (head included) contains no \"Keep what's worth knowing\" in any escaping",
+    "[phone-light] [S138-1] the rest of the hero, the four rows, the header, footer and head are identical to the pre-change build (text and layout)",
+    "[phone-light] landing: 0 px sideways scroll",
+    "[phone-light] 0 console errors, page errors, failed requests or responses >= 400",
+    "[phone-dark] [S138-1] the landing page has exactly one h1",
+    "[phone-dark] [S138-1] the h1 reads exactly \"Remember everything.\"",
+    "[phone-dark] [S138-1] Display type: .display, Geist, weight 500, the --display size, line-height 1.1",
+    "[phone-dark] [S138-1] in the hero's existing 16ch headline measure (max-width 16ch, never wider)",
+    "[phone-dark] [S138-1] sets as two lines, \"Remember\" over \"everything.\"",
+    "[phone-dark] [S138-1] no word broken across lines",
+    "[phone-dark] [S138-1] nothing clipped (no sideways overflow in the h1; every word's line box inside the h1's width, the viewport and any clipping ancestor)",
+    "[phone-dark] [S138-1] document.title is \"Remember everything \u00b7 scry\"",
+    "[phone-dark] [S138-1] og:title is \"Remember everything \u00b7 scry\"",
+    "[phone-dark] [S138-1] the page text contains no \"Keep what's worth knowing\"",
+    "[phone-dark] [S138-1] the served HTML (head included) contains no \"Keep what's worth knowing\" in any escaping",
+    "[phone-dark] [S138-1] the rest of the hero, the four rows, the header, footer and head are identical to the pre-change build (text and layout)",
+    "[phone-dark] landing: 0 px sideways scroll",
+    "[phone-dark] 0 console errors, page errors, failed requests or responses >= 400"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s138-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s138-desktop-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s138-phone-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s138-phone-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s138-desktop-light-landing.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-desktop-dark-landing.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-phone-light-landing.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-phone-dark-landing.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-desktop-light-headline.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-desktop-dark-headline.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-phone-light-headline.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-phone-dark-headline.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-desktop-light-browser-tab.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-desktop-dark-browser-tab.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-negative-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
+    }
+   ],
+   "note": "Rebased onto origin/master e701ff4d ([S135-1] and the landing part of [S131-1], PR #524). After the rebase the [S135-1] phone column is the full 16ch (345 px at 32 px), which held \"Remember everything.\" on one line at 390x844; .hero .display { width: min-content; } (inside the unchanged 16ch max-width) restores \"Remember\" over \"everything.\" on every width. Negative control: verify-slice138.mjs against the e701ff4d build fails 28 [S138-1] checks. verify-slice135.mjs passes 223/223 on the same binary, so no [S135-1] regression."
   }
  ]
 }
