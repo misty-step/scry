@@ -39,6 +39,7 @@
           <input type="hidden" name="item_id" value="{{.Item.ID}}">
           <button class="link quiet" data-delete>Delete</button>
         </form>
+        <p class="meta status-line manage-status" role="status" aria-live="polite" data-manage-status></p>
       </div>
 {{end}}
 
@@ -82,6 +83,7 @@
             <div class="edit-actions">
               <button class="btn" data-edit-save>Save card</button>
               <span class="meta edit-status" role="status" data-edit-status{{if not .Saved}} hidden{{end}}>{{icon "check"}}Saved</span>
+              <span class="meta status-line edit-fail" role="status" aria-live="polite" data-edit-fail></span>
             </div>
             <p class="meta">This grade and its schedule stay as they are.</p>
           </form>
@@ -93,6 +95,7 @@
           <button class="btn btn-ink" data-autofocus-no-scroll data-next>{{if .Last}}Finish session{{else}}Next card{{end}}{{icon "arrow"}}</button>
         </form>
         </div>
+        <p class="meta status-line manage-status" role="status" aria-live="polite" data-manage-status></p>
         <p class="hints micro">{{if eq .Judged.Kind "exact"}}a again · {{end}}enter or space for {{if .Last}}finish{{else}}next card{{end}}</p>
 {{end}}
 
@@ -101,8 +104,9 @@
   <aside class="session-margin meta" aria-label="Where you are">
     <span class="margin-mode">{{icon "cards"}}Study</span>
     <span class="margin-purpose">{{.Purpose}}</span>
-    {{if .Item}}<span class="margin-idea" data-study-header>{{.Header}}</span>
+    {{if .Item}}<span class="margin-idea" data-deck-tag data-study-header>{{.Header}}</span>
     <span class="margin-count">{{.Position}} / {{.Total}}</span>{{end}}
+    {{with .Focused}}<span class="margin-focus" data-focused>{{.}} · <a class="link quiet" href="/study" data-study-all>Study all decks</a></span>{{end}}
   </aside>
 
   <div class="session-flow">
@@ -153,12 +157,17 @@
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <input type="hidden" name="item_id" value="{{.Item.ID}}">
         <input type="hidden" name="via" value="typed" data-via>
+        {{/* S111-2: one auto-expanding multiline field. rows="3" without
+             script; app.js sets one row and grows it with its content. The
+             newline after the start tag keeps a draft's own leading line
+             break (the HTML parser drops the first one). */}}
         <div class="answer-line" data-answer-line>
           <label class="sr" for="answer">Your answer</label>
-          <input class="answer-input display" id="answer" name="answer" value="{{.Draft}}" autofocus autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" aria-describedby="status">
-          <span class="caret" aria-hidden="true" data-caret></span>
+          <textarea class="answer-input" id="answer" name="answer" rows="3" placeholder="Type your answer" autofocus autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send" aria-describedby="answer-hint status" data-answer-input>
+{{.Draft}}</textarea>
         </div>
-        <p class="status meta" id="status" role="status" data-status>{{if .Message}}{{.Message}} {{if .MessageLink}}<a class="link" href="{{if .MessageHref}}{{.MessageHref}}{{else}}/billing{{end}}">{{.MessageLink}}</a>{{end}}{{end}}</p>
+        <p class="micro answer-hint-phone" id="answer-hint-phone" data-answer-hint-phone>Return to check</p>
+        <p class="status meta status-line" id="status" role="status" aria-live="polite" data-status{{if .Message}} data-failed{{end}}>{{if .Message}}{{.Message}} {{if .MessageLink}}<a class="link" href="{{if .MessageHref}}{{.MessageHref}}{{else}}/billing{{end}}">{{.MessageLink}}</a>{{end}}{{end}}</p>
         <div class="answer-actions">
           <button type="button" class="mic" data-mic aria-label="Speak your answer" aria-pressed="false">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
@@ -167,7 +176,7 @@
         </div>
       </form>
       {{template "manage-waiting" .}}
-      <p class="hints micro">enter to check · space to start/stop speaking (empty answer)</p>
+      <p class="hints micro answer-hint" id="answer-hint" data-answer-hint>Enter to check · Shift+Enter for new line · Space to start/stop speaking (empty answer)</p>
     </div>
     {{end}}
 

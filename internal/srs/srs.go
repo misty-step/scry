@@ -190,6 +190,22 @@ func Retrievability(elapsedDays, stability float64) float64 {
 	return math.Pow(1+factor*elapsedDays/stability, decay)
 }
 
+// RetrievabilityAt is the item's modelled chance of recall at now: the
+// FSRS forgetting curve at the time elapsed since its last review. An item
+// never reviewed has no memory to recall and reads 0; so does a reviewed
+// item with no stored last review or stability (out of bounds), which
+// makes it the most urgent rather than hiding it.
+func (s State) RetrievabilityAt(now time.Time) float64 {
+	if s.Reps == 0 || s.Last.IsZero() || !finite(s.Stability) || s.Stability <= 0 {
+		return 0
+	}
+	elapsed := now.Sub(s.Last).Hours() / 24
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	return Retrievability(elapsed, s.Stability)
+}
+
 // intervalDays is the gap that brings recall back down to the target retention.
 func intervalDays(stability float64) float64 {
 	d := stability / factor * (math.Pow(retention, 1/decay) - 1)

@@ -42,7 +42,7 @@ func itemPath(id int64) string { return "/library/items/" + strconv.FormatInt(id
 // bridgeBack is the page a bridge action returns to.
 func bridgeBack(from string, id int64, ok string) string {
 	if from == "study" {
-		return "/study"
+		return studyOn("")
 	}
 	if ok != "" {
 		return itemPath(id) + "?ok=" + ok

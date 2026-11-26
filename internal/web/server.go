@@ -87,9 +87,11 @@ func New(a *app.App, log *slog.Logger) *Server {
 	static, _ := fs.Sub(staticFS, "static")
 	fileServer := http.FileServer(http.FS(static))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Neither is in Go's built-in type table, and the image has no mime.types.
 		if strings.HasSuffix(r.URL.Path, ".webmanifest") {
-			// Not in Go's built-in type table, and the image has no mime.types.
 			w.Header().Set("Content-Type", "application/manifest+json")
+		} else if strings.HasSuffix(r.URL.Path, ".ico") {
+			w.Header().Set("Content-Type", "image/x-icon")
 		}
 		if strings.HasPrefix(r.URL.Path, "fonts/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -112,10 +114,17 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "User-agent: *\nAllow: /$\nAllow: /signup\nDisallow: /\n")
 	})
-	// Browsers that ask for /favicon.ico get the brand mark (pages also
-	// link it as SVG and as a home-screen PNG).
+	// /favicon.ico holds the brand mark's hinted 16 and 32 px PNGs
+	// ([S113-3]); pages link it beside the adaptive SVG favicon.
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/icon.svg", http.StatusMovedPermanently)
+		b, err := staticFS.ReadFile("static/favicon.ico")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		_, _ = w.Write(b)
 	})
 	mux.HandleFunc("POST /webhooks/stripe", s.webhook)
 	// Browser CSP reports and client error telemetry: public, CSRF-exempt,
@@ -141,6 +150,8 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.Handle("POST /study/answer", s.member(s.studyAnswer))
 	mux.Handle("POST /study/next", s.member(s.studyNext))
 	mux.Handle("GET /study/done", s.member(s.studyDone))
+	// S111-1: "Study this idea" in Library, a focused session.
+	mux.Handle("GET /study/idea/{id}", s.member(s.studyIdea))
 	mux.Handle("POST /study/speech", s.member(s.studySpeech))
 	mux.Handle("POST /study/explain", s.member(s.studyExplain))
 	mux.Handle("POST /study/edit", s.member(s.studyEdit))
@@ -485,7 +496,8 @@ func (s *Server) errorPage(w http.ResponseWriter, r *http.Request, status int) {
 // healthz is the readiness report scry-lib.sh and scry-watch poll. It keeps
 // "status" and "database" ("ok"/"ok" on 200, "unhealthy"/"failing" on 503)
 // and adds what is wired: build, mode, each adapter's label, the model
-// each AI capability calls and the speech route. It never includes a key,
+// each AI capability calls, the grading chain (primary, fallbacks and
+// escalation, [S113-1]) and the speech route. It never includes a key,
 // secret, DSN or token.
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	rd := s.App.Readiness()
@@ -494,7 +506,7 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 		"build_sha": rd.BuildSHA, "mode": rd.Mode,
 		"grading": rd.Grading, "drafting": rd.Drafting, "explainer": rd.Explainer, "speech": rd.Speech,
 		"billing_mode": rd.BillingMode, "auth_mode": rd.AuthMode,
-		"providers": rd.Providers, "models": rd.Models, "speech_route": rd.SpeechRoute, "warnings": rd.Warnings,
+		"providers": rd.Providers, "models": rd.Models, "grading_chain": rd.GradingChain, "speech_route": rd.SpeechRoute, "warnings": rd.Warnings,
 	}
 	if err := s.App.Health(r.Context()); err != nil {
 		s.Log.ErrorContext(r.Context(), "health check failed", "err", err)

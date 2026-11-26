@@ -98,6 +98,8 @@ function instrument(page, problems) {
     const f = r.failure()?.errorText || "";
     // A download's navigation is aborted by the browser once it is saved.
     if (f.includes("ERR_ABORTED") && /\/settings\/export/.test(r.url())) return;
+    // Chrome cancels a favicon fetch still in flight when the page navigates.
+    if (f.includes("ERR_ABORTED") && /\/static\/favicon/.test(r.url())) return;
     problems.push(`requestfailed: ${r.url()} ${f}`);
   });
   page.on("response", (r) => {
@@ -324,6 +326,8 @@ async function learner(browser, config, opts, phone) {
   await page.setInputFiles("#import-file", { name: "broken.apkg", mimeType: "application/octet-stream", buffer: Buffer.from("not a zip") });
   await page.click("[data-import-submit]");
   await page.waitForLoadState("domcontentloaded");
+  // Import says "importing" while it waits ([S113-2]); wait for the refusal.
+  await page.waitForSelector("[data-import-status] .field-error", { timeout: 10000 }).catch(() => {});
   const refusal = await page.textContent("[data-import-status]");
   check(config, "import: a bad file is refused in words", /Anki|read/i.test(refusal) && (await page.$("[data-import-status] .field-error")) !== null, refusal.trim());
 

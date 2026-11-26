@@ -97,6 +97,18 @@
   // For Scry's own scripts (stripe.js) to report an integration failure
   // by fixed code.
   window.scryReport = function (kind, code) { send({ kind: kind, code: String(code) }); };
+
+  // S113-2: a destination switch cross-fades as a cross-document view
+  // transition. One the browser skips (a quick second navigation, a resize)
+  // rejects its promises; that is not a failure, so it is handled here
+  // rather than reported.
+  var settled = function (e) {
+    var t = e.viewTransition;
+    if (!t) return;
+    [t.ready, t.finished, t.updateCallbackDone].forEach(function (p) { if (p) p.catch(function () {}); });
+  };
+  window.addEventListener("pagereveal", settled);
+  window.addEventListener("pageswap", settled);
 })();
 (function () {
   "use strict";
@@ -128,6 +140,160 @@
     doc.addEventListener(ev, function () { root.classList.remove("kbd-nav"); }, { capture: true, passive: true });
   });
 
+  // ---- Waits, status lines and errors (S113-2) ---------------------------
+
+  // DESIGN.md (Waits, errors and recovery): the control that starts a wait
+  // is disabled and marked busy at once, so a second press does nothing; its
+  // word (Meta mono) appears once the wait passes 400 ms, in a polite live
+  // region; a failure says what happened in words, nudges the control once
+  // and leaves everything typed or chosen as it was, to retry in place. A
+  // page restored by Back gives every control back (pageshow, below).
+  var still = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : { matches: false };
+  var WAIT_DELAY = 400;
+
+  // restart re-runs a one-shot CSS animation class.
+  function restart(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  // nudge moves the field or control a failure names 4 px to the side and
+  // back, once (180 ms; nothing under reduced motion).
+  function nudge(el) {
+    if (!el) return;
+    restart(el, "is-nudged");
+    clearTimeout(el.nudgeTimer);
+    el.nudgeTimer = setTimeout(function () { el.classList.remove("is-nudged"); }, 240);
+  }
+
+  // tell sets a status line's words (a string or nodes): they fade in with
+  // a 4 px rise; an empty line fades out (120 ms) and is cleared.
+  function tell(el, content) {
+    if (!el) return;
+    clearTimeout(el.tellTimer);
+    el.classList.remove("is-out");
+    if (!content) {
+      el.removeAttribute("data-failed");
+      if (!el.textContent) return;
+      el.classList.remove("is-in");
+      if (still.matches) { el.textContent = ""; return; }
+      el.classList.add("is-out");
+      el.tellTimer = setTimeout(function () { el.textContent = ""; el.classList.remove("is-out"); }, 120);
+      return;
+    }
+    if (typeof content === "string") el.textContent = content;
+    else el.replaceChildren.apply(el, content);
+    restart(el, "is-in");
+  }
+
+  // waitWord says a wait's word in a status line. A later word ("still
+  // checking", "transcribing") cross-fades in over the last, in place.
+  function waitWord(el, word, pulse) {
+    if (!el) return;
+    clearTimeout(el.tellTimer);
+    el.classList.remove("is-out", "is-in");
+    el.removeAttribute("data-failed");
+    var box = el.firstElementChild && el.firstElementChild.classList.contains("wait-words") ? el.firstElementChild : null;
+    if (!box) {
+      box = doc.createElement("span");
+      box.className = "wait-words";
+      el.replaceChildren(box);
+    }
+    var old = box.lastElementChild;
+    var w = doc.createElement("span");
+    w.className = "wait-word" + (pulse ? " is-pulsing" : "");
+    w.setAttribute("data-wait-word", word);
+    w.textContent = word;
+    box.appendChild(w);
+    if (old) {
+      old.classList.remove("is-pulsing");
+      old.classList.add("is-leaving");
+      old.setAttribute("aria-hidden", "true");
+      setTimeout(function () { old.remove(); }, still.matches ? 0 : 120);
+    }
+  }
+
+  // labelNode is the control's own word: its last text node with letters
+  // (an icon may sit before or after it).
+  function labelNode(control) {
+    for (var n = control.lastChild; n; n = n.previousSibling) {
+      if (n.nodeType === 3 && n.nodeValue.trim()) return n;
+    }
+    return null;
+  }
+
+  // hold marks the control that started a wait: disabled (a link is
+  // aria-disabled) and aria-busy at once, [data-waiting] while it lasts.
+  // With a word, the control's label reads it after 400 ms (opts.now: at
+  // once), and opts.live (a polite status line) says it too.
+  function hold(control, word, opts) {
+    if (!control) return;
+    opts = opts || {};
+    var h = { label: labelNode(control), shown: null, live: opts.live || null, timer: 0,
+      hadFocus: doc.activeElement === control };
+    control.scryHold = h;
+    control.setAttribute("aria-busy", "true");
+    control.setAttribute("data-waiting", word || "");
+    if (control.tagName === "A") control.setAttribute("aria-disabled", "true");
+    else control.disabled = true;
+    if (!word) return;
+    var show = function () {
+      if (control.scryHold !== h) return;
+      if (h.label) {
+        h.shown = doc.createElement("span");
+        h.shown.className = "wait-word";
+        h.shown.setAttribute("data-wait-word", word);
+        h.shown.textContent = word;
+        h.label.replaceWith(h.shown);
+      }
+      if (h.live) {
+        h.sr = doc.createElement("span");
+        h.sr.className = "sr";
+        h.sr.textContent = word;
+        tell(h.live, [h.sr]);
+      }
+    };
+    if (opts.now) show(); else h.timer = setTimeout(show, WAIT_DELAY);
+  }
+
+  // release gives a held control back as it was, focus included.
+  function release(control) {
+    var h = control && control.scryHold;
+    if (!h) return;
+    control.scryHold = null;
+    clearTimeout(h.timer);
+    if (h.shown && h.label) h.shown.replaceWith(h.label);
+    if (h.sr && h.sr.isConnected) tell(h.live, "");
+    control.removeAttribute("aria-busy");
+    control.removeAttribute("data-waiting");
+    if (control.tagName === "A") control.removeAttribute("aria-disabled");
+    else control.disabled = false;
+    if (h.hadFocus && (doc.activeElement === doc.body || !doc.activeElement)) control.focus({ preventScroll: true });
+  }
+  function held(control) { return !!(control && control.hasAttribute("data-waiting")); }
+
+  // Others a wait sets aside (Snooze, Delete, Check, Next card while one of
+  // them runs) are only disabled, and marked so they can be given back.
+  function setAside(controls) {
+    var taken = controls.filter(function (b) { return b && !b.disabled; });
+    taken.forEach(function (b) { b.disabled = true; b.setAttribute("data-set-aside", ""); });
+    return function () { taken.forEach(function (b) { b.disabled = false; b.removeAttribute("data-set-aside"); }); };
+  }
+
+  // A page brought back by Back (the back/forward cache) gives every
+  // control back as it was, and the answer field re-measures.
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted) {
+      $$("[data-waiting]").forEach(release);
+      $$("[data-set-aside]").forEach(function (b) { b.disabled = false; b.removeAttribute("data-set-aside"); });
+      $$("[data-import-progress]").forEach(function (p) { p.hidden = true; });
+      $$("[data-status] .wait-words").forEach(function (w) { w.remove(); });
+      $$("[data-answer-input]").forEach(function (i) { i.readOnly = false; });
+    }
+    if (growAnswer) growAnswer();
+  });
+
   // ---- Swap <main> from a fetched page -----------------------------------
 
   // opts.top: this swap is the answer-submit -> review transition. Focusing
@@ -136,21 +302,51 @@
   // offset and clip the question off the top; the review is reframed at
   // the top instead. Every other swap (Ask Why, Edit card, ...) keeps the
   // learner's own scroll position.
+  //
+  // opts.vt (S113-2): how the card moves. "verdict": the waiting card fades
+  // out while the review's own marks draw in; "card": the review fades out
+  // and the next card rises in; "leave": a snoozed or deleted card fades out
+  // moving left, and the next one rises in. Focus moves as soon as the new
+  // card is in; nothing waits on the animation.
   function swap(html, url, opts) {
     var next = new DOMParser().parseFromString(html, "text/html");
     var main = $("main", next);
     if (!main) { location.href = url; return; }
-    $("main").innerHTML = main.innerHTML;
-    doc.title = next.title;
-    doc.body.className = next.body.className;
-    var nav = $(".nav", next), here = $(".nav");
-    if (nav && here) here.innerHTML = nav.innerHTML;
-    if (url && url !== location.href) history.replaceState(null, "", url);
-    init();
-    if (opts && opts.top && $("[data-review]")) window.scrollTo(0, 0);
-    if (frameReview()) return;
-    var focus = $("main [autofocus]");
-    if (focus) focus.focus();
+    var apply = function () {
+      $("main").innerHTML = main.innerHTML;
+      doc.title = next.title;
+      doc.body.className = next.body.className;
+      // The active underline draws in only when the destination changes.
+      var nav = $(".nav", next), here = $(".nav");
+      if (nav && here && nav.innerHTML !== here.innerHTML) here.innerHTML = nav.innerHTML;
+      if (url && url !== location.href) history.replaceState(null, "", url);
+      init();
+      if (opts && opts.top && $("[data-review]")) window.scrollTo(0, 0);
+      if (frameReview()) return;
+      var focus = $("main [autofocus]");
+      if (focus) focus.focus();
+    };
+    move(opts && opts.vt, apply);
+  }
+
+  // move runs a card swap inside a same-document view transition (styled in
+  // app.css by html[data-vt]); without one, or under reduced motion, the
+  // swap is immediate and the next card still rises in (.is-arriving).
+  function move(kind, apply) {
+    if (!kind || still.matches) { apply(); return; }
+    if (!doc.startViewTransition || doc.hidden) {
+      apply();
+      var card = kind !== "verdict" && $("main .current, main .done, main .empty-state");
+      if (card) card.classList.add("is-arriving");
+      return;
+    }
+    root.setAttribute("data-vt", kind);
+    var clear = function () { root.removeAttribute("data-vt"); };
+    var t;
+    try { t = doc.startViewTransition(apply); } catch (err) { clear(); apply(); return; }
+    t.finished.then(clear, clear);
+    t.ready.catch(function () {});
+    if (t.updateCallbackDone) t.updateCallbackDone.catch(function () {});
   }
 
   // The post-answer review stays framed at the question and its judgment
@@ -166,15 +362,23 @@
     return true;
   }
 
-  function post(form, extra) {
+  // post sends a form by fetch and resolves with the page that came back
+  // (and whether it was a success); timeout (ms) gives up on a request
+  // that never answers.
+  function post(form, extra, timeout) {
     var body = new URLSearchParams(new FormData(form));
     if (extra) Object.keys(extra).forEach(function (k) { body.set(k, extra[k]); });
+    var ctl = timeout && window.AbortController ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { ctl.abort(); }, timeout) : 0;
     return fetch(form.action, {
       method: "POST", body: body, credentials: "same-origin",
-      headers: { "X-Requested-With": "fetch" }
+      headers: { "X-Requested-With": "fetch" }, signal: ctl ? ctl.signal : undefined
     }).then(function (res) {
-      return res.text().then(function (html) { return { html: html, url: res.url }; });
-    });
+      return res.text().then(function (html) {
+        clearTimeout(timer);
+        return { html: html, url: res.url, ok: res.ok, status: res.status };
+      });
+    }, function (err) { clearTimeout(timer); throw err; });
   }
 
   // ---- Global keys -------------------------------------------------------
@@ -342,7 +546,93 @@
 
   // ---- Study -------------------------------------------------------------
 
-  var voice = null; // the recording in progress, if any
+  var voice = null;       // the recording in progress, if any
+  var growAnswer = null;  // re-measures the waiting card's answer field
+  var COULDNT_CHECK = "Couldn't check that just now. Your answer is still here; press Enter to try again.";
+
+  // S111-2: the answer field grows with what is typed, pasted or dictated.
+  // Its height is measured on a hidden twin (same class, one row, the same
+  // width), never by collapsing the visible field, so it never flickers,
+  // shrinks mid-word or moves the prompt above; the field then eases to it
+  // (120 ms, [data-grown]; at once under reduced motion). Past max-height
+  // (45vh) it scrolls inside itself.
+  function answerField(input) {
+    var twin = doc.createElement("textarea");
+    twin.className = input.className + " answer-measure";
+    twin.rows = 1;
+    twin.tabIndex = -1;
+    twin.setAttribute("aria-hidden", "true");
+    twin.setAttribute("inert", "");
+    input.parentNode.appendChild(twin);
+    input.rows = 1;
+    var last = -1;
+    function grow() {
+      if (!input.isConnected) return;
+      var cs = getComputedStyle(input);
+      var border = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      twin.style.width = input.offsetWidth + "px";
+      twin.value = input.value;
+      var h = twin.scrollHeight + border;
+      var max = parseFloat(cs.maxHeight);
+      if (max > 0 && h > max) h = max;
+      if (h === last) return;
+      last = h;
+      input.style.height = h + "px";
+      keepInView(input, h);
+    }
+    grow();
+    void input.offsetHeight; // the first height is set at once, not eased
+    input.setAttribute("data-grown", "");
+    input.addEventListener("input", grow);
+    input.addEventListener("paste", function () { setTimeout(grow, 0); });
+    if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(grow);
+    return grow;
+  }
+
+  // Phones: as the field grows it stays in view above the keyboard and the
+  // pinned Check bar.
+  function keepInView(input, h) {
+    if (doc.activeElement !== input || !window.visualViewport) return;
+    var vv = window.visualViewport, bar = $(".answer-actions");
+    var cover = bar && getComputedStyle(bar).position === "fixed" ? bar.offsetHeight : 0;
+    var bottom = input.getBoundingClientRect().top + h;
+    var limit = vv.offsetTop + vv.height - cover - 8;
+    if (bottom > limit) window.scrollBy(0, bottom - limit);
+  }
+  window.addEventListener("resize", function () { if (growAnswer) growAnswer(); });
+  window.addEventListener("orientationchange", function () { if (growAnswer) growAnswer(); });
+
+  // The field names its key hint for assistive technology: the desktop hint,
+  // or "Return to check" at phone width (where the other hints are hidden).
+  var phoneWidth = window.matchMedia ? window.matchMedia("(max-width: 760px)") : null;
+  function pickHint() {
+    var input = $("[data-answer-input]");
+    if (!input || !phoneWidth) return;
+    input.setAttribute("aria-describedby", (phoneWidth.matches ? "answer-hint-phone" : "answer-hint") + " status");
+  }
+  if (phoneWidth) {
+    if (phoneWidth.addEventListener) phoneWidth.addEventListener("change", pickHint);
+    else if (phoneWidth.addListener) phoneWidth.addListener(pickHint);
+  }
+
+  // Spoken words are added after what is already typed: one space between,
+  // or on the current line when it ends in a line break; the caret after.
+  function appendSpoken(input, text) {
+    var had = input.value;
+    input.value = had + (had === "" || /\s$/.test(had) ? "" : " ") + text;
+    var end = input.value.length;
+    input.setSelectionRange(end, end);
+    input.scrollBy(0, input.scrollHeight); // the field's own scroll, not the page's
+  }
+
+  // The status line a re-rendered study page carries ("Couldn't check that
+  // just now…", an allowance sentence and its link), as nodes for this page.
+  function statusFrom(html) {
+    var page = new DOMParser().parseFromString(html, "text/html");
+    var el = $("[data-answer-form] [data-status]", page);
+    if (!el || !el.textContent.trim()) return null;
+    return Array.prototype.map.call(el.childNodes, function (n) { return doc.importNode(n, true); });
+  }
 
   function initStudy() {
     var form = $("[data-answer-form]");
@@ -351,65 +641,72 @@
     initExplain();
     initEdit();
     initManage();
+    growAnswer = null;
     if (!form) return;
 
-    var input = $("#answer", form);
-    var line = $("[data-answer-line]", form);
-    var caret = $("[data-caret]", form);
+    var input = $("[data-answer-input]", form);
     var status = $("[data-status]", form);
     var via = $("[data-via]", form);
     var mic = $("[data-mic]", form);
-    var busy = false;
+    var check = $("[data-check]", form);
 
-    // Block caret: a block that sits just after the text while the cursor
-    // is at the end; otherwise the native caret takes over.
-    var ruler = doc.createElement("span");
-    ruler.className = "display";
-    ruler.style.cssText = "position:absolute;visibility:hidden;white-space:pre;left:0;top:0";
-    line.appendChild(ruler);
-    doc.documentElement.classList.add("has-caret");
-    function placeCaret() {
-      var atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
-      ruler.textContent = input.value;
-      var x = ruler.getBoundingClientRect().width;
-      var fits = x < input.clientWidth - 8;
-      line.classList.toggle("caret-off", !(atEnd && fits));
-      caret.style.left = x + "px";
-    }
-    ["input", "keyup", "click", "focus", "select"].forEach(function (ev) { input.addEventListener(ev, placeCaret); });
-    if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(placeCaret);
-    placeCaret();
+    growAnswer = answerField(input);
+    pickHint();
 
-    function say(text) { status.textContent = text || ""; }
+    function say(text) { tell(status, text); }
 
     input.addEventListener("input", function () {
       if (!voice) via.value = "typed";
     });
 
-    // Space on an empty answer line starts listening; a second press stops.
+    // Enter checks; Shift+Enter starts a new line (S111-2); never while an
+    // input method is composing. Space in an empty field starts listening;
+    // a second press stops.
     input.addEventListener("keydown", function (e) {
-      if (e.key === " " && (voice || input.value === "")) {
+      if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.isComposing && e.keyCode !== 229) {
+        e.preventDefault();
+        form.requestSubmit();
+        return;
+      }
+      if (e.key === " " && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !input.readOnly && (voice || input.value === "")) {
         e.preventDefault();
         toggleVoice();
       }
     });
     mic.addEventListener("click", function () { toggleVoice(); input.focus(); });
 
+    // Checking (S113-2): Check is disabled and busy at once, the field keeps
+    // its text and height (read-only while it is judged), "checking" pulses
+    // under it after 400 ms and "still checking" cross-fades in after 3 s.
+    // If grading cannot finish, or no answer comes back, the line says so,
+    // the field nudges once and keeps the answer exactly as written, and
+    // Enter retries.
     form.addEventListener("submit", function (e) {
       e.preventDefault();
-      if (busy) return;
+      if (held(check)) return;
+      hold(check);
+      input.readOnly = true;
+      var slow = 0, slower = 0;
+      var settle = function () { clearTimeout(slow); clearTimeout(slower); };
+      var fail = function (nodes) {
+        settle();
+        release(check);
+        input.readOnly = false;
+        tell(status, nodes || COULDNT_CHECK);
+        status.setAttribute("data-failed", "");
+        nudge(input);
+        input.focus({ preventScroll: true });
+        if (growAnswer) growAnswer();
+      };
       var send = function () {
-        busy = true;
-        // Checking is instant; the tag only appears if it takes over 400ms.
-        var slow = setTimeout(function () { say("checking"); }, 400);
-        post(form).then(function (r) {
-          clearTimeout(slow);
-          swap(r.html, r.url, { top: true });
-        }).catch(function () {
-          clearTimeout(slow);
-          busy = false;
-          say("Couldn't reach Scry. Check your connection and press Enter to try again.");
-        });
+        tell(status, "");
+        slow = setTimeout(function () { waitWord(status, "checking", true); }, WAIT_DELAY);
+        slower = setTimeout(function () { waitWord(status, "still checking", true); }, 3000);
+        post(form, null, 90000).then(function (r) {
+          if (!r.ok) { fail(statusFrom(r.html)); return; }
+          settle();
+          swap(r.html, r.url, { top: true, vt: "verdict" });
+        }, function () { fail(); });
       };
       if (voice) stopVoice().then(send); else send();
     });
@@ -443,10 +740,12 @@
       };
       source.connect(processor); processor.connect(ac.destination);
       ac.resume();
-      form.classList.add("is-listening"); mic.setAttribute("aria-pressed", "true"); say("listening");
+      form.classList.add("is-listening"); mic.setAttribute("aria-pressed", "true"); waitWord(status, "listening");
       v.timer = setTimeout(stopVoice, 20000);
     }
 
+    // Listening stops: "transcribing" until the words settle in the field
+    // (the mic is busy meanwhile), then the field re-measures at once.
     function stopVoice() {
       var v = voice;
       if (!v) return Promise.resolve();
@@ -467,18 +766,26 @@
         x = Math.max(-1, Math.min(1, x)); data.setInt16(at, x < 0 ? x * 32768 : x * 32767, true); at += 2;
       }); });
       v.ac.close();
+      form.classList.remove("is-listening"); mic.setAttribute("aria-pressed", "false");
+      hold(mic);
+      waitWord(status, "transcribing");
       // Exactly one provider upload, after recording stops; no client duration.
       v.done = fetch("/study/speech", {
         method: "POST", body: new Blob([buffer], { type: "audio/wav" }), credentials: "same-origin",
         headers: { "Content-Type": "audio/wav", "X-CSRF-Token": form.elements.csrf.value }
       }).then(function (res) { return res.json().then(function (j) {
         // Short, empty and silent recordings come back 200 with no text.
-        if (!res.ok) { say(j.error || "Scry can't listen just now. Type your answer instead."); return; }
-        if (j.text) { input.value = j.text; via.value = "spoken"; placeCaret(); say("heard · enter to check"); }
-        else say("Didn't catch that. Try again or type it.");
-      }); }).catch(function () { say("Couldn't reach Scry. Type your answer instead."); })
+        if (!res.ok) { say(j.error || "Scry can't listen just now. Type your answer instead."); nudge(mic); return; }
+        if (j.text) {
+          appendSpoken(input, j.text); via.value = "spoken";
+          if (growAnswer) growAnswer();
+          say("heard · enter to check");
+        } else say("Didn't catch that. Try again or type it.");
+        if (!j.text) nudge(mic);
+      }); }).catch(function () { say("Couldn't reach Scry. Type your answer instead."); nudge(mic); })
         .finally(function () {
-          voice = null; form.classList.remove("is-listening"); mic.setAttribute("aria-pressed", "false");
+          voice = null;
+          release(mic);
         });
       return v.done;
     }
@@ -522,13 +829,14 @@
   // and idea are saved without leaving the review. What is on screen (the
   // question, the correct answer and the place in the rail) is updated in
   // place and "Saved" is shown; the grade and schedule are never touched.
-  // A refused field is said in words under that field.
+  // A refused field is said in words under that field. While it saves,
+  // "Save card" is disabled and reads "saving" (S113-2); if the save cannot
+  // be made, the line beside it says so and every field keeps its text.
   function initEdit() {
     var form = $("[data-edit-form]");
     if (!form || !window.fetch) return;
-    var status = $("[data-edit-status]", form), save = $("[data-edit-save]", form);
+    var status = $("[data-edit-status]", form), save = $("[data-edit-save]", form), failed = $("[data-edit-fail]", form);
     var errors = $$("[data-edit-error]", form);
-    var busy = false;
     var clearErrors = function () {
       errors.forEach(function (el) {
         el.hidden = true; el.textContent = "";
@@ -540,62 +848,97 @@
     form.addEventListener("input", function () { status.hidden = true; });
     form.addEventListener("submit", function (e) {
       e.preventDefault();
-      if (busy) return;
-      busy = true;
-      save.setAttribute("aria-busy", "true");
+      if (held(save)) return;
+      hold(save, "saving", { live: failed });
       clearErrors();
       status.hidden = true;
-      var done = function () { busy = false; save.removeAttribute("aria-busy"); };
-      var fail = function (text, field) {
-        done();
-        var el = $("[data-edit-error='" + (field || "prompt") + "']", form) || errors[0];
+      var refuse = function (text, field) {
+        release(save);
+        var el = $("[data-edit-error='" + field + "']", form) || errors[0];
         el.textContent = text; el.hidden = false;
         el.parentNode.classList.add("has-error");
         var input = form.elements[el.getAttribute("data-edit-error")];
-        if (input && field) { input.setAttribute("aria-invalid", "true"); input.focus(); }
+        if (input) { input.setAttribute("aria-invalid", "true"); input.focus(); }
+      };
+      var broke = function (text) {
+        release(save);
+        tell(failed, text || "Couldn't save that just now. Your edits are still here.");
+        nudge(save);
       };
       fetch(form.action, {
         method: "POST", body: new URLSearchParams(new FormData(form)), credentials: "same-origin",
         headers: { "Accept": "application/json" }
       }).then(function (res) { return res.json().then(function (j) {
-        if (!res.ok || !j.saved) { fail(j.error || "Couldn't save that. Try again.", j.field); return; }
-        done();
-        // The text above the form may grow or shrink (a missed answer is set
-        // very large): keep the form where it was in the window.
-        var before = save.getBoundingClientRect().top;
-        $$("[data-canonical]").forEach(function (el) { el.textContent = j.answer; });
-        $$("[data-prompt]").forEach(function (el) { el.textContent = j.prompt; });
-        form.elements.prompt.value = j.prompt;
-        form.elements.answer.value = j.answer;
-        if (j.header) $$("[data-study-header]").forEach(function (el) { el.textContent = j.header; });
-        if (j.idea && form.elements.idea) {
-          form.elements.idea.value = j.idea;
-          // A newly named idea is offered from now on, too.
-          var list = $("[data-edit-ideas]", form);
-          var known = list && $$("option", list).some(function (o) { return o.value.toLowerCase() === j.idea.toLowerCase(); });
-          if (list && !known) { var o = doc.createElement("option"); o.value = j.idea; list.appendChild(o); }
-        }
-        status.hidden = false;
-        var moved = save.getBoundingClientRect().top - before;
-        if (moved) window.scrollBy(0, moved);
-      }); }).catch(function () { fail("Couldn't reach Scry. Check your connection and try again."); });
+        if (res.ok && j.saved) { saved(j); return; }
+        if (res.ok && j.field) { refuse(j.error, j.field); return; }
+        broke(res.status < 500 && j.error ? j.error : "");
+      }, function () { broke(); }); }, function () { broke(); });
     });
+    function saved(j) {
+      release(save);
+      tell(failed, "");
+      // The text above the form may grow or shrink (a missed answer is set
+      // very large): keep the form where it was in the window.
+      var before = save.getBoundingClientRect().top;
+      $$("[data-canonical]").forEach(function (el) { el.textContent = j.answer; });
+      $$("[data-prompt]").forEach(function (el) { el.textContent = j.prompt; });
+      form.elements.prompt.value = j.prompt;
+      form.elements.answer.value = j.answer;
+      if (j.header) $$("[data-study-header]").forEach(function (el) { el.textContent = j.header; });
+      if (j.idea && form.elements.idea) {
+        form.elements.idea.value = j.idea;
+        // A newly named idea is offered from now on, too.
+        var list = $("[data-edit-ideas]", form);
+        var known = list && $$("option", list).some(function (o) { return o.value.toLowerCase() === j.idea.toLowerCase(); });
+        if (list && !known) { var o = doc.createElement("option"); o.value = j.idea; list.appendChild(o); }
+      }
+      status.hidden = false;
+      var moved = save.getBoundingClientRect().top - before;
+      if (moved) window.scrollBy(0, moved);
+    }
   }
 
   // Snooze, Delete and Restore in Study (S106-5): each acts at once and
   // the next card (or the session's end) opens in place under one quiet
   // line, as Next card does. Without script they are plain form posts.
+  // While one runs (S113-2) it reads "snoozing", "removing" or
+  // "restoring", and the card's other actions are disabled; if it fails,
+  // the line beside it says so and the card and any typed answer stay.
+  var manageWords = { snooze: ["snoozing", "Couldn't snooze that just now."], delete: ["removing", "Couldn't remove that just now."],
+    restore: ["restoring", "Couldn't restore that just now."] };
   function initManage() {
     $$("form[data-manage-form]").forEach(function (form) {
-      var busy = false;
       form.addEventListener("submit", function (e) {
         e.preventDefault();
-        if (busy) return;
-        busy = true;
-        form.setAttribute("aria-busy", "true");
-        post(form).then(function (r) { swap(r.html, r.url); }).catch(function () { form.submit(); });
+        var button = $("button", form);
+        if (!button || held(button)) return;
+        var kind = button.hasAttribute("data-snooze") ? "snooze" : button.hasAttribute("data-delete") ? "delete" : "restore";
+        var line = $("[data-manage-status]") || manageLine(form);
+        tell(line, "");
+        hold(button, manageWords[kind][0], { live: line });
+        var giveBack = setAside($$("[data-snooze], [data-delete], [data-restore], [data-check], [data-next], [data-again], [data-edit-save]")
+          .filter(function (b) { return b !== button; }));
+        var fail = function () {
+          release(button);
+          giveBack();
+          tell(line, manageWords[kind][1]);
+          nudge(button);
+        };
+        post(form).then(function (r) {
+          if (!r.ok) { fail(); return; }
+          swap(r.html, r.url, { vt: kind === "restore" ? "card" : "leave" });
+        }, fail);
       });
     });
+  }
+  // A quiet line with no status line of its own (Restore after the session
+  // ended) says a failure just after its form.
+  function manageLine(form) {
+    var line = doc.createElement("span");
+    line.className = "status-line manage-status";
+    line.setAttribute("role", "status");
+    form.after(line);
+    return line;
   }
 
   // Keys: in the review E opens Edit card; S snoozes the card in its review
@@ -621,15 +964,26 @@
     }
   });
 
+  // Next card: the review fades out and the next card rises in (S113-2).
+  // If it cannot be opened, the review stays and the line under it says so.
   function initNext(form) {
-    var again = $("[data-again]", form);
-    var busy = false;
+    var next = $("[data-next]", form), again = $("[data-again]", form);
     form.addEventListener("submit", function (e) {
       e.preventDefault();
-      if (busy) return;
-      busy = true;
+      if (held(next)) return;
       var extra = e.submitter && e.submitter.name === "again" ? { again: "1" } : null;
-      post(form, extra).then(function (r) { swap(r.html, r.url); }).catch(function () { form.submit(); });
+      hold(next);
+      var giveBack = setAside([again].concat($$("[data-snooze], [data-delete], [data-edit-save]")));
+      var fail = function () {
+        release(next);
+        giveBack();
+        tell($("[data-manage-status]"), "Couldn't open the next card just now. Try again.");
+        nudge(next);
+      };
+      post(form, extra).then(function (r) {
+        if (!r.ok) { fail(); return; }
+        swap(r.html, r.url, { vt: "card" });
+      }, fail);
     });
   }
 
@@ -666,7 +1020,7 @@
     row.style.maxHeight = row.offsetHeight + "px";
     row.offsetHeight; // settle the starting height before collapsing
     row.classList.add("is-leaving");
-    var wait = new Promise(function (resolve) { setTimeout(resolve, 160); });
+    var wait = new Promise(function (resolve) { setTimeout(resolve, 120); });
     Promise.all([post(form), wait]).then(function (r) {
       swap(r[0].html, r[0].url);
       var all = $$("[data-row]");
@@ -724,34 +1078,112 @@
     });
   }
 
-  // ---- Create: Import a deck (S106-3) --------------------------------------
+  // ---- Create: Import a deck (S106-3, S113-2) ------------------------------
 
-  // A file over 20 MiB is refused in words before it is sent; otherwise
-  // the status line says "importing" and the button waits until the
-  // server answers (the form posts as usual, with or without script).
+  // A file over 20 MiB is refused in words before it is sent. Otherwise
+  // "Import" is disabled and reads "importing", with the 2 px progress line
+  // under it. With script the file is sent by fetch, so a refusal is said
+  // in words under the form with the idea title and the chosen file still
+  // there, ready to try again; an import that goes through opens where the
+  // server sends it (Library on the idea, or the draft). Without script the
+  // form posts as usual and the server keeps the idea title.
+  var IMPORT_BROKE = "Couldn't import that just now. Your file and idea title are still here; try again.";
   function initImport() {
     var form = $("[data-import-form]");
     if (!form) return;
     var status = $("[data-import-status]", form);
     var button = $("[data-import-submit]", form);
+    var progress = $("[data-import-progress]", form);
     var file = form.querySelector('input[type="file"]');
+    var refuse = function (text) {
+      var err = doc.createElement("span");
+      err.className = "field-error";
+      err.textContent = text;
+      tell(status, [err]);
+      status.setAttribute("data-refused", "");
+    };
+    var stop = function () {
+      release(button);
+      if (progress) progress.hidden = true;
+    };
     form.addEventListener("submit", function (e) {
       var f = file && file.files && file.files[0];
+      if (held(button)) { e.preventDefault(); return; }
       if (f && f.size > 20 * 1024 * 1024) {
         e.preventDefault();
-        status.textContent = "";
-        var err = document.createElement("span");
-        err.className = "field-error";
-        err.textContent = "That file is larger than 20 MiB. Split it and import the parts.";
-        status.appendChild(err);
+        refuse("That file is larger than 20 MiB. Split it and import the parts.");
+        nudge(button);
         return;
       }
-      status.textContent = "importing " + (f ? f.name : "") + "…";
-      button.disabled = true;
-      button.setAttribute("aria-busy", "true");
+      status.removeAttribute("data-refused");
+      if (!window.fetch || !window.FormData || !window.DOMParser) {
+        // The plain post: disable after the submit has been dispatched.
+        setTimeout(function () { hold(button, "importing", { now: true, live: status }); if (progress) progress.hidden = false; }, 0);
+        return;
+      }
+      e.preventDefault();
+      var body = new FormData(form);
+      hold(button, "importing", { now: true, live: status });
+      if (progress) progress.hidden = false;
+      fetch(form.action, {
+        method: "POST", body: body, credentials: "same-origin", headers: { "X-Requested-With": "fetch" }
+      }).then(function (res) { return res.text().then(function (html) {
+        var page = new DOMParser().parseFromString(html, "text/html");
+        var refused = $("[data-import-status][data-refused]", page);
+        if (refused) {
+          stop();
+          refuse(refused.textContent.trim());
+          nudge(button);
+          return;
+        }
+        if (!res.ok) throw new Error("import failed");
+        location.assign(res.url);
+      }); }).catch(function () {
+        stop();
+        refuse(IMPORT_BROKE);
+        nudge(button);
+      });
     });
-    // Coming back to the page (bfcache) never leaves the button stuck.
-    window.addEventListener("pageshow", function () { button.disabled = false; button.removeAttribute("aria-busy"); });
+  }
+
+  // ---- Settings: Download Markdown, CSV or JSON (S113-2) -------------------
+
+  // Each link fetches its file: it reads "preparing" (after 400 ms) until
+  // the download begins, and a failure says "Couldn't prepare that
+  // download. Try again." beside it. Without script (or with a modifier
+  // key) it is a plain download link.
+  var DOWNLOAD_BROKE = "Couldn't prepare that download. Try again.";
+  function initDownloads() {
+    var status = $("[data-download-status]");
+    $$("a[data-download]").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return;
+        if (!window.fetch || !window.URL || !URL.createObjectURL) return;
+        e.preventDefault();
+        if (held(a)) return;
+        tell(status, "");
+        hold(a, "preparing", { live: status });
+        fetch(a.href, { credentials: "same-origin" }).then(function (res) {
+          if (!res.ok || res.redirected) throw new Error("export failed");
+          var m = /filename="?([^";]+)"?/.exec(res.headers.get("Content-Disposition") || "");
+          return res.blob().then(function (blob) {
+            var url = URL.createObjectURL(blob), link = doc.createElement("a");
+            link.href = url;
+            link.download = m ? m[1] : "scry-export";
+            link.hidden = true;
+            doc.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+            release(a);
+          });
+        }).catch(function () {
+          release(a);
+          tell(status, DOWNLOAD_BROKE);
+          nudge(a);
+        });
+      });
+    });
   }
 
   // ---- Settings: appearance applies at once ------------------------------
@@ -904,6 +1336,7 @@
     initTZ();
     initExamples();
     initImport();
+    initDownloads();
     initTheme();
     initShelf();
     initBusy();

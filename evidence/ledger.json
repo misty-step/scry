@@ -1,31 +1,31 @@
 {
  "schemaVersion": 1,
  "repository": "misty-step/scry",
- "intentRange": "df98204c8b926e45887ea8f1d7a6c28faa7b48a1..3f13212b1319e36a7c98ef91227777b169949930",
+ "intentRange": "2bd50c2994816e818b3854fa990dada329b5835a..11654caec9d616811e82369f1db4c24709f4d85c",
  "intentFiles": [
   "PRODUCT.md",
   "DESIGN.md"
  ],
- "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
- "verifiedAt": "2026-11-25T21:11:22Z",
+ "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+ "verifiedAt": "2026-11-26T06:36:02Z",
  "criticVerdict": "PENDING_COLD_CRITIC",
  "evidenceRoot": "Builder evidence bundle (media/ collected from ~/chief-evidence/media); Cold Critic review pending",
  "realPath": {
-  "build": "make build BUILD_SHA=e81c1de43225a031816053f98efb02d0db2fd5ee (bin/scry)",
-  "run": "scripts/verify-slice106.mjs starts ./bin/scry itself: SCRY_MODE=test, fresh SQLite in a new temp dir, minimal env (PATH, HOME, SCRY_MODE, SCRY_DB, PORT=18106; no provider keys), terminated at the end",
-  "healthz": "200 status ok, database ok, build_sha e81c1de43225a031816053f98efb02d0db2fd5ee, mode test",
-  "walkthrough": "DISPLAY=:0 node scripts/verify-slice106.mjs --bin ./bin/scry --sha e81c1de43225a031816053f98efb02d0db2fd5ee --media ~/chief-evidence/media: playwright-core + system Chrome (headed on the sandbox desktop :0), desktop 1440x900 and phone 390x844 (touch, DPR 2), light and dark, America/Chicago; 339/339 checks PASS, 0 console/page/request/CSP problems, 0 px sideways scroll on every checked page; exit 0",
+  "build": "make build BUILD_SHA=adcd45b482062d5be2f547401238974b9684340e (bin/scry); later commits on the branch change only scripts/ and evidence/",
+  "run": "scripts/verify-slice113.mjs starts ./bin/scry itself per config: SCRY_MODE=test, SCRY_SEED_DEMO=1, fresh SQLite in a new temp dir, minimal env (PATH, HOME, SCRY_MODE, SCRY_DB, PORT, SCRY_TEST_JUDGE_PATHS, SCRY_TEST_JUDGMENTS, SCRY_TEST_JUDGE_DELAY=3300ms, SCRY_TEST_SPEECH; no provider keys); terminated at the end",
+  "healthz": "200 status ok, build_sha adcd45b..., mode test, grading_chain {primary test-judge, fallbacks test-judge-fallback-1/2, escalation test-judge-escalation}",
+  "walkthrough": "DISPLAY=:0 node scripts/verify-slice113.mjs --only <config> (four configs run in parallel, ports 18121-18124): playwright-core + system Chrome headed on the sandbox desktop :0, fake media stream for the mic, desktop 1440x900 and phone 390x844 (touch, DPR 2), light and dark, America/Chicago; 588/588 checks PASS (147 per config); plus DISPLAY=:0 node scripts/verify-slice106.mjs (S106-6 regression) 339/339 PASS; exit 0",
   "tests": "gofmt clean; go vet ./... and go test ./... pass (all packages ok)",
-  "media": "59 files, 21,248,659 bytes: 4 walkthrough videos (desktop/phone x light/dark) and key screenshots; no tokens or secrets (the API token is created and used inside the run and never written to media)",
-  "notLive": "No live deploy from this Boat sandbox (D-187): scry.mistystep.io /healthz and landing readback run post-merge from the credentialed host."
+  "media": "4 Slice 113 walkthrough videos (mp4, transcoded from the recorded webm), 1 S106 regression video, 27 Slice 113 screenshots, 18 brand-mark renders, logs and results JSON; no tokens or secrets",
+  "notLive": "No live deploy from this Boat sandbox (D-187): scry.mistystep.io /healthz and landing readback run post-merge from the credentialed host. No real model provider was called (test-mode fixtures and httptest stand-ins only)."
  },
  "entries": [
   {
    "requirementId": "PRODUCT.newcomer-glance-specimen-homescreen",
    "source": "PRODUCT.md :: User stories (newcomer)",
    "intent": "Understand at a glance that Scry is an AI-judged active-recall instrument, see one real judged card on the landing page, add Scry to the home screen to launch into daily recall.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -44,34 +44,26 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-landing.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/phone-dark-landing.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/desktop-light-walkthrough.webm",
-     "mediaType": "video/webm"
-    },
-    {
-     "localPath": "media/verify-slice106.log",
+     "localPath": "media/verify-slice106-regression.log",
      "mediaType": "text/plain"
     },
     {
-     "localPath": "media/verify-slice106-results.json",
+     "localPath": "media/verify-slice106-regression-results.json",
      "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     }
    ],
-   "note": "Home-screen install itself (OS prompt) was not exercised; the manifest (start_url /study, standalone), icons and apple-touch-icon are served and checked. Landing is checked signed out in an unrecorded context (screenshots, no video)."
+   "note": "Home-screen install itself (OS prompt) was not exercised; the manifest (start_url /study, standalone), icons and apple-touch-icon are served and checked. Landing is checked signed out in an unrecorded context (screenshots, no video). Re-verified at adcd45b4 by the S106 regression walkthrough (339/339)."
   },
   {
    "requirementId": "PRODUCT.forgot-password-two-step",
    "source": "PRODUCT.md :: User stories (forgot password); DESIGN.md :: Sign-up and trial",
    "intent": "Enter email on Sign in, choose \"Forgot password\" on the password step, reset by email.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -87,22 +79,26 @@
    ],
    "evidence": [
     {
-     "localPath": "media/verify-slice106.log",
+     "localPath": "media/verify-slice106-regression.log",
      "mediaType": "text/plain"
     },
     {
-     "localPath": "media/verify-slice106-results.json",
+     "localPath": "media/verify-slice106-regression-results.json",
      "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     }
    ],
-   "note": "Not re-walked in this slice: forgot-password runs through Clerk, which needs Clerk keys this sandbox does not hold; the local auth adapter sign-up path was exercised and the Clerk-path unit tests stay green. S106-6 asks that it is unchanged; no auth code changed."
+   "note": "Not re-walked in this slice: forgot-password runs through Clerk, which needs Clerk keys this sandbox does not hold; the local auth adapter sign-up path was exercised and the Clerk-path unit tests stay green. S106-6 asks that it is unchanged; no auth code changed. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339)."
   },
   {
    "requirementId": "PRODUCT.create-starter-examples",
    "source": "PRODUCT.md :: User stories (Study vs Create); DESIGN.md :: Create",
    "intent": "Tap a concrete starter topic or book example under the field; the draft outline does not repeat the idea on every row; the field scales on phones.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -125,34 +121,26 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-create-markdown.png",
-     "mediaType": "image/png"
+     "localPath": "media/verify-slice106-regression.log",
+     "mediaType": "text/plain"
     },
     {
-     "localPath": "media/phone-light-create-markdown.png",
-     "mediaType": "image/png"
+     "localPath": "media/verify-slice106-regression-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/desktop-light-create-draft.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/desktop-light-walkthrough.webm",
-     "mediaType": "video/webm"
-    },
-    {
-     "localPath": "media/phone-light-walkthrough.webm",
-     "mediaType": "video/webm"
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     }
    ],
-   "note": "Create is now a 16,000-character textarea (S106-2); the starter examples still sit under the field and fill it."
+   "note": "Create is now a 16,000-character textarea (S106-2); the starter examples still sit under the field and fill it. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339)."
   },
   {
    "requirementId": "PRODUCT.review-stays-framed",
    "source": "PRODUCT.md :: User stories (post-answer review); DESIGN.md :: Post-answer review",
    "intent": "The review stays framed at the question and judgment (Next card focused with preventScroll); Ask Why? explanation set off by a 2 px line rule.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -177,30 +165,26 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-study-review-actions.png",
-     "mediaType": "image/png"
+     "localPath": "media/verify-slice106-regression.log",
+     "mediaType": "text/plain"
     },
     {
-     "localPath": "media/phone-light-study-edit-saved.png",
-     "mediaType": "image/png"
+     "localPath": "media/verify-slice106-regression-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/desktop-light-walkthrough.webm",
-     "mediaType": "video/webm"
-    },
-    {
-     "localPath": "media/phone-light-walkthrough.webm",
-     "mediaType": "video/webm"
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     }
    ],
-   "note": "Next card has no HTML autofocus; app.js focuses [data-autofocus-no-scroll] with preventScroll. With a sentence-length Incorrect answer (struck at Judgment size) the verdict line can sit below the 900 px fold; the review opens at the top with the question in view, layout unchanged. A full reload after the learner has scrolled keeps the browser's restored scroll."
+   "note": "Next card has no HTML autofocus; app.js focuses [data-autofocus-no-scroll] with preventScroll. With a sentence-length Incorrect answer (struck at Judgment size) the verdict line can sit below the 900 px fold; the review opens at the top with the question in view, layout unchanged. A full reload after the learner has scrolled keeps the browser's restored scroll. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339)."
   },
   {
    "requirementId": "PRODUCT.library-phone-idea-first",
    "source": "PRODUCT.md :: User stories (ideas); DESIGN.md :: Library and concept links",
    "intent": "On phones the opened idea and its cards come first, with a compact collapsible idea picker; tabular outline numbers.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -222,63 +206,76 @@
    ],
    "evidence": [
     {
-     "localPath": "media/phone-light-imported-apkg.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/phone-dark-imported-apkg.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/phone-light-walkthrough.webm",
-     "mediaType": "video/webm"
-    },
-    {
-     "localPath": "media/verify-slice106.log",
+     "localPath": "media/verify-slice106-regression.log",
      "mediaType": "text/plain"
     },
     {
-     "localPath": "media/verify-slice106-results.json",
+     "localPath": "media/verify-slice106-regression-results.json",
      "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     }
    ],
-   "note": "PRODUCT.md (idea above the outline) and DESIGN.md (idea beneath the picker) read differently; resolved per NOTES.md Slice 54."
+   "note": "PRODUCT.md (idea above the outline) and DESIGN.md (idea beneath the picker) read differently; resolved per NOTES.md Slice 54. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339)."
   },
   {
    "requirementId": "DESIGN.brand-mark-and-wordmark",
    "source": "DESIGN.md :: Brand mark and wordmark",
-   "intent": "Scrying-lens mark (24 px grid, 1.75 stroke, accent focal r 2.25) 20 px beside 'scry' with an 8 px gap; adaptive vector icon and dark-ground app icon.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "intent": "Scry's mark is S3-A, the Signal Cobalt prompt-bar deck of three cards, beside the lowercase Geist Mono wordmark; the lens mark is retired from every surface ([S113-3]).",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
-    "TestDesign_BrandMarkBesideTheWordmark",
-    "TestBrand_MarkIsOneDrawingEverywhere"
+    "TestDesign_S113_3_AppIconsSquircleAndMaskable",
+    "TestDesign_S113_3_FaviconsAreHintedToWholePixels",
+    "TestDesign_S113_3_InkStepsAreOverPage",
+    "TestDesign_S113_3_MarkFollowsTheThemeAndNeverAnimates",
+    "TestDesign_S113_3_MarkGeometryIsOneDrawing",
+    "TestDesign_S113_3_NoLensMarkRemains",
+    "TestDesign_S113_3_StudyIconStaysALineGlyph",
+    "TestStory_S113_3_OneMarkEverywhere"
    ],
    "walkthroughChecks": [
-    "[desktop-light] landing: styles loaded",
-    "[desktop-dark] landing: styles loaded",
-    "[phone-light] landing: styles loaded",
-    "[phone-dark] landing: styles loaded"
+    "[desktop-light] S113-3: header mark is 24 px, 8 px before scry, centred on the wordmark",
+    "[desktop-light] S113-3: top card in Signal Cobalt for this mode",
+    "[desktop-light] S113-3: no lens mark left in the page",
+    "[desktop-light] S113-3: favicon SVG, 16/32 px PNGs, 64 px app icons and home-screen icons decode at their sizes",
+    "[desktop-light] S113-3: head links the S3-A favicon, apple-touch icon, manifest and social preview",
+    "[desktop-dark] S113-3: header mark is 24 px, 8 px before scry, centred on the wordmark",
+    "[desktop-dark] S113-3: top card in Signal Cobalt for this mode",
+    "[desktop-dark] S113-3: no lens mark left in the page",
+    "[desktop-dark] S113-3: favicon SVG, 16/32 px PNGs, 64 px app icons and home-screen icons decode at their sizes",
+    "[desktop-dark] S113-3: head links the S3-A favicon, apple-touch icon, manifest and social preview"
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-landing.png",
+     "localPath": "media/s113-desktop-light-landing-header-mark.png",
      "mediaType": "image/png"
     },
     {
-     "localPath": "media/phone-dark-landing.png",
+     "localPath": "media/brand-favicon16-light-8x.png",
      "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/brand-appicon64-dark.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
+     "mediaType": "application/json"
     }
-   ]
+   ],
+   "note": ""
   },
   {
    "requirementId": "DESIGN.landing",
    "source": "DESIGN.md :: Landing",
    "intent": "Two-column hero (1.15fr/1fr), lede naming active recall and spaced repetition, one accent action beside a quiet Sign in, trial terms, Study Specimen on the dot grid, four ruled rows, quiet public footer.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -301,42 +298,26 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-landing.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/desktop-dark-landing.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/phone-light-landing.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/phone-dark-landing.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/desktop-light-landing-prompt-step.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/verify-slice106.log",
+     "localPath": "media/verify-slice106-regression.log",
      "mediaType": "text/plain"
     },
     {
-     "localPath": "media/verify-slice106-results.json",
+     "localPath": "media/verify-slice106-regression-results.json",
      "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     }
    ],
-   "note": "Superseded by S106-1: hero minmax(0,1fr) minmax(0,1.08fr) on the drafting band; stepping Specimen."
+   "note": "Superseded by S106-1: hero minmax(0,1fr) minmax(0,1.08fr) on the drafting band; stepping Specimen. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339)."
   },
   {
    "requirementId": "DESIGN.controls-inputs-hover",
    "source": "DESIGN.md :: Color (controls)",
    "intent": "Inputs carry a 1 px line hairline at rest (ink on focus); hover fills only on hover-capable pointers.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -358,30 +339,30 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-dark-import-form.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/desktop-light-create-markdown.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/verify-slice106.log",
+     "localPath": "media/verify-slice106-regression.log",
      "mediaType": "text/plain"
     },
     {
-     "localPath": "media/verify-slice106-results.json",
+     "localPath": "media/verify-slice106-regression-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
      "mediaType": "application/json"
     }
    ],
-   "note": "Hover fills limited to @media (hover: hover) are checked in the served CSS by test; this pass's walkthrough did not separately assert a tapped control is left unfilled on touch."
+   "note": "Hover fills limited to @media (hover: hover) are checked in the served CSS by test; this pass's walkthrough did not separately assert a tapped control is left unfilled on touch. Re-verified after Slice 113: hover/focus now 120 ms on cubic-bezier(0.2,0,0,1), the nav underline draws in by clip (160 ms), and the answer field is the S111-2 textarea; see S113-2 / S111-2 entries."
   },
   {
    "requirementId": "DESIGN.signup-trial-clerk",
    "source": "DESIGN.md :: Sign-up and trial",
    "intent": "Both sign-up pages keep '7-day trial · no card needed' above the heading; Clerk panels inherit Scry tokens with no shadows or gradients.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -405,26 +386,26 @@
    ],
    "evidence": [
     {
-     "localPath": "media/verify-slice106.log",
+     "localPath": "media/verify-slice106-regression.log",
      "mediaType": "text/plain"
     },
     {
-     "localPath": "media/verify-slice106-results.json",
+     "localPath": "media/verify-slice106-regression-results.json",
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/desktop-light-walkthrough.webm",
-     "mediaType": "video/webm"
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     }
    ],
-   "note": "Sign-up exercised through the local auth adapter (no Clerk keys in this sandbox); no auth or trial code changed in this slice."
+   "note": "Sign-up exercised through the local auth adapter (no Clerk keys in this sandbox); no auth or trial code changed in this slice. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339)."
   },
   {
    "requirementId": "DESIGN.study-session-margin",
    "source": "DESIGN.md :: Study session",
    "intent": "196 px left margin, top-aligned with the prompt/review flow; the waiting screen fits 1440x900 without vertical scroll.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -446,29 +427,30 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-study-review-actions.png",
-     "mediaType": "image/png"
+     "localPath": "media/verify-slice106-regression.log",
+     "mediaType": "text/plain"
     },
     {
-     "localPath": "media/phone-light-study-waiting-actions.png",
-     "mediaType": "image/png"
+     "localPath": "media/verify-slice106-regression-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/desktop-light-walkthrough.webm",
-     "mediaType": "video/webm"
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     },
     {
-     "localPath": "media/phone-light-walkthrough.webm",
-     "mediaType": "video/webm"
+     "localPath": "media/verify-slice113-results.json",
+     "mediaType": "application/json"
     }
-   ]
+   ],
+   "note": "Re-verified after Slice 113: hover/focus now 120 ms on cubic-bezier(0.2,0,0,1), the nav underline draws in by clip (160 ms), and the answer field is the S111-2 textarea; see S113-2 / S111-2 entries."
   },
   {
    "requirementId": "DESIGN.navigation-underline",
    "source": "DESIGN.md :: Every destination says what it is for",
    "intent": "Active navigation underlines the label only, never under the Inbox count.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -489,22 +471,30 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-shelf-nav.png",
-     "mediaType": "image/png"
+     "localPath": "media/verify-slice106-regression.log",
+     "mediaType": "text/plain"
     },
     {
-     "localPath": "media/phone-dark-shelf-nav.png",
-     "mediaType": "image/png"
+     "localPath": "media/verify-slice106-regression-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
+     "mediaType": "application/json"
     }
    ],
-   "note": "Five destinations now (S106-4)."
+   "note": "Five destinations now (S106-4). Re-verified after Slice 113: hover/focus now 120 ms on cubic-bezier(0.2,0,0,1), the nav underline draws in by clip (160 ms), and the answer field is the S111-2 textarea; see S113-2 / S111-2 entries."
   },
   {
    "requirementId": "DESIGN.inbox-purpose",
    "source": "DESIGN.md :: Inbox",
    "intent": "No Inbox: /inbox redirects (303) to Library; no Inbox in navigation, headers, keys or empty states.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -527,19 +517,19 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-shelf-nav.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/verify-slice106.log",
+     "localPath": "media/verify-slice106-regression.log",
      "mediaType": "text/plain"
     },
     {
-     "localPath": "media/verify-slice106-results.json",
+     "localPath": "media/verify-slice106-regression-results.json",
      "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
     }
    ],
-   "note": "Superseded by S106-4: there is no Inbox; /inbox answers 303 to Library and the purpose-line table has no Inbox row."
+   "note": "Superseded by S106-4: there is no Inbox; /inbox answers 303 to Library and the purpose-line table has no Inbox row. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339)."
   },
   {
    "requirementId": "DESIGN.settings",
@@ -917,8 +907,8 @@
    "requirementId": "S106-6",
    "source": "PRODUCT.md :: [S106-6]",
    "intent": "Everything else unchanged (full suite green); every change proved in a headed browser at 1440×900 and 390×844, light and dark, with no console/page/CSP errors and no sideways scroll. Post-deploy live check of scry.mistystep.io runs from the credentialed host after merge.",
-   "verifiedSha": "e81c1de43225a031816053f98efb02d0db2fd5ee",
-   "verifiedAt": "2026-11-25T21:11:22Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e",
+   "verifiedAt": "2026-11-26T06:36:02Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -941,31 +931,449 @@
    ],
    "evidence": [
     {
-     "localPath": "media/desktop-light-walkthrough.webm",
-     "mediaType": "video/webm"
-    },
-    {
-     "localPath": "media/desktop-dark-walkthrough.webm",
-     "mediaType": "video/webm"
-    },
-    {
-     "localPath": "media/phone-light-walkthrough.webm",
-     "mediaType": "video/webm"
-    },
-    {
-     "localPath": "media/phone-dark-walkthrough.webm",
-     "mediaType": "video/webm"
-    },
-    {
-     "localPath": "media/verify-slice106.log",
+     "localPath": "media/verify-slice106-regression.log",
      "mediaType": "text/plain"
     },
     {
-     "localPath": "media/verify-slice106-results.json",
+     "localPath": "media/verify-slice106-regression-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    }
+   ],
+   "note": "Slice 113 re-run: scripts/verify-slice106.mjs (339/339 PASS, 0 problems) proves nothing else changed (landing Specimen, Create, import/export round trip, five destinations, /inbox, API, Snooze/Edit/Delete/Restore), and scripts/verify-slice113.mjs proves the S111/S113 changes headed at 1440x900 and 390x844, light and dark. Two script lines were adjusted for the new S113-2 import wait and Chrome cancelling an in-flight favicon on navigation. Live https://scry.mistystep.io readback runs post-merge from the credentialed host (D-187)."
+  },
+  {
+   "requirementId": "S111-1",
+   "source": "PRODUCT.md :: [S111-1]; DESIGN.md :: Study session (Interleaved session), Library and concept links",
+   "intent": "Opening /study (Study in the navigation, g s) starts one interleaved five-minute session across every deck: due reviews first by lowest FSRS retrievability, new cards only in the room left (at most 10 first presentations a learner day), alternating decks, a spoiler-safe deck tag; \"Study this idea\" in Library focuses on one idea and its sub-ideas.",
+   "tests": [
+    "TestS111_1_AtMostTenFirstPresentationsADay_AcrossReopenAndFocusedStudy",
+    "TestS111_1_BacklogOfFifteenReviewsFillsTheSession_NoNewCards",
+    "TestS111_1_ConsidersAtMost200DueReviewCandidates",
+    "TestS111_1_DailyLimitFollowsTheLearnersTimeZone",
+    "TestS111_1_ExactLinesCountThirtySecondsAndKeepTheirOrder",
+    "TestS111_1_FirstCardIsMostUrgent_DecksAlternate_ReviewsBeatNewCards",
+    "TestS111_1_PacedNewCardBreaksAStreak_NeverTakingAReviewsPlace",
+    "TestS111_1_PlanRanksAndOrdersCards",
+    "TestS111_1_RetrievabilityAtIsTheFSRSForgettingCurve",
+    "TestS111_1_StartsOnlyWithAnEligibleCard",
+    "TestS111_1_Store_StartStudyNeverExceedsTheDailyLimit",
+    "TestS111_1_Store_StudyCandidatesAndDecks",
+    "TestS111_1_StudyThisIdeaHoldsOnlyThatIdeaAndItsSubIdeas",
+    "TestS111_1_TenReviewsAndFiveNewCards",
+    "TestS111_1_Web_DemoDecks_StudyOpensOnTheMostUrgentReviewAndInterleaves",
+    "TestS111_1_Web_StudyThisIdeaOpensAFocusedSessionOverOnlyThatIdea",
+    "TestS111_1_Web_TenNewCardsADay_ReopeningStudySaysSo",
+    "TestS111_1_Web_WaitingCardsShowOnlySafeDeckTags"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s113-desktop-light-study-waiting.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-library-study-this-idea.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/verify-slice113.log",
+     "mediaType": "text/plain"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
      "mediaType": "application/json"
     }
    ],
-   "note": "Live production readback (healthz build_sha, landing both modes, decks intact) is NOT done from this uncredentialed Boat sandbox (D-187); it must run post-merge via node tools/ops/verify-live-url.mjs https://scry.mistystep.io from the credentialed host."
+   "walkthroughChecks": [
+    "[desktop-light] S111-1: Study in the navigation opens straight onto a card",
+    "[desktop-light] S111-1: consecutive cards come from different decks",
+    "[desktop-light] S111-1: Study this idea opens a focused session (\"Focused · …\" with Study all decks)",
+    "[desktop-light] S111-1: the navigation's Study opens every deck again (no focused line)",
+    "[desktop-dark] S111-1: Study in the navigation opens straight onto a card",
+    "[desktop-dark] S111-1: consecutive cards come from different decks",
+    "[desktop-dark] S111-1: Study this idea opens a focused session (\"Focused · …\" with Study all decks)",
+    "[desktop-dark] S111-1: the navigation's Study opens every deck again (no focused line)",
+    "[phone-light] S111-1: Study in the navigation opens straight onto a card",
+    "[phone-light] S111-1: consecutive cards come from different decks"
+   ],
+   "note": "The headed run uses the seeded demo decks (NATO, mental models, kitchen numbers): it proves Study opens on a card, decks alternate across 10 consecutive cards, Study this idea focuses and the navigation's Study opens every deck again. The exact selection rules (most urgent first, 15-review backlog, 10 reviews + 5 new, 10 first presentations a day across reopen/focused, time zone, 200 candidates, exact lines in order) are proved by the named Go tests against the real store. Plain /study always opens every deck; study actions return to /study?on=1, which continues the open (possibly focused) session (NOTES.md).",
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "verifiedAt": "2026-11-26T06:36:02Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e"
+  },
+  {
+   "requirementId": "S111-2",
+   "source": "PRODUCT.md :: [S111-2]; DESIGN.md :: Study session (The answer field), Voice answer, Keys",
+   "intent": "Answer in an auto-expanding multiline textarea that grows row by row (to 45vh), never scrolls sideways; Enter checks, Shift+Enter adds a line; line breaks are kept in the review.",
+   "tests": [
+    "TestStory_S111_2_AnswerFieldIsAGrowingTextarea",
+    "TestStory_S111_2_CouldntCheckKeepsAMultilineDraft",
+    "TestStory_S111_2_DictationIsAppendedAndTheFieldReMeasures",
+    "TestStory_S111_2_EnterChecksShiftEnterNewLineSpaceSpeaks",
+    "TestStory_S111_2_LineBreaksAreKeptInTheReview",
+    "TestStory_S111_2_ReviewShowsTheAnswersLineBreaks"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s113-desktop-light-study-couldnt-check.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-phone-dark-study-review-multiline.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-desktop-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-phone-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-phone-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
+     "mediaType": "application/json"
+    }
+   ],
+   "walkthroughChecks": [
+    "[desktop-light] S111-2: Shift+Enter puts line breaks in the answer",
+    "[desktop-light] S111-2: the field grows as the text reaches new rows, never sideways",
+    "[desktop-light] S113-1/2 submission 1 (primary): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 3 (primary-error): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 4 (primary-unparseable): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 5 (chain-unavailable): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 6 (primary-low-confidence): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 7 (primary-low-probability): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 8 (primary-thin-margin): the review keeps the answer's line breaks"
+   ],
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "verifiedAt": "2026-11-26T06:36:02Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e"
+  },
+  {
+   "requirementId": "S111-3",
+   "source": "PRODUCT.md :: [S111-3] [S113-1]; DESIGN.md :: Study session (States), Post-answer review",
+   "intent": "Multi-sentence and paragraph-long explanations get Correct, Almost Correct or Incorrect with a one-line reason and a schedule; only when grading cannot complete does Study say \"Couldn't check that just now…\", keeping the answer, and Enter retries; a lost response reopens the recorded review without a second charge.",
+   "tests": [
+    "TestStory_S113_1_AWalkThroughTheWholeChainIsChargedAsExactlyOneJudgment",
+    "TestStory_S113_1_ChainConfigurationAndSlugChecksAtBoot",
+    "TestStory_S113_1_DirectEscalationUsesTheDraftingModel",
+    "TestStory_S113_1_EscalationFailingTooIsNoVerdict",
+    "TestStory_S113_1_EveryChainPathUpdatesTheScheduleAsOneJudgment",
+    "TestStory_S113_1_EveryDecisionsModelUnavailable_EscalationLLMAnswers",
+    "TestStory_S113_1_IdenticalNonExactAnswerStillReachesTheModel",
+    "TestStory_S113_1_JevSeparatesUnavailableFromUncertain",
+    "TestStory_S113_1_LowCertaintyGoesStraightToTheLLMAndIsNeverShopped",
+    "TestStory_S113_1_PrimaryDecisionsModelAnswers",
+    "TestStory_S113_1_PrimaryUnavailableErroredOrUnparseable_NextDecisionsModelAnswers",
+    "TestStory_S113_1_RetryAfterALostResponseOpensTheRecordedReviewWithoutASecondCharge",
+    "TestStory_S113_1_StudyThroughEveryChainPath",
+    "TestStory_S113_1_TestFixtureChainPaths",
+    "TestStory_S113_1_TestModeChainFixtureSettings",
+    "TestStory_S113_1_UnknownOutcomesAreReportedForTheHold",
+    "TestStory_S111_2_LineBreaksAreKeptInTheReview"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s113-desktop-light-study-review-multiline.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-study-couldnt-check.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-desktop-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-phone-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-phone-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/verify-slice113.log",
+     "mediaType": "text/plain"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
+     "mediaType": "application/json"
+    }
+   ],
+   "walkthroughChecks": [
+    "[desktop-light] S113-1/2 submission 1 (primary): Check disabled and busy at once, field kept read-only",
+    "[desktop-light] S113-1/2 submission 1 (primary): no word before 400 ms, then \"checking\", \"still checking\" after 3 s",
+    "[desktop-light] S113-1/2 submission 1 (primary): a second Enter sends nothing",
+    "[desktop-light] S113-1/2 submission 1 (primary): shows the scripted verdict \"right\" with its badge and one-line reason",
+    "[desktop-light] S113-1/2 submission 1 (primary): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 1 (primary): the review shows the new schedule",
+    "[desktop-light] S113-1/2 submission 1 (primary): server log: no escalation, 1 attempt(s)",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): Check disabled and busy at once, field kept read-only",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): no word before 400 ms, then \"checking\", \"still checking\" after 3 s",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): a second Enter sends nothing"
+   ],
+   "note": "S111-3 is carried by the S113-1 grading chain (same PRODUCT.md item).",
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "verifiedAt": "2026-11-26T06:36:02Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e"
+  },
+  {
+   "requirementId": "S113-1",
+   "source": "PRODUCT.md :: [S111-3] [S113-1], \"I never grade myself\" rule; DESIGN.md :: Study session (States), Post-answer review",
+   "intent": "Every non-exact answer is judged by models only through one ordered chain: Jev (typesafe/jev-1.14), then the fallback decisions models in order on unavailable/error/unparseable, then one escalation LLM (google/gemini-4-hydrogen) as soon as a decisions model is uncertain or none answers; one judgment reservation sized for the costliest path; each attempt logged without the answer or a key.",
+   "tests": [
+    "TestStory_S113_1_AWalkThroughTheWholeChainIsChargedAsExactlyOneJudgment",
+    "TestStory_S113_1_ChainConfigurationAndSlugChecksAtBoot",
+    "TestStory_S113_1_DirectEscalationUsesTheDraftingModel",
+    "TestStory_S113_1_EscalationFailingTooIsNoVerdict",
+    "TestStory_S113_1_EveryChainPathUpdatesTheScheduleAsOneJudgment",
+    "TestStory_S113_1_EveryDecisionsModelUnavailable_EscalationLLMAnswers",
+    "TestStory_S113_1_IdenticalNonExactAnswerStillReachesTheModel",
+    "TestStory_S113_1_JevSeparatesUnavailableFromUncertain",
+    "TestStory_S113_1_LowCertaintyGoesStraightToTheLLMAndIsNeverShopped",
+    "TestStory_S113_1_PrimaryDecisionsModelAnswers",
+    "TestStory_S113_1_PrimaryUnavailableErroredOrUnparseable_NextDecisionsModelAnswers",
+    "TestStory_S113_1_RetryAfterALostResponseOpensTheRecordedReviewWithoutASecondCharge",
+    "TestStory_S113_1_StudyThroughEveryChainPath",
+    "TestStory_S113_1_TestFixtureChainPaths",
+    "TestStory_S113_1_TestModeChainFixtureSettings",
+    "TestStory_S113_1_UnknownOutcomesAreReportedForTheHold"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s113-desktop-light-study-review-escalated.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-study-still-checking.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-desktop-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-phone-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-phone-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/verify-slice113.log",
+     "mediaType": "text/plain"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
+     "mediaType": "application/json"
+    }
+   ],
+   "walkthroughChecks": [
+    "[desktop-light] S113-1/2 submission 1 (primary): Check disabled and busy at once, field kept read-only",
+    "[desktop-light] S113-1/2 submission 1 (primary): no word before 400 ms, then \"checking\", \"still checking\" after 3 s",
+    "[desktop-light] S113-1/2 submission 1 (primary): a second Enter sends nothing",
+    "[desktop-light] S113-1/2 submission 1 (primary): shows the scripted verdict \"right\" with its badge and one-line reason",
+    "[desktop-light] S113-1/2 submission 1 (primary): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 1 (primary): the review shows the new schedule",
+    "[desktop-light] S113-1/2 submission 1 (primary): server log: no escalation, 1 attempt(s)",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): Check disabled and busy at once, field kept read-only",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): no word before 400 ms, then \"checking\", \"still checking\" after 3 s",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): a second Enter sends nothing",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): shows the scripted verdict \"close\" with its badge and one-line reason",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): the review keeps the answer's line breaks",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): the review shows the new schedule",
+    "[desktop-light] S113-1/2 submission 2 (primary-unavailable): server log: no escalation, 2 attempt(s)",
+    "[desktop-light] S113-1/2 submission 3 (primary-error): Check disabled and busy at once, field kept read-only",
+    "[desktop-light] S113-1/2 submission 3 (primary-error): no word before 400 ms, then \"checking\", \"still checking\" after 3 s"
+   ],
+   "note": "Headed run forces, per submission, primary / primary-unavailable / -error / -unparseable / chain-unavailable / primary-low-confidence / -low-probability / -thin-margin / primary-none / all-fail via SCRY_TEST_JUDGE_PATHS; the server's own \"judge chain\" log line proves the models asked (attempt count, escalation, no secondary decisions model after an uncertain primary). The every-path-fails submission is answered 503 with the full Study page and the kept answer (the page script takes its failure path on a non-2xx); it is the one expected 5xx of the run, listed under forcedFailures. Real OpenRouter/Typesafe adapters are proved against local httptest stand-ins only: no live model was called (no spend). Fallback/escalation model prices are documented estimates (NOTES.md) because the catalog was not read without network.",
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "verifiedAt": "2026-11-26T06:36:02Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e"
+  },
+  {
+   "requirementId": "S113-2",
+   "source": "PRODUCT.md :: [S113-2]; DESIGN.md :: Motion, Waits errors and recovery, Color (controls), Voice answer, Card and billing forms",
+   "intent": "Every wait says its word beside its control (checking / still checking, listening / transcribing, saving, snoozing, removing, importing + progress line, preparing) with the control disabled and busy; every failure says what happened, keeps the input and retries in place; every transition is 120–240 ms ease-out (cubic-bezier(0.2,0,0,1)) with no overshoot; under reduced motion nothing moves, pulses or loops.",
+   "tests": [
+    "TestStory_S113_2_BackRestoredPagesGiveEveryControlBack",
+    "TestStory_S113_2_EveryMotionMomentIsDrawn",
+    "TestStory_S113_2_FailuresSayWhatHappenedKeepInputAndRetryInPlace",
+    "TestStory_S113_2_MotionTokensAreEaseOutWithin120To240ms",
+    "TestStory_S113_2_ReducedMotionStopsTranslateScalePulse",
+    "TestStory_S113_2_WaitsSayTheirWordWithTheControlDisabled"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s113-desktop-light-study-still-checking.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-study-edit-failed.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-study-snooze-failed.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-importing.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-download-failed.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-reduced-motion-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s113-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-desktop-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-phone-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s113-phone-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/verify-slice113.log",
+     "mediaType": "text/plain"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
+     "mediaType": "application/json"
+    }
+   ],
+   "walkthroughChecks": [
+    "[desktop-light] S113-2: a destination switch runs a view transition",
+    "[desktop-light] S113-2: the failed field nudges once",
+    "[desktop-light] S113-2: Save card failure says so and keeps the edits",
+    "[desktop-light] S113-2: Save card reads \"saving\", disabled and busy",
+    "[desktop-light] S113-2: after retry the edit is saved",
+    "[desktop-light] S113-2: /study/snooze failure says \"Couldn't snooze that just now.\", card and typed answer stay",
+    "[desktop-light] S113-2: /study/snooze reads \"snoozing\", disabled and busy, the others set aside",
+    "[desktop-light] S113-2: after retry /study/snooze goes on to the next card",
+    "[desktop-light] S113-2: /study/delete failure says \"Couldn't remove that just now.\", card and typed answer stay",
+    "[desktop-light] S113-2: /study/delete reads \"removing\", disabled and busy, the others set aside",
+    "[desktop-light] S113-2: after retry /study/delete goes on to the next card",
+    "[desktop-light] S113-2: voice says \"listening\", then \"transcribing\"; the words settle after the typed text",
+    "[desktop-light] S113-2: a refused import says why in words and keeps the idea title and the chosen file",
+    "[desktop-light] S113-2: Import reads \"importing\" with the 2 px progress line, disabled and busy",
+    "[desktop-light] S113-2: the import then lands in Library",
+    "[desktop-light] S113-2: a failed download says \"Couldn't prepare that download. Try again.\"",
+    "[desktop-light] S113-2: Download reads \"preparing\" until the download begins",
+    "[desktop-light] S113-2: after retry the Markdown export downloads",
+    "[desktop-light] motion: 80 distinct animations/transitions observed",
+    "[desktop-light] motion: every transition 120–240 ms, ease-out, no overshoot; only the allowed loops repeat"
+   ],
+   "note": "verify-slice113-results.json \"motionObserved\" lists every animation/transition sampled each frame in the real browser (64+ distinct per config), with declared and live durations and easings. A reversed (interrupted) transition runs shortened by the CSS reversing-shortening factor; its declared duration is what is judged. Edit card drawer motion needs ::details-content / interpolate-size (current Chrome); older browsers open it at once.",
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "verifiedAt": "2026-11-26T06:36:02Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e"
+  },
+  {
+   "requirementId": "S113-3",
+   "source": "PRODUCT.md :: [S113-3]; DESIGN.md :: Brand mark and wordmark, Color (accent)",
+   "intent": "The S3-A deck-of-cards mark (Signal Cobalt top card with a prompt bar) replaces the lens mark everywhere: favicon SVG + hinted 16/32 px PNGs, 24 px header mark 8 px before scry, 64 px squircle app icon, maskable home-screen and social preview icons.",
+   "tests": [
+    "TestDesign_S113_3_AppIconsSquircleAndMaskable",
+    "TestDesign_S113_3_FaviconsAreHintedToWholePixels",
+    "TestDesign_S113_3_InkStepsAreOverPage",
+    "TestDesign_S113_3_MarkFollowsTheThemeAndNeverAnimates",
+    "TestDesign_S113_3_MarkGeometryIsOneDrawing",
+    "TestDesign_S113_3_NoLensMarkRemains",
+    "TestDesign_S113_3_StudyIconStaysALineGlyph",
+    "TestStory_S113_3_OneMarkEverywhere"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s113-desktop-light-landing-header-mark.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/brand-favicon16-light-8x.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/brand-favicon16-dark-8x.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/brand-favicon32-light-8x.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/brand-appicon64-light.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/brand-appicon64-dark.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/verify-slice113-results.json",
+     "mediaType": "application/json"
+    }
+   ],
+   "walkthroughChecks": [
+    "[desktop-light] S113-3: header mark is 24 px, 8 px before scry, centred on the wordmark",
+    "[desktop-light] S113-3: top card in Signal Cobalt for this mode",
+    "[desktop-light] S113-3: no lens mark left in the page",
+    "[desktop-light] S113-3: favicon SVG, 16/32 px PNGs, 64 px app icons and home-screen icons decode at their sizes",
+    "[desktop-light] S113-3: head links the S3-A favicon, apple-touch icon, manifest and social preview",
+    "[desktop-dark] S113-3: header mark is 24 px, 8 px before scry, centred on the wordmark",
+    "[desktop-dark] S113-3: top card in Signal Cobalt for this mode",
+    "[desktop-dark] S113-3: no lens mark left in the page",
+    "[desktop-dark] S113-3: favicon SVG, 16/32 px PNGs, 64 px app icons and home-screen icons decode at their sizes",
+    "[desktop-dark] S113-3: head links the S3-A favicon, apple-touch icon, manifest and social preview"
+   ],
+   "note": "Home-screen install itself (OS prompt) not exercised; manifest icons are served, decoded and checked.",
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "verifiedAt": "2026-11-26T06:36:02Z",
+   "verifiedSha": "adcd45b482062d5be2f547401238974b9684340e"
   }
  ]
 }

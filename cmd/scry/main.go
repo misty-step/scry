@@ -4,6 +4,25 @@
 //	scry healthcheck             exit 0 if the running server is healthy
 //	scry backup [dir]            write a snapshot of the database
 //	scry restore-user SNAP EMAIL restore one learner's data from a snapshot
+//
+// Grading ([S113-1]) is one ordered chain of models, configured with:
+//
+//	SCRY_JUDGE_MODEL             the primary decisions model (default typesafe/jev-1.14 on OpenRouter, jev-latest on Typesafe)
+//	SCRY_JUDGE_FALLBACK_MODELS   comma-separated fallback decisions models, in order; unset means
+//	                             openai/gpt-6-luna-decisions,google/gemini-decision-1; set but empty means none
+//	SCRY_JUDGE_ESCALATION_MODEL  the LLM asked once when no decisions model is certain (default google/gemini-4-hydrogen)
+//
+// On OPENROUTER_API_KEY every one must be a vendor/model slug or the boot
+// stops. Without it the chain is Jev on Typesafe alone and the escalation is
+// the drafting model on Anthropic (the two OpenRouter-only settings are
+// ignored, with a warning). In test mode the chain is a fixture:
+//
+//	SCRY_TEST_JUDGMENTS    verdict script, one per submission: right, close, missed
+//	SCRY_TEST_JUDGE_PATHS  chain-path script, one per submission (see ai.FakeJudgePaths): primary,
+//	                       primary-unavailable, primary-error, primary-unparseable, chain-unavailable,
+//	                       primary-low-confidence, primary-low-probability, primary-thin-margin,
+//	                       primary-none, all-fail
+//	SCRY_TEST_JUDGE_DELAY  a Go duration each judgment waits first (e.g. 3500ms), to see "still checking"
 package main
 
 import (
@@ -283,6 +302,27 @@ func build(log *slog.Logger) (*app.App, error) {
 			}
 			model.Verdicts = append(model.Verdicts, srs.Verdict(v))
 		}
+		// Test mode only ([S113-1]): every submission walks the real grading
+		// chain over fixture steps, with no network call. A scripted path
+		// sequence forces it through each step in turn, whatever the answer
+		// says, e.g. SCRY_TEST_JUDGE_PATHS=primary-unavailable,primary-none,all-fail.
+		for _, p := range strings.Split(env("SCRY_TEST_JUDGE_PATHS", ""), ",") {
+			if p = strings.TrimSpace(p); p == "" {
+				continue
+			}
+			if !ai.IsFakeJudgePath(p) {
+				return nil, fmt.Errorf("SCRY_TEST_JUDGE_PATHS: %q is not one of %s", p, strings.Join(ai.FakeJudgePaths, ", "))
+			}
+			model.Paths = append(model.Paths, p)
+		}
+		// Each judgment waits this long first, so "checking" and "still
+		// checking" can be seen (for example SCRY_TEST_JUDGE_DELAY=3500ms).
+		if d := env("SCRY_TEST_JUDGE_DELAY", ""); d != "" {
+			if model.JudgeDelay, err = time.ParseDuration(d); err != nil || model.JudgeDelay < 0 || model.JudgeDelay > 40*time.Second {
+				return nil, fmt.Errorf("SCRY_TEST_JUDGE_DELAY: %q is not a duration between 0 and 40s", d)
+			}
+		}
+		model.Log = log
 		a.Model = model
 		// SCRY_TEST_EXPLAIN=fail or slow exercises the explanation fallback.
 		a.Explainer = &ai.FakeExplainer{Mode: env("SCRY_TEST_EXPLAIN", "")}
@@ -322,7 +362,24 @@ func build(log *slog.Logger) (*app.App, error) {
 			if judge.Model, err = judgeModel(router); err != nil {
 				return nil, fmt.Errorf("SCRY_JUDGE_MODE=live: %w", err)
 			}
-			a.Model = ai.Split{JudgeProvider: judge, DraftProvider: model}
+			// The escalation LLM needs a generative client: OpenRouter's when
+			// it carries grading, else the direct Anthropic key if there is one.
+			var llm *ai.Claude
+			if router != "" {
+				llm, _ = ai.NewClaudeWithRouter("", router, "", "")
+			} else if ant := env("ANTHROPIC_API_KEY", ""); ant != "" {
+				if kerr := safeerr.CheckAPIKey("ANTHROPIC_API_KEY", ant); kerr != nil {
+					return nil, fmt.Errorf("SCRY_JUDGE_MODE=live: %w", kerr)
+				}
+				llm, _ = ai.NewClaudeWithRouter(ant, "", env("SCRY_DRAFT_MODEL", ""), "")
+			} else {
+				log.Warn("SCRY_JUDGE_MODE=live on TYPESAFE_API_KEY without ANTHROPIC_API_KEY: the grading chain has no escalation LLM")
+			}
+			chain, cerr := judgeChain(router, judge, llm, log)
+			if cerr != nil {
+				return nil, fmt.Errorf("SCRY_JUDGE_MODE=live: %w", cerr)
+			}
+			a.Model = ai.Split{JudgeProvider: chain, DraftProvider: model}
 			log.Warn("test mode is grading with the real Jev grader (SCRY_JUDGE_MODE=live)", "grader", a.Model.Name())
 		}
 	} else {
@@ -352,7 +409,9 @@ func build(log *slog.Logger) (*app.App, error) {
 	log.Info("adapters", "mode", mode, "build_sha", rd.BuildSHA, "auth", rd.AuthMode, "billing", rd.BillingMode, "model", a.Model.Name(),
 		"grading", rd.Providers["grading"], "drafting", rd.Providers["drafting"], "explainer", a.Explainer.Name(), "speech", a.Speech.Name(),
 		"grading_model", rd.Models["grading"], "drafting_model", rd.Models["drafting"], "explainer_model", rd.Models["explainer"],
-		"speech_model", rd.Models["speech"], "speech_route", rd.SpeechRoute)
+		"speech_model", rd.Models["speech"], "speech_route", rd.SpeechRoute,
+		"grading_fallbacks", strings.Join(rd.GradingChain.Fallbacks, ","), "grading_escalation", rd.GradingChain.Escalation,
+		"grading_escalation_provider", rd.GradingChain.EscalationProvider)
 	ok = true
 	return a, nil
 }
@@ -364,7 +423,11 @@ func build(log *slog.Logger) (*app.App, error) {
 // (TYPESAFE_API_KEY for Jev, ANTHROPIC_API_KEY for drafting and
 // explanations, OPENAI_API_KEY for speech). It reports every missing key
 // and every invalid one (such as a JWT-shaped key), never a key's value.
-func realAI(log *slog.Logger) (judge *ai.Jev, claude *ai.Claude, ear speech.Transcriber, missing, invalid []string) {
+//
+// Grading is the ordered chain of [S113-1] (judgeChain): Jev first, its
+// fallback decisions models, and the escalation LLM on the drafting
+// client's route and credential.
+func realAI(log *slog.Logger) (judge *ai.Chain, claude *ai.Claude, ear speech.Transcriber, missing, invalid []string) {
 	router, typesafe := env("OPENROUTER_API_KEY", ""), env("TYPESAFE_API_KEY", "")
 	anthropic, openai := env("ANTHROPIC_API_KEY", ""), env("OPENAI_API_KEY", "")
 	check := func(name, key string) {
@@ -381,15 +444,21 @@ func realAI(log *slog.Logger) (judge *ai.Jev, claude *ai.Claude, ear speech.Tran
 		check("ANTHROPIC_API_KEY", anthropic)
 	}
 	var err error
-	if judge, err = ai.NewJev(typesafe, router, log); err != nil {
+	jev, err := ai.NewJev(typesafe, router, log)
+	if err != nil {
 		missing = append(missing, "OPENROUTER_API_KEY or TYPESAFE_API_KEY")
-	} else if judge.Model, err = judgeModel(router); err != nil {
+	} else if jev.Model, err = judgeModel(router); err != nil {
 		invalid = append(invalid, err.Error())
 	}
 	if router == "" && anthropic == "" {
 		missing = append(missing, "OPENROUTER_API_KEY or ANTHROPIC_API_KEY")
 	} else if claude, err = ai.NewClaudeWithRouter(anthropic, router, env("SCRY_DRAFT_MODEL", ""), env("SCRY_EXPLAIN_MODEL", "")); err != nil {
 		invalid = append(invalid, err.Error())
+	}
+	if jev != nil {
+		if judge, err = judgeChain(router, jev, claude, log); err != nil {
+			invalid = append(invalid, err.Error())
+		}
 	}
 	if router == "" && openai == "" {
 		missing = append(missing, "OPENROUTER_API_KEY or OPENAI_API_KEY")
@@ -412,6 +481,57 @@ func judgeModel(router string) (string, error) {
 		return "", fmt.Errorf("SCRY_JUDGE_MODEL=%q is not an OpenRouter model slug (vendor/model) and OPENROUTER_API_KEY is set", m)
 	}
 	return m, nil
+}
+
+// judgeChain builds the ordered grading chain of [S113-1] around primary.
+// On OpenRouter (router set) the fallback decisions models come from
+// SCRY_JUDGE_FALLBACK_MODELS (unset: ai.DefaultJudgeFallbackModels; set
+// but empty: none) and the escalation LLM from SCRY_JUDGE_ESCALATION_MODEL
+// (unset or empty: ai.DefaultJudgeEscalationModel), each a vendor/model
+// slug or the boot stops; they share the primary's key, log and route.
+// Without OpenRouter the chain is the primary alone on Typesafe and the
+// escalation is llm's drafting model on its own provider; the two
+// OpenRouter-only settings are ignored with a warning. A nil llm means no
+// escalation (the boot reports the missing drafting key elsewhere).
+func judgeChain(router string, primary *ai.Jev, llm *ai.Claude, log *slog.Logger) (*ai.Chain, error) {
+	chain := &ai.Chain{Decisions: []ai.GradingStep{primary}, Log: log}
+	fallbacks, fallbacksSet := os.LookupEnv("SCRY_JUDGE_FALLBACK_MODELS")
+	escalation := env("SCRY_JUDGE_ESCALATION_MODEL", "")
+	if router == "" {
+		if strings.TrimSpace(fallbacks) != "" || escalation != "" {
+			log.Warn("SCRY_JUDGE_FALLBACK_MODELS and SCRY_JUDGE_ESCALATION_MODEL are OpenRouter slugs and are ignored without OPENROUTER_API_KEY: the chain is Jev on Typesafe, escalating to the drafting model")
+		}
+		if llm != nil {
+			chain.Escalation = &ai.LLMJudge{Client: llm}
+		}
+		return chain, nil
+	}
+	models := ai.DefaultJudgeFallbackModels()
+	if fallbacksSet {
+		models = nil
+		for _, m := range strings.Split(fallbacks, ",") {
+			if m = strings.TrimSpace(m); m == "" {
+				continue
+			}
+			if !safeerr.IsRouterSlug(m) {
+				return nil, fmt.Errorf("SCRY_JUDGE_FALLBACK_MODELS has %q, which is not an OpenRouter model slug (vendor/model), and OPENROUTER_API_KEY is set", m)
+			}
+			models = append(models, m)
+		}
+	}
+	for _, m := range models {
+		chain.Decisions = append(chain.Decisions, &ai.Jev{Model: m, APIKey: primary.APIKey, OpenRouter: true, BaseURL: primary.BaseURL, HTTP: primary.HTTP, Log: primary.Log})
+	}
+	if escalation == "" {
+		escalation = ai.DefaultJudgeEscalationModel
+	}
+	if !safeerr.IsRouterSlug(escalation) {
+		return nil, fmt.Errorf("SCRY_JUDGE_ESCALATION_MODEL=%q is not an OpenRouter model slug (vendor/model) and OPENROUTER_API_KEY is set", escalation)
+	}
+	if llm != nil {
+		chain.Escalation = &ai.LLMJudge{Client: llm, Model: escalation}
+	}
+	return chain, nil
 }
 
 // bootProblems is one loud boot error naming every missing variable and

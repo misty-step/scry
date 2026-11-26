@@ -235,9 +235,16 @@ func TestSlice75_Web_BridgeReviewSaysWhenTheParentReturns(t *testing.T) {
 	// bridge is up; the held parent never comes up before it.
 	alice.finish(func(store.Item) string { return "x" })
 	var cur store.Item
-	for i := 0; i < 80; i++ {
+	for i, days := 0, 0; i < 80; i++ {
 		body := alice.mustGet("/study")
 		it, ok := alice.current(body)
+		if !ok && days < 4 {
+			// S111-1: at most 10 new cards a day; the bridges, the newest
+			// cards, may wait for a later day.
+			w.advance(24 * time.Hour)
+			days++
+			continue
+		}
 		if !ok {
 			t.Fatal("ran out of cards before the bridge came up")
 		}
@@ -280,9 +287,16 @@ func TestSlice75_Web_BridgeReviewNamesTheCardItLeadsTo(t *testing.T) {
 	// Up to the first bridge, which waits with no word of its parent.
 	var body string
 	var cur store.Item
-	for i := 0; i < 80; i++ {
+	for i, days := 0, 0; i < 80; i++ {
 		body = alice.mustGet("/study")
 		it, ok := alice.current(body)
+		if !ok && days < 4 {
+			// S111-1: at most 10 new cards a day; the bridges, the newest
+			// cards, may wait for a later day.
+			w.advance(24 * time.Hour)
+			days++
+			continue
+		}
 		if !ok {
 			t.Fatal("ran out of cards before the bridge came up")
 		}
