@@ -201,7 +201,7 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     // Voice: start and immediately stop gives DESIGN's "couldn't hear" words.
     await s.keyboard.press("Escape"); await s.keyboard.press("Space"); await s.waitForSelector(".is-listening");
     await s.keyboard.press("Space");
-    await s.waitForFunction(() => !document.querySelector(".is-listening"));
+    await s.waitForFunction(() => !document.querySelector(".is-listening, [data-mic][data-waiting]")); // S113-2: listening, then transcribing
     assert.equal(await s.$eval("[data-status]", e => e.textContent), "Didn't catch that. Try again or type it.");
     assert.equal(speech, 1); assert.equal(await s.$eval("#answer", e => e.value), "");
     await s.keyboard.press("Escape"); await s.keyboard.press("Space"); await s.waitForSelector(".is-listening");
@@ -209,7 +209,7 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     assert.equal(await s.$eval("#answer", e => e.value), "", "no live transcription");
     assert((await s.$eval("[data-status]", e => e.textContent)).includes("listening"));
     await s.keyboard.press("Space");
-    await s.waitForFunction(() => !document.querySelector(".is-listening"));
+    await s.waitForFunction(() => !document.querySelector(".is-listening, [data-mic][data-waiting]")); // S113-2: listening, then transcribing
     assert((await s.$eval("[data-status]", e => e.textContent)).includes("heard"));
     assert.equal(speech, 2);
     const spoken = await s.$eval("#answer", e => e.value); assert(spoken.length > 0);
@@ -334,7 +334,7 @@ const pause = ms => new Promise(r => setTimeout(r, ms));
     await s.$eval("[data-edit-form]", f => { f.noValidate = true; });
     await s.click("[data-edit-save]");
     await s.waitForSelector("[data-edit-error]:not([hidden])");
-    assert.equal(await text("[data-edit-error]", s), "The correct answer can't be empty.");
+    assert.equal(await text("[data-edit-error]:not([hidden])", s), "The correct answer can't be empty.");
     assert.equal(edits, 1);
     // A fresh review (no refusal on screen) for the edit that is saved.
     await s.reload({ waitUntil: "networkidle" });
