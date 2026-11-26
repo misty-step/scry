@@ -204,11 +204,8 @@ p { max-width: var(--measure); }
   min-height: var(--touch); display: inline-flex; align-items: center;
 }
 .brand { display: inline-flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
-/* The scrying-lens mark: 20 px square, 8 px before "scry"; the focal point
-   is the accent. */
+/* The brand mark sits 8 px before "scry" (its own rules: S113-3 brand). */
 .wordmark { gap: var(--s2); }
-.mark { width: 20px; height: 20px; flex: none; color: var(--ink); }
-.mark-focal { fill: var(--accent); stroke: none; }
 /* The no-card trial's quiet status: plain mono text in a hairline frame,
    never a banner; its one action is the accent word. */
 .trial-chip {
@@ -1061,3 +1058,19 @@ a.row-main { min-height: var(--touch); }
 .wordmark, .nav a, [data-again] { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; }
 .struck-text { animation: strike 200ms ease-out; }
 @media (prefers-reduced-motion: reduce) { .struck-text { animation: none; } }
+
+/* S113-3 brand ---------------------------------------------------------
+   The S3-A deck of cards, 24 px, centred on the wordmark. The receding
+   cards are ink steps mixed over page (opaque, so each hides the card
+   behind it); the top card is the accent with its prompt bar in page. A
+   brand shape, not an icon: it never animates. */
+.mark { width: 24px; height: 24px; flex: none; display: block; }
+.mark-far { fill: color-mix(in srgb, var(--ink) 35%, var(--page)); }
+.mark-near { fill: color-mix(in srgb, var(--ink) 60%, var(--page)); }
+.mark-face, .mark-bar { fill: var(--page); }
+.mark-top { fill: var(--accent); }
+/* On a 1x screen the hinted drawing (whole pixels) replaces the exact one. */
+@media (max-resolution: 1dppx) {
+  .mark-exact { display: none; }
+  .mark-hinted { display: inline; }
+}

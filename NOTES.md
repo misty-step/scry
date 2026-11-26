@@ -1371,13 +1371,13 @@ Choices made where the brief, PRODUCT.md or DESIGN.md were silent or pulled two 
 Reconciles PRODUCT.md and DESIGN.md as changed in 92350ed3..8bf4475e.
 Choices where the Folio left room:
 
-- **The mark's geometry.** DESIGN.md fixes the grid (24 px, stroke 1.75,
+- **The mark's geometry.** (Superseded by [S113-3]: the lens is retired.) DESIGN.md fixes the grid (24 px, stroke 1.75,
   round caps/joins), the parts (four corner brackets, a centered lens ring in
   ink, a solid accent focal point of r 2.25) and the sizes. The exact numbers
   are ours: brackets `M3 8V3h5 …` (5 px arms from the 3 px inset) and a lens
   ring of r 5.25. `internal/web/brand.go` is the one source; the static icons
   repeat its paths and `TestBrand_MarkIsOneDrawingEverywhere` pins that.
-- **App icons.** `static/icon.svg` is the adaptive light/dark vector (favicon;
+- **App icons.** (Superseded by [S113-3].) `static/icon.svg` was the adaptive light/dark vector (favicon;
   `/favicon.ico` redirects to it). `static/icon-dark.svg` is the dark-ground
   icon (#12101A, white aperture, #4D8DFF focal point); the 180/192/512 PNGs are
   rendered from it with `rsvg-convert -w N -h N icon-dark.svg -o icon-N.png`
@@ -1748,3 +1748,17 @@ Owner brief (2026-11-24). Choices where the brief left room:
 - **Size.** A request whose Content-Length is over 20 MiB + 1 MiB is answered 303 to `/learn?import=toolarge#import` before anything reads it (a redirect has no side effects, so it needs no CSRF token); bodies of unknown length are capped as they are read. The page script refuses a file over 20 MiB in words before sending it.
 - **Refusals** are shown in words under the form with status 200, not 422: an expected outcome, and a 4xx document logs an error in the browser console (the same choice as Edit card's JSON refusals).
 - **Downloads.** `GET /settings/export?format=md|csv|json` (JSON stays the default for `/settings/export`), available on any plan state (`authed`, not `member`). Markdown and CSV are every live card of a live idea in outline order; a card in a sub-idea carries the sub-idea's title, so a re-import files it under a top-level idea of that name. Importing an export into the same library adds the cards again (no de-duplication).
+
+## S113-3: One mark everywhere, the S3-A deck of cards
+
+- **One source, redrawn by a script.** `internal/web/brand.go` holds the 24 px header drawing; `scripts/render-brand.py` writes every other vector (served ones into `internal/web/static/`, raster-only sources into `internal/web/brand/`) and rasterizes them with `rsvg-convert` (PNGs stripped of timestamps, so a re-run is byte-stable; `/favicon.ico` is ImageMagick's pack of the two hinted PNGs). The PNGs are committed; there is no build step.
+- **"Outline 1.5 px" on an "identical 14 x 10" card.** A centred SVG stroke would make the receding cards 15.5 x 11.5 outside and put every edge on a half pixel. Each receding card is instead an ink-step 14 x 10 card (rx 1.5) with a `page` face inset by 1.5 px (square inner corners), so the three cards share one outline and every edge is on a whole device pixel at 2x and above. The rectangles in the markup are DESIGN's numbers exactly.
+- **Ink steps as opaque colours.** "ink-muted" and "ink at 35%" are mixed over `page` (`color-mix` in the header, precomputed hex in files: light #6D7073 / #AAABAD, dark #A09FA3 / #65646A), so a receding card really hides the one behind and the favicon stays opaque on a transparent tab.
+- **Prompt bar.** "2 px tall with round caps, from x 5.5 to 12" is read as the bar's whole extent including the caps: a 6.5 x 2 rect with rx 1 at y 13.5, centred on y 14.5.
+- **Pixel hinting.** At 16 and 32 px (and the header on a 1x screen) the deck is redrawn on its own pixel grid rather than scaled, with `shape-rendering="crispEdges"` and integer coordinates so no pixel is anti-aliased (the test checks every pixel is a palette colour or transparent). Small corners are one notched pixel. 16 px: cards 10 x 7 stepped 2 px, 1 px outlines with 1 px gaps, bar 5 x 1 three pixels clear of the card's top and bottom. 32 px: cards 18 x 13 stepped 3 px, 2 px outlines 1 px apart, bar 9 x 3 with notched caps. 24 px at 1x: cards 14 x 10 stepped 3 px, 2 px outlines 1 px apart, bar 7 x 2 from x 5 to 12. The deck sits one pixel high where its height is odd (lighter top, heavier bottom card).
+- **Header at 1x.** DESIGN's 2.5 px steps fall between pixels on a 1x screen and blur, so the inline SVG carries both drawings and `@media (max-resolution: 1dppx)` shows the hinted one; every denser screen (and a browser without the style sheet) shows the exact one.
+- **Favicon links.** `<link rel="icon" href="/favicon.ico" sizes="32x32">` (light, hinted 16 + 32 PNGs, for browsers without SVG favicons) then `/static/favicon.svg`: the hinted 16 px drawing with a `prefers-color-scheme` palette, crisp at 16 and 32. `/favicon.ico` is now served (image/x-icon), no longer a redirect. The new file name also retires browsers' cached lens favicon. Dark PNG favicons are not linked: `media` on icon links is unevenly supported and could outrank the adaptive SVG.
+- **App icon.** 64 px, a sampled superellipse (|x|^5 + |y|^5, 96 points; continuous curvature, no arcs) filling the canvas; light `#FFFFFF` with a 1 px `line` edge (#E2E2E3, ink 12% over white) drawn just inside; dark `#12101A`. The mark is 40 px (scale 5/3), hinted to whole pixels at 64: cards 24 x 17 stepped 4 px, 2 px outlines, rx 2.5, bar 11 x 3. `app-icon.svg`, `app-icon-dark.svg` and their 64 px PNGs are served; the dark SVG is the manifest's vector icon.
+- **Home screen, maskable, apple-touch, social preview.** The "any" icons (192, 512) are the dark squircle on transparency. The maskable icons (192, 512), the 180 px apple-touch icon and `og:image` use the full-bleed dark ground (`internal/web/brand/icon-maskable.svg`): platforms apply their own mask (iOS fills transparency with black), and link previews crop to their own shape. The mark spans at most ~20.6/64 of the radius from centre, inside the 25.6/64 safe circle; the test checks every mark pixel.
+- **Study icon.** Unchanged: the `cards` line glyph (two outlined cards, `fill="none"`, `currentColor`), never the brand's three filled-and-outlined cards.
+

@@ -87,9 +87,11 @@ func New(a *app.App, log *slog.Logger) *Server {
 	static, _ := fs.Sub(staticFS, "static")
 	fileServer := http.FileServer(http.FS(static))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Neither is in Go's built-in type table, and the image has no mime.types.
 		if strings.HasSuffix(r.URL.Path, ".webmanifest") {
-			// Not in Go's built-in type table, and the image has no mime.types.
 			w.Header().Set("Content-Type", "application/manifest+json")
+		} else if strings.HasSuffix(r.URL.Path, ".ico") {
+			w.Header().Set("Content-Type", "image/x-icon")
 		}
 		if strings.HasPrefix(r.URL.Path, "fonts/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -112,10 +114,17 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "User-agent: *\nAllow: /$\nAllow: /signup\nDisallow: /\n")
 	})
-	// Browsers that ask for /favicon.ico get the brand mark (pages also
-	// link it as SVG and as a home-screen PNG).
+	// /favicon.ico holds the brand mark's hinted 16 and 32 px PNGs
+	// ([S113-3]); pages link it beside the adaptive SVG favicon.
 	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/static/icon.svg", http.StatusMovedPermanently)
+		b, err := staticFS.ReadFile("static/favicon.ico")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		_, _ = w.Write(b)
 	})
 	mux.HandleFunc("POST /webhooks/stripe", s.webhook)
 	// Browser CSP reports and client error telemetry: public, CSRF-exempt,

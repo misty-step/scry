@@ -78,7 +78,7 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	// Home screen: a manifest that launches into Study, with the dark-ground
 	// icon, and the same icon for Apple and link previews.
 	has(t, home, `<link rel="manifest" href="/static/manifest.webmanifest">`, `<link rel="apple-touch-icon" href="/static/icon-180.png">`,
-		`<link rel="icon" href="/static/icon.svg" type="image/svg+xml">`, `<meta property="og:image" content="`+w.srv.URL+`/static/icon-512.png">`)
+		`<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">`, `<meta property="og:image" content="`+w.srv.URL+`/static/icon-maskable-512.png">`)
 	res, err := http.Get(w.srv.URL + "/static/manifest.webmanifest")
 	if err != nil {
 		t.Fatal(err)
@@ -118,8 +118,10 @@ func TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen(t *
 	}
 }
 
-// DESIGN.md, Brand mark and wordmark: the mark sits 20 px square beside
-// "scry" in the top bar, on every page, signed in or out.
+// DESIGN.md, Brand mark and wordmark: the mark sits 24 px square beside
+// "scry" in the top bar, on every page, signed in or out ([S113-3] replaced
+// the lens with the S3-A deck of cards; TestStory_S113_3_OneMarkEverywhere
+// covers its geometry).
 func TestDesign_BrandMarkBesideTheWordmark(t *testing.T) {
 	w := newWorld(t)
 	b := w.browser()
@@ -128,17 +130,13 @@ func TestDesign_BrandMarkBesideTheWordmark(t *testing.T) {
 	b.addSet("kitchen-numbers")
 	pages = append(pages, b.mustGet("/study"), b.mustGet("/library"))
 	for _, page := range pages {
-		has(t, page, `<a class="wordmark" href="/" aria-label="scry, home"><svg class="mark" viewBox="0 0 24 24" width="20" height="20"`,
-			`stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"`, `<circle class="mark-focal" cx="12" cy="12" r="2.25"/>`,
-			`<span class="wordmark-text">scry</span>`)
+		has(t, page, `<a class="wordmark" href="/" aria-label="scry, home"><svg class="mark" viewBox="0 0 24 24" width="24" height="24"`,
+			`<rect class="mark-top" x="2.5" y="9.5" width="14" height="10" rx="1.5"`,
+			`</g></svg><span class="wordmark-text">scry</span>`)
 	}
-	res, err := (&http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).Get(w.srv.URL + "/favicon.ico")
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusMovedPermanently || res.Header.Get("Location") != "/static/icon.svg" {
-		t.Errorf("/favicon.ico = %d → %q", res.StatusCode, res.Header.Get("Location"))
+	body, ct := staticAsset(t, w, "/favicon.ico")
+	if ct != "image/x-icon" || !strings.HasPrefix(body, "\x00\x00\x01\x00") {
+		t.Errorf("/favicon.ico is %q, %d bytes", ct, len(body))
 	}
 }
 
@@ -318,7 +316,7 @@ func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 		".session-margin { display: flex; flex-direction: column; gap: var(--s1); align-self: start;",
 		"grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);",
 		".hero::before", `mask: url("/static/grid.svg")`,
-		".mark { width: 20px; height: 20px;", ".mark-focal { fill: var(--accent); stroke: none; }",
+		".mark { width: 24px; height: 24px;", ".mark-top { fill: var(--accent); }",
 		".wordmark { gap: var(--s2); }",
 		".example {", "border: 1px solid var(--line); border-radius: var(--radius-control);",
 	)
