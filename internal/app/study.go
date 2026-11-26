@@ -42,47 +42,6 @@ const (
 	exactSeconds = 30 // a line of an exact text
 )
 
-// Study returns the learner's open session, or starts one from what is
-// due today, sized to the session budget (about five minutes). It
-// returns nil when nothing is due.
-func (a *App) Study(ctx context.Context, u store.User) (*store.StudySession, error) {
-	us := a.Store.For(u.ID)
-	s, err := us.ActiveSession(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if s != nil {
-		if s.Current() != nil || s.Phase() != store.PhaseAsking {
-			return s, nil
-		}
-		if err := us.EndSession(ctx, s.ID, a.now()); err != nil && !errors.Is(err, store.ErrIllegalTransition) {
-			return nil, err
-		}
-	}
-	due, err := us.DueItems(ctx, EndOfDay(u, a.now()), 200)
-	if err != nil || len(due) == 0 {
-		return nil, err
-	}
-	budget := a.Cfg.SessionBudget.Seconds()
-	var ids []int64
-	spent := 0.0
-	for _, it := range due {
-		cost := float64(itemSeconds)
-		if it.Exact {
-			cost = exactSeconds
-		}
-		if len(ids) > 0 && spent+cost > budget {
-			break
-		}
-		ids = append(ids, it.ID)
-		spent += cost
-	}
-	if _, err := us.StartSession(ctx, ids, a.now()); err != nil {
-		return nil, err
-	}
-	return us.ActiveSession(ctx)
-}
-
 // Answer judges the learner's answer to the current item and records it.
 //
 // The learner never grades themself. A text marked exact is compared

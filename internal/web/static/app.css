@@ -1061,3 +1061,13 @@ a.row-main { min-height: var(--touch); }
 .wordmark, .nav a, [data-again] { display: inline-flex; align-items: center; min-width: 44px; min-height: 44px; }
 .struck-text { animation: strike 200ms ease-out; }
 @media (prefers-reduced-motion: reduce) { .struck-text { animation: none; } }
+
+/* S111-1: the focused-session line under the count, and "Study this idea"
+   beside an idea's title. Quiet Meta mono, ink-muted, no badge. */
+.margin-focus { color: var(--ink-muted); overflow-wrap: anywhere; }
+.margin-focus .link { font: inherit; min-height: 0; display: inline; }
+.idea-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--s1) var(--s3); }
+.idea-head .idea-title { min-width: 0; overflow-wrap: anywhere; }
+.study-idea { gap: 6px; font: 400 var(--meta)/1.4 var(--mono); text-decoration: none; }
+.study-idea .icon { width: 16px; height: 16px; }
+@media (max-width: 760px) { .margin-focus { flex: 1 1 100%; } }

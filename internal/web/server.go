@@ -141,6 +141,8 @@ func New(a *app.App, log *slog.Logger) *Server {
 	mux.Handle("POST /study/answer", s.member(s.studyAnswer))
 	mux.Handle("POST /study/next", s.member(s.studyNext))
 	mux.Handle("GET /study/done", s.member(s.studyDone))
+	// S111-1: "Study this idea" in Library, a focused session.
+	mux.Handle("GET /study/idea/{id}", s.member(s.studyIdea))
 	mux.Handle("POST /study/speech", s.member(s.studySpeech))
 	mux.Handle("POST /study/explain", s.member(s.studyExplain))
 	mux.Handle("POST /study/edit", s.member(s.studyEdit))

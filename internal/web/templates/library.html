@@ -48,7 +48,11 @@
       <p class="meta"><a class="link quiet" href="/library">Clear search</a></p>
     {{else}}
       <p class="meta">{{.Idea.Number}}</p>
-      <h2 class="title idea-title">{{.Idea.Title}}</h2>
+      <div class="idea-head">
+        <h2 class="title idea-title">{{.Idea.Title}}</h2>
+        {{/* S111-1: a quiet focused session; the navigation's Study opens every deck. */}}
+        <a class="link quiet meta study-idea" href="/study/idea/{{.Idea.ID}}" data-study-idea>{{icon "cards"}}Study this idea</a>
+      </div>
       {{if .Idea.Summary}}<p class="idea-summary">{{.Idea.Summary}}</p>{{end}}
 
       {{if .Related}}

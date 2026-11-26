@@ -69,7 +69,10 @@ func (a *App) SeedDemo(ctx context.Context) error {
 		}
 	}
 
-	// The library: four starter sets, two of them partly learned.
+	// The library: four starter sets, three of them partly learned. Due
+	// reviews and new cards are spread unevenly across the decks (S111-1),
+	// so Study's interleaving can be watched: two decks have many due
+	// reviews, kitchen numbers a few among many new cards, the Creeds none.
 	for _, slug := range []string{"nato-alphabet", "mental-models", "kitchen-numbers", "the-creeds"} {
 		set, ok := starter.Get(slug)
 		if !ok {
@@ -79,7 +82,7 @@ func (a *App) SeedDemo(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if slug != "nato-alphabet" && slug != "mental-models" {
+		if slug == "the-creeds" {
 			continue
 		}
 		items, err := us.Items(ctx, parent)
@@ -93,7 +96,20 @@ func (a *App) SeedDemo(ctx context.Context) error {
 				daysAgo int
 				v       srs.Verdict
 			}
-			switch i % 6 {
+			k := i % 6
+			if slug == "kitchen-numbers" {
+				// Sparse: one card due today, one missed yesterday, the rest
+				// never seen.
+				switch i {
+				case 0:
+					k = 0
+				case 3:
+					k = 2
+				default:
+					k = 5
+				}
+			}
+			switch k {
 			case 0:
 				plan = append(plan, struct {
 					daysAgo int

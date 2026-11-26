@@ -282,8 +282,13 @@ const studyPurpose = "Recall what's due today"
 // its answer the label is spoiler-safe (see spoiler.go): never the idea's
 // own title, and never a topic sharing a word with the answer to this card
 // or to a card beside it. Once the answer is in, it is the real place.
-func (s *Server) studyHeader(ctx context.Context, c *rc, it store.Item, answered bool) string {
-	answers := []string{it.Answer}
+//
+// In an interleaved session ([S111-1]) this place line is the waiting
+// card's quiet deck tag. The cards beside it on screen come from other
+// decks, so near (the answers of the cards listed as coming up) is
+// checked too: the tag falls back to a neutral one, or to none.
+func (s *Server) studyHeader(ctx context.Context, c *rc, it store.Item, answered bool, near ...string) string {
+	answers := append([]string{it.Answer}, near...)
 	place, err := c.us.IdeaPlace(ctx, it.IdeaID)
 	if err != nil {
 		// The idea is gone (removed mid-session): name no topic at all.
@@ -421,8 +426,7 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 		if !judged {
 			data["Prompt"] = waitingPrompt(cur.Item)
 		}
-		data["Header"] = s.studyHeader(ctx, c, cur.Item, judged)
-		var up []string
+		var up, near []string
 		for _, e := range sess.Entries {
 			if judged {
 				break
@@ -430,17 +434,59 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 			if e.Review == nil && e.Position > cur.Position && len(up) < 3 {
 				if prompt, ok := cue(e.Item); ok {
 					up = append(up, prompt)
+					near = append(near, e.Item.Answer)
 				}
 			}
 		}
+		data["Header"] = s.studyHeader(ctx, c, cur.Item, judged, near...)
 		data["Upcoming"] = up
 	}
 	data["Total"] = len(sess.Entries)
+	if sess.Scope != 0 {
+		data["Focused"] = s.focusedLine(ctx, c, sess, cur, judged)
+	}
 	return data
 }
 
+// focusedLine is the one Meta line a focused session ("Study this idea",
+// [S111-1]) adds under the count: "Focused · <topic>", spoiler-safe like
+// the place line. While a card waits, the topic is checked against the
+// answers of every card in the focused idea and in the session; when none
+// is safe the line reads "Focused" alone. An interleaved session never
+// shows it.
+func (s *Server) focusedLine(ctx context.Context, c *rc, sess *store.StudySession, cur *store.SessionEntry, judged bool) string {
+	place, err := c.us.IdeaPlace(ctx, sess.Scope)
+	if err != nil {
+		return "Focused"
+	}
+	if judged || cur == nil {
+		return "Focused · " + revealedHeader(place)
+	}
+	answers := []string{cur.Item.Answer}
+	items, err := c.us.Items(ctx, sess.Scope)
+	if err != nil {
+		return "Focused"
+	}
+	for _, it := range items {
+		answers = append(answers, it.Answer)
+	}
+	for _, e := range sess.Entries {
+		answers = append(answers, e.Item.Answer)
+	}
+	label := spoilerSafeHeader(place, answers)
+	if label == "" || label == "Current set" {
+		return "Focused"
+	}
+	return "Focused · " + label
+}
+
 func (s *Server) study(w http.ResponseWriter, r *http.Request, c *rc) error {
-	sess, err := s.App.Study(r.Context(), c.user)
+	start := s.App.Study
+	if r.URL.Query().Get("all") == "1" {
+		// "Study all decks" from a focused session ([S111-1]).
+		start = s.App.StudyAll
+	}
+	sess, err := start(r.Context(), c.user)
 	if err != nil {
 		return err
 	}
@@ -633,8 +679,15 @@ func (s *Server) studyRestore(w http.ResponseWriter, r *http.Request, c *rc) err
 // renderRest is the study page when nothing is due.
 func (s *Server) renderRest(w http.ResponseWriter, r *http.Request, c *rc) error {
 	line := "Nothing else is due today."
+	now := s.App.Now()
 	if next, err := c.us.NextDue(r.Context()); err == nil && !next.IsZero() {
-		line = "Your next review is " + strings.TrimPrefix(dueLabel(c.user, store.Item{Sched: srs.State{Due: next}}, s.App.Now()), "due ") + "."
+		if next.Before(app.EndOfDay(c.user, now)) {
+			// Cards are due but none is eligible: only new cards are left
+			// and today's first presentations are spent ([S111-1]).
+			line = "That's today's " + strconv.Itoa(app.DailyNewCards) + " new cards. More come tomorrow."
+		} else {
+			line = "Your next review is " + strings.TrimPrefix(dueLabel(c.user, store.Item{Sched: srs.State{Due: next}}, now), "due ") + "."
+		}
 	}
 	return s.render(w, r, c, http.StatusOK, "done.html", map[string]any{"Title": "Nothing due", "Nav": "study", "Head": "Nothing due.", "Line": line,
 		"Note": s.studyNote(r, c)})
@@ -789,4 +842,23 @@ func (s *Server) studySpeech(w http.ResponseWriter, r *http.Request, c *rc) erro
 		writeJSON(w, http.StatusOK, map[string]any{"text": text, "caught": text != ""})
 	}
 	return nil
+}
+
+// studyIdea is "Study this idea" on an idea's page in Library ([S111-1]):
+// a focused session over only that idea and the ideas inside it, under the
+// same rules as every session. With nothing eligible in it, the idea's page
+// says so and the open session stays as it was.
+func (s *Server) studyIdea(w http.ResponseWriter, r *http.Request, c *rc) error {
+	id, err := pathID(r)
+	if err != nil {
+		return err
+	}
+	sess, err := s.App.StudyIdea(r.Context(), c.user, id)
+	if err != nil {
+		return err
+	}
+	if sess == nil {
+		return back(w, r, "/library/ideas/"+strconv.FormatInt(id, 10)+"?ok=nothingdue")
+	}
+	return back(w, r, "/study")
 }

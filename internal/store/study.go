@@ -64,7 +64,10 @@ type StudySession struct {
 	Started, Ended  time.Time
 	PendingReviewID int64 // a judgment on screen waiting for Enter
 	RetryItemID     int64 // an exact text being tried again
-	Entries         []SessionEntry
+	// Scope is the idea a focused session ("Study this idea") is over,
+	// with the ideas inside it; 0 for a session across every deck.
+	Scope   int64
+	Entries []SessionEntry
 }
 
 // SessionPhase is where a study session stands.
@@ -247,32 +250,11 @@ func (u *UserStore) DueItems(ctx context.Context, before time.Time, limit int) (
 		ORDER BY (t.reps = 0), CASE WHEN t.reps = 0 THEN t.id ELSE t.due_at END, t.id LIMIT ?`, u.uid, ts(before), limit))
 }
 
-// StartSession opens a session over the given items, in order.
+// StartSession opens a session over the given items, in order, ending
+// the open one. It records no first presentations: Study plans its
+// sessions with StartStudy (see interleave.go).
 func (u *UserStore) StartSession(ctx context.Context, itemIDs []int64, now time.Time) (int64, error) {
-	var id int64
-	err := u.tx(ctx, func(tx *sql.Tx) error {
-		// Starting a session ends the open one (EventEnd): like EndSession,
-		// an ended session keeps no judgment on screen and no retry.
-		if _, err := tx.ExecContext(ctx, `UPDATE study_sessions SET ended_at = ?, pending_review_id = 0, retry_item_id = 0
-			WHERE user_id = ? AND ended_at = 0`, ts(now), u.uid); err != nil {
-			return err
-		}
-		res, err := tx.ExecContext(ctx, `INSERT INTO study_sessions (user_id, started_at) VALUES (?, ?)`, u.uid, ts(now))
-		if err != nil {
-			return err
-		}
-		id, _ = res.LastInsertId()
-		for pos, item := range itemIDs {
-			// The SELECT keeps other learners' items out of the session.
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO session_items (user_id, session_id, position, item_id)
-				SELECT ?1, ?2, ?3, t.id FROM items t WHERE t.id = ?4 AND t.user_id = ?1 AND t.deleted_at = 0 AND`+notHeld, u.uid, id, pos+1, item); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	return id, err
+	return u.StartStudy(ctx, SessionPlan{Items: itemIDs, Now: now})
 }
 
 // ActiveSession returns the open session, or nil when there is none.
@@ -289,8 +271,8 @@ func (u *UserStore) session(ctx context.Context, where string) (*StudySession, e
 	var s StudySession
 	var started, ended int64
 	err := u.s.db.QueryRowContext(ctx, `
-		SELECT id, started_at, ended_at, pending_review_id, retry_item_id FROM study_sessions WHERE user_id = ? AND `+where, u.uid).
-		Scan(&s.ID, &started, &ended, &s.PendingReviewID, &s.RetryItemID)
+		SELECT id, started_at, ended_at, pending_review_id, retry_item_id, scope_idea_id FROM study_sessions WHERE user_id = ? AND `+where, u.uid).
+		Scan(&s.ID, &started, &ended, &s.PendingReviewID, &s.RetryItemID, &s.Scope)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
