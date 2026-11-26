@@ -31,8 +31,11 @@
       </div>
       <div class="import-actions">
         <button class="btn" data-import-submit>Import</button>
-        <p class="meta import-status" id="import-status" role="status" data-import-status{{if .ImportError}} data-refused{{end}}>{{if .ImportError}}<span class="field-error">{{.ImportError}}</span>{{else}}Cards from Anki, CSV and card-block Markdown go straight into your library at no allowance cost; other Markdown goes to the drafting agent.{{end}}</p>
+        <p class="meta import-status" id="import-status" role="status" aria-live="polite" data-import-status{{if .ImportError}} data-refused{{end}}>{{if .ImportError}}<span class="field-error">{{.ImportError}}</span>{{else}}Cards from Anki, CSV and card-block Markdown go straight into your library at no allowance cost; other Markdown goes to the drafting agent.{{end}}</p>
       </div>
+      {{/* S113-2: the 2 px progress line the card and billing forms use,
+           under "importing" while the file is read. */}}
+      <div class="busy-track import-progress" aria-hidden="true" data-import-progress hidden><span class="busy-bar"></span></div>
     </form>
   </section>
 </section>

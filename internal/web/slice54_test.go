@@ -306,14 +306,14 @@ func TestDesign_SettingsAppearanceAppliesAtOnceAndButtonsAreContentSized(t *test
 func TestDesign_Slice54_CraftRulesHoldInTheStyleSheet(t *testing.T) {
 	w := newWorld(t)
 	css, _ := staticAsset(t, w, "/static/app.css")
-	// A long typed answer never widens the page: the caret's measuring ruler
-	// is clipped inside the answer line.
-	has(t, css, "overflow: hidden;\n  border-bottom: 1px solid var(--ink-ghost);")
+	// A long typed answer never widens the page (S111-2: the answer field
+	// wraps and never scrolls sideways).
+	has(t, cssRule(t, css, ".answer-input"), "overflow-wrap: anywhere;", "overflow-x: hidden;")
 	has(t, css,
 		"border: 1px solid var(--line); border-radius: var(--radius-control);",
 		".input:focus { border-color: var(--ink);",
 		"@media (hover: hover) {",
-		".nav a[aria-current] .nav-label { text-decoration: underline;",
+		".nav a[aria-current] .nav-label::after {", "animation: underline-in var(--motion-status) var(--ease) both;",
 		"grid-template-columns: 196px minmax(0, 1fr); align-items: start;",
 		".session-margin { display: flex; flex-direction: column; gap: var(--s1); align-self: start;",
 		"grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);",

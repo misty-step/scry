@@ -115,7 +115,7 @@ func TestD11_KeyHints(t *testing.T) {
 		t.Error("the key hints still offer g i inbox")
 	}
 	b, _ = templateFS.ReadFile("templates/study.html")
-	for _, hint := range []string{"a again", "enter or space for", "enter to check", "space to start/stop speaking"} {
+	for _, hint := range []string{"a again", "enter or space for", "Enter to check · Shift+Enter for new line", "Space to start/stop speaking (empty answer)", "Return to check"} {
 		if !strings.Contains(string(b), hint) {
 			t.Errorf("missing study hint %s", hint)
 		}

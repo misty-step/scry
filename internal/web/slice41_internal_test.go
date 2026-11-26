@@ -468,10 +468,10 @@ func TestSlice41_Design_AntiSlopRulesHoldInTheStyleSheet(t *testing.T) {
 	if m := regexp.MustCompile(`(?m)(^|[\s;{])color:\s*var\(--ink-ghost\)`).FindString(css); m != "" {
 		t.Errorf("app.css colors text with ink-ghost: %q", m)
 	}
-	// The only looping marks are the two processing ones, and reduced
-	// motion stills everything.
-	if n := strings.Count(css, "infinite"); n != 2 {
-		t.Errorf("%d looping animations, want the spinner and the progress line only", n)
+	// The only looping marks are the two processing ones and (S113-2) the
+	// checking pulse, and reduced motion stills everything.
+	if n := strings.Count(css, "infinite"); n != 3 {
+		t.Errorf("%d looping animations, want the spinner, the progress line and the checking pulse only", n)
 	}
 	if !strings.Contains(css, "@media (prefers-reduced-motion: reduce)") || !strings.Contains(css, "animation: none !important;") {
 		t.Error("reduced motion no longer stills animations")

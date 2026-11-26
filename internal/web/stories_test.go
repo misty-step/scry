@@ -59,7 +59,7 @@ func TestStory_Newcomer_SignUpStartTrialAndStudyWithinAMinute(t *testing.T) {
 	if _, ok := b.current(study); !ok {
 		t.Fatal("no item is waiting for an answer on the study page")
 	}
-	has(t, study, "NATO alphabet: A", "enter to check · space to start/stop speaking (empty answer)")
+	has(t, study, "NATO alphabet: A", "Enter to check · Shift+Enter for new line · Space to start/stop speaking (empty answer)")
 
 	// "Within a minute": five pages and three forms, no card, no email to
 	// confirm, nothing to configure.
@@ -431,7 +431,7 @@ func TestStory_NeverGradeMyself_WhenTheModelIsDownNothingIsGuessed(t *testing.T)
 		t.Errorf("status %d, want 503", code)
 	}
 	// The answer is kept, nothing is recorded, and someone is told.
-	has(t, body, "Couldn't check that just now. Your answer is still here; press Enter to try again.", `value="`+first.Answer+`"`)
+	has(t, body, "Couldn't check that just now. Your answer is still here; press Enter to try again.", ">\n"+first.Answer+"</textarea>")
 	if hist, _ := lib.History(ctx, first.ID); len(hist) != 0 {
 		t.Fatalf("an unjudged answer was recorded: %+v", hist)
 	}

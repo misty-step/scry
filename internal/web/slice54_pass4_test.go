@@ -129,5 +129,5 @@ func TestStory_Settings_AnOlderThemeSaveArrivingLateNeverOverwritesANewerOne(t *
 func TestStory_Review_AnswerSubmitReframesALongQuestionAtTheTop(t *testing.T) {
 	w := newWorld(t)
 	js, _ := staticAsset(t, w, "/static/app.js")
-	has(t, js, "swap(r.html, r.url, { top: true });", "if (opts && opts.top && $(\"[data-review]\")) window.scrollTo(0, 0);")
+	has(t, js, `swap(r.html, r.url, { top: true, vt: "verdict" });`, "if (opts && opts.top && $(\"[data-review]\")) window.scrollTo(0, 0);")
 }
