@@ -40,6 +40,73 @@ const minJevConfidence = 0.5
 const minJevProbability = 0.8
 const minJevMargin = 0.2
 
+// Decide applies the acceptance gates to one decisions-model choice answer
+// and says which of three things it is ([S113-1]):
+//
+//   - a verdict: the model's own choice, never another grade, when it clears
+//     every bar it reported on (confidence >= 0.5, chosen probability >= 0.8,
+//     margin over the runner-up >= 0.2);
+//   - ErrDecisionUncertain: a readable decision below a bar, or "none of
+//     these". The chain escalates it straight to the LLM;
+//   - ErrDecisionUnavailable: a decision that cannot be read (an unknown
+//     choice, confidence or probabilities out of range, incomplete or not
+//     summing to one). The chain asks the next decisions model.
+//
+// A split between grades is never settled here. SCRY-38 was such a split
+// (correct 0.64, almost correct 0.36, confidence 0.52) on a long, right
+// answer: it is uncertain, so the LLM judges it; Scry does not guess a
+// grade from the distribution. The error text is a fixed vocabulary, never
+// learner text or a raw response. The eval bench calls Decide too, so the
+// bench and Scry cannot disagree about the gates.
+func Decide(choice string, confidence *float64, probs map[string]float64) (srs.Verdict, error) {
+	unreadable := unavailable("Jev decision unreadable")
+	uncertain := func(why string) error { return fmt.Errorf("%w: Jev %s", ErrDecisionUncertain, why) }
+	if confidence != nil && (math.IsNaN(*confidence) || *confidence < 0 || *confidence > 1) {
+		return "", unreadable
+	}
+	known, verdict := false, srs.Verdict("")
+	for _, o := range judgeOptions {
+		if o.ID == choice {
+			known, verdict = true, o.Verdict
+		}
+	}
+	if !known {
+		return "", unreadable
+	}
+	if probs != nil {
+		if len(probs) != len(judgeOptions) {
+			return "", unreadable
+		}
+		sum, second := 0.0, 0.0
+		for _, o := range judgeOptions {
+			p, ok := probs[o.ID]
+			if !ok || p < 0 || p > 1 || math.IsNaN(p) || math.IsInf(p, 0) {
+				return "", unreadable
+			}
+			sum += p
+			if o.ID != choice && p > second {
+				second = p
+			}
+		}
+		if math.Abs(sum-1) > 1e-6 {
+			return "", unreadable
+		}
+		if verdict != "" && probs[choice] < minJevProbability {
+			return "", uncertain("probability below its bar")
+		}
+		if verdict != "" && probs[choice]-second < minJevMargin {
+			return "", uncertain("margin below its bar")
+		}
+	}
+	if verdict == "" {
+		return "", uncertain("chose none of these")
+	}
+	if confidence != nil && *confidence < minJevConfidence {
+		return "", uncertain("confidence below its bar")
+	}
+	return verdict, nil
+}
+
 // The Decisions models Jev asks for when SCRY_JUDGE_MODEL is unset. On
 // OpenRouter it is typesafe/jev-1.14, the Slice #29 bench winner (88%
 // three-way accuracy, 0% false positives, 159 ms p50); the direct Typesafe
@@ -77,7 +144,7 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	if j.OpenRouter {
 		base, path = "https://openrouter.ai", "/api/alpha/decisions"
 	}
-	resolved, costSource := "unavailable", "unknown"
+	resolved, costSource, choice := "unavailable", "unknown", "unavailable"
 	defer func() {
 		// Redaction may rewrite the message; the chain still needs its class.
 		retErr = keepClass(retErr, safeerr.Redact(retErr, j.APIKey))
@@ -97,7 +164,7 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 		if j.APIKey != "" {
 			resolved = strings.ReplaceAll(resolved, j.APIKey, "[redacted]")
 		}
-		log.InfoContext(ctx, "judge decision", "requested_model", requested, "resolved_model", resolved, "usage_cost", usageCost, "cost_micros", cost, "cost_source", costSource, "latency_ms", time.Since(start).Milliseconds(), "accepted", retErr == nil, "outcome", outcomeOf(retErr))
+		log.InfoContext(ctx, "judge decision", "requested_model", requested, "resolved_model", resolved, "usage_cost", usageCost, "cost_micros", cost, "cost_source", costSource, "latency_ms", time.Since(start).Milliseconds(), "choice", choice, "verdict", string(out.Verdict), "accepted", retErr == nil, "outcome", outcomeOf(retErr))
 	}()
 	if j.APIKey == "" {
 		return out, use, notSent("Jev key is missing")
@@ -164,10 +231,10 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	resolved = result.Model
 	// Two kinds of no verdict: a response that cannot be read (invalid:
 	// the chain asks the next decisions model) and a readable decision
-	// below its certainty bars or "none of these" (uncertain: the chain
-	// escalates to the LLM and never shops it to another decisions model).
+	// below its certainty bars or "none of these" (uncertain, see Decide:
+	// the chain escalates to the LLM and never shops it to another
+	// decisions model).
 	invalid := unavailable("Jev decision unreadable")
-	uncertain := func(why string) error { return fmt.Errorf("%w: Jev %s", ErrDecisionUncertain, why) }
 	if result.Model == "" || len(result.Model) > 200 || result.Usage == nil || result.Usage.Input == nil || result.Usage.Output == nil || *result.Usage.Input < 0 || *result.Usage.Output < 0 {
 		return out, use, invalid
 	}
@@ -182,50 +249,18 @@ func (j *Jev) Judge(ctx context.Context, in JudgeInput) (out Judgment, use Usage
 	if !ok || len(result.Answers) != 1 || a.Type != "choice" {
 		return out, use, invalid
 	}
-	if a.Confidence != nil && (math.IsNaN(*a.Confidence) || *a.Confidence < 0 || *a.Confidence > 1) {
-		return out, use, invalid
-	}
-	known := a.Choice == "none_of_these"
+	choice = "other" // a provider string is logged only when it is one of the fixed criteria
 	for _, o := range judgeOptions {
-		known = known || o.ID == a.Choice
-	}
-	if !known {
-		return out, use, invalid
-	}
-	if a.Probabilities != nil {
-		if len(a.Probabilities) != len(judgeOptions) {
-			return out, use, invalid
-		}
-		sum, second := 0.0, 0.0
-		chosen, known := a.Probabilities[a.Choice]
-		for _, o := range judgeOptions {
-			p, ok := a.Probabilities[o.ID]
-			if !ok || p < 0 || p > 1 || math.IsNaN(p) || math.IsInf(p, 0) {
-				return out, use, invalid
-			}
-			sum += p
-			if o.ID != a.Choice && p > second {
-				second = p
-			}
-		}
-		if !known || math.Abs(sum-1) > 1e-6 {
-			return out, use, invalid
-		}
-		if a.Choice != "none_of_these" && chosen < minJevProbability {
-			return out, use, uncertain("probability below its bar")
-		}
-		if a.Choice != "none_of_these" && chosen-second < minJevMargin {
-			return out, use, uncertain("margin below its bar")
+		if o.ID == a.Choice {
+			choice = o.ID
 		}
 	}
-	if a.Choice == "none_of_these" {
-		return out, use, uncertain("chose none of these")
-	}
-	if a.Confidence != nil && *a.Confidence < minJevConfidence {
-		return out, use, uncertain("confidence below its bar")
+	v, err := Decide(a.Choice, a.Confidence, a.Probabilities)
+	if err != nil {
+		return out, use, err
 	}
 	for _, o := range judgeOptions {
-		if o.ID == a.Choice && o.Verdict != "" {
+		if o.Verdict == v {
 			return Judgment{Verdict: o.Verdict, Reason: o.Reason}, use, nil
 		}
 	}

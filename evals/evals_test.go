@@ -12,12 +12,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"scry/internal/ai"
 )
 
 // All tests here are offline: no key, no network beyond httptest.
@@ -372,6 +373,11 @@ func TestGateDecision(t *testing.T) {
 		{"almost correct", nil, nil, "close"},
 		{"incorrect", f(0.4), nil, "abstain"},
 		{"correct", nil, probs(0.7, 0.3, 0, 0), "abstain"},
+		// SCRY-38: a split between grades is never settled by the gate; the
+		// decisions model abstains and production asks the LLM ([S113-1]).
+		{"correct", f(0.52), probs(0.64, 0.36, 0, 0), "abstain"},
+		{"correct", nil, probs(0.5, 0.2, 0.2, 0.1), "abstain"},
+		{"correct", f(0.9), probs(0.85, 0.15, 0, 0), "correct"},
 		{"correct", nil, probs(0.8, 0.0, 0.0, 0.1), "abstain"}, // sums to 0.9
 		{"none_of_these", nil, probs(0, 0, 0, 1), "abstain"},
 		{"correct", nil, map[string]float64{"correct": 1}, "abstain"},
@@ -380,6 +386,37 @@ func TestGateDecision(t *testing.T) {
 		if got := gateDecision(c.choice, c.conf, c.probs); got != c.want {
 			t.Errorf("gate(%s, %v, %v) = %s, want %s", c.choice, c.conf, c.probs, got, c.want)
 		}
+	}
+}
+
+// The bench counts a decision the production adapter classes uncertain as
+// an abstention, by its class and not by its error text (which changed
+// with [S113-1], silently turning every abstention into an "error").
+// SCRY-38's recorded split is one; an unreadable decision is an error.
+func TestJudgeOnceCountsAnUncertainDecisionAsAnAbstention(t *testing.T) {
+	const usage = `"usage":{"input_tokens":520,"output_tokens":51,"cost":0.00002184}`
+	for _, tc := range []struct{ name, body, want string }{
+		{"SCRY-38 split", `{"model":"t/judge","answers":{"judgment":{"type":"choice","choice":"correct","probabilities":{"almost correct":0.36,"correct":0.64,"incorrect":0,"none_of_these":0},"confidence":0.52}},` + usage + `}`, "abstain"},
+		{"none of these", `{"model":"t/judge","answers":{"judgment":{"type":"choice","choice":"none_of_these"}},` + usage + `}`, "abstain"},
+		{"confident", `{"model":"t/judge","answers":{"judgment":{"type":"choice","choice":"correct","probabilities":{"almost correct":0.1,"correct":0.9,"incorrect":0,"none_of_these":0},"confidence":0.8}},` + usage + `}`, "correct"},
+		{"unknown choice", `{"model":"t/judge","answers":{"judgment":{"type":"choice","choice":"invented"}},` + usage + `}`, "error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/api/v1/models", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"data":[]}`) })
+			mux.HandleFunc("/api/alpha/decisions", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, tc.body) })
+			srv := httptest.NewServer(mux)
+			defer srv.Close()
+			r, err := NewRunner(Config{Surfaces: []string{"grading"}, OutDir: t.TempDir(), MaxSpend: 1, Key: "sk-or-v1-offline-abstain", Base: srv.URL, Log: io.Discard, SkipAccount: true, Models: map[string][]string{"grading": {"t/judge"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			rec := GradingRecord{Surface: "grading", Model: "t/judge", Label: "correct"}
+			r.judgeOnce(context.Background(), "grading", "t/judge", ai.JudgeInput{Question: "q", Expected: "e", Answer: "a"}, &rec)
+			if rec.Predicted != tc.want {
+				t.Fatalf("predicted %q (%s), want %q", rec.Predicted, rec.Error, tc.want)
+			}
+		})
 	}
 }
 
@@ -392,12 +429,6 @@ func TestJevMirrorsMatchProduction(t *testing.T) {
 	s := string(src)
 	if !strings.Contains(s, "const jevInstructions = "+strconv.Quote(jevInstructionsMirror)) {
 		t.Error("jevInstructionsMirror differs from internal/ai/jev.go")
-	}
-	for name, v := range map[string]float64{"minJevConfidence": minJevConfidenceMirror, "minJevProbability": minJevProbabilityMirror, "minJevMargin": minJevMarginMirror} {
-		m := regexp.MustCompile(`const ` + name + ` = ([0-9.]+)`).FindStringSubmatch(s)
-		if m == nil || m[1] != strconv.FormatFloat(v, 'f', -1, 64) {
-			t.Errorf("%s mirror %v differs from source %v", name, v, m)
-		}
 	}
 	for _, c := range jevCriteriaMirror {
 		if !strings.Contains(s, "{"+strconv.Quote(c.ID)+", ") {

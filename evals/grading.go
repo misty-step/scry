@@ -3,6 +3,7 @@ package evals
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"time"
 
@@ -46,10 +47,6 @@ func verdictLabel(v srs.Verdict) string {
 	}
 	return "error"
 }
-
-// errJevAbstain is the exact error Scry's Jev adapter returns when its
-// acceptance gates reject a decision (or the model chose none_of_these).
-const errJevAbstain = "Jev decision unavailable or ambiguous"
 
 // decisionAnswer is the raw judgment answer, read from the response the
 // adapter received so abstentions can be explained.
@@ -98,7 +95,9 @@ func (r *Runner) judgeOnce(ctx context.Context, surface, model string, in ai.Jud
 	switch {
 	case jerr == nil:
 		rec.Predicted = verdictLabel(dec.Verdict)
-	case jerr.Error() == errJevAbstain:
+	case errors.Is(jerr, ai.ErrDecisionUncertain):
+		// A readable decision below a certainty bar, or "none of these":
+		// the one outcome production escalates to the LLM ([S113-1]).
 		rec.Predicted = "abstain"
 		rec.Error = jerr.Error()
 	default:
