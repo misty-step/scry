@@ -1354,7 +1354,7 @@ a.row-main { min-height: var(--touch); }
 .connected-label { min-width: 0; overflow-wrap: anywhere; }
 .connected-name { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .connected-counts { color: var(--ink-muted); }
-.connected-counts:not(:empty)::before { content: " "; }
+.connected-count { white-space: nowrap; }
 .connected-show { flex: none; color: var(--ink); }
 .connected:not([open]) .connected-when-open, .connected[open] .connected-when-closed { display: none; }
 .connected-list { max-width: var(--measure); }

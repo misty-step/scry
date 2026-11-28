@@ -389,7 +389,7 @@ func TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading(t *testing.
 	if strings.Contains(d[:strings.Index(d, ">")], " open") {
 		t.Error("the disclosure opens open")
 	}
-	has(t, d, "Related & resources", "· 3 cards · 3 resources", "Show", "Hide",
+	has(t, d, "Related & resources", `<span class="connected-count">· 3 cards</span> <span class="connected-count">· 3 resources</span>`, "Show", "Hide",
 		`href="/library/items/`+strconv.FormatInt(s139Item(t, lib, s139Same).ID, 10)+`"`, "RELATED", "ARTICLE", "EXPLAINER", "DIAGRAM",
 		`href="https://en.wikipedia.org/wiki/Opportunity_cost" target="_blank" rel="noopener noreferrer nofollow"`, "en.wikipedia.org",
 		"Picture two roads.\nThe one you take", "Opportunity cost · due today")
@@ -412,9 +412,9 @@ func TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading(t *testing.
 	// The card's own page shows the same disclosure; the idea page only the
 	// idea's own resources.
 	card := b.mustGet("/library/items/" + strconv.FormatInt(long.ID, 10))
-	has(t, detailsRE.FindString(card), "· 3 cards · 3 resources", s139Same, "The road not taken")
+	has(t, detailsRE.FindString(card), "· 3 cards</span>", "· 3 resources</span>", s139Same, "The road not taken")
 	idea := detailsRE.FindString(b.mustGet("/library/ideas/" + strconv.FormatInt(long.IdeaID, 10)))
-	has(t, idea, "· 1 resource", "A map of one choice", "DIAGRAM")
+	has(t, idea, `<span class="connected-count">· 1 resource</span></span>`, "A map of one choice", "DIAGRAM")
 	hasNot(t, idea, "RELATED", "The road not taken", "cards")
 	// A card with neither related cards nor resources draws nothing.
 	lone := s139Item(t, lib, s139OneWord)

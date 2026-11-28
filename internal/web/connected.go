@@ -17,7 +17,7 @@ import (
 
 // connectedView is one "Related & resources" disclosure.
 type connectedView struct {
-	Counts    string // "· 3 cards · 2 resources"; a part with none is left out
+	Counts    []string // "· 3 cards", "· 2 resources"; a part with none is left out
 	Related   []relatedRow
 	Resources []resourceRow
 }
@@ -72,12 +72,14 @@ func newConnected(related []relatedRow, resources []resourceRow) *connectedView 
 		return nil
 	}
 	v := &connectedView{Related: related, Resources: resources}
+	var parts []string
 	if n := len(related); n > 0 {
-		v.Counts += " · " + plural(n, "card", "cards")
+		parts = append(parts, "· "+plural(n, "card", "cards"))
 	}
 	if n := len(resources); n > 0 {
-		v.Counts += " · " + plural(n, "resource", "resources")
+		parts = append(parts, "· "+plural(n, "resource", "resources"))
 	}
+	v.Counts = parts
 	return v
 }
 
