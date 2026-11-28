@@ -150,6 +150,12 @@ func FakeExplanation(in ExplainInput) string {
 		if in.Verdict == srs.Close {
 			differed = "which comes close to the card's point but leaves part of it out"
 		}
+		if c != core || normalized(a) == normalized(c) {
+			// Prefer showing the card's point over repeating the learner's
+			// quote when shortening might hide the difference.
+			lead := fmt.Sprintf("What differed: you answered “%s”. Rebuild: the card's point is “", a)
+			return lead + shortenAtWord(core, ExplainMaxChars-utf8.RuneCountInString(lead+"”.")) + "”."
+		}
 		return fmt.Sprintf("What differed: you answered “%s”, %s. Rebuild: the card's point is “%s”, not “%s”.", a, differed, c, a)
 	}
 	out := build(answer, core)
@@ -181,12 +187,12 @@ func corePoint(expected, answer string) string {
 	return strings.Join(strings.Fields(expected), " ")
 }
 
-// answerSentences splits a card's answer into its lines and, within each, its
-// sentences (a stop followed by a space), each without its closing stop.
+// answerSentences splits a card's answer at newlines and at a sentence
+// stop or semicolon followed by a space.
 func answerSentences(text string) []string {
 	var out []string
 	add := func(s string) {
-		if c := strings.TrimRight(s, " .!?"); c != "" {
+		if c := strings.TrimRight(s, " .!?;"); c != "" {
 			out = append(out, c)
 		}
 	}
@@ -194,7 +200,7 @@ func answerSentences(text string) []string {
 		line = strings.Join(strings.Fields(line), " ")
 		start := 0
 		for i, r := range line {
-			if (r == '.' || r == '?' || r == '!') && i+1 < len(line) && line[i+1] == ' ' {
+			if strings.ContainsRune(".!?;", r) && i+1 < len(line) && line[i+1] == ' ' {
 				add(line[start:i])
 				start = i + 2
 			}

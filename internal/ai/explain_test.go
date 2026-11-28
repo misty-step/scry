@@ -121,3 +121,21 @@ func TestFakeExplanation_AlmostNamesTheMissingSentence(t *testing.T) {
 		t.Fatalf("Almost repro: %q", text)
 	}
 }
+
+func TestFakeExplanation_AlmostKeepsTheGapWhenQuotesAreShortened(t *testing.T) {
+	const shared = "Both speed and velocity describe how fast an object changes position over time"
+	for _, c := range []struct{ name, expected, answer string }{
+		{"semicolon", shared + "; only velocity includes direction.", shared + "."},
+		{"common prefix", shared + " but velocity includes direction.", shared + " but speed is a vector."},
+		{"comma", "Both describe how fast something moves, but only velocity includes direction.", "Both describe how fast something moves."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			text := FakeExplanation(ExplainInput{Expected: c.expected, Answer: c.answer, Verdict: srs.Close})
+			_, rebuild, _ := strings.Cut(text, "Rebuild:")
+			point, learner, two := strings.Cut(strings.TrimPrefix(rebuild, " the card's point is "), ", not ")
+			if !strings.Contains(rebuild, "includes direction") || (two && normalized(point) == normalized(learner)) || utf8.RuneCountInString(text) > ExplainMaxChars {
+				t.Fatalf("explanation lost the gap: %q", text)
+			}
+		})
+	}
+}
