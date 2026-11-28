@@ -29,6 +29,14 @@ type Suggestion struct {
 	Status      string
 	Created     time.Time
 	Joins       bool // the idea already exists in the library
+	// [S139-2], from an API item only: learning resources for the card and
+	// for its idea, related tags for the card, and titles of ideas to link
+	// its idea to. They are attached when the item is added; they are not
+	// kept on the suggestion row.
+	Resources     []Resource
+	IdeaResources []Resource
+	Tags          []string
+	RelatedIdeas  []string
 }
 
 // SourceLine is the mono line under a suggestion: "from reading agent · The Federalist Papers".
@@ -263,6 +271,9 @@ func (u *UserStore) AddFromAgent(ctx context.Context, items []Suggestion, now ti
 			}
 			itemID, err := u.approve(ctx, tx, s, now)
 			if err != nil {
+				return err
+			}
+			if err := u.connect(ctx, tx, itemID, s, now); err != nil {
 				return err
 			}
 			ids = append(ids, itemID)

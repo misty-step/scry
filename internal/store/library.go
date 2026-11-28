@@ -318,6 +318,10 @@ func (u *UserStore) ensureIdea(ctx context.Context, tx *sql.Tx, parentID int64, 
 		return 0, false, err
 	}
 	id, _ = res.LastInsertId()
+	// [S139-2]: an idea that relatedIdeas named before it arrived is linked now.
+	if err := u.resolvePendingLinks(ctx, tx, id, title); err != nil {
+		return 0, false, err
+	}
 	return id, true, nil
 }
 
@@ -547,6 +551,9 @@ func (u *UserStore) AddStarterSet(ctx context.Context, set starter.Set, now time
 		}
 		parentID, _ = res.LastInsertId()
 		added = true
+		if e := u.resolvePendingLinks(ctx, tx, parentID, set.Title); e != nil {
+			return e
+		}
 		for _, idea := range set.Ideas {
 			res, e := tx.ExecContext(ctx, `
 				INSERT INTO ideas (user_id, parent_id, title, summary, origin, position, created_at)
@@ -556,6 +563,9 @@ func (u *UserStore) AddStarterSet(ctx context.Context, set starter.Set, now time
 				return e
 			}
 			id, _ := res.LastInsertId()
+			if e := u.resolvePendingLinks(ctx, tx, id, idea.Title); e != nil {
+				return e
+			}
 			for _, it := range idea.Items {
 				if _, e := u.addItem(ctx, tx, NewItem{IdeaID: id, Prompt: it.Q, Answer: it.A, Source: "starter · " + set.Title}, now); e != nil {
 					return e

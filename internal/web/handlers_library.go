@@ -104,6 +104,9 @@ func (s *Server) library(w http.ResponseWriter, r *http.Request, c *rc) error {
 	}
 	data["Title"], data["Idea"], data["Related"], data["Items"] = idea.Title, idea, related, s.itemRows(ctx, c, items, nil)
 	data["OpenParent"] = idea.ParentID
+	if v := s.ideaConnected(ctx, c, id); v != nil {
+		data["Connected"] = v
+	}
 	return s.render(w, r, c, http.StatusOK, "library.html", data)
 }
 
@@ -142,8 +145,9 @@ func (s *Server) itemPage(w http.ResponseWriter, r *http.Request, c *rc) error {
 	}
 	return s.render(w, r, c, http.StatusOK, "item.html", map[string]any{
 		"Title": "Item", "Nav": "library", "Item": it, "Due": due, "History": history,
-		"Bridge": bridgeViewFor(r.Context(), c, it, st, "item"),
-		"Flash":  libraryFlash[r.URL.Query().Get("ok")], "Error": map[string]string{"needboth": "An item needs both a question and an answer."}[r.URL.Query().Get("err")],
+		"Bridge":    bridgeViewFor(r.Context(), c, it, st, "item"),
+		"Connected": s.cardConnected(r.Context(), c, it),
+		"Flash":     libraryFlash[r.URL.Query().Get("ok")], "Error": map[string]string{"needboth": "An item needs both a question and an answer."}[r.URL.Query().Get("err")],
 	})
 }
 

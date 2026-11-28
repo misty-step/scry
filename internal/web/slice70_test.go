@@ -85,6 +85,15 @@ func TestSlice70_Review_ShowsTheCurrentCardOnly(t *testing.T) {
 			t.Fatalf("card %d did not stop on its review", i+1)
 		}
 		hasNot(t, review, `<ol class="scrollback"`, `<ol class="upcoming"`, "Coming up")
+		// [S139-2]: the closed Related & resources disclosure may list other
+		// cards of this idea, as links under its summary; nothing of them
+		// sits beside the judgment. Outside it, the review is this card only.
+		if d := detailsRE.FindString(review); d != "" {
+			if strings.Contains(d[:strings.Index(d, ">")], " open") {
+				t.Fatalf("card %d: Related & resources opens open", i+1)
+			}
+			review = strings.Replace(review, d, "", 1)
+		}
 		for _, p := range prompts[:i] {
 			hasNot(t, review, p) // an earlier card
 		}

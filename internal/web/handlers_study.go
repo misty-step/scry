@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"scry/internal/ai"
 	"scry/internal/app"
@@ -136,6 +137,17 @@ type judgedView struct {
 	Explainable bool   // model-judged: offer "Ask Why?" on demand
 	Explanation string // filled in only after the learner asked (no-JS path)
 	Skipped     bool   // nothing was submitted: "No answer given."
+	Long        bool   // [S139-1]: an Incorrect pair with a long answer stacks at Title size
+}
+
+// longAnswerChars is where an answer becomes long ([S139-1]): more than 80
+// characters, or any line break.
+const longAnswerChars = 80
+
+// longAnswer reports whether an answer is long ([S139-1]).
+func longAnswer(s string) bool {
+	s = strings.TrimSpace(s)
+	return utf8.RuneCountInString(s) > longAnswerChars || strings.ContainsAny(s, "\r\n")
 }
 
 // verdictBadge is the verdict in words, with its icon.
@@ -353,6 +365,8 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 			j.Kind, j.Ops = "exact", d.Ops
 		case pendingReview.Verdict == srs.Missed:
 			j.Kind = "missed"
+			// Either answer long makes the pair long ([S139-1]).
+			j.Long = longAnswer(j.Expected) || (!j.Skipped && longAnswer(j.Answer))
 		case pendingReview.Verdict == srs.Close:
 			j.Kind = "close"
 		default:
@@ -378,6 +392,10 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 					data["Bridge"] = bv
 				}
 			}
+		}
+		// [S139-2]: related cards and resources, only now that it is graded.
+		if v := s.cardConnected(ctx, c, shown.Item); v != nil {
+			data["Connected"] = v
 		}
 		data["Last"] = remaining == 0
 		data["EditPrompt"], data["EditAnswer"], data["EditIdea"] = shown.Item.Prompt, shown.Item.Answer, shown.Item.IdeaTitle
