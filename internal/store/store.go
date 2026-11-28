@@ -97,6 +97,14 @@ func (s *Store) migrateAdded() error {
 		bridgesIndex,
 		// S111-1: the day's first presentations of new cards.
 		firstPresentationsSchema,
+		// [S139-2]: learning resources, related tags and idea links named
+		// before their idea arrives.
+		resourcesSchema,
+		resourcesIndexes,
+		tagsSchema,
+		tagsIndex,
+		pendingLinksSchema,
+		pendingLinksIndex,
 	} {
 		if _, err := s.db.Exec(q); err != nil {
 			return err
@@ -314,6 +322,7 @@ func LatestSnapshot(dir string) (string, time.Time) {
 var userTables = []string{
 	"subscriptions", "subscription_attempts", "reservations", "topups", "ledger", "usage", "ideas", "idea_links", "items", "item_bridges",
 	"study_sessions", "session_items", "first_presentations", "reviews", "drafts", "suggestions", "agent_tokens",
+	"learning_resources", "item_tags", "idea_pending_links",
 }
 
 // UserTables returns the names of the tables that hold learner-owned rows.

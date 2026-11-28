@@ -19,6 +19,7 @@
     <p class="meta hint">Exact answers are compared word by word. Everything else is judged for meaning, with a one-line reason.</p>
     <button class="btn btn-accent">Save</button>
   </form>
+  {{template "connected" .Connected}}
   <form method="post" action="/library/items/{{.Item.ID}}/remove" class="inline-form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <button class="link quiet">Remove this item</button>

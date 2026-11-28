@@ -54,6 +54,7 @@
         <a class="link quiet meta study-idea" href="/study/idea/{{.Idea.ID}}" data-study-idea>{{icon "cards"}}Study this idea</a>
       </div>
       {{if .Idea.Summary}}<p class="idea-summary">{{.Idea.Summary}}</p>{{end}}
+      {{template "connected" .Connected}}
 
       {{if .Related}}
       <section class="links" aria-label="How this idea connects">

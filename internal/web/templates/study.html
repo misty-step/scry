@@ -46,6 +46,7 @@
 {{define "review"}}
         {{template "explain" .}}
         {{with .Bridge}}{{template "struggle" .}}{{end}}
+        {{template "connected" .Connected}}
         {{with .Telemetry}}
         <section class="schedule" aria-label="This card's schedule">
         <dl class="telemetry" data-telemetry>
@@ -134,10 +135,19 @@
       {{else if eq .Judged.Kind "missed"}}
         <h1 class="prompt prompt-receded" data-prompt>{{.Item.Prompt}}</h1>
         {{if .Judged.Skipped}}<p class="meta no-answer" data-submitted data-skipped>No answer given.</p>{{end}}
+        {{if .Judged.Long}}
+        {{/* [S139-1]: a long pair stacks at Title size, at the reading
+             measure, and scrolls with the page: never a box of its own. */}}
+        <div class="judgment-pair judgment-long" data-long-pair>
+          {{if not .Judged.Skipped}}<div class="long-answer long-yours"><p class="meta long-label">Your answer</p><p class="long-text long-struck"><span class="sr">Your answer, struck out: </span><span class="long-struck-text" data-submitted>{{.Judged.Answer}}</span></p></div>{{end}}
+          <div class="long-answer long-correct"><p class="meta long-label">Correct answer</p><p class="long-text" data-long-correct><span class="sr">The correct answer: </span><span data-canonical>{{.Judged.Expected}}</span></p></div>
+        </div>
+        {{else}}
         <div class="judgment-pair">
           {{if not .Judged.Skipped}}<p class="judgment judgment-struck"><span class="sr">Your answer, struck out: </span><span class="struck"><span class="struck-text" data-submitted>{{.Judged.Answer}}</span></span></p>{{end}}
           <p class="judgment judgment-right"><span class="sr">The correct answer: </span><span data-canonical>{{.Judged.Expected}}</span></p>
         </div>
+        {{end}}
         {{template "verdict" .}}
       {{else}}
         <h1 class="prompt prompt-receded" data-prompt>{{.Item.Prompt}}</h1>

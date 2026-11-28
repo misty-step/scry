@@ -1,0 +1,75 @@
+{
+  "source": "S139 fixture",
+  "items": [
+    {
+      "question": "What is opportunity cost, and why does it matter when you decide?",
+      "answer": "Opportunity cost is the value of the best alternative you give up when you choose one option over another. It is not the price you pay, but what that same money, time or attention could have done for you elsewhere. Weighing it turns every choice into a comparison of real options, rather than a verdict on one option alone.",
+      "idea": "Opportunity cost",
+      "summary": "What a choice really costs.",
+      "resources": [
+        {
+          "title": "Opportunity cost on Wikipedia",
+          "kind": "article",
+          "url": "https://en.wikipedia.org/wiki/Opportunity_cost"
+        },
+        {
+          "title": "The road not taken",
+          "kind": "explainer",
+          "body": "Picture two roads.\nThe one you take has a price; the one you leave behind is the cost."
+        }
+      ],
+      "ideaResources": [
+        {
+          "title": "A map of one choice",
+          "kind": "diagram",
+          "body": "Option A -> chosen\nOption B -> given up: this is the cost"
+        }
+      ],
+      "relatedTags": [
+        "Trade-offs"
+      ],
+      "relatedIdeas": [
+        "Sunk cost"
+      ]
+    },
+    {
+      "question": "Besides its price, what does a choice cost you?",
+      "answer": "The best option you gave up",
+      "idea": "Opportunity cost",
+      "ideaResources": [
+        {
+          "title": "A map of one choice",
+          "kind": "diagram",
+          "body": "Option A -> chosen\nOption B -> given up: this is the cost"
+        }
+      ]
+    },
+    {
+      "question": "What is a trade-off?",
+      "answer": "Giving up some of one thing to get more of another",
+      "idea": "Decision making",
+      "relatedTags": [
+        "trade-offs"
+      ]
+    },
+    {
+      "question": "Why should a sunk cost not sway a new decision?",
+      "answer": "It is spent whatever you choose next",
+      "idea": "Sunk cost"
+    },
+    {
+      "question": "Recite the decision motto",
+      "answer": "Choose with the road not taken in mind",
+      "idea": "Decision motto",
+      "exact": true,
+      "relatedTags": [
+        "TRADE-OFFS"
+      ]
+    },
+    {
+      "question": "In one word, what is a cost already spent and never recovered called?",
+      "answer": "Sunk",
+      "idea": "Cost words"
+    }
+  ]
+}

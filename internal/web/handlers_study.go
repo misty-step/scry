@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"scry/internal/ai"
 	"scry/internal/app"
@@ -136,6 +137,17 @@ type judgedView struct {
 	Explainable bool   // model-judged: offer "Ask Why?" on demand
 	Explanation string // filled in only after the learner asked (no-JS path)
 	Skipped     bool   // nothing was submitted: "No answer given."
+	Long        bool   // [S139-1]: an Incorrect pair with a long answer stacks at Title size
+}
+
+// longAnswerChars is where an answer becomes long ([S139-1]): more than 80
+// characters, or any line break.
+const longAnswerChars = 80
+
+// longAnswer reports whether an answer is long ([S139-1]).
+func longAnswer(s string) bool {
+	s = strings.TrimSpace(s)
+	return utf8.RuneCountInString(s) > longAnswerChars || strings.ContainsAny(s, "\r\n")
 }
 
 // verdictBadge is the verdict in words, with its icon.
@@ -353,6 +365,8 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 			j.Kind, j.Ops = "exact", d.Ops
 		case pendingReview.Verdict == srs.Missed:
 			j.Kind = "missed"
+			// Either answer long makes the pair long ([S139-1]).
+			j.Long = longAnswer(j.Expected) || (!j.Skipped && longAnswer(j.Answer))
 		case pendingReview.Verdict == srs.Close:
 			j.Kind = "close"
 		default:
@@ -379,6 +393,10 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 				}
 			}
 		}
+		// [S139-2]: related cards and resources, only now that it is graded.
+		if v := s.cardConnected(ctx, c, shown.Item); v != nil {
+			data["Connected"] = v
+		}
 		data["Last"] = remaining == 0
 		data["EditPrompt"], data["EditAnswer"], data["EditIdea"] = shown.Item.Prompt, shown.Item.Answer, shown.Item.IdeaTitle
 		data["IdeaTitles"], data["EditField"] = ideaChoices(ctx, c), ""
@@ -388,9 +406,31 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 	// Such a cue (the next line of an exact text quotes the line before
 	// it) is held back until the answer is in; a cue that gives the answer
 	// away only by its text's title is shown under a neutral title.
+	//
+	// [S139-2]: nothing of a card's Related & resources appears while it
+	// waits, so the question of a card related to it (same idea, a shared
+	// tag or a linked idea; see store.RelatedCards) is in neither list
+	// either. Its row keeps its place under a question-free label, its
+	// number in this session ("Card 3"), until this card is graded. If the
+	// relation cannot be read, every row is shown that way.
+	var related map[int64]bool
+	relatedOK := true
+	if !judged && cur != nil {
+		var err error
+		if related, err = c.us.RelatedIDs(ctx, cur.Item.ID); err != nil {
+			relatedOK = false
+		}
+	}
+	place := map[int64]int{}
+	for i := range sess.Entries {
+		place[sess.Entries[i].Item.ID] = i + 1
+	}
 	cue := func(it store.Item) (string, bool) {
 		if judged || cur == nil {
 			return it.Prompt, true
+		}
+		if !relatedOK || related[it.ID] {
+			return "Card " + strconv.Itoa(place[it.ID]), true
 		}
 		return cueWhile(it, cur.Item.Answer)
 	}

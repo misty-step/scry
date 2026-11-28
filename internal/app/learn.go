@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -228,6 +229,124 @@ type AgentItem struct {
 	Idea     string `json:"idea"`    // the idea it belongs to; created if new
 	Summary  string `json:"summary"` // one line on the idea, used if it is new
 	Exact    bool   `json:"exact"`   // judge word for word
+	// [S139-2], each optional: learning resources for the card and for its
+	// idea, related tags, and titles of ideas to link its idea to.
+	Resources     []AgentResource `json:"resources"`
+	IdeaResources []AgentResource `json:"ideaResources"`
+	RelatedTags   []string        `json:"relatedTags"`
+	RelatedIdeas  []string        `json:"relatedIdeas"`
+}
+
+// AgentResource is one learning resource sent with an API item ([S139-2]).
+type AgentResource struct {
+	Title string `json:"title"`
+	Kind  string `json:"kind"`
+	URL   string `json:"url"`
+	Body  string `json:"body"`
+}
+
+// Limits on what an API item may carry for connected learning ([S139-2]).
+const (
+	MaxAgentResources     = 5
+	MaxAgentTags          = 8
+	MaxAgentRelatedIdeas  = 8
+	MaxResourceTitleChars = 120
+	MaxResourceURLBytes   = 2048
+	MaxResourceBodyChars  = 1000
+	MaxTagChars           = 40
+)
+
+// resourceKinds are the kinds a learning resource may be.
+var resourceKinds = map[string]bool{"explainer": true, "article": true, "video": true, "diagram": true, "link": true}
+
+// checkResource validates one resource; what names it ("item 2, resource
+// 1") opens every refusal, so a script's author can find the field.
+func checkResource(what string, r AgentResource) error {
+	title := strings.TrimSpace(r.Title)
+	switch n := utf8.RuneCountInString(title); {
+	case n == 0:
+		return fmt.Errorf("%s: title is required (1 to 120 characters)", what)
+	case n > MaxResourceTitleChars:
+		return fmt.Errorf("%s: title must be at most 120 characters", what)
+	}
+	if !resourceKinds[r.Kind] {
+		return fmt.Errorf("%s: kind must be explainer, article, video, diagram or link", what)
+	}
+	u, body := strings.TrimSpace(r.URL), strings.TrimSpace(r.Body)
+	if u == "" && body == "" {
+		return fmt.Errorf("%s: needs a url or a body (or both)", what)
+	}
+	if u != "" {
+		if len(u) > MaxResourceURLBytes {
+			return fmt.Errorf("%s: url must be at most 2,048 bytes", what)
+		}
+		if !absoluteHTTP(u) {
+			return fmt.Errorf("%s: url must be an absolute https:// or http:// URL", what)
+		}
+	}
+	if utf8.RuneCountInString(body) > MaxResourceBodyChars {
+		return fmt.Errorf("%s: body must be at most 1,000 characters", what)
+	}
+	return nil
+}
+
+// absoluteHTTP reports whether s is an absolute http(s) URL with a host:
+// never javascript:, data:, a relative path or a scheme-relative //host.
+func absoluteHTTP(s string) bool {
+	if strings.ContainsAny(s, " \t\r\n\x00") {
+		return false
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || u.Opaque != "" {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return (scheme == "https" || scheme == "http") && strings.HasPrefix(strings.ToLower(s), scheme+"://")
+}
+
+func cleanResources(in []AgentResource) []store.Resource {
+	out := make([]store.Resource, 0, len(in))
+	for _, r := range in {
+		out = append(out, store.Resource{Kind: r.Kind, Title: strings.TrimSpace(r.Title), URL: strings.TrimSpace(r.URL), Body: strings.TrimSpace(r.Body)})
+	}
+	return out
+}
+
+// checkConnected validates an item's optional [S139-2] fields.
+func (it AgentItem) checkConnected(n int) error {
+	if len(it.Resources) > MaxAgentResources {
+		return fmt.Errorf("item %d, resources: send at most 5 resources per item", n)
+	}
+	for i, r := range it.Resources {
+		if err := checkResource(fmt.Sprintf("item %d, resource %d", n, i+1), r); err != nil {
+			return err
+		}
+	}
+	if len(it.IdeaResources) > MaxAgentResources {
+		return fmt.Errorf("item %d, ideaResources: send at most 5 idea resources per item", n)
+	}
+	for i, r := range it.IdeaResources {
+		if err := checkResource(fmt.Sprintf("item %d, idea resource %d", n, i+1), r); err != nil {
+			return err
+		}
+	}
+	if len(it.RelatedTags) > MaxAgentTags {
+		return fmt.Errorf("item %d, relatedTags: send at most 8 tags per item", n)
+	}
+	for i, t := range it.RelatedTags {
+		if c := utf8.RuneCountInString(strings.TrimSpace(t)); c == 0 || c > MaxTagChars {
+			return fmt.Errorf("item %d, related tag %d: a tag is 1 to 40 characters", n, i+1)
+		}
+	}
+	if len(it.RelatedIdeas) > MaxAgentRelatedIdeas {
+		return fmt.Errorf("item %d, relatedIdeas: send at most 8 related ideas per item", n)
+	}
+	for i, t := range it.RelatedIdeas {
+		if c := len(strings.TrimSpace(t)); c == 0 || c > 120 {
+			return fmt.Errorf("item %d, related idea %d: an idea title is 1 to 120 bytes", n, i+1)
+		}
+	}
+	return nil
 }
 
 // MaxAgentItems is how many cards one API request may carry (S106-4).
@@ -250,7 +369,7 @@ func (it AgentItem) check(n int) error {
 	case len(it.Summary) > 300:
 		return fmt.Errorf("item %d's summary is too long; keep it within 300 bytes", n)
 	}
-	return nil
+	return it.checkConnected(n)
 }
 
 // AgentAdd puts cards from one of the learner's scripts or tools straight
@@ -265,7 +384,9 @@ func (a *App) AgentAdd(ctx context.Context, t store.AgentToken, source string, i
 	sugs := make([]store.Suggestion, 0, len(items))
 	for _, it := range items {
 		sugs = append(sugs, store.Suggestion{Agent: t.Name, Source: strings.TrimSpace(source), IdeaTitle: it.Idea,
-			IdeaSummary: strings.TrimSpace(it.Summary), Prompt: it.Question, Answer: it.Answer, Exact: it.Exact})
+			IdeaSummary: strings.TrimSpace(it.Summary), Prompt: it.Question, Answer: it.Answer, Exact: it.Exact,
+			Resources: cleanResources(it.Resources), IdeaResources: cleanResources(it.IdeaResources),
+			Tags: it.RelatedTags, RelatedIdeas: it.RelatedIdeas})
 	}
 	return a.Store.For(t.UserID).AddFromAgent(ctx, sugs, a.now())
 }

@@ -99,3 +99,18 @@
   -H "Authorization: Bearer {{if .NewToken}}{{.NewToken}}{{else}}scry_…{{end}}" \
   -H "Content-Type: application/json" \
   -d '{"source": "The Federalist Papers", "items": [{"question": "Who wrote Federalist No. 10?", "answer": "James Madison", "idea": "Faction"}]}'</pre>{{end}}
+
+{{/* [S139-2] Related & resources: a closed disclosure, drawn only when it
+     holds something. Related cards show their question (never the answer)
+     as a link to the card's page; resources are links that open in a new
+     tab, or plain text, never fetched, previewed or embedded. */}}
+{{define "connected"}}{{with .}}
+<details class="connected" data-connected>
+  <summary class="connected-toggle" data-connected-toggle><span class="connected-label"><span class="connected-name">Related &amp; resources</span> <span class="connected-counts" data-connected-counts>{{range $i, $c := .Counts}}{{if $i}} {{end}}<span class="connected-count">{{$c}}</span>{{end}}</span></span><span class="connected-show"><span class="connected-when-closed">Show</span><span class="connected-when-open">Hide</span></span></summary>
+  <ul class="connected-list" data-connected-list>
+    {{range .Related}}<li class="connected-row" data-connected-row="related"><span class="connected-kind">RELATED</span><div class="connected-main"><a class="connected-title" href="/library/items/{{.ID}}" aria-label="{{.Full}}" data-related-link>{{.Preview}}</a><span class="connected-meta">{{.Idea}} · {{.Due}}</span></div></li>
+    {{end}}{{range .Resources}}<li class="connected-row" data-connected-row="resource"><span class="connected-kind">{{.Kind}}</span><div class="connected-main">{{if .URL}}<p class="connected-head"><a class="connected-title" href="{{.URL}}" target="_blank" rel="noopener noreferrer nofollow" data-resource-link>{{.Title}}</a> <span class="connected-host">{{.Host}}</span></p>{{else}}<p class="connected-head"><span class="connected-title">{{.Title}}</span></p>{{end}}{{if .Body}}<p class="connected-body">{{.Body}}</p>{{end}}</div></li>
+    {{end}}
+  </ul>
+</details>
+{{end}}{{end}}

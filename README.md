@@ -281,7 +281,23 @@ made before tokens could (can_add = 0). POST /api/v1/suggestions is kept as an
 alias of POST /api/v1/items with the same response: there is no Inbox (S106-4),
 `/inbox` answers 303 to Library, and any suggestion still pending in the old
 Inbox is moved into its learner's library when the database opens (idempotent,
-logged per learner). Body example:
+logged per learner).
+
+Each item may also carry, optionally ([S139-2]): `resources` (up to 5 learning
+resources for the card, each `{"title", "kind", "url", "body"}` with `kind` one
+of explainer, article, video, diagram or link, a 1–120 character title, and a
+`url` (absolute http(s), at most 2,048 bytes) or a plain-text `body` (at most
+1,000 characters) or both), `ideaResources` (up to 5 for the item's idea, kept
+once per idea), `relatedTags` (up to 8, 1–40 characters, compared
+case-insensitively) and `relatedIdeas` (up to 8 idea titles to link the item's
+idea to; one not in the library yet is linked when it arrives). A field that
+decodes but breaks a rule is a 422 naming the item and field ("item 2, resource
+1: kind must be explainer, article, video, diagram or link") and nothing is
+added; unknown fields, wrong JSON types and bodies over 1 MiB stay 400. Related
+cards (same idea, then a shared tag, then a linked idea; at most 5; never lines
+of an exact text or removed cards) and resources show in a closed "Related & resources"
+disclosure after a card is graded, on the card's page and (resources only) on
+its idea's page. Resources and tags are in the JSON export. Body example:
 
     {"source":"Reading notes","items":[{"question":"What is inversion?","answer":"Reason backward from failure","idea":"Mental models"}]}
 
@@ -311,6 +327,8 @@ guarantees. Unattended restart requires the deployment liveness policy above.
 | [S113-3] [S125-1] One mark everywhere, the exact L3-S3 fanned deck (DESIGN.md's canonical SVG, verbatim): the 24 px header mark beside `scry` on every page in the active mode's fixed fills, the adaptive 32-grid SVG favicon and hinted 16/32 px PNGs (`/favicon.ico`), the 64 px squircle app icon light and dark, the dark 180/192/512 home-screen, maskable (inside the 80% safe zone) and social preview icons; neither the lens nor the interim flat outline deck left anywhere; the Study icon stays a line glyph; the mark never animates | TestStory_S113_3_S125_1_OneL3S3MarkEverywhere; TestDesign_S125_1_CanonicalSVGIsDesignVerbatim; TestDesign_S125_1_MarkFillsFollowTheModeAndNeverAnimate; TestDesign_S125_1_FaviconsAreHintedAndKeepTheMark; TestDesign_S125_1_AppIconsSquircleAndMaskable; TestDesign_S125_1_NoLensOrInterimDeckRemains; TestDesign_S113_3_StudyIconStaysALineGlyph; TestDesign_BrandMarkBesideTheWordmark; scripts/render-brand.py redraws every asset; scripts/verify-slice125.mjs checks every surface headed |
 | [S135-1] The landing page is clean on a phone: at 760 px and below the drafting band runs edge to edge with only top and bottom rules and no ruler ticks, content 16 px from the screen edges; one full-width 48 px "Start the 7-day trial" (no hero "Sign in" on any width; Sign in stays once in the header); the terms "7 days free · no card needed · $5/month after" on one line, breaking only after a " · "; Prompt and Answer drawn as the phone's own Study screen (field, Return to check, mic, bordered Check, one card coming up), so no stage leaves a blank run over 24 px and the Specimen keeps one height. Also the Specimen's [S131-1] subject header (layers icon, "Mental models · Set 1", "4 / 11", no "Study ·") | TestStory_S135_1_TheLandingPageIsCleanOnAPhone; TestDesign_S135_1_LandingOnPhones; TestDesign_S131_1_SpecimenSubjectHeader; headed: scripts/verify-slice135.mjs |
 | [S138-1] The landing page says "Remember everything.": the one `h1` reads exactly "Remember everything." in Display type within the hero's 16ch measure (two lines, "Remember" over "everything."); the page `<title>` and `og:title` read "Remember everything · scry"; "Keep what's worth knowing" appears nowhere a visitor can see it; the lede, trial action, trial terms, Specimen, rows and site description are unchanged | TestStory_S138_1_TheLandingPageSaysRememberEverything; TestDesign_S138_1_HeadlineKeepsDisplayAndItsMeasure; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen; scripts/verify-slice138.mjs checks it headed against the pre-change build |
+| [S139-1] A long answer gets the whole page: an Incorrect pair where either answer is long (more than 80 characters, or a line break) stacks "Your answer" over "Correct answer", 16 px apart, in Text at Title size (24 px) with a 1.55 line height at the 68ch measure, the struck answer with a 2 px missed-red line that fades in; two short answers keep Judgment size; the page is at least 100dvh and scrolls with the window, nothing in the review scrolls inside itself, clips or scrolls sideways | TestStory_S139_1_LongAnswerGetsTheWholePage; TestSlice70_Review_ShowsTheCurrentCardOnly; headed: scripts/verify-slice139.mjs (testdata/s139/fixture.json) |
+| [S139-2] Connected learning: `POST /api/v1/items` (and `/api/v1/suggestions`) accepts optional `resources`, `ideaResources`, `relatedTags` and `relatedIdeas`, old shape unchanged (201), bad values 422 naming item and field, 400 for unknown fields, wrong types and >1 MiB; related cards (same idea, shared tag, linked idea; max 5; no exact-text lines or removed cards, stand-alone exact cards included; idea titles matched with Unicode case folding; never across learners) and resources in a closed "Related & resources" disclosure after grading (never while a card waits: a related card's question is not in the waiting page's markup, its scrollback and coming-up row reads "Card N"), on the card page and (resources only) the idea page; resources and tags survive Recently removed and are in the JSON export; Ask Why? on Almost/Incorrect ends in one "Rebuild:" sentence within 280 characters naming the concrete gap | TestStory_S139_2_APIAcceptsConnectedFieldsBackwardCompatible; TestStory_S139_2_APIRefusesBadConnectedFields; TestStory_S139_2_RelatedCardsOrderLimitAndRemoval; TestStory_S139_2_ConnectedLearningStaysInMyLibrary; TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading; TestStory_S139_2_AskWhyNamesTheGapToRebuild; TestDesign_S139_2_RelatedAndResourcesDisclosure; TestStory_S139_2_RelatedIdeasMatchAccentedTitlesInAnyCase; TestStory_S139_2_RelatedCardsKeepStandAloneExactCardsAndDropExactTextLines; TestStory_S139_2_RelatedCardsStopAtFive; headed: scripts/verify-slice139.mjs |
 | [S106-1] Landing hero and Study Specimen: the Specimen steps Prompt, Answer, Judged on its own or by its step controls, holds on hover or focus, rests on Judged without script or under reduced motion; four schedule facts on one line each in a flush 2x2 grid; four How Scry works rows with icons (Slice 106) | TestS106_1_LandingSpecimenStepsAndRestsOnJudged; TestS106_1_SpecimenScheduleGridCSS; TestS106_1_HowScryWorksRowsHaveIcons; TestStory_Newcomer_SeesAJudgedCardAtAGlanceAndCanAddScryToTheHomeScreen |
 | Story: forgot password: email on Sign in, then "Forgot password" on the password step | TestStory_ForgotPassword_EnterEmailThenChooseForgotPasswordOnThePasswordStep; TestClerkFrontendStandIn (these cover the Sign in guidance and Scry's "Reset your password" copy on Clerk's forgot/reset-password routes; Clerk itself completes the emailed reset and the sign-in with the new password, which stay outside automated test coverage — the stand-in simulates no reset) |
 | Story: about 30 starter sets | TestStory_StarterShelf_EmptyLibraryPicksFromAboutThirtySetsAndStarts |
@@ -465,6 +483,29 @@ requires them to be identical. The walkthrough steps the Specimen, opens
     make build BUILD_SHA=$(git rev-parse HEAD)
     DISPLAY=:0 node scripts/verify-slice138.mjs --bin ./bin/scry --sha $(git rev-parse HEAD) \
          --baseline-bin /tmp/scry-before --media /tmp/s138
+
+`scripts/verify-slice139.mjs` checks the long-answer review ([S139-1]) and
+connected learning ([S139-2]) in a real headed Chrome at desktop 1440x900 and
+phone 390x844 (touch, DPR 2), light and dark, each against its own fresh
+test-mode Scry with the grader scripted to Incorrect: it signs up, creates an
+API token in Settings, adds `testdata/s139/fixture.json` through
+POST /api/v1/items (plus old-shape, 422 and 400 requests), and studies the
+session by keyboard: the long card waits with nothing of Related & resources and
+no related question anywhere in its markup (scrollback and coming up included); its review stacks both answers at Title size, 1.55, 16 px apart,
+within 68ch, with no inner scroll, clipping or sideways scroll and the page
+heights of [S139-1], and every control is reached by scrolling the page; the
+disclosure is closed with its counts, opens by click or tap and by keyboard
+(Tab, Space, Enter) without scrolling, lists RELATED rows then resources with
+1 px rules and no shadow or fill, 200 ms ease-out (at once under reduced
+motion); Ask Why? ends in one "Rebuild:" sentence naming the gap; a correct
+answer that is one unbroken 299-character URL wraps inside its column with
+`scrollWidth` no wider than the configured viewport; short, line-break and long
+learner answers lay out as specified; the card and idea pages show their
+disclosures; and no request goes to a resource's host. `--expect-fail` turns it
+into a negative control against an old build.
+
+    make build BUILD_SHA=$(git rev-parse HEAD)
+    DISPLAY=:0 node scripts/verify-slice139.mjs --bin ./bin/scry --sha $(git rev-parse HEAD) --media /tmp/s139
 
 `scripts/verify-slice54.mjs` checks the Slice 54 brand and craft pass the same
 way, as the seeded demo learner, at desktop 1440x900 and phone 390x844 (touch):

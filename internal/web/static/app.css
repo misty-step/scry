@@ -1192,6 +1192,7 @@ form.is-busy > .field, form.is-busy > .field-row, form.is-busy > .hint { opacity
   .sug:hover { background: var(--raised); }
   .btn-approve:hover { background: var(--accent); color: var(--on-accent); }
   .example:hover { border-color: var(--ink); color: var(--ink); }
+  .connected-toggle:hover .connected-name { text-decoration-line: underline; }
 }
 
 /* ---- Motion ([S113-2]) ---------------------------------------------------
@@ -1317,3 +1318,69 @@ a.row-main { min-height: var(--touch); }
 .mark-middle { fill: var(--mark-middle); }
 .mark-top { fill: var(--mark-top); }
 .mark-bar { fill: var(--mark-bar); }
+
+/* [S139-1] A long answer gets the whole page. When either answer of an
+   Incorrect pair is long (more than 80 characters, or a line break), the
+   two stack, "Your answer" over "Correct answer", 16 px apart, at Title
+   size with the reading line height, at the reading measure. Line breaks
+   are kept; words break only between words or after a hyphen, and only an
+   unbroken string wider than the column (a long URL) breaks inside itself.
+   Every level of the pair is a minmax(0, 1fr) track with min-width: 0, so
+   such a string never sizes its column (or the page) to its own width:
+   it wraps inside min(68ch, 100%). Nothing is a box: no height,
+   max-height, overflow or fade. The strike is a 2 px line through every
+   line and fades in with the answer instead of drawing. */
+.judgment-pair.judgment-long { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--s3); min-width: 0; max-width: 100%; }
+.long-answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); min-width: 0; max-width: 100%; }
+.long-label { color: var(--ink-muted); }
+.long-text {
+  font: 500 var(--title)/1.55 var(--text); letter-spacing: -0.01em; color: var(--ink);
+  min-width: 0; max-width: min(var(--measure), 100%); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; hyphens: manual;
+}
+.long-struck { color: var(--ink-muted); }
+.long-struck-text { text-decoration: line-through; text-decoration-color: var(--missed); text-decoration-thickness: 2px; }
+.judged .judgment-long { animation: rise-in var(--motion-arrive) var(--ease) both; }
+
+/* [S139-2] Related & resources: a quiet disclosure, closed each time a
+   review opens. Closed, one row at least 44 px tall under a 1 px rule:
+   the label in Meta mono, the counts in ink-muted, "Show" (or "Hide") at
+   the right edge. Open, a hairline-ruled list at the reading measure: no
+   fill, no shadow, no box per row; each row opens with its kind in short
+   uppercase Meta mono in an 88 px column (above the text on phones). */
+.connected { max-width: var(--measure); border-top: 1px solid var(--line); interpolate-size: allow-keywords; }
+.connected-toggle {
+  list-style: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  min-height: var(--touch); padding: var(--s2) 0; cursor: pointer; font: 400 var(--meta)/1.4 var(--mono);
+}
+.connected-toggle::-webkit-details-marker { display: none; }
+.connected-label { min-width: 0; overflow-wrap: anywhere; }
+.connected-name { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.connected-counts { color: var(--ink-muted); }
+.connected-count { white-space: nowrap; }
+.connected-show { flex: none; color: var(--ink); }
+.connected:not([open]) .connected-when-open, .connected[open] .connected-when-closed { display: none; }
+.connected-list { max-width: var(--measure); }
+.connected-row {
+  display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 4px var(--s3); align-items: baseline;
+  padding: 12px 0; border-top: 1px solid var(--line); background: none;
+}
+.connected-kind { font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.connected-main { display: grid; gap: 4px; min-width: 0; }
+.connected-head { max-width: none; overflow-wrap: anywhere; }
+.connected-title { color: var(--ink); font: 400 var(--body)/1.55 var(--text); overflow-wrap: anywhere; }
+a.connected-title { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.connected-meta, .connected-host { font: 400 var(--meta)/1.4 var(--mono); color: var(--ink-muted); overflow-wrap: anywhere; }
+.connected-body { color: var(--ink-body); font: 400 var(--body)/1.55 var(--text); white-space: pre-wrap; overflow-wrap: anywhere; max-width: none; }
+@media screen and (max-width: 760px) {
+  .connected-row { grid-template-columns: minmax(0, 1fr); }
+}
+/* It opens and closes in height and opacity (200 ms, ease-out), as the
+   Edit card drawer; under reduced motion at once. */
+.connected::details-content {
+  block-size: 0; opacity: 0; overflow-y: clip;
+  transition: block-size var(--motion-arrive) var(--ease), opacity var(--motion-arrive) var(--ease), content-visibility var(--motion-arrive) allow-discrete;
+}
+.connected[open]::details-content { block-size: auto; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .connected::details-content { transition: none !important; }
+}

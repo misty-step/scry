@@ -562,7 +562,7 @@ func TestExplain_ExplainsTheGradedAnswerAfterTheCardIsEdited(t *testing.T) {
 		Fallback bool
 	}
 	_ = json.Unmarshal([]byte(body), &out)
-	if status != 200 || out.Fallback || !strings.Contains(out.Text, "the card expects “"+item.Answer+"”") || strings.Contains(out.Text, "Replacement") {
+	if status != 200 || out.Fallback || !strings.Contains(out.Text, "the card's point is “"+item.Answer+"”") || strings.Contains(out.Text, "Replacement") {
 		t.Fatalf("explained %d %s, want the graded expected answer %q", status, body, item.Answer)
 	}
 	if ex.Calls() != 1 {
