@@ -406,9 +406,31 @@ func (s *Server) studyData(ctx context.Context, c *rc, sess *store.StudySession)
 	// Such a cue (the next line of an exact text quotes the line before
 	// it) is held back until the answer is in; a cue that gives the answer
 	// away only by its text's title is shown under a neutral title.
+	//
+	// [S139-2]: nothing of a card's Related & resources appears while it
+	// waits, so the question of a card related to it (same idea, a shared
+	// tag or a linked idea; see store.RelatedCards) is in neither list
+	// either. Its row keeps its place under a question-free label, its
+	// number in this session ("Card 3"), until this card is graded. If the
+	// relation cannot be read, every row is shown that way.
+	var related map[int64]bool
+	relatedOK := true
+	if !judged && cur != nil {
+		var err error
+		if related, err = c.us.RelatedIDs(ctx, cur.Item.ID); err != nil {
+			relatedOK = false
+		}
+	}
+	place := map[int64]int{}
+	for i := range sess.Entries {
+		place[sess.Entries[i].Item.ID] = i + 1
+	}
 	cue := func(it store.Item) (string, bool) {
 		if judged || cur == nil {
 			return it.Prompt, true
+		}
+		if !relatedOK || related[it.ID] {
+			return "Card " + strconv.Itoa(place[it.ID]), true
 		}
 		return cueWhile(it, cur.Item.Answer)
 	}

@@ -1324,16 +1324,18 @@ a.row-main { min-height: var(--touch); }
    two stack, "Your answer" over "Correct answer", 16 px apart, at Title
    size with the reading line height, at the reading measure. Line breaks
    are kept; words break only between words or after a hyphen, and only an
-   unbroken string wider than the column breaks inside itself. Nothing is
-   a box: no height, max-height, overflow or fade. The strike is a 2 px
-   line through every line and fades in with the answer instead of
-   drawing. */
-.judgment-pair.judgment-long { display: grid; justify-items: start; gap: var(--s3); }
-.long-answer { display: grid; gap: var(--s1); min-width: 0; max-width: 100%; }
+   unbroken string wider than the column (a long URL) breaks inside itself.
+   Every level of the pair is a minmax(0, 1fr) track with min-width: 0, so
+   such a string never sizes its column (or the page) to its own width:
+   it wraps inside min(68ch, 100%). Nothing is a box: no height,
+   max-height, overflow or fade. The strike is a 2 px line through every
+   line and fades in with the answer instead of drawing. */
+.judgment-pair.judgment-long { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--s3); min-width: 0; max-width: 100%; }
+.long-answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); min-width: 0; max-width: 100%; }
 .long-label { color: var(--ink-muted); }
 .long-text {
   font: 500 var(--title)/1.55 var(--text); letter-spacing: -0.01em; color: var(--ink);
-  max-width: min(var(--measure), 100%); white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; hyphens: manual;
+  min-width: 0; max-width: min(var(--measure), 100%); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; hyphens: manual;
 }
 .long-struck { color: var(--ink-muted); }
 .long-struck-text { text-decoration: line-through; text-decoration-color: var(--missed); text-decoration-thickness: 2px; }

@@ -106,33 +106,66 @@ func (f *FakeExplainer) Explain(ctx context.Context, in ExplainInput) (string, U
 	return FakeExplanation(in), use, nil
 }
 
-// FakeRebuild is the test explainer's last sentence for an Almost or
-// Incorrect answer ([S139-2]): the one gap to rebuild, in the learner's
-// own words.
-const FakeRebuild = "Rebuild: put the card's answer back in your own words (test explainer, not an assessment)."
-
 // FakeExplanation is the test explainer's fixed fixture: two sentences
-// within ExplainMaxChars. For a right answer it says why it holds; for an
-// Almost or Incorrect one it says what differed and ends in one "Rebuild:"
-// sentence ([S139-2]). The two answers are quoted, each shortened at a
-// word when the whole would not fit, so the Rebuild sentence is never cut.
+// within ExplainMaxChars. For a right answer it says why it holds. For an
+// Almost or Incorrect one it says what the learner answered, then ends in
+// one "Rebuild:" sentence ([S139-2]) that names the concrete gap: the
+// card's core point (the first sentence of its answer) set against the
+// learner's answer ("Rebuild: the card's point is “Opportunity cost is the
+// value of the best alternative you give up …”, not “the price”."). It is
+// a side-by-side of the two texts, never an assessment. The quotes are
+// shortened at a word when the whole would not fit, so neither sentence
+// is ever cut.
 func FakeExplanation(in ExplainInput) string {
 	answer, expected := strings.Join(strings.Fields(in.Answer), " "), strings.Join(strings.Fields(in.Expected), " ")
-	build := func(a, e string) string {
-		given := "gave no answer"
-		if a != "" {
-			given = "answered “" + a + "”"
-		}
-		if in.Verdict == srs.Right {
+	if in.Verdict == srs.Right {
+		build := func(a, e string) string {
+			given := "gave no answer"
+			if a != "" {
+				given = "answered “" + a + "”"
+			}
 			return fmt.Sprintf("Why it holds: you %s, which says the same as the card's “%s”. (Test explainer: a side-by-side, not an assessment.)", given, e)
 		}
-		return fmt.Sprintf("What differed: you %s, and the card expects “%s”. %s", given, e, FakeRebuild)
+		out := build(answer, expected)
+		for n := 60; utf8.RuneCountInString(out) > ExplainMaxChars && n >= 8; n -= 4 {
+			out = build(shortenAtWord(answer, n), shortenAtWord(expected, n))
+		}
+		return out
 	}
-	out := build(answer, expected)
-	for n := 60; utf8.RuneCountInString(out) > ExplainMaxChars && n >= 8; n -= 4 {
-		out = build(shortenAtWord(answer, n), shortenAtWord(expected, n))
+	core := corePoint(in.Expected)
+	build := func(a, c string) string {
+		if a == "" {
+			return fmt.Sprintf("What differed: you gave no answer. Rebuild: the card's point is “%s”.", c)
+		}
+		differed := "which misses the card's point"
+		if in.Verdict == srs.Close {
+			differed = "which comes close to the card's point but leaves part of it out"
+		}
+		return fmt.Sprintf("What differed: you answered “%s”, %s. Rebuild: the card's point is “%s”, not “%s”.", a, differed, c, a)
+	}
+	out := build(answer, core)
+	for n := 160; utf8.RuneCountInString(out) > ExplainMaxChars && n >= 8; n -= 4 {
+		out = build(shortenAtWord(answer, min(n, 60)), shortenAtWord(core, n))
 	}
 	return out
+}
+
+// corePoint is the first sentence (or first line) of a card's answer, the
+// point the test explainer's Rebuild sentence names, without its closing
+// stop.
+func corePoint(expected string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(expected), "\n")
+	first = strings.Join(strings.Fields(first), " ")
+	for i, r := range first {
+		if (r == '.' || r == '?' || r == '!') && i+1 < len(first) && first[i+1] == ' ' {
+			first = first[:i]
+			break
+		}
+	}
+	if c := strings.TrimRight(first, " .!?"); c != "" {
+		return c
+	}
+	return first
 }
 
 // shortenAtWord cuts s to at most n characters at a word, with "…".

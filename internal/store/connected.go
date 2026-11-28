@@ -122,47 +122,68 @@ func (u *UserStore) connect(ctx context.Context, tx *sql.Tx, itemID int64, s Sug
 	return u.linkByTitles(ctx, tx, ideaID, s.RelatedIdeas)
 }
 
+// sameTitle reports whether two idea titles name the same idea: trimmed
+// and compared with Unicode case folding, so "Énergie" names "énergie"
+// (SQLite's NOCASE folds ASCII letters only).
+func sameTitle(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
+}
+
 // linkByTitles links an idea to the learner's ideas of these titles
-// (case-insensitive, never itself). A title with no idea yet is kept, and
-// linked when an idea of that title arrives (resolvePendingLinks).
+// (sameTitle, never itself). A title with no idea yet is kept, and linked
+// when an idea of that title arrives (resolvePendingLinks). The titles
+// are matched in Go over this learner's live ideas.
 func (u *UserStore) linkByTitles(ctx context.Context, tx *sql.Tx, ideaID int64, titles []string) error {
+	var ideas []struct {
+		id    int64
+		title string
+	}
+	var self string
+	loaded := false
 	for _, title := range titles {
 		title = strings.TrimSpace(title)
 		if title == "" {
 			continue
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM ideas WHERE user_id = ? AND deleted_at = 0 AND title = ? COLLATE NOCASE AND id != ? ORDER BY id`,
-			u.uid, title, ideaID)
-		if err != nil {
-			return err
-		}
-		var found []int64
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
+		if !loaded {
+			rows, err := tx.QueryContext(ctx, `SELECT id, title FROM ideas WHERE user_id = ? AND deleted_at = 0 ORDER BY id`, u.uid)
+			if err != nil {
 				return err
 			}
-			found = append(found, id)
+			for rows.Next() {
+				var i struct {
+					id    int64
+					title string
+				}
+				if err := rows.Scan(&i.id, &i.title); err != nil {
+					rows.Close()
+					return err
+				}
+				if i.id == ideaID {
+					self = i.title
+					continue
+				}
+				ideas = append(ideas, i)
+			}
+			rows.Close()
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			loaded = true
 		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		for _, other := range found {
-			if err := u.link(ctx, tx, ideaID, other); err != nil {
+		found := false
+		for _, other := range ideas {
+			if !sameTitle(other.title, title) {
+				continue
+			}
+			found = true
+			if err := u.link(ctx, tx, ideaID, other.id); err != nil {
 				return err
 			}
 		}
-		if len(found) > 0 {
-			continue
-		}
-		// Its own title names no other idea: an idea is never linked to itself.
-		var self string
-		if err := tx.QueryRowContext(ctx, `SELECT title FROM ideas WHERE id = ? AND user_id = ?`, ideaID, u.uid).Scan(&self); err != nil {
-			return notFound(err)
-		}
-		if strings.EqualFold(self, title) {
+		// Its own title names no other idea: an idea is never linked to
+		// itself.
+		if found || sameTitle(self, title) {
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO idea_pending_links (user_id, idea_id, title) VALUES (?, ?, ?)`, u.uid, ideaID, title); err != nil {
@@ -173,37 +194,41 @@ func (u *UserStore) linkByTitles(ctx context.Context, tx *sql.Tx, ideaID int64, 
 }
 
 // resolvePendingLinks links a newly arrived idea to every idea of this
-// learner that named its title in relatedIdeas before it existed.
+// learner that named its title (sameTitle) in relatedIdeas before it
+// existed, and drops those pending rows.
 func (u *UserStore) resolvePendingLinks(ctx context.Context, q querier, ideaID int64, title string) error {
-	rows, err := q.QueryContext(ctx, `SELECT idea_id FROM idea_pending_links WHERE user_id = ? AND title = ? COLLATE NOCASE AND idea_id != ?`,
-		u.uid, strings.TrimSpace(title), ideaID)
+	rows, err := q.QueryContext(ctx, `SELECT idea_id, title FROM idea_pending_links WHERE user_id = ? AND idea_id != ?`, u.uid, ideaID)
 	if err != nil {
 		return err
 	}
-	var from []int64
+	type pending struct {
+		from  int64
+		title string
+	}
+	var match []pending
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var p pending
+		if err := rows.Scan(&p.from, &p.title); err != nil {
 			rows.Close()
 			return err
 		}
-		from = append(from, id)
+		if sameTitle(p.title, title) {
+			match = append(match, p)
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	for _, id := range from {
-		if err := u.link(ctx, q, id, ideaID); err != nil {
+	for _, p := range match {
+		if err := u.link(ctx, q, p.from, ideaID); err != nil {
+			return err
+		}
+		if _, err := q.ExecContext(ctx, `DELETE FROM idea_pending_links WHERE user_id = ? AND idea_id = ? AND title = ?`, u.uid, p.from, p.title); err != nil {
 			return err
 		}
 	}
-	if len(from) == 0 {
-		return nil
-	}
-	_, err = q.ExecContext(ctx, `DELETE FROM idea_pending_links WHERE user_id = ? AND title = ? COLLATE NOCASE AND idea_id != ?`,
-		u.uid, strings.TrimSpace(title), ideaID)
-	return err
+	return nil
 }
 
 func scanResources(rows *sql.Rows, err error) ([]Resource, error) {
@@ -264,8 +289,33 @@ func (u *UserStore) ItemTags(ctx context.Context, itemID int64) ([]string, error
 // its own idea, then cards sharing one of its related tags, then the cards
 // of ideas linked to its idea, each group in Library order. It never lists
 // the card itself, a removed card (or one of a removed idea), or a line of
-// an exact text, whose question quotes the line before it.
+// an exact text (an exact card with a line number, whose question quotes
+// the line before it). A stand-alone exact card, a question with an
+// answer judged word for word ("Give the chemical symbol for gold" ->
+// "Au"), is a card like any other and is listed.
 func (u *UserStore) RelatedCards(ctx context.Context, itemID int64) ([]RelatedCard, error) {
+	return u.related(ctx, itemID, MaxRelated)
+}
+
+// RelatedIDs is every card related to one card by the rules of
+// RelatedCards, without its limit: what a waiting card's page must not
+// cue before the card is graded ([S139-2]).
+func (u *UserStore) RelatedIDs(ctx context.Context, itemID int64) (map[int64]bool, error) {
+	cards, err := u.related(ctx, itemID, 0)
+	if err != nil {
+		return nil, err
+	}
+	ids := make(map[int64]bool, len(cards))
+	for _, c := range cards {
+		ids[c.ID] = true
+	}
+	return ids, nil
+}
+
+// related lists the related cards in RelatedCards' order, at most limit
+// of them (no limit when limit <= 0). It stops reading as soon as it has
+// limit cards.
+func (u *UserStore) related(ctx context.Context, itemID int64, limit int) ([]RelatedCard, error) {
 	var ideaID int64
 	err := u.s.db.QueryRowContext(ctx, `SELECT t.idea_id FROM items t JOIN ideas i ON i.id = t.idea_id AND i.user_id = t.user_id
 		WHERE t.id = ? AND t.user_id = ? AND t.deleted_at = 0 AND i.deleted_at = 0`, itemID, u.uid).Scan(&ideaID)
@@ -273,7 +323,7 @@ func (u *UserStore) RelatedCards(ctx context.Context, itemID int64) ([]RelatedCa
 		return nil, notFound(err)
 	}
 	const base = `SELECT t.id, t.prompt, i.title, t.due_at FROM items t JOIN ideas i ON i.id = t.idea_id AND i.user_id = t.user_id
-		WHERE t.user_id = ?1 AND t.deleted_at = 0 AND i.deleted_at = 0 AND t.exact = 0 AND t.id != ?2 AND `
+		WHERE t.user_id = ?1 AND t.deleted_at = 0 AND i.deleted_at = 0 AND NOT (t.exact = 1 AND t.line_no > 0) AND t.id != ?2 AND `
 	groups := []string{
 		base + `t.idea_id = ?3 ORDER BY t.id`,
 		base + `t.id IN (SELECT o.item_id FROM item_tags o JOIN item_tags m ON m.tag = o.tag AND m.user_id = o.user_id
@@ -281,32 +331,34 @@ func (u *UserStore) RelatedCards(ctx context.Context, itemID int64) ([]RelatedCa
 		base + `t.idea_id IN (SELECT b_id FROM idea_links WHERE user_id = ?1 AND a_id = ?3
 			UNION SELECT a_id FROM idea_links WHERE user_id = ?1 AND b_id = ?3) ORDER BY i.position, i.id, t.id`,
 	}
+	full := func(out []RelatedCard) bool { return limit > 0 && len(out) >= limit }
 	seen := map[int64]bool{}
 	var out []RelatedCard
 	for _, q := range groups {
-		if len(out) >= MaxRelated {
+		if full(out) {
 			break
 		}
 		rows, err := u.s.db.QueryContext(ctx, q, u.uid, itemID, ideaID)
 		if err != nil {
 			return nil, err
 		}
-		for rows.Next() {
+		for !full(out) && rows.Next() {
 			var c RelatedCard
 			var due int64
 			if err := rows.Scan(&c.ID, &c.Prompt, &c.IdeaTitle, &due); err != nil {
 				rows.Close()
 				return nil, err
 			}
-			if seen[c.ID] || len(out) >= MaxRelated {
+			if seen[c.ID] {
 				continue
 			}
 			seen[c.ID] = true
 			c.Due = tm(due)
 			out = append(out, c)
 		}
+		err = rows.Err()
 		rows.Close()
-		if err := rows.Err(); err != nil {
+		if err != nil {
 			return nil, err
 		}
 	}

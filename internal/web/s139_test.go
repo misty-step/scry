@@ -166,8 +166,8 @@ func TestStory_S139_2_APIRefusesBadConnectedFields(t *testing.T) {
 }
 
 // [S139-2] Related cards: same idea, then a shared tag, then a linked idea,
-// each in Library order, at most 5; never the card itself, an exact-text
-// line or a removed card. relatedIdeas links an existing idea at once and
+// each in Library order, at most 5; never the card itself, a line of an
+// exact text or a removed card (a stand-alone exact card is listed). relatedIdeas links an existing idea at once and
 // one that arrives later when it does. Resources and tags survive Recently
 // removed and restore, and appear in the JSON export.
 func TestStory_S139_2_RelatedCardsOrderLimitAndRemoval(t *testing.T) {
@@ -194,11 +194,12 @@ func TestStory_S139_2_RelatedCardsOrderLimitAndRemoval(t *testing.T) {
 	for _, r := range rel {
 		got = append(got, r.Prompt)
 	}
-	// Same idea, then the shared tag ("Trade-offs" and "trade-offs" match;
-	// the exact line tagged "TRADE-OFFS" is left out), then the linked
-	// idea's cards in Library order (the earlier "What is a sunk cost?"
-	// first).
-	want := []string{s139Same, s139Tagged, "What is a sunk cost?", s139Linked}
+	// Same idea, then the shared tag ("Trade-offs", "trade-offs" and
+	// "TRADE-OFFS" match, so the stand-alone exact card "Recite the
+	// decision motto" is listed: it is not a line of an exact text), then
+	// the linked idea's cards in Library order (the earlier "What is a
+	// sunk cost?" first).
+	want := []string{s139Same, s139Tagged, s139Exact, "What is a sunk cost?", s139Linked}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("related =\n%q\nwant\n%q", got, want)
 	}
@@ -206,6 +207,22 @@ func TestStory_S139_2_RelatedCardsOrderLimitAndRemoval(t *testing.T) {
 	related, _ := lib.Related(ctx, long.IdeaID)
 	if len(related) != 1 || related[0].Title != "Sunk cost" {
 		t.Fatalf("idea links = %+v", related)
+	}
+	// The lines of an exact text are never related, even through a linked
+	// idea: each line's question quotes the line before it.
+	verse := w.addExactText("related@example.com", "Decision verse", "Two roads diverged\nAnd I took the one less travelled")
+	if err := lib.Link(ctx, long.IdeaID, verse); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := lib.RelatedIDs(ctx, long.ID)
+	verseLines, _ := lib.Items(ctx, verse)
+	if len(verseLines) != 2 || len(all) != 5 {
+		t.Fatalf("%d verse lines, %d related", len(verseLines), len(all))
+	}
+	for _, l := range verseLines {
+		if all[l.ID] {
+			t.Errorf("an exact-text line is related: %q", l.Prompt)
+		}
 	}
 	// "Later idea" arrives afterwards and is linked then; an idea is never
 	// linked to itself ("waiting IDEA").
@@ -258,7 +275,8 @@ func TestStory_S139_2_RelatedCardsOrderLimitAndRemoval(t *testing.T) {
 	if res, err := lib.CardResources(ctx, long.ID); err != nil || len(res) != 0 {
 		t.Fatalf("a removed card still shows resources: %v %v", res, err)
 	}
-	if rel, _ := lib.RelatedCards(ctx, tagged.ID); len(rel) != 0 {
+	// Only the stand-alone exact card shares the tag now.
+	if rel, _ := lib.RelatedCards(ctx, tagged.ID); len(rel) != 1 || rel[0].Prompt != s139Exact {
 		t.Fatalf("a removed card is related by its tag: %+v", rel)
 	}
 	if err := lib.RestoreItem(ctx, long.ID); err != nil {
@@ -269,7 +287,7 @@ func TestStory_S139_2_RelatedCardsOrderLimitAndRemoval(t *testing.T) {
 	if len(res) != 3 || len(tags) != 1 || tags[0] != "trade-offs" {
 		t.Fatalf("after restore: resources %+v tags %v", res, tags)
 	}
-	if rel, _ := lib.RelatedCards(ctx, tagged.ID); len(rel) != 1 || rel[0].ID != long.ID {
+	if rel, _ := lib.RelatedCards(ctx, tagged.ID); len(rel) != 2 || rel[0].ID != long.ID || rel[1].Prompt != s139Exact {
 		t.Fatalf("restored tag does not relate: %+v", rel)
 	}
 	if err := lib.RemoveIdea(ctx, long.IdeaID, w.now()); err != nil {
@@ -355,7 +373,7 @@ func TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading(t *testing.
 	lib := w.lib("learner@example.com")
 	long := s139Item(t, lib, s139Long)
 	spoilers := []string{"Related &amp; resources", "Related & resources", "data-connected", "The road not taken", "A map of one choice",
-		"Opportunity cost on Wikipedia", "en.wikipedia.org", s139Same, s139Tagged, s139Linked}
+		"Opportunity cost on Wikipedia", "en.wikipedia.org", s139Same, s139Tagged, s139Exact, s139Linked}
 	body := b.mustGet("/study")
 	var seen []string
 	for i := 0; i < 20; i++ {
@@ -369,16 +387,17 @@ func TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading(t *testing.
 		}
 		body = b.answerNext(it, "x")
 	}
-	// The waiting page's raw markup, not only its text. The session's own
-	// scrollback and "coming up" cues are what they always were (governed
-	// by the spoiler rules of [S111-1] and [S130-1]); nothing of the
-	// disclosure is anywhere else on the page.
+	// The waiting page's whole raw markup, not only its text, the
+	// session's scrollback and "coming up" list included: a related card
+	// keeps its row there under a question-free label ("Card 3").
 	_, raw := b.get("/study")
-	raw = regexp.MustCompile(`(?s)<ol class="(scrollback|upcoming)".*?</ol>`).ReplaceAllString(raw, "")
 	for _, s := range spoilers {
 		if strings.Contains(raw, s) {
 			t.Errorf("while the card waits the page holds %q", s)
 		}
+	}
+	if !regexp.MustCompile(`<li>Card \d+</li>|<span class="answered-q">Card \d+</span>`).MatchString(raw) {
+		t.Errorf("no question-free row for a related card in the scrollback or coming up:\n%s", regexp.MustCompile(`(?s)<ol class="(scrollback|upcoming)".*?</ol>`).FindAllString(raw, -1))
 	}
 	w.model.script = []ai.Judgment{{Verdict: srs.Missed, Reason: ai.CriterionSentence(srs.Missed)}}
 	review := b.answer(long, "the price")
@@ -389,12 +408,12 @@ func TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading(t *testing.
 	if strings.Contains(d[:strings.Index(d, ">")], " open") {
 		t.Error("the disclosure opens open")
 	}
-	has(t, d, "Related & resources", `<span class="connected-count">· 3 cards</span> <span class="connected-count">· 3 resources</span>`, "Show", "Hide",
+	has(t, d, "Related & resources", `<span class="connected-count">· 4 cards</span> <span class="connected-count">· 3 resources</span>`, "Show", "Hide",
 		`href="/library/items/`+strconv.FormatInt(s139Item(t, lib, s139Same).ID, 10)+`"`, "RELATED", "ARTICLE", "EXPLAINER", "DIAGRAM",
 		`href="https://en.wikipedia.org/wiki/Opportunity_cost" target="_blank" rel="noopener noreferrer nofollow"`, "en.wikipedia.org",
 		"Picture two roads.\nThe one you take", "Opportunity cost · due today")
 	// RELATED rows first, then resources: the card's own, then its idea's.
-	order := []string{s139Same, s139Tagged, s139Linked, "Opportunity cost on Wikipedia", "The road not taken", "A map of one choice"}
+	order := []string{s139Same, s139Tagged, s139Exact, s139Linked, "Opportunity cost on Wikipedia", "The road not taken", "A map of one choice"}
 	at := -1
 	for _, o := range order {
 		i := strings.Index(d, o)
@@ -403,8 +422,9 @@ func TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading(t *testing.
 		}
 		at = i
 	}
-	// Never a related card's answer, never the exact-text line.
-	hasNot(t, d, "The best option you gave up", "Giving up some of one thing", "It is spent whatever", s139Exact, "Choose with the road")
+	// Never a related card's answer (the stand-alone exact card's
+	// question is listed, never its answer).
+	hasNot(t, d, "The best option you gave up", "Giving up some of one thing", "It is spent whatever", "Choose with the road")
 	// Between Ask Why? and the schedule.
 	if a, c, s := strings.Index(review, "data-explain-form"), strings.Index(review, `class="connected"`), strings.Index(review, "data-telemetry"); !(a < c && c < s) {
 		t.Errorf("order: explain %d, connected %d, schedule %d", a, c, s)
@@ -412,7 +432,7 @@ func TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading(t *testing.
 	// The card's own page shows the same disclosure; the idea page only the
 	// idea's own resources.
 	card := b.mustGet("/library/items/" + strconv.FormatInt(long.ID, 10))
-	has(t, detailsRE.FindString(card), "· 3 cards</span>", "· 3 resources</span>", s139Same, "The road not taken")
+	has(t, detailsRE.FindString(card), "· 4 cards</span>", "· 3 resources</span>", s139Same, "The road not taken")
 	idea := detailsRE.FindString(b.mustGet("/library/ideas/" + strconv.FormatInt(long.IdeaID, 10)))
 	has(t, idea, `<span class="connected-count">· 1 resource</span></span>`, "A map of one choice", "DIAGRAM")
 	hasNot(t, idea, "RELATED", "The road not taken", "cards")
@@ -424,44 +444,64 @@ func TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading(t *testing.
 }
 
 // [S139-2] The Ask Why? fixture for Almost and Incorrect ends in one
-// "Rebuild:" sentence within 280 characters; a Correct one has none; exact
-// texts still have no "Ask Why?".
+// "Rebuild:" sentence within 280 characters that names the concrete gap:
+// the card's core point set against the learner's answer (for "the price"
+// against opportunity cost, the best alternative given up, not the price).
+// A Correct one has none; exact texts still have no "Ask Why?".
 func TestStory_S139_2_AskWhyNamesTheGapToRebuild(t *testing.T) {
 	long := strings.Repeat("A long correct answer that goes on and on. ", 12)
+	opportunity := "Opportunity cost is the value of the best alternative you give up when you choose one option over another. It is not the price you pay, but what that same money, time or attention could have done for you elsewhere."
 	for _, c := range []struct {
 		v        srs.Verdict
 		answer   string
 		expected string
+		rebuild  string // the whole last sentence, when it is known
 	}{
-		{srs.Missed, "something else", "Lima"},
-		{srs.Close, "nearly", "Lima"},
-		{srs.Missed, long, long},
-		{srs.Close, "", long},
+		{srs.Missed, "the price", opportunity,
+			"Rebuild: the card's point is “Opportunity cost is the value of the best alternative you give up when you choose one option over another”, not “the price”."},
+		{srs.Missed, "something else", "Lima", "Rebuild: the card's point is “Lima”, not “something else”."},
+		{srs.Close, "nearly", "Lima", "Rebuild: the card's point is “Lima”, not “nearly”."},
+		{srs.Close, "", "Lima", "Rebuild: the card's point is “Lima”."},
+		{srs.Missed, "the sum\nof two", "Ninety\nand more", "Rebuild: the card's point is “Ninety”, not “the sum of two”."},
+		{srs.Missed, long, long, ""},
+		{srs.Close, "", long, ""},
 	} {
 		text := ai.FakeExplanation(ai.ExplainInput{Question: "Q", Expected: c.expected, Answer: c.answer, Verdict: c.v})
-		if utf8.RuneCountInString(text) > ai.ExplainMaxChars || !strings.HasSuffix(text, ai.FakeRebuild) || strings.Count(text, "Rebuild:") != 1 ||
-			!strings.HasPrefix(text, "What differed:") || ai.ClampExplanation(text) != text {
+		_, last, ok := strings.Cut(text, ". Rebuild:")
+		last = "Rebuild:" + last
+		if !ok || utf8.RuneCountInString(text) > ai.ExplainMaxChars || strings.Count(text, "Rebuild:") != 1 ||
+			!strings.HasPrefix(text, "What differed:") || ai.ClampExplanation(text) != text || !strings.HasSuffix(text, ".") {
 			t.Errorf("%s: %q (%d chars)", c.v, text, utf8.RuneCountInString(text))
+		}
+		if c.rebuild != "" && last != c.rebuild {
+			t.Errorf("%s %q: last sentence %q, want %q", c.v, c.answer, last, c.rebuild)
+		}
+		// The gap is concrete: it quotes the card's point and, when there
+		// is one, the learner's answer it differs from.
+		if !strings.Contains(last, "the card's point is “") || (c.answer != "" && !strings.Contains(last, ", not “")) {
+			t.Errorf("%s %q: the Rebuild sentence names no concrete gap: %q", c.v, c.answer, last)
 		}
 	}
 	right := ai.FakeExplanation(ai.ExplainInput{Question: "Q", Expected: "Lima", Answer: "Lima", Verdict: srs.Right})
 	if strings.Contains(right, "Rebuild") || !strings.HasPrefix(right, "Why it holds:") {
 		t.Errorf("right: %q", right)
 	}
-	// Through the running app, on an Incorrect answer.
-	w, b, rv, _ := explainWorld(t, "rebuild@example.com", srs.Missed)
+	// Through the running app, on an Incorrect answer ("something else"
+	// to a NATO letter): the gap names the card's own answer and the
+	// learner's.
+	_, b, rv, _ := explainWorld(t, "rebuild@example.com", srs.Missed)
 	status, body := b.explain(rv.ID, true)
 	var out struct {
 		Text     string
 		Fallback bool
 	}
 	_ = json.Unmarshal([]byte(body), &out)
-	if status != 200 || out.Fallback || !strings.HasSuffix(out.Text, ai.FakeRebuild) {
-		t.Fatalf("%d %s", status, body)
+	want := "Rebuild: the card's point is “" + rv.GradedExpected + "”, not “something else”."
+	if status != 200 || out.Fallback || !strings.HasSuffix(out.Text, want) {
+		t.Fatalf("%d %s, want it to end %q", status, body, want)
 	}
 	// Exact texts still have no Ask Why? (TestExplain_NotOfferedOnExactTexts
 	// proves it on the running app too).
-	_ = w
 }
 
 var longPairRE = regexp.MustCompile(`data-long-pair`)
@@ -521,9 +561,12 @@ func TestStory_S139_1_LongAnswerGetsTheWholePage(t *testing.T) {
 	}
 	css := b.mustGet("/static/app.css")
 	has(t, css,
-		".judgment-pair.judgment-long { display: grid; justify-items: start; gap: var(--s3); }",
+		// An unbroken URL wraps inside its column and never widens the page:
+		// every level is a minmax(0, 1fr) track with min-width: 0.
+		".judgment-pair.judgment-long { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--s3); min-width: 0; max-width: 100%; }",
+		".long-answer { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); min-width: 0; max-width: 100%; }",
 		"font: 500 var(--title)/1.55 var(--text)",
-		"max-width: min(var(--measure), 100%); white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;",
+		"min-width: 0; max-width: min(var(--measure), 100%); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;",
 		"text-decoration-color: var(--missed); text-decoration-thickness: 2px;",
 		".judged .judgment-long { animation: rise-in",
 		"--title: 24px;", "--measure: 68ch;", "min-height: 100dvh;")

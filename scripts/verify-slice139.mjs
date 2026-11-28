@@ -60,7 +60,14 @@ const FIXTURE = JSON.parse(fs.readFileSync(path.join(ROOT, "testdata", "s139", "
 const [LONG, SAME, TAGGED, LINKED, EXACT, ONEWORD] = FIXTURE.items;
 const RESOURCE_TITLES = [...LONG.resources, ...LONG.ideaResources].map((r) => r.title);
 const RESOURCE_HOSTS = ["en.wikipedia.org"];
+// [S139-1] A missed correct answer that is one unbroken 299-character URL:
+// it must break inside its column, never widen the page (on a phone the
+// layout viewport would grow past 390 px and innerWidth with it, so the
+// checks compare against the configured viewport width as well).
+const URL_ANSWER = ("https://docs.example.org/reference/connected-learning/opportunity-cost/" + "a1b2c3d4e5f6g7h8i9j0".repeat(12)).slice(0, 299);
+const URLCARD = { question: "Which reference link explains the full opportunity cost worksheet?", answer: URL_ANSWER, idea: "Reference links" };
 const ANSWERS = new Map([
+  [URLCARD.question, "the old link"],                            // short wrong answer, one unbroken 299-character URL correct
   [LONG.question, "the price"],                                  // short wrong answer, long correct one
   [SAME.question, "the best\noption"],                           // <= 80 characters with a line break
   [TAGGED.question, "a longer answer ".repeat(6).trim()],        // long learner answer, short correct one
@@ -134,7 +141,7 @@ async function pageHealth(page, config, label) {
   const h = await page.evaluate(() => {
     const imgs = [...document.images].filter((i) => i.getBoundingClientRect().width > 0);
     return {
-      overflow: document.documentElement.scrollWidth - window.innerWidth,
+      overflow: Math.max(document.documentElement.scrollWidth - window.innerWidth, document.documentElement.scrollWidth - (window.__vw || window.innerWidth)),
       sheets: document.styleSheets.length,
       font: getComputedStyle(document.body).fontFamily,
       undecoded: imgs.filter((i) => !(i.complete && i.naturalWidth > 0)).map((i) => i.src),
@@ -179,7 +186,8 @@ async function reviewBoxes(page) {
       if (/(hidden|clip)/.test(cs.overflowY + cs.overflowX) && !el.closest("details:not([open])") && !el.classList.contains("sr") &&
           (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)) clipped.push(el.className || el.tagName);
     }
-    return { scrollers, clipped, sideways: document.documentElement.scrollWidth - window.innerWidth, height: document.documentElement.scrollHeight };
+    const sw = document.documentElement.scrollWidth;
+    return { scrollers, clipped, sideways: Math.max(sw - window.innerWidth, sw - (window.__vw || window.innerWidth)), scrollWidth: sw, height: document.documentElement.scrollHeight };
   });
 }
 
@@ -270,6 +278,8 @@ async function journey(c, port) {
     check(config, "/healthz 200 with the build sha", health.status === "ok" && (!SHA || SHA.startsWith(health.build_sha)), `status=${health.status} build_sha=${health.build_sha} mode=${health.mode}`);
     const ctx = await browser.newContext({ ...contextOptions(c), recordVideo: { dir: tmp, size: c.viewport } });
     await ctx.addInitScript(initScript);
+    // The configured viewport width, for the sideways checks.
+    await ctx.addInitScript((w) => { window.__vw = w; }, c.viewport.width);
     const page = await ctx.newPage();
     const problems = [], hosts = new Set();
     instrument(page, problems, hosts);
@@ -311,6 +321,8 @@ async function journey(c, port) {
       [st, js] = await api("POST", "/api/v1/items", legacy);
       check(config, "fixture without the [S139-2] fields added instead (pre-change build)", st === 201, `${st} ${JSON.stringify(js)}`);
     }
+    [st, js] = await api("POST", "/api/v1/items", { items: [URLCARD] });
+    check(config, "[S139-1] api: a card whose correct answer is one unbroken 299-character URL is added (201)", st === 201 && URL_ANSWER.length === 299 && !/\s/.test(URL_ANSWER), `${st} ${URL_ANSWER.length} chars`);
     [st, js] = await api("GET", "/api/v1/ideas");
     check(config, "[S139-2] api: refused requests added nothing", st === 200 && !js.ideas.some((i) => i.title === "X"), JSON.stringify(js.ideas?.map((i) => i.title)));
 
@@ -327,15 +339,20 @@ async function journey(c, port) {
       const isLong = prompt === LONG.question;
 
       if (isLong) {
-        // Nothing of Related & resources while the card waits.
+        // Nothing of Related & resources while the card waits: the whole
+        // DOM (the server's markup as well as the live page), the
+        // scrollback and "coming up" list included.
+        const raw = await (await ctx.request.get(base + "/study")).text();
         const html = await page.content();
-        const outside = html.replace(/<ol class="(scrollback|upcoming)"[\s\S]*?<\/ol>/g, "");
         const text = await page.evaluate(() => document.body.innerText);
-        const related = [SAME, TAGGED, LINKED].map((i) => i.question);
-        const leaks = ["Related &amp; resources", "Related & resources", "data-connected", ...RESOURCE_TITLES, ...RESOURCE_HOSTS].filter((s) => html.includes(s) || text.includes(s));
-        const relLeaks = related.filter((q) => outside.includes(q));
+        const related = [SAME, TAGGED, EXACT, LINKED].map((i) => i.question);
+        const leaks = ["Related &amp; resources", "Related & resources", "data-connected", ...RESOURCE_TITLES, ...RESOURCE_HOSTS].filter((s) => raw.includes(s) || html.includes(s) || text.includes(s));
+        const esc = (q) => q.replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/"/g, "&#34;");
+        const relLeaks = related.filter((q) => raw.includes(q) || raw.includes(esc(q)) || html.includes(q) || text.includes(q));
+        const cues = await page.evaluate(() => [...document.querySelectorAll("ol.upcoming li, ol.scrollback .answered-q")].map((li) => li.textContent.trim()));
         check(config, "[S139-2] while the card waits, its page text and markup hold no \"Related & resources\" and no resource title", leaks.length === 0, leaks.join(" | "));
-        check(config, "[S139-2] while the card waits, no related question appears outside the session's own scrollback and coming-up cues", relLeaks.length === 0, relLeaks.join(" | "));
+        check(config, "[S139-2] while the card waits, no related question appears anywhere in its markup or text (scrollback and coming up included)", relLeaks.length === 0, relLeaks.join(" | ") || JSON.stringify(cues));
+        check(config, "[S139-2] while the card waits, a related card keeps a question-free row (\"Card N\") in the session's lists", cues.some((q) => /^Card \d+$/.test(q)), JSON.stringify(cues));
         await shot(page, `${config}-long-waiting`);
       }
 
@@ -356,6 +373,8 @@ async function journey(c, port) {
         check(config, "[S139-2] an exact text still has no \"Ask Why?\"", kind === "exact" && !(await page.$("[data-explain]")), kind);
       } else if (isLong) {
         await longReview(page, c, config, last);
+      } else if (prompt === URLCARD.question) {
+        await urlReview(page, c, config);
       } else if (prompt === SAME.question || prompt === TAGGED.question) {
         const p = await longPair(page);
         const why = prompt === SAME.question ? "a learner answer of 80 or fewer characters with a line break" : "a long learner answer with a short correct answer";
@@ -398,7 +417,7 @@ async function journey(c, port) {
       return d && { open: d.open, summary: d.querySelector("summary").innerText.replace(/\s+/g, " ").trim(), rows: [...d.querySelectorAll("[data-connected-row]")].map((r) => r.dataset.connectedRow),
         afterAnswer: !!document.querySelector("#answer") && (document.querySelector("#answer").compareDocumentPosition(d) & Node.DOCUMENT_POSITION_FOLLOWING) > 0 };
     });
-    check(config, "[S139-2] the card's own page shows the same closed disclosure under the card's answer", card && !card.open && /Related & resources · 3 cards · 3 resources/.test(card.summary) && card.afterAnswer && card.rows.join() === "related,related,related,resource,resource,resource", JSON.stringify(card));
+    check(config, "[S139-2] the card's own page shows the same closed disclosure under the card's answer", card && !card.open && /Related & resources · 4 cards · 3 resources/.test(card.summary) && card.afterAnswer && card.rows.join() === "related,related,related,related,resource,resource,resource", JSON.stringify(card));
     await pageHealth(page, config, "card page");
     await press(page, c, page.locator("details.connected summary"));
     await sleep(350);
@@ -432,6 +451,34 @@ async function journey(c, port) {
     await browser.close().catch(() => {});
     srv.proc.kill("SIGTERM");
   }
+}
+
+// [S139-1] The unbroken 299-character URL: it breaks inside its column
+// at the reading measure, and neither it nor its answer box widens the
+// page past the configured viewport (390 px on a phone).
+async function urlReview(page, c, config) {
+  const vw = c.viewport.width;
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const u = await page.evaluate(() => {
+    const pair = document.querySelector("[data-long-pair]");
+    const box = document.querySelector(".long-correct"), t = document.querySelector("[data-long-correct]"), canon = t && t.querySelector("[data-canonical]");
+    if (!pair || !box || !t) return { missing: true };
+    const br = box.getBoundingClientRect(), tr = t.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(canon);
+    const lines = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size;
+    const ch = (() => { const p = document.createElement("span"); p.style.font = getComputedStyle(t).font; p.style.position = "absolute"; p.textContent = "0"; document.body.appendChild(p); const w = p.getBoundingClientRect().width; p.remove(); return w; })();
+    return { scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth, boxW: br.width, boxRight: br.right, textW: tr.width, textRight: tr.right,
+      textScrollW: t.scrollWidth, textClientW: t.clientWidth, column: t.parentElement.getBoundingClientRect().width, max68: 68 * ch, lines,
+      text: canon.textContent, wrap: getComputedStyle(t).overflowWrap, label: box.querySelector(".long-label")?.textContent.trim() };
+  });
+  check(config, "[S139-1] an unbroken 299-character URL as the correct answer stacks as a long pair", !u.missing && u.label === "Correct answer", JSON.stringify(u));
+  if (u.missing) return;
+  check(config, `[S139-1] with the 299-character URL, the page is no wider than the ${vw} px viewport (document scrollWidth <= ${vw})`, u.scrollWidth <= vw && u.innerWidth <= vw, `scrollWidth ${u.scrollWidth}, innerWidth ${u.innerWidth}`);
+  check(config, `[S139-1] the URL's answer box and text are no wider than the ${vw} px viewport and end inside it`, u.boxW <= vw && u.boxRight <= vw + 0.5 && u.textW <= vw && u.textRight <= vw + 0.5, `box ${Math.round(u.boxW)} right ${Math.round(u.boxRight)}, text ${Math.round(u.textW)} right ${Math.round(u.textRight)}`);
+  check(config, "[S139-1] the URL breaks inside its column, within min(68ch, 100%), whole and unclipped", u.lines > 1 && u.textW <= u.column + 0.5 && u.textW <= u.max68 + 0.5 && u.textScrollW <= u.textClientW + 1 && u.text === URL_ANSWER,
+    `${u.lines} lines, ${Math.round(u.textW)} <= column ${Math.round(u.column)} and 68ch ${Math.round(u.max68)}, scroll ${u.textScrollW}/${u.textClientW}, ${u.text.length} chars, overflow-wrap ${u.wrap}`);
+  await shot(page, `${config}-url-review`);
 }
 
 // The long card's review: [S139-1], then [S139-2]'s disclosure and Ask Why?.
@@ -506,11 +553,11 @@ async function longReview(page, c, config, last) {
   });
   check(config, "[S139-2] after a graded answer the disclosure is there, closed (no open)", d0 && !d0.open, JSON.stringify(d0));
   if (!d0) return;
-  check(config, "[S139-2] its summary names the counts: \"Related & resources · 3 cards · 3 resources\" and \"Show\" at the right edge", d0.text === "Related & resources · 3 cards · 3 resources Show" && Math.abs(d0.show - d0.right) < 1, d0.text);
+  check(config, "[S139-2] its summary names the counts: \"Related & resources · 4 cards · 3 resources\" and \"Show\" at the right edge", d0.text === "Related & resources · 4 cards · 3 resources Show" && Math.abs(d0.show - d0.right) < 1, d0.text);
   check(config, "[S139-2] the closed row is at least 44 px tall under a 1 px line rule, in Meta mono", d0.h >= 44 && d0.rule === "1px solid" && /Mono/.test(d0.nameFont), `${d0.h}px ${d0.rule} ${d0.nameFont.slice(0, 16)}`);
   check(config, "[S139-2] between Ask Why? and the schedule", d0.between);
   check(config, "[S139-2] its computed transition is 200 ms ease-out (height and opacity)", /0\.2s/.test(d0.dur) && /cubic-bezier\(0\.2, 0, 0, 1\)/.test(d0.ease) && /block-size/.test(d0.prop) && /opacity/.test(d0.prop), `${d0.dur} ${d0.ease} ${d0.prop}`);
-  check(config, "[S139-2] no related card's answer appears in the review", !(await page.evaluate((a) => a.some((x) => document.body.innerText.includes(x) || document.querySelector("details.connected").innerHTML.includes(x)), [SAME.answer, TAGGED.answer, LINKED.answer])));
+  check(config, "[S139-2] no related card's answer appears in the review", !(await page.evaluate((a) => a.some((x) => document.body.innerText.includes(x) || document.querySelector("details.connected").innerHTML.includes(x)), [SAME.answer, TAGGED.answer, EXACT.answer, LINKED.answer])));
 
   // Open by click (or tap).
   const summary = page.locator("details.connected summary");
@@ -534,7 +581,7 @@ async function longReview(page, c, config, last) {
     return { open: d.open, show: d.querySelector(".connected-show").innerText.trim(), rows, links, height: d.getBoundingClientRect().height, y: window.scrollY,
       listW: list.getBoundingClientRect().width, focus: document.activeElement === d.querySelector("summary") || !document.activeElement || document.activeElement === document.body };
   });
-  const expectRows = "RELATED,RELATED,RELATED,ARTICLE,EXPLAINER,DIAGRAM";
+  const expectRows = "RELATED,RELATED,RELATED,RELATED,ARTICLE,EXPLAINER,DIAGRAM";
   check(config, `[S139-2] opening it by ${c.phone ? "tap" : "click"} lists RELATED rows first, then resources, each with its mono kind label`,
     opened.open && opened.rows.map((r) => r.kind).join() === expectRows && opened.rows.every((r) => /Mono/.test(r.kindFont)), opened.rows.map((r) => r.kind).join());
   check(config, "[S139-2] \"Show\" reads \"Hide\" while open", opened.show === "Hide", opened.show);
@@ -543,7 +590,7 @@ async function longReview(page, c, config, last) {
   check(config, c.phone ? "[S139-2] on phones the kind sits above the row's text" : "[S139-2] the kind sits in an 88 px column",
     c.phone ? opened.rows.every((r) => r.kindTop < r.textTop) : opened.rows.every((r) => Math.abs(r.textTop - r.kindTop) < 6 && r.kindW <= 88.5), JSON.stringify(opened.rows.map((r) => [Math.round(r.kindW), Math.round(r.kindTop - r.textTop)])));
   const rel = opened.links.filter((l) => l.related), res = opened.links.filter((l) => !l.related);
-  check(config, "[S139-2] related links go to /library/items/{id}, named by the whole question", rel.length === 3 && rel.every((l) => /^\/library\/items\/\d+$/.test(l.href)) && rel.map((l) => l.name).join("|") === [SAME, TAGGED, LINKED].map((i) => i.question).join("|"), JSON.stringify(rel));
+  check(config, "[S139-2] related links go to /library/items/{id}, named by the whole question (the stand-alone exact card included)", rel.length === 4 && rel.every((l) => /^\/library\/items\/\d+$/.test(l.href)) && rel.map((l) => l.name).join("|") === [SAME, TAGGED, EXACT, LINKED].map((i) => i.question).join("|"), JSON.stringify(rel));
   check(config, "[S139-2] resource links have an http(s) URL, target=_blank and rel=\"noopener noreferrer nofollow\"", res.length === 1 && res.every((l) => /^https?:\/\//.test(l.href) && l.target === "_blank" && l.rel === "noopener noreferrer nofollow"), JSON.stringify(res));
   check(config, "[S139-2] opening it never scrolls the page", opened.y === y1, `${y1} -> ${opened.y}`);
   check(config, "[S139-2] it opens in height (mid-transition shorter than open)", mid < opened.height - 4, `${Math.round(mid)} -> ${Math.round(opened.height)}`);
@@ -594,7 +641,9 @@ async function longReview(page, c, config, last) {
   await page.waitForSelector("[data-explanation]:not([hidden])", { timeout: 10000 });
   await sleep(300);
   const ex = (await page.textContent("[data-explanation]")).trim();
-  check(config, "[S139-2] Ask Why? on Incorrect ends in one \"Rebuild:\" sentence within 280 characters", ex.length <= 280 && (ex.match(/Rebuild:/g) || []).length === 1 && /Rebuild: [^.]*\([^)]*\)\.$|Rebuild: [^.]+\.$/.test(ex) && ex.startsWith("What differed:"), ex);
+  check(config, "[S139-2] Ask Why? on Incorrect ends in one \"Rebuild:\" sentence within 280 characters", ex.length <= 280 && (ex.match(/Rebuild:/g) || []).length === 1 && ex.startsWith("What differed:") && ex.endsWith("."), ex);
+  const rebuild = ex.slice(ex.indexOf("Rebuild:"));
+  check(config, "[S139-2] the Rebuild sentence names the concrete gap: the best alternative given up, not \"the price\"", rebuild === "Rebuild: the card's point is “Opportunity cost is the value of the best alternative you give up when you choose one option over another”, not “the price”.", rebuild);
   const rbWhy = await reviewBoxes(page);
   check(config, "[S139-1] with the explanation shown, nothing scrolls inside the review or sideways", rbWhy.scrollers.length === 0 && rbWhy.sideways <= 0, JSON.stringify(rbWhy));
   await shot(page, `${config}-ask-why`);
