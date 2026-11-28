@@ -450,7 +450,7 @@ async function submit(page, config, srv, k, lines, opts = {}) {
     badge: document.querySelector("[data-verdict-label]")?.textContent.trim(),
     why: document.querySelector(".why")?.textContent.trim(),
     submitted: [...document.querySelectorAll("[data-submitted]")].map((e) => e.innerText).join("\n"),
-    ws: (() => { const e = document.querySelector(".compare-answer[data-submitted], .struck-text[data-submitted]"); return e ? getComputedStyle(e).whiteSpace : ""; })(),
+    ws: (() => { const e = document.querySelector(".compare-answer[data-submitted], .struck-text[data-submitted], .long-struck-text[data-submitted]"); return e ? getComputedStyle(e).whiteSpace : ""; })(),
     sched: document.querySelector("[data-next-review]")?.textContent.trim() || document.querySelector(".schedule")?.innerText.trim().slice(0, 80),
   }));
   check(config, `${tag}: shows the scripted verdict "${verdict}" with its badge and one-line reason`, rv.verdict === verdict && BADGE[verdict].test(rv.badge) && rv.why && rv.why.length > 10, `${rv.verdict} · ${rv.badge} · ${rv.why}`);
