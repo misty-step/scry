@@ -79,3 +79,45 @@ func TestExplain_CriterionSentencesAreTheJudgeCriteria(t *testing.T) {
 		}
 	}
 }
+
+// [S139-2] An Almost that gives the first sentence of a two-sentence answer:
+// the test explainer's Rebuild sentence names the sentence the learner left
+// out ("Velocity also includes direction"), never the learner's own phrase
+// set against itself.
+func TestFakeExplanation_AlmostNamesTheMissingSentence(t *testing.T) {
+	const expected = "Both describe how fast something moves. Velocity also includes direction."
+	for _, c := range []struct {
+		v      srs.Verdict
+		answer string
+		want   string
+	}{
+		{srs.Close, "Both describe how fast something moves.",
+			"Rebuild: the card's point is “Velocity also includes direction”, not “Both describe how fast something moves.”."},
+		{srs.Close, "both DESCRIBE how fast something moves", // case and stops do not matter
+			"Rebuild: the card's point is “Velocity also includes direction”, not “both DESCRIBE how fast something moves”."},
+		{srs.Missed, "Both describe how fast something moves.",
+			"Rebuild: the card's point is “Velocity also includes direction”, not “Both describe how fast something moves.”."},
+		{srs.Missed, "the price", // nothing covered: the first sentence, as before
+			"Rebuild: the card's point is “Both describe how fast something moves”, not “the price”."},
+		{srs.Close, "Velocity has direction", // the second sentence is not fully covered either; the first one is named
+			"Rebuild: the card's point is “Both describe how fast something moves”, not “Velocity has direction”."},
+		{srs.Close, "Both describe how fast something moves.\nVelocity also includes direction.", // everything covered: no self-contrast
+			"Rebuild: the card's point is “Both describe how fast something moves. Velocity also includes direction”."},
+	} {
+		text := FakeExplanation(ExplainInput{Question: "How is velocity different from speed?", Expected: expected, Answer: c.answer, Verdict: c.v})
+		_, last, ok := strings.Cut(text, ". Rebuild:")
+		last = "Rebuild:" + last
+		if !ok || last != c.want || strings.Count(text, "Rebuild:") != 1 || utf8.RuneCountInString(text) > ExplainMaxChars || !strings.HasPrefix(text, "What differed:") {
+			t.Errorf("%s %q:\n got %q\nwant %q", c.v, c.answer, text, c.want)
+		}
+		// Never the same phrase on both sides of ", not".
+		if point, learner, two := strings.Cut(strings.TrimPrefix(last, "Rebuild: the card's point is "), ", not "); two && normalized(point) == normalized(learner) {
+			t.Errorf("%s %q: contrasts a phrase with itself: %q", c.v, c.answer, last)
+		}
+	}
+	// The exact Cold Critic repro: it names "direction".
+	text := FakeExplanation(ExplainInput{Question: "How is velocity different from speed?", Expected: expected, Answer: "Both describe how fast something moves.", Verdict: srs.Close})
+	if !strings.Contains(text, "direction") || strings.Contains(text, "point is “Both describe how fast something moves”, not “Both describe how fast something moves.”") {
+		t.Fatalf("Almost repro: %q", text)
+	}
+}

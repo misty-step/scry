@@ -27,7 +27,9 @@
 //   sentence -> Next card through the rest of the session (a short answer
 //   with a line break stacks, a long learner answer stacks, two short
 //   answers keep Judgment size side by side on desktop; the exact line has
-//   no Ask Why?) -> the long card's own page and its idea's page.
+//   no Ask Why?) -> the long card's own page and its idea's page. Then,
+//   per config, a second Scry scripted to Almost: the first sentence of a
+//   two-sentence answer -> Ask Why? names the sentence left out.
 //
 // Every page is checked for sideways scroll, loaded styles, decoded images
 // and CSP violations; console errors, page errors, failed requests and
@@ -90,11 +92,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- the server ---------------------------------------------------------
 
-function startServer(bin, label, port) {
+function startServer(bin, label, port, judgments = "missed") {
   const dir = fs.mkdtempSync(path.join(tmp, label + "-"));
   const log = fs.createWriteStream(path.join(dir, "server.log"));
   const proc = spawn(bin, [], {
-    env: { PATH: process.env.PATH, HOME: dir, SCRY_MODE: "test", SCRY_TEST_JUDGMENTS: "missed", SCRY_DB: path.join(dir, "s139.db"), PORT: String(port) },
+    env: { PATH: process.env.PATH, HOME: dir, SCRY_MODE: "test", SCRY_TEST_JUDGMENTS: judgments, SCRY_DB: path.join(dir, "s139.db"), PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   proc.stdout.pipe(log);
@@ -649,6 +651,81 @@ async function longReview(page, c, config, last) {
   await shot(page, `${config}-ask-why`);
 }
 
+// [S139-2] repair pass 3: an Almost that gives the first sentence of a
+// two-sentence answer. Its own Scry, with the test grader scripted to
+// Almost (SCRY_TEST_JUDGMENTS=close): sign up -> Settings: an API token ->
+// add the velocity card -> Study: type the first sentence -> Almost ->
+// Ask Why? names the sentence left out ("Velocity also includes
+// direction"), never the learner's sentence set against itself.
+const VELOCITY = { question: "How is velocity different from speed?", answer: "Both describe how fast something moves. Velocity also includes direction.", idea: "Motion" };
+const VELOCITY_ANSWER = "Both describe how fast something moves.";
+async function almostJourney(c, port) {
+  const config = c.name + "-almost";
+  const srv = startServer(BIN, config, port, "close");
+  const base = srv.base;
+  const browser = await chromium.launch({ headless: false, executablePath: CHROME, args: [`--window-size=${c.viewport.width},${c.viewport.height + 140}`, "--window-position=0,0"] });
+  try {
+    const health = await waitHealthy(base);
+    check(config, "/healthz 200 with the build sha", health.status === "ok" && (!SHA || SHA.startsWith(health.build_sha)), `status=${health.status} build_sha=${health.build_sha} mode=${health.mode}`);
+    const ctx = await browser.newContext({ ...contextOptions(c), recordVideo: { dir: tmp, size: c.viewport } });
+    await ctx.addInitScript(initScript);
+    await ctx.addInitScript((w) => { window.__vw = w; }, c.viewport.width);
+    const page = await ctx.newPage();
+    const problems = [], hosts = new Set();
+    instrument(page, problems, hosts);
+    await page.goto(base + "/signup");
+    await page.fill("#email", `${config}-${Date.now()}@example.com`);
+    await page.fill("#password", "correct horse battery");
+    await Promise.all([page.waitForURL(/\/shelf/), press(page, c, page.locator("main button.btn-accent"))]);
+    await page.goto(base + "/settings");
+    await page.fill("input[name=name]", "session miner");
+    await Promise.all([page.waitForLoadState("domcontentloaded"), press(page, c, page.locator("text=Create token"))]);
+    const token = (await page.textContent(".token-value")).trim();
+    const res = await ctx.request.fetch(base + "/api/v1/items", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, data: JSON.stringify({ items: [VELOCITY] }) });
+    check(config, "[S139-2] api: the two-sentence velocity card is added (201)", res.status() === 201, String(res.status()));
+
+    await page.goto(base + "/study");
+    const prompt = (await page.textContent("#prompt")).trim();
+    check(config, "[S139-2] Study asks the velocity card", prompt === VELOCITY.question, prompt);
+    const field = page.locator("[data-answer-input]");
+    if (c.phone) await field.tap(); else await field.click();
+    await page.keyboard.type(VELOCITY_ANSWER, { delay: 8 });
+    await Promise.all([page.waitForSelector("[data-review]", { timeout: 15000 }), page.keyboard.press("Enter")]);
+    await sleep(450);
+    const verdict = await page.getAttribute("[data-verdict]", "data-verdict");
+    check(config, "[S139-2] the first sentence alone is graded Almost", verdict === "close", verdict);
+    await page.locator("[data-explain]").scrollIntoViewIfNeeded();
+    await press(page, c, page.locator("[data-explain]"));
+    await page.waitForSelector("[data-explanation]:not([hidden])", { timeout: 10000 });
+    await sleep(300);
+    const ex = (await page.textContent("[data-explanation]")).trim();
+    check(config, "[S139-2] Ask Why? on Almost ends in one \"Rebuild:\" sentence within 280 characters", ex.length <= 280 && (ex.match(/Rebuild:/g) || []).length === 1 && ex.startsWith("What differed:") && ex.endsWith("."), ex);
+    const rebuild = ex.slice(ex.indexOf("Rebuild:"));
+    check(config, "[S139-2] on Almost the Rebuild sentence names the sentence left out: \"Velocity also includes direction\"", rebuild === "Rebuild: the card's point is “Velocity also includes direction”, not “Both describe how fast something moves.”." && /direction/.test(rebuild), rebuild);
+    const norm = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    const m = rebuild.match(/^Rebuild: the card's point is “(.*)”, not “(.*)”\.$/);
+    check(config, "[S139-2] on Almost the Rebuild sentence never sets the learner's phrase against itself", !m || norm(m[1]) !== norm(m[2]), rebuild);
+    await page.locator("[data-explanation]").scrollIntoViewIfNeeded();
+    await shot(page, `${config}-ask-why`);
+    check(config, "0 console errors, page errors, failed requests or responses >= 400", problems.length === 0, problems.slice(0, 8).join(" | "));
+    const video = page.video();
+    await ctx.close();
+    if (video) {
+      const webm = path.join(MEDIA, `${PREFIX}-${config}-walkthrough.webm`);
+      await video.saveAs(webm);
+      try {
+        execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", webm, "-c:v", "libx264", "-crf", "30", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-movflags", "+faststart", webm.replace(/\.webm$/, ".mp4")]);
+        fs.rmSync(webm);
+      } catch {}
+    }
+  } catch (e) {
+    check(config, "almost journey ran to the end", false, e.stack || String(e));
+  } finally {
+    await browser.close().catch(() => {});
+    srv.proc.kill("SIGTERM");
+  }
+}
+
 const CONFIGS = [
   { name: "desktop-light", viewport: { width: 1440, height: 900 }, colorScheme: "light" },
   { name: "desktop-dark", viewport: { width: 1440, height: 900 }, colorScheme: "dark" },
@@ -658,6 +735,7 @@ const CONFIGS = [
 
 let port = PORT0;
 for (const c of CONFIGS) await journey(c, port++);
+for (const c of CONFIGS) await almostJourney(c, port++);
 fs.writeFileSync(path.join(MEDIA, `${PREFIX}-results.json`), JSON.stringify({ sha: SHA, bin: path.basename(BIN), checks: results.length, failed, results }, null, 2));
 console.log(`\n${results.length - failed}/${results.length} checks PASS`);
 if (EXPECT_FAIL) {

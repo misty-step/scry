@@ -477,8 +477,10 @@ func TestStory_S139_2_AskWhyNamesTheGapToRebuild(t *testing.T) {
 			t.Errorf("%s %q: last sentence %q, want %q", c.v, c.answer, last, c.rebuild)
 		}
 		// The gap is concrete: it quotes the card's point and, when there
-		// is one, the learner's answer it differs from.
-		if !strings.Contains(last, "the card's point is “") || (c.answer != "" && !strings.Contains(last, ", not “")) {
+		// is one, the learner's answer it differs from; an answer that is
+		// the card's own text is never set against itself.
+		same := strings.Join(strings.Fields(c.answer), " ") == strings.Join(strings.Fields(c.expected), " ")
+		if !strings.Contains(last, "the card's point is “") || (c.answer != "" && strings.Contains(last, ", not “") == same) {
 			t.Errorf("%s %q: the Rebuild sentence names no concrete gap: %q", c.v, c.answer, last)
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"scry/internal/safeerr"
@@ -112,10 +113,13 @@ func (f *FakeExplainer) Explain(ctx context.Context, in ExplainInput) (string, U
 // one "Rebuild:" sentence ([S139-2]) that names the concrete gap: the
 // card's core point (the first sentence of its answer) set against the
 // learner's answer ("Rebuild: the card's point is “Opportunity cost is the
-// value of the best alternative you give up …”, not “the price”."). It is
-// a side-by-side of the two texts, never an assessment. The quotes are
-// shortened at a word when the whole would not fit, so neither sentence
-// is ever cut.
+// value of the best alternative you give up …”, not “the price”."). When
+// the learner's answer already covers the first sentence (an Almost that
+// gave half of a two-sentence answer), the point named is the first
+// sentence it does not cover, so the missing part is what is quoted, and
+// an answer is never set against the same phrase. It is a side-by-side of
+// the two texts, never an assessment. The quotes are shortened at a word
+// when the whole would not fit, so neither sentence is ever cut.
 func FakeExplanation(in ExplainInput) string {
 	answer, expected := strings.Join(strings.Fields(in.Answer), " "), strings.Join(strings.Fields(in.Expected), " ")
 	if in.Verdict == srs.Right {
@@ -132,10 +136,15 @@ func FakeExplanation(in ExplainInput) string {
 		}
 		return out
 	}
-	core := corePoint(in.Expected)
+	core := corePoint(in.Expected, in.Answer)
+	same := normalized(core) == normalized(in.Answer)
 	build := func(a, c string) string {
 		if a == "" {
 			return fmt.Sprintf("What differed: you gave no answer. Rebuild: the card's point is “%s”.", c)
+		}
+		if same {
+			// Never set an answer against the same phrase.
+			return fmt.Sprintf("What differed: you answered “%s”, which repeats the card's own words; the grade stands as given. Rebuild: the card's point is “%s”.", a, c)
 		}
 		differed := "which misses the card's point"
 		if in.Verdict == srs.Close {
@@ -150,23 +159,58 @@ func FakeExplanation(in ExplainInput) string {
 	return out
 }
 
-// corePoint is the first sentence (or first line) of a card's answer, the
-// point the test explainer's Rebuild sentence names, without its closing
-// stop.
-func corePoint(expected string) string {
-	first, _, _ := strings.Cut(strings.TrimSpace(expected), "\n")
-	first = strings.Join(strings.Fields(first), " ")
-	for i, r := range first {
-		if (r == '.' || r == '?' || r == '!') && i+1 < len(first) && first[i+1] == ' ' {
-			first = first[:i]
-			break
+// corePoint is the point the test explainer's Rebuild sentence names,
+// without its closing stop: the first sentence (or line) of a card's
+// answer that the learner's answer does not already cover. When the
+// answer covers every sentence, it is the whole expected answer.
+func corePoint(expected, answer string) string {
+	have := map[string]bool{}
+	for _, w := range words(answer) {
+		have[w] = true
+	}
+	for _, s := range answerSentences(expected) {
+		for _, w := range words(s) {
+			if !have[w] {
+				return s
+			}
 		}
 	}
-	if c := strings.TrimRight(first, " .!?"); c != "" {
-		return c
+	if all := strings.TrimRight(strings.Join(strings.Fields(expected), " "), " .!?"); all != "" {
+		return all
 	}
-	return first
+	return strings.Join(strings.Fields(expected), " ")
 }
+
+// answerSentences splits a card's answer into its lines and, within each, its
+// sentences (a stop followed by a space), each without its closing stop.
+func answerSentences(text string) []string {
+	var out []string
+	add := func(s string) {
+		if c := strings.TrimRight(s, " .!?"); c != "" {
+			out = append(out, c)
+		}
+	}
+	for _, line := range strings.Split(strings.TrimSpace(text), "\n") {
+		line = strings.Join(strings.Fields(line), " ")
+		start := 0
+		for i, r := range line {
+			if (r == '.' || r == '?' || r == '!') && i+1 < len(line) && line[i+1] == ' ' {
+				add(line[start:i])
+				start = i + 2
+			}
+		}
+		add(line[min(start, len(line)):])
+	}
+	return out
+}
+
+// words is a text's lowercased words (runs of letters and digits).
+func words(s string) []string {
+	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
+}
+
+// normalized is a text's words, lowercased and joined by single spaces.
+func normalized(s string) string { return strings.Join(words(s), " ") }
 
 // shortenAtWord cuts s to at most n characters at a word, with "…".
 func shortenAtWord(s string, n int) string {
