@@ -6,18 +6,18 @@
   "PRODUCT.md",
   "DESIGN.md"
  ],
- "verifiedSha": "abc18415c0c50852032a00471f59ee7095ce5a8b",
- "verifiedAt": "2026-11-28T11:42:46Z",
+ "verifiedSha": "d8a272bb59ca31afa0ffe55c776b933477c51793",
+ "verifiedAt": "2026-11-28T12:16:00Z",
  "criticVerdict": "PENDING_COLD_CRITIC",
  "evidenceRoot": "Builder evidence bundle (media/ collected from ~/chief-evidence/media); PR #528; Cold Critic review pending",
  "realPath": {
-  "build": "make build BUILD_SHA=abc18415c0c50852032a00471f59ee7095ce5a8b (bin/scry), the repair-pass-2 head of reconcile/14e0970c; the ledger commit after it changes only evidence/. Baselines: ea303a3 (pre-repair, negative control) and origin/master 14e0970c (S138 comparison), built the same way.",
-  "run": "each verify script starts the binary itself per config: SCRY_MODE=test, fresh SQLite in a new temp dir, minimal env, no provider keys (verify-slice139 adds SCRY_TEST_JUDGMENTS=missed); terminated at the end",
-  "healthz": "200 JSON, status ok, mode test, build_sha abc18415c0c50852032a00471f59ee7095ce5a8b (served by verify-slice139's own servers)",
-  "walkthrough": "DISPLAY=:0 node scripts/verify-slice139.mjs --bin bin/scry --sha abc18415c0c50852032a00471f59ee7095ce5a8b (playwright-core 1.65.1 + system Chrome 151 headed on :0; desktop 1440x900 and phone 390x844 touch DPR 2, light and dark): 410/410 PASS, exit 0. Regression at the same build: verify-slice106 339/339, verify-slice113 609/609, verify-slice125 470/470, verify-slice135 223/223, verify-slice138 142/142 against 14e0970c; all exit 0.",
-  "negativeControl": "verify-slice139.mjs --expect-fail against the pre-repair ea303a3 build: 38 [S139-*] checks fail (299-char URL widens the page to 1114 px on phones / 1503 px on desktop, related questions in the waiting scrollback/coming up, 3 not 4 related cards, generic Rebuild sentence), exit 0; s139-negative-results.json",
-  "tests": "gofmt -l . empty; go vet ./... exit 0; go test ./... -count=1: every package ok",
-  "media": "4 S139 walkthrough videos (mp4), 40 S139 screenshots (adds the 299-character URL review per config), s139-results.json, s139-negative-results.json, verify-slice106/113/125/135/138 result JSONs, mission-complete.json; the API token is blurred on camera; no tokens or secrets",
+  "build": "make build BUILD_SHA=d8a272bb59ca31afa0ffe55c776b933477c51793 (bin/scry), the repair-pass-3 head of reconcile/14e0970c. Pass 3 changes only the SCRY_MODE=test Ask Why? fixture (internal/ai/explain.go), its tests, verify-slice139.mjs and docs; S139-1/S139-2 are re-verified at d8a272bb59ca31afa0ffe55c776b933477c51793, the other entries stay verified at abc1841 (pass 2). Baseline for the negative control: 18e7b03 (pass-2 head), built the same way.",
+  "run": "each verify script starts the binary itself per config: SCRY_MODE=test, fresh SQLite in a new temp dir, minimal env, no provider keys (verify-slice139 adds SCRY_TEST_JUDGMENTS=missed, and SCRY_TEST_JUDGMENTS=close for its four *-almost journeys); terminated at the end",
+  "healthz": "200 JSON, status ok, mode test, build_sha d8a272bb59ca31afa0ffe55c776b933477c51793 (served by verify-slice139's own servers, all 8)",
+  "walkthrough": "DISPLAY=:0 node scripts/verify-slice139.mjs --bin ./bin/scry --sha d8a272bb59ca31afa0ffe55c776b933477c51793 (playwright-core + system Chrome headed on :0; desktop 1440x900 and phone 390x844 touch DPR 2, light and dark, plus one Almost journey per config): 442/442 PASS, exit 0 (410 pass-2 checks + 32 Almost checks).",
+  "negativeControl": "verify-slice139.mjs --expect-fail --only desktop-light against the pass-2 build 18e7b03: the 2 new Almost Rebuild checks fail with \"Rebuild: the card's point is “Both describe how fast something moves”, not “Both describe how fast something moves.”.\" (the Cold Critic repro); 109/111, exit 0.",
+  "tests": "gofmt -l . empty; go build ./... exit 0; go vet ./... exit 0; go test -count=1 ./...: see builder.md (internal/store TestReserveRacingPlanEnd hits SQLITE_BUSY on this sandbox disk at 18e7b03 and HEAD alike, and passes with TMPDIR=/dev/shm)",
+  "media": "8 S139 walkthrough videos (mp4: 4 full journeys, 4 Almost journeys), S139 screenshots per config including *-almost-ask-why.png, s139-results.json, mission-complete.json; the API token is blurred on camera; no tokens or secrets",
   "notLive": "No live deploy from this Boat sandbox (D-187): scry.mistystep.io /healthz and readback run post-merge from the credentialed host. No real model provider was called."
  },
  "entries": [
@@ -2101,8 +2101,8 @@
    "requirementId": "S139-1",
    "source": "PRODUCT.md :: [S139-1] (and [S106-6]); DESIGN.md :: Motion (Verdict), Post-answer review (One page, one scroll; Incorrect with a long answer), Phones",
    "intent": "A long answer gets the whole page: an Incorrect pair with either answer long (>80 characters or a line break) stacks \"Your answer\" over \"Correct answer\" 16 px apart, in Text at Title size (24 px, 500) with a 1.55 line height, at most 68ch or the column, line breaks kept, a 2 px missed-red strike that fades in; two short answers keep Judgment size; the page is at least 100dvh and scrolls with the window; nothing in the review scrolls inside itself, clips or scrolls sideways; 1440x900 first window holds question, answers, badge and why, page <= 1800 px; 390x844 page <= 2532 px with Next card pinned; every control reached by scrolling the page.",
-   "verifiedSha": "abc18415c0c50852032a00471f59ee7095ce5a8b",
-   "verifiedAt": "2026-11-28T11:42:46Z",
+   "verifiedSha": "d8a272bb59ca31afa0ffe55c776b933477c51793",
+   "verifiedAt": "2026-11-28T12:16:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -2366,8 +2366,8 @@
    "requirementId": "S139-2",
    "source": "PRODUCT.md :: [S139-2], [S106-4], grading story (Ask Why?); DESIGN.md :: Motion (Related & resources), Post-answer review 4-5, Library",
    "intent": "POST /api/v1/items (and /api/v1/suggestions) accepts optional resources, ideaResources, relatedTags, relatedIdeas (old shape unchanged 201; rule breaks 422 naming item and field, all or none; unknown fields, wrong types, >1 MiB stay 400); related cards (same idea, shared tag, linked idea; <= 5; never itself, removed cards or exact lines; never across learners) and resources in a closed Related & resources disclosure after grading only, on the card page, and resources-only on the idea page; resources/tags survive Recently removed and are in the JSON export; Ask Why? on Almost/Incorrect ends in one Rebuild: sentence within 280 characters.",
-   "verifiedSha": "abc18415c0c50852032a00471f59ee7095ce5a8b",
-   "verifiedAt": "2026-11-28T11:42:46Z",
+   "verifiedSha": "d8a272bb59ca31afa0ffe55c776b933477c51793",
+   "verifiedAt": "2026-11-28T12:16:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -2382,7 +2382,8 @@
     "TestStory_S139_2_RelatedIdeasMatchAccentedTitlesInAnyCase",
     "TestStory_S139_2_RelatedCardsKeepStandAloneExactCardsAndDropExactTextLines",
     "TestStory_S139_2_RelatedCardsStopAtFive",
-    "scripts/verify-slice139.mjs"
+    "scripts/verify-slice139.mjs",
+    "TestFakeExplanation_AlmostNamesTheMissingSentence"
    ],
    "walkthroughChecks": [
     "[desktop-light] [S139-2] api: a request in the old shape gets the same 201 response",
@@ -2640,7 +2641,7 @@
      "mediaType": "text/html"
     }
    ],
-   "note": "Repair pass 2 (Cold Critic findings): while a card waits, the whole page markup, its scrollback and coming-up list included, holds no related question; a related card keeps its row there as 'Card N' (its number in the session). Only lines of an exact text (line_no > 0) are left out of related cards; stand-alone exact Q&A cards are listed (the fixture's exact card makes it 4 related cards). relatedIdeas titles match with Unicode case folding in Go (Énergie <-> énergie). The test explainer's Rebuild sentence names the card's point against the learner's answer. See NOTES.md."
+   "note": "Repair pass 2 (Cold Critic findings): while a card waits, the whole page markup, its scrollback and coming-up list included, holds no related question; a related card keeps its row there as 'Card N' (its number in the session). Only lines of an exact text (line_no > 0) are left out of related cards; stand-alone exact Q&A cards are listed (the fixture's exact card makes it 4 related cards). relatedIdeas titles match with Unicode case folding in Go (Énergie <-> énergie). The test explainer's Rebuild sentence names the card's point against the learner's answer. See NOTES.md. Repair pass 3 (d8a272b): the test-mode Ask Why? names the first sentence of the expected answer the learner did not cover; the Cold Critic repro (Almost: \"Both describe how fast something moves.\" to \"... Velocity also includes direction.\") now ends \"Rebuild: the card's point is “Velocity also includes direction”, not “Both describe how fast something moves.”.\" and never sets a phrase against itself; headed per config in verify-slice139 (*-almost)."
   }
  ]
 }
