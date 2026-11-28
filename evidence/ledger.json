@@ -1,32 +1,32 @@
 {
  "schemaVersion": 1,
  "repository": "misty-step/scry",
- "intentRange": "9927c039a4b7e62b1880206f072c454bd04b82e9..b88761963962bef72d870882ff535755c4183b75",
+ "intentRange": "bf466de73170fa7e49522247338ebde606447078..14e0970ca1f975451081afb849b95822a541ea25",
  "intentFiles": [
   "PRODUCT.md",
   "DESIGN.md"
  ],
- "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
- "verifiedAt": "2026-11-26T22:30:00Z",
+ "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+ "verifiedAt": "2026-11-28T08:15:00Z",
  "criticVerdict": "PENDING_COLD_CRITIC",
- "evidenceRoot": "Builder evidence bundle (media/ collected from ~/chief-evidence/media); Cold Critic review pending",
+ "evidenceRoot": "Builder evidence bundle (media/ collected from ~/chief-evidence/media); PR #528; Cold Critic review pending",
  "realPath": {
-  "build": "make build BUILD_SHA=08befd4b2b084a9629d60b49f10a53a23138d606 (bin/scry), the HEAD of reconcile/b8876196 after rebasing onto origin/master e701ff4d (Slice 135 PR #524) and the S138-1 phone two-line fix; the ledger commit after it changes only evidence/. Baseline: origin/master e701ff4d built the same way.",
-  "run": "each verify script starts the binary itself per config: SCRY_MODE=test, SCRY_SEED_DEMO=1, fresh SQLite in a new temp dir, minimal env, no provider keys; terminated at the end",
-  "healthz": "build_sha 08befd4b2b084a9629d60b49f10a53a23138d606, mode test (served by each verify script's own server)",
-  "walkthrough": "DISPLAY=:0 node scripts/verify-slice138.mjs --bin bin/scry --baseline-bin <e701ff4d build> (playwright-core + system Chrome headed on the sandbox desktop :0; desktop 1440x900 DPR 1 and phone 390x844 touch DPR 2, light and dark): 142/142 PASS, exit 0; negative control: the same script against the e701ff4d build with --expect-fail fails 28 [S138-1] checks, exit 0; DISPLAY=:0 node scripts/verify-slice135.mjs on 08befd4b: 223/223 PASS, exit 0 (zero [S135-1]/[S131-1] Specimen regressions); verify-slice106.mjs 339/339 PASS, exit 0.",
-  "negativeControl": "verify-slice138.mjs against origin/master e701ff4d with --expect-fail: 28 [S138-1] checks fail (old headline and title), everything else passes; s138-negative-results.json",
-  "tests": "gofmt -l . empty; go vet ./... exit 0; go test -timeout 40m ./internal/web/... ok (469 s; the package needs more than the default 10m timeout when headed Chrome runs at the same time on this 4-CPU sandbox); go test of every other package ok except internal/store TestReserveRacingPlanEnd (SQLITE_BUSY), which fails identically on unmodified origin/master e701ff4d in this sandbox and is untouched by this change",
-  "media": "4 S138 and 4 S135 walkthrough videos (mp4), S138 landing/headline/browser-tab screenshots and S135 hero/Specimen/Study screenshots per config, s138-results.json, s138-negative-results.json, s135-results.json, verify-slice106-results.json, evidence-card.html; no tokens or secrets",
-  "notLive": "No live deploy from this Boat sandbox (D-187): scry.mistystep.io /healthz and landing readback run post-merge from the credentialed host. No real model provider was called."
+  "build": "make build BUILD_SHA=7aa4d65502bcab1af8160308c4be87a7468cce9f (bin/scry), the HEAD of reconcile/14e0970c; the ledger commit after it changes only evidence/. The regression walkthroughs ran on the build of 5720929173f7a2d36a84ae76d04c5e7ff96756ed, whose Go source, templates and CSS are identical to 7aa4d655 (git diff 5720929..7aa4d65 touches only scripts/verify-slice139.mjs, to blur the API token in the recording). Baseline for the negative control and the S138 comparison: origin/master 14e0970c built the same way.",
+  "run": "each verify script starts the binary itself per config: SCRY_MODE=test, fresh SQLite in a new temp dir, minimal env, no provider keys (verify-slice139 adds SCRY_TEST_JUDGMENTS=missed); terminated at the end",
+  "healthz": "200 JSON, status ok, mode test, build_sha 7aa4d65502bcab1af8160308c4be87a7468cce9f (served by verify-slice139's own servers)",
+  "walkthrough": "DISPLAY=:0 node scripts/verify-slice139.mjs --bin bin/scry --sha 7aa4d65502bcab1af8160308c4be87a7468cce9f (playwright-core + system Chrome 151 headed on the sandbox desktop :0; desktop 1440x900 DPR 1 and phone 390x844 touch DPR 2, light and dark): 378/378 PASS, exit 0. Regression at 57209291: verify-slice106 339/339, verify-slice113 305/305 (desktop-light, phone-dark) + 305/305 (desktop-dark, phone-light), verify-slice125 470/470, verify-slice135 223/223, verify-slice138 142/142 against the 14e0970c build as baseline; all exit 0.",
+  "negativeControl": "verify-slice139.mjs --expect-fail against the origin/master 14e0970c build: 32 [S139-*] checks fail (API refuses the new fields with 400, no long pair, no disclosure), exit 0; s139-negative-results.json",
+  "tests": "gofmt -l . empty; go vet ./... exit 0; go test ./... -count=1: every package ok (internal/web 14 s)",
+  "media": "4 S139 walkthrough videos (mp4), 36 S139 screenshots (waiting, long review top and full page, Related & resources open, Ask Why?, line-break and short reviews, card page, idea page per config), s139-results.json, s139-negative-results.json, verify-slice106/113/125/135/138 result JSONs, evidence-card.html, mission-complete.json; the API token is blurred on camera; no tokens or secrets",
+  "notLive": "No live deploy from this Boat sandbox (D-187): scry.mistystep.io /healthz and readback run post-merge from the credentialed host. No real model provider was called."
  },
  "entries": [
   {
    "requirementId": "PRODUCT.newcomer-glance-specimen-homescreen",
    "source": "PRODUCT.md :: User stories (newcomer)",
    "intent": "Understand at a glance that Scry is an AI-judged active-recall instrument, see one real judged card on the landing page, add Scry to the home screen to launch into daily recall.",
-   "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
-   "verifiedAt": "2026-11-26T22:30:00Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -53,30 +53,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
     },
     {
      "localPath": "media/s138-results.json",
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s135-results.json",
-     "mediaType": "application/json"
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Home-screen install itself (OS prompt) was not exercised; the manifest (start_url /study, standalone), icons and apple-touch-icon are served and checked. Landing is checked signed out in an unrecorded context (screenshots, no video). Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json. Re-verified 2026-11-26 at 08befd4b after [S138-1] was rebased onto [S135-1] (e701ff4d): verify-slice138.mjs 142/142 (rest of the hero identical to the e701ff4d build), verify-slice135.mjs 223/223 and verify-slice106.mjs 339/339, headed."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "PRODUCT.forgot-password-two-step",
    "source": "PRODUCT.md :: User stories (forgot password); DESIGN.md :: Sign-up and trial",
    "intent": "Enter email on Sign in, choose \"Forgot password\" on the password step, reset by email.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -96,22 +104,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Not re-walked in this slice: forgot-password runs through Clerk, which needs Clerk keys this sandbox does not hold; the local auth adapter sign-up path was exercised and the Clerk-path unit tests stay green. S106-6 asks that it is unchanged; no auth code changed. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "PRODUCT.create-starter-examples",
    "source": "PRODUCT.md :: User stories (Study vs Create); DESIGN.md :: Create",
    "intent": "Tap a concrete starter topic or book example under the field; the draft outline does not repeat the idea on every row; the field scales on phones.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -138,22 +162,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Create is now a 16,000-character textarea (S106-2); the starter examples still sit under the field and fill it. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "PRODUCT.review-stays-framed",
    "source": "PRODUCT.md :: User stories (post-answer review); DESIGN.md :: Post-answer review",
    "intent": "The review stays framed at the question and judgment (Next card focused with preventScroll); Ask Why? explanation set off by a 2 px line rule.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -182,30 +222,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/verify-slice113-results.json",
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s113-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Next card has no HTML autofocus; app.js focuses [data-autofocus-no-scroll] with preventScroll. With a sentence-length Incorrect answer (struck at Judgment size) the verdict line can sit below the 900 px fold; the review opens at the top with the question in view, layout unchanged. A full reload after the learner has scrolled keeps the browser's restored scroll. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json / verify-slice113-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "PRODUCT.library-phone-idea-first",
    "source": "PRODUCT.md :: User stories (ideas); DESIGN.md :: Library and concept links",
    "intent": "On phones the opened idea and its cards come first, with a compact collapsible idea picker; tabular outline numbers.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -231,22 +279,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "PRODUCT.md (idea above the outline) and DESIGN.md (idea beneath the picker) read differently; resolved per NOTES.md Slice 54. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "DESIGN.brand-mark-and-wordmark",
    "source": "DESIGN.md :: Brand mark and wordmark ([S113-3], restored exactly in [S125-1]); Color (accent)",
    "intent": "Scry's mark is L3-S3, the Fanned Scry Reveal \u00b7 Cobalt Tilt, drawn on every surface from DESIGN.md's canonical 32 x 32 SVG verbatim (three solid portrait 16 x 19 cards, the cobalt top card and its prompt bar rotated 10\u00b0 clockwise about (19, 14), fixed light/dark fills), beside the lowercase Geist Mono wordmark; the lens and the interim flat outline deck are retired everywhere ([S113-3], [S125-1]).",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -295,6 +359,18 @@
    ],
    "evidence": [
     {
+     "localPath": "media/verify-slice106-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
      "localPath": "media/s125-results.json",
      "mediaType": "application/json"
     },
@@ -303,42 +379,22 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s125-desktop-light-header.png",
-     "mediaType": "image/png"
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s125-phone-dark-header-signed-in.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-icon-board-light.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-icon-board-dark.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Re-verified for [S125-1] by scripts/verify-slice125.mjs (470/470) plus the S113-3 checks in verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in s125-results.json / s135-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "DESIGN.landing",
    "source": "DESIGN.md :: Landing",
    "intent": "Two-column desktop hero (minmax(0,1fr) minmax(0,1.08fr)) on the drafting band, the one h1 \"Remember everything.\" in Display within the 16ch measure ([S138-1]), lede naming active recall and spaced repetition, one accent action \"Start the 7-day trial\" with no hero Sign in ([S135-1]), the trial terms \"7 days free \u00b7 no card needed \u00b7 $5/month after\", the Study Specimen with its [S131-1] subject header, four ruled rows, quiet public footer; at 760 px and below the clean phone hero of [S135-1].",
-   "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
-   "verifiedAt": "2026-11-26T22:30:00Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -373,7 +429,11 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/verify-slice113-results.json",
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
      "mediaType": "application/json"
     },
     {
@@ -385,50 +445,22 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s125-desktop-light-header.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-phone-dark-header-signed-in.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-icon-board-light.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-icon-board-dark.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
-     "localPath": "media/s113-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
      "localPath": "media/s138-results.json",
      "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Superseded by S106-1: hero minmax(0,1fr) minmax(0,1.08fr) on the drafting band; stepping Specimen. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json / verify-slice113-results.json / s125-results.json / s135-results.json. Re-verified 2026-11-26 at 08befd4b after [S138-1] was rebased onto [S135-1] (e701ff4d): verify-slice138.mjs 142/142 (rest of the hero identical to the e701ff4d build), verify-slice135.mjs 223/223 and verify-slice106.mjs 339/339, headed."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "DESIGN.controls-inputs-hover",
    "source": "DESIGN.md :: Color (controls)",
    "intent": "Inputs carry a 1 px line hairline at rest (ink on focus); hover fills only on hover-capable pointers.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -454,22 +486,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Hover fills limited to @media (hover: hover) are checked in the served CSS by test; this pass's walkthrough did not separately assert a tapped control is left unfilled on touch. Re-verified after Slice 113: hover/focus now 120 ms on cubic-bezier(0.2,0,0,1), the nav underline draws in by clip (160 ms), and the answer field is the S111-2 textarea; see S113-2 / S111-2 entries. Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "DESIGN.signup-trial-clerk",
    "source": "DESIGN.md :: Sign-up and trial",
    "intent": "Both sign-up pages keep '7-day trial \u00b7 no card needed' above the heading; Clerk panels inherit Scry tokens with no shadows or gradients.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -497,22 +545,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Sign-up exercised through the local auth adapter (no Clerk keys in this sandbox); no auth or trial code changed in this slice. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "DESIGN.study-session-margin",
    "source": "DESIGN.md :: Study session",
    "intent": "196 px left margin, top-aligned with the prompt/review flow; the waiting screen fits 1440x900 without vertical scroll.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -538,30 +602,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/verify-slice113-results.json",
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s113-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Re-verified after Slice 113: hover/focus now 120 ms on cubic-bezier(0.2,0,0,1), the nav underline draws in by clip (160 ms), and the answer field is the S111-2 textarea; see S113-2 / S111-2 entries. Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json / verify-slice113-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "DESIGN.navigation-underline",
    "source": "DESIGN.md :: Every destination says what it is for",
    "intent": "Active navigation underlines the label only, never under the Inbox count.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -586,22 +658,38 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Five destinations now (S106-4). Re-verified after Slice 113: hover/focus now 120 ms on cubic-bezier(0.2,0,0,1), the nav underline draws in by clip (160 ms), and the answer field is the S111-2 textarea; see S113-2 / S111-2 entries. Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "DESIGN.inbox-purpose",
    "source": "DESIGN.md :: Inbox",
    "intent": "No Inbox: /inbox redirects (303) to Library; no Inbox in navigation, headers, keys or empty states.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -628,15 +716,31 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Superseded by S106-4: there is no Inbox; /inbox answers 303 to Library and the purpose-line table has no Inbox row. Re-verified at adcd45b4 by the S106 regression walkthrough (339/339). Re-verified 2026-11-26 at 740b112c after [S125-1] (brand-only change): every walkthroughCheck re-passed in verify-slice106.mjs (339/339) / verify-slice113.mjs (609/609). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "DESIGN.settings",
@@ -938,9 +1042,9 @@
   {
    "requirementId": "S106-4",
    "source": "PRODUCT.md :: [S106-4]; DESIGN.md :: Icons (Navigation), purpose table, Settings (API Tokens), Keys, Phones",
-   "intent": "No Inbox; /inbox 303 to Library; five destinations; every token adds via POST /api/v1/items (1\u201350) and /api/v1/suggestions; GET /api/v1/ideas; old pending suggestions moved into the library.",
-   "verifiedSha": "e9d2cdd8e4f9cf43c91cf36bdf679f7059ab99d8",
-   "verifiedAt": "2026-11-26T20:49:06Z",
+   "intent": "No Inbox; /inbox 303 to Library; five destinations; every token adds via POST /api/v1/items (1\u201350) and /api/v1/suggestions; GET /api/v1/ideas; old pending suggestions moved into the library. Items may also carry the optional [S139-2] fields (resources, ideaResources, relatedTags, relatedIdeas).",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -948,7 +1052,9 @@
     "TestS106_4_NavHasFiveDestinations",
     "TestS106_4_EveryTokenAddsToLibrary",
     "TestS106_4_ItemsBatchLimits1To50",
-    "TestS106_4_PendingInboxSuggestionsMigrateToLibrary"
+    "TestS106_4_PendingInboxSuggestionsMigrateToLibrary",
+    "TestStory_S139_2_APIAcceptsConnectedFieldsBackwardCompatible",
+    "TestStory_S139_2_APIRefusesBadConnectedFields"
    ],
    "walkthroughChecks": [
     "[desktop-light] nav: Study, Library, Create, Billing, Settings",
@@ -970,15 +1076,31 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
     },
     {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s125-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s135-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s138-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655."
   },
   {
    "requirementId": "S106-5",
@@ -1031,8 +1153,8 @@
    "requirementId": "S106-6",
    "source": "PRODUCT.md :: [S106-6]",
    "intent": "Everything else unchanged (full suite green); every change proved in a headed browser at 1440\u00d7900 and 390\u00d7844, light and dark, with no console/page/CSP errors and no sideways scroll. Post-deploy live check of scry.mistystep.io runs from the credentialed host after merge.",
-   "verifiedSha": "08befd4b2b084a9629d60b49f10a53a23138d606",
-   "verifiedAt": "2026-11-26T22:30:00Z",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
    "criticVerdict": "PENDING_COLD_CRITIC",
    "realPathVerified": true,
    "tests": [
@@ -1041,7 +1163,8 @@
     "scripts/verify-slice113.mjs",
     "scripts/verify-slice125.mjs",
     "scripts/verify-slice135.mjs",
-    "scripts/verify-slice138.mjs"
+    "scripts/verify-slice138.mjs",
+    "scripts/verify-slice139.mjs"
    ],
    "walkthroughChecks": [
     "[desktop-light] landing: 0 CSP violations",
@@ -1063,7 +1186,11 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/verify-slice113-results.json",
+     "localPath": "media/verify-slice113-desktop-light-phone-dark-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/verify-slice113-desktop-dark-phone-light-results.json",
      "mediaType": "application/json"
     },
     {
@@ -1075,43 +1202,15 @@
      "mediaType": "application/json"
     },
     {
-     "localPath": "media/s125-desktop-light-header.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-phone-dark-header-signed-in.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-icon-board-light.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-icon-board-dark.png",
-     "mediaType": "image/png"
-    },
-    {
-     "localPath": "media/s125-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
-     "localPath": "media/s113-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
-     "localPath": "media/s106-regression-desktop-light-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
-     "localPath": "media/s106-regression-phone-dark-walkthrough.mp4",
-     "mediaType": "video/mp4"
-    },
-    {
      "localPath": "media/s138-results.json",
      "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
     }
    ],
-   "note": "[S125-1] added to the exceptions; brand change proved headed at 1440x900 and 390x844, light and dark (verify-slice125.mjs 470/470), and everything else re-proved unchanged (verify-slice106.mjs 339/339, verify-slice113.mjs 609/609). Live scry.mistystep.io check runs post-merge from the credentialed host (D-187). Re-verified 2026-11-26 at e9d2cdd8 after [S135-1]: every walkthroughCheck re-passed in verify-slice106-results.json / verify-slice113-results.json / s125-results.json / s135-results.json. [S135-1] added to the exceptions; proved headed at 1440x900 and 390x844, light and dark (verify-slice135.mjs 223/223), everything else re-proved unchanged (106 339/339, 113 609/609, 125 470/470). Re-verified 2026-11-26 at 08befd4b after [S138-1] was rebased onto [S135-1] (e701ff4d): verify-slice138.mjs 142/142 (rest of the hero identical to the e701ff4d build), verify-slice135.mjs 223/223 and verify-slice106.mjs 339/339, headed."
+   "note": "Re-verified 2026-11-28 for the bf466de7..14e0970c push: every walkthroughCheck re-passed (by name) in the regression result JSONs run on the 57209291 build (Go source identical to 7aa4d655); go test ./... green at 7aa4d655. 2026-11-28: [S139-1] and [S139-2] added to the exceptions and proved headed at 1440x900 and 390x844, light and dark (verify-slice139 378/378); everything else re-proved by verify-slice106/113/125/135/138."
   },
   {
    "requirementId": "S111-1",
@@ -1997,6 +2096,504 @@
     }
    ],
    "note": "Rebased onto origin/master e701ff4d ([S135-1] and the landing part of [S131-1], PR #524). After the rebase the [S135-1] phone column is the full 16ch (345 px at 32 px), which held \"Remember everything.\" on one line at 390x844; .hero .display { width: min-content; } (inside the unchanged 16ch max-width) restores \"Remember\" over \"everything.\" on every width. Negative control: verify-slice138.mjs against the e701ff4d build fails 28 [S138-1] checks. verify-slice135.mjs passes 223/223 on the same binary, so no [S135-1] regression."
+  },
+  {
+   "requirementId": "S139-1",
+   "source": "PRODUCT.md :: [S139-1] (and [S106-6]); DESIGN.md :: Motion (Verdict), Post-answer review (One page, one scroll; Incorrect with a long answer), Phones",
+   "intent": "A long answer gets the whole page: an Incorrect pair with either answer long (>80 characters or a line break) stacks \"Your answer\" over \"Correct answer\" 16 px apart, in Text at Title size (24 px, 500) with a 1.55 line height, at most 68ch or the column, line breaks kept, a 2 px missed-red strike that fades in; two short answers keep Judgment size; the page is at least 100dvh and scrolls with the window; nothing in the review scrolls inside itself, clips or scrolls sideways; 1440x900 first window holds question, answers, badge and why, page <= 1800 px; 390x844 page <= 2532 px with Next card pinned; every control reached by scrolling the page.",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "tests": [
+    "TestStory_S139_1_LongAnswerGetsTheWholePage",
+    "TestSlice70_Review_ShowsTheCurrentCardOnly",
+    "scripts/verify-slice139.mjs"
+   ],
+   "walkthroughChecks": [
+    "[desktop-light] [S139-1] the long card is graded Incorrect with another card still to come",
+    "[desktop-light] [S139-1] both answers stack, \"Your answer\" over \"Correct answer\"",
+    "[desktop-light] [S139-1] 16 px apart",
+    "[desktop-light] [S139-1] each in Text at Title size (24 px, weight 500) with a 1.55 line height",
+    "[desktop-light] [S139-1] each no wider than 68ch or its column",
+    "[desktop-light] [S139-1] each under its own Meta mono label in ink-muted",
+    "[desktop-light] [S139-1] left-aligned with the question",
+    "[desktop-light] [S139-1] line breaks kept (white-space: pre-wrap)",
+    "[desktop-light] [S139-1] the struck answer: a 2 px missed-red line through every line, fading in (no drawn clip)",
+    "[desktop-light] [S139-1] no review text is clipped (each answer's scrollHeight <= clientHeight)",
+    "[desktop-light] [S139-1] the correct answer is whole: 250\u2013400 characters, three or more sentences",
+    "[desktop-light] [S139-1] no word of the fixture breaks across lines except after a hyphen",
+    "[desktop-light] [S139-1] no element in the review scrolls inside itself (overflow auto|scroll with more content than room)",
+    "[desktop-light] [S139-1] no review text is cut off by overflow hidden|clip",
+    "[desktop-light] [S139-1] nothing scrolls sideways (scrollWidth <= innerWidth)",
+    "[desktop-light] [S139-1] the page fills at least the window (min-height: 100dvh) and scrolls with the window",
+    "[desktop-light] [S139-1] at 1440x900 the question, both answers, the badge and the why are inside the first window",
+    "[desktop-light] [S139-1] at 1440x900 the page is at most 1800 px tall",
+    "[desktop-light] [S139-1] scrolling the page reaches Ask Why?, fully visible and unclipped",
+    "[desktop-light] [S139-1] scrolling the page reaches the schedule table, fully visible and unclipped",
+    "[desktop-light] [S139-1] scrolling the page reaches Edit card, fully visible and unclipped",
+    "[desktop-light] [S139-1] scrolling the page reaches Snooze, fully visible and unclipped",
+    "[desktop-light] [S139-1] scrolling the page reaches Delete, fully visible and unclipped",
+    "[desktop-light] [S139-1] scrolling the page reaches Next card, fully visible and unclipped",
+    "[desktop-light] [S139-1] with the explanation shown, nothing scrolls inside the review or sideways",
+    "[desktop-light] [S139-1] a long learner answer with a short correct answer also stacks, \"Your answer\" over \"Correct answer\", at Title size",
+    "[desktop-light] [S139-1] a learner answer of 80 or fewer characters with a line break also stacks, \"Your answer\" over \"Correct answer\", at Title size",
+    "[desktop-light] [S139-1] line breaks are kept in the struck answer",
+    "[desktop-light] [S139-1] two short answers keep Judgment size (not stacked as a long pair)",
+    "[desktop-light] [S139-1] two short answers sit side by side on desktop",
+    "[desktop-dark] [S139-1] the long card is graded Incorrect with another card still to come",
+    "[desktop-dark] [S139-1] both answers stack, \"Your answer\" over \"Correct answer\"",
+    "[desktop-dark] [S139-1] 16 px apart",
+    "[desktop-dark] [S139-1] each in Text at Title size (24 px, weight 500) with a 1.55 line height",
+    "[desktop-dark] [S139-1] each no wider than 68ch or its column",
+    "[desktop-dark] [S139-1] each under its own Meta mono label in ink-muted",
+    "[desktop-dark] [S139-1] left-aligned with the question",
+    "[desktop-dark] [S139-1] line breaks kept (white-space: pre-wrap)",
+    "[desktop-dark] [S139-1] the struck answer: a 2 px missed-red line through every line, fading in (no drawn clip)",
+    "[desktop-dark] [S139-1] no review text is clipped (each answer's scrollHeight <= clientHeight)",
+    "[desktop-dark] [S139-1] the correct answer is whole: 250\u2013400 characters, three or more sentences",
+    "[desktop-dark] [S139-1] no word of the fixture breaks across lines except after a hyphen",
+    "[desktop-dark] [S139-1] no element in the review scrolls inside itself (overflow auto|scroll with more content than room)",
+    "[desktop-dark] [S139-1] no review text is cut off by overflow hidden|clip",
+    "[desktop-dark] [S139-1] nothing scrolls sideways (scrollWidth <= innerWidth)",
+    "[desktop-dark] [S139-1] the page fills at least the window (min-height: 100dvh) and scrolls with the window",
+    "[desktop-dark] [S139-1] at 1440x900 the question, both answers, the badge and the why are inside the first window",
+    "[desktop-dark] [S139-1] at 1440x900 the page is at most 1800 px tall",
+    "[desktop-dark] [S139-1] scrolling the page reaches Ask Why?, fully visible and unclipped",
+    "[desktop-dark] [S139-1] scrolling the page reaches the schedule table, fully visible and unclipped",
+    "[desktop-dark] [S139-1] scrolling the page reaches Edit card, fully visible and unclipped",
+    "[desktop-dark] [S139-1] scrolling the page reaches Snooze, fully visible and unclipped",
+    "[desktop-dark] [S139-1] scrolling the page reaches Delete, fully visible and unclipped",
+    "[desktop-dark] [S139-1] scrolling the page reaches Next card, fully visible and unclipped",
+    "[desktop-dark] [S139-1] with the explanation shown, nothing scrolls inside the review or sideways",
+    "[desktop-dark] [S139-1] a long learner answer with a short correct answer also stacks, \"Your answer\" over \"Correct answer\", at Title size",
+    "[desktop-dark] [S139-1] a learner answer of 80 or fewer characters with a line break also stacks, \"Your answer\" over \"Correct answer\", at Title size",
+    "[desktop-dark] [S139-1] line breaks are kept in the struck answer",
+    "[desktop-dark] [S139-1] two short answers keep Judgment size (not stacked as a long pair)",
+    "[desktop-dark] [S139-1] two short answers sit side by side on desktop",
+    "[phone-light] [S139-1] the long card is graded Incorrect with another card still to come",
+    "[phone-light] [S139-1] both answers stack, \"Your answer\" over \"Correct answer\"",
+    "[phone-light] [S139-1] 16 px apart",
+    "[phone-light] [S139-1] each in Text at Title size (24 px, weight 500) with a 1.55 line height",
+    "[phone-light] [S139-1] each no wider than 68ch or its column",
+    "[phone-light] [S139-1] each under its own Meta mono label in ink-muted",
+    "[phone-light] [S139-1] left-aligned with the question",
+    "[phone-light] [S139-1] line breaks kept (white-space: pre-wrap)",
+    "[phone-light] [S139-1] the struck answer: a 2 px missed-red line through every line, fading in (no drawn clip)",
+    "[phone-light] [S139-1] no review text is clipped (each answer's scrollHeight <= clientHeight)",
+    "[phone-light] [S139-1] the correct answer is whole: 250\u2013400 characters, three or more sentences",
+    "[phone-light] [S139-1] no word of the fixture breaks across lines except after a hyphen",
+    "[phone-light] [S139-1] no element in the review scrolls inside itself (overflow auto|scroll with more content than room)",
+    "[phone-light] [S139-1] no review text is cut off by overflow hidden|clip",
+    "[phone-light] [S139-1] nothing scrolls sideways (scrollWidth <= innerWidth)",
+    "[phone-light] [S139-1] the page fills at least the window (min-height: 100dvh) and scrolls with the window",
+    "[phone-light] [S139-1] at 390x844 the page is at most 2532 px tall",
+    "[phone-light] [S139-1] at 390x844 \"Next card\" stays in its pinned bar",
+    "[phone-light] [S139-1] scrolling the page reaches Ask Why?, fully visible and unclipped",
+    "[phone-light] [S139-1] scrolling the page reaches the schedule table, fully visible and unclipped",
+    "[phone-light] [S139-1] scrolling the page reaches Edit card, fully visible and unclipped",
+    "[phone-light] [S139-1] scrolling the page reaches Snooze, fully visible and unclipped",
+    "[phone-light] [S139-1] scrolling the page reaches Delete, fully visible and unclipped",
+    "[phone-light] [S139-1] scrolling the page reaches Next card, fully visible and unclipped",
+    "[phone-light] [S139-1] with the explanation shown, nothing scrolls inside the review or sideways",
+    "[phone-light] [S139-1] a long learner answer with a short correct answer also stacks, \"Your answer\" over \"Correct answer\", at Title size",
+    "[phone-light] [S139-1] a learner answer of 80 or fewer characters with a line break also stacks, \"Your answer\" over \"Correct answer\", at Title size",
+    "[phone-light] [S139-1] line breaks are kept in the struck answer",
+    "[phone-light] [S139-1] two short answers keep Judgment size (not stacked as a long pair)",
+    "[phone-dark] [S139-1] the long card is graded Incorrect with another card still to come",
+    "[phone-dark] [S139-1] both answers stack, \"Your answer\" over \"Correct answer\"",
+    "[phone-dark] [S139-1] 16 px apart",
+    "[phone-dark] [S139-1] each in Text at Title size (24 px, weight 500) with a 1.55 line height",
+    "[phone-dark] [S139-1] each no wider than 68ch or its column",
+    "[phone-dark] [S139-1] each under its own Meta mono label in ink-muted",
+    "[phone-dark] [S139-1] left-aligned with the question",
+    "[phone-dark] [S139-1] line breaks kept (white-space: pre-wrap)",
+    "[phone-dark] [S139-1] the struck answer: a 2 px missed-red line through every line, fading in (no drawn clip)",
+    "[phone-dark] [S139-1] no review text is clipped (each answer's scrollHeight <= clientHeight)",
+    "[phone-dark] [S139-1] the correct answer is whole: 250\u2013400 characters, three or more sentences",
+    "[phone-dark] [S139-1] no word of the fixture breaks across lines except after a hyphen",
+    "[phone-dark] [S139-1] no element in the review scrolls inside itself (overflow auto|scroll with more content than room)",
+    "[phone-dark] [S139-1] no review text is cut off by overflow hidden|clip",
+    "[phone-dark] [S139-1] nothing scrolls sideways (scrollWidth <= innerWidth)",
+    "[phone-dark] [S139-1] the page fills at least the window (min-height: 100dvh) and scrolls with the window",
+    "[phone-dark] [S139-1] at 390x844 the page is at most 2532 px tall",
+    "[phone-dark] [S139-1] at 390x844 \"Next card\" stays in its pinned bar",
+    "[phone-dark] [S139-1] scrolling the page reaches Ask Why?, fully visible and unclipped",
+    "[phone-dark] [S139-1] scrolling the page reaches the schedule table, fully visible and unclipped",
+    "[phone-dark] [S139-1] scrolling the page reaches Edit card, fully visible and unclipped",
+    "[phone-dark] [S139-1] scrolling the page reaches Snooze, fully visible and unclipped",
+    "[phone-dark] [S139-1] scrolling the page reaches Delete, fully visible and unclipped",
+    "[phone-dark] [S139-1] scrolling the page reaches Next card, fully visible and unclipped",
+    "[phone-dark] [S139-1] with the explanation shown, nothing scrolls inside the review or sideways",
+    "[phone-dark] [S139-1] a long learner answer with a short correct answer also stacks, \"Your answer\" over \"Correct answer\", at Title size",
+    "[phone-dark] [S139-1] a learner answer of 80 or fewer characters with a line break also stacks, \"Your answer\" over \"Correct answer\", at Title size",
+    "[phone-dark] [S139-1] line breaks are kept in the struck answer",
+    "[phone-dark] [S139-1] two short answers keep Judgment size (not stacked as a long pair)"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s139-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s139-phone-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s139-phone-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s139-desktop-light-long-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-light-long-review-full.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-light-linebreak-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-light-short-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-long-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-long-review-full.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-linebreak-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-short-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-long-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-long-review-full.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-linebreak-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-short-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-long-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-long-review-full.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-linebreak-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-short-review.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s139-negative-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
+    }
+   ],
+   "note": "Fixture: testdata/s139/fixture.json (correct answer 323 characters, three sentences), shared by the Go tests and the headed walkthrough. verify-slice113's line-break probe now also reads the long pair's .long-struck-text."
+  },
+  {
+   "requirementId": "S139-2",
+   "source": "PRODUCT.md :: [S139-2], [S106-4], grading story (Ask Why?); DESIGN.md :: Motion (Related & resources), Post-answer review 4-5, Library",
+   "intent": "POST /api/v1/items (and /api/v1/suggestions) accepts optional resources, ideaResources, relatedTags, relatedIdeas (old shape unchanged 201; rule breaks 422 naming item and field, all or none; unknown fields, wrong types, >1 MiB stay 400); related cards (same idea, shared tag, linked idea; <= 5; never itself, removed cards or exact lines; never across learners) and resources in a closed Related & resources disclosure after grading only, on the card page, and resources-only on the idea page; resources/tags survive Recently removed and are in the JSON export; Ask Why? on Almost/Incorrect ends in one Rebuild: sentence within 280 characters.",
+   "verifiedSha": "7aa4d65502bcab1af8160308c4be87a7468cce9f",
+   "verifiedAt": "2026-11-28T08:15:00Z",
+   "criticVerdict": "PENDING_COLD_CRITIC",
+   "realPathVerified": true,
+   "tests": [
+    "TestStory_S139_2_APIAcceptsConnectedFieldsBackwardCompatible",
+    "TestStory_S139_2_APIRefusesBadConnectedFields",
+    "TestStory_S139_2_RelatedCardsOrderLimitAndRemoval",
+    "TestStory_S139_2_ConnectedLearningStaysInMyLibrary",
+    "TestStory_S139_2_ReviewShowsRelatedAndResourcesOnlyAfterGrading",
+    "TestStory_S139_2_AskWhyNamesTheGapToRebuild",
+    "TestDesign_S139_2_RelatedAndResourcesDisclosure",
+    "TestExplain_NotOfferedOnExactTexts",
+    "scripts/verify-slice139.mjs"
+   ],
+   "walkthroughChecks": [
+    "[desktop-light] [S139-2] api: a request in the old shape gets the same 201 response",
+    "[desktop-light] [S139-2] api: a javascript: url is refused with 422 naming the item and field",
+    "[desktop-light] [S139-2] api: an unknown kind is refused with 422",
+    "[desktop-light] [S139-2] api: an unknown field still gets 400",
+    "[desktop-light] [S139-2] api: the fixture with resources, ideaResources, relatedTags and relatedIdeas is added (201)",
+    "[desktop-light] [S139-2] api: refused requests added nothing",
+    "[desktop-light] [S139-2] while the card waits, its page text and markup hold no \"Related & resources\" and no resource title",
+    "[desktop-light] [S139-2] while the card waits, no related question appears outside the session's own scrollback and coming-up cues",
+    "[desktop-light] [S139-2] after a graded answer the disclosure is there, closed (no open)",
+    "[desktop-light] [S139-2] its summary names the counts: \"Related & resources \u00b7 3 cards \u00b7 3 resources\" and \"Show\" at the right edge",
+    "[desktop-light] [S139-2] the closed row is at least 44 px tall under a 1 px line rule, in Meta mono",
+    "[desktop-light] [S139-2] between Ask Why? and the schedule",
+    "[desktop-light] [S139-2] its computed transition is 200 ms ease-out (height and opacity)",
+    "[desktop-light] [S139-2] no related card's answer appears in the review",
+    "[desktop-light] [S139-2] opening it by click lists RELATED rows first, then resources, each with its mono kind label",
+    "[desktop-light] [S139-2] \"Show\" reads \"Hide\" while open",
+    "[desktop-light] [S139-2] rows divided by 1 px line rules, 12 px above and below, no box-shadow and no background fill",
+    "[desktop-light] [S139-2] the kind sits in an 88 px column",
+    "[desktop-light] [S139-2] related links go to /library/items/{id}, named by the whole question",
+    "[desktop-light] [S139-2] resource links have an http(s) URL, target=_blank and rel=\"noopener noreferrer nofollow\"",
+    "[desktop-light] [S139-2] opening it never scrolls the page",
+    "[desktop-light] [S139-2] it opens in height (mid-transition shorter than open)",
+    "[desktop-light] [S139-2] the open list sits at the reading measure",
+    "[desktop-light] [S139-2] open, nothing scrolls inside the review or sideways",
+    "[desktop-light] [S139-2] pressing it again closes it",
+    "[desktop-light] [S139-2] it is reached by Tab (right after Ask Why?)",
+    "[desktop-light] [S139-2] Space opens it and never goes to Next card; focus stays on it",
+    "[desktop-light] [S139-2] Enter toggles it closed",
+    "[desktop-light] [S139-2] under emulated reduced motion it opens at once",
+    "[desktop-light] [S139-2] Ask Why? on Incorrect ends in one \"Rebuild:\" sentence within 280 characters",
+    "[desktop-light] [S139-2] an exact text still has no \"Ask Why?\"",
+    "[desktop-light] [S139-2] the card's own page shows the same closed disclosure under the card's answer",
+    "[desktop-light] [S139-2] the idea's page shows its own resources only, closed, under its summary",
+    "[desktop-light] [S139-2] the browser sent no request to a resource's host",
+    "[desktop-dark] [S139-2] api: a request in the old shape gets the same 201 response",
+    "[desktop-dark] [S139-2] api: a javascript: url is refused with 422 naming the item and field",
+    "[desktop-dark] [S139-2] api: an unknown kind is refused with 422",
+    "[desktop-dark] [S139-2] api: an unknown field still gets 400",
+    "[desktop-dark] [S139-2] api: the fixture with resources, ideaResources, relatedTags and relatedIdeas is added (201)",
+    "[desktop-dark] [S139-2] api: refused requests added nothing",
+    "[desktop-dark] [S139-2] while the card waits, its page text and markup hold no \"Related & resources\" and no resource title",
+    "[desktop-dark] [S139-2] while the card waits, no related question appears outside the session's own scrollback and coming-up cues",
+    "[desktop-dark] [S139-2] after a graded answer the disclosure is there, closed (no open)",
+    "[desktop-dark] [S139-2] its summary names the counts: \"Related & resources \u00b7 3 cards \u00b7 3 resources\" and \"Show\" at the right edge",
+    "[desktop-dark] [S139-2] the closed row is at least 44 px tall under a 1 px line rule, in Meta mono",
+    "[desktop-dark] [S139-2] between Ask Why? and the schedule",
+    "[desktop-dark] [S139-2] its computed transition is 200 ms ease-out (height and opacity)",
+    "[desktop-dark] [S139-2] no related card's answer appears in the review",
+    "[desktop-dark] [S139-2] opening it by click lists RELATED rows first, then resources, each with its mono kind label",
+    "[desktop-dark] [S139-2] \"Show\" reads \"Hide\" while open",
+    "[desktop-dark] [S139-2] rows divided by 1 px line rules, 12 px above and below, no box-shadow and no background fill",
+    "[desktop-dark] [S139-2] the kind sits in an 88 px column",
+    "[desktop-dark] [S139-2] related links go to /library/items/{id}, named by the whole question",
+    "[desktop-dark] [S139-2] resource links have an http(s) URL, target=_blank and rel=\"noopener noreferrer nofollow\"",
+    "[desktop-dark] [S139-2] opening it never scrolls the page",
+    "[desktop-dark] [S139-2] it opens in height (mid-transition shorter than open)",
+    "[desktop-dark] [S139-2] the open list sits at the reading measure",
+    "[desktop-dark] [S139-2] open, nothing scrolls inside the review or sideways",
+    "[desktop-dark] [S139-2] pressing it again closes it",
+    "[desktop-dark] [S139-2] it is reached by Tab (right after Ask Why?)",
+    "[desktop-dark] [S139-2] Space opens it and never goes to Next card; focus stays on it",
+    "[desktop-dark] [S139-2] Enter toggles it closed",
+    "[desktop-dark] [S139-2] under emulated reduced motion it opens at once",
+    "[desktop-dark] [S139-2] Ask Why? on Incorrect ends in one \"Rebuild:\" sentence within 280 characters",
+    "[desktop-dark] [S139-2] an exact text still has no \"Ask Why?\"",
+    "[desktop-dark] [S139-2] the card's own page shows the same closed disclosure under the card's answer",
+    "[desktop-dark] [S139-2] the idea's page shows its own resources only, closed, under its summary",
+    "[desktop-dark] [S139-2] the browser sent no request to a resource's host",
+    "[phone-light] [S139-2] api: a request in the old shape gets the same 201 response",
+    "[phone-light] [S139-2] api: a javascript: url is refused with 422 naming the item and field",
+    "[phone-light] [S139-2] api: an unknown kind is refused with 422",
+    "[phone-light] [S139-2] api: an unknown field still gets 400",
+    "[phone-light] [S139-2] api: the fixture with resources, ideaResources, relatedTags and relatedIdeas is added (201)",
+    "[phone-light] [S139-2] api: refused requests added nothing",
+    "[phone-light] [S139-2] while the card waits, its page text and markup hold no \"Related & resources\" and no resource title",
+    "[phone-light] [S139-2] while the card waits, no related question appears outside the session's own scrollback and coming-up cues",
+    "[phone-light] [S139-2] after a graded answer the disclosure is there, closed (no open)",
+    "[phone-light] [S139-2] its summary names the counts: \"Related & resources \u00b7 3 cards \u00b7 3 resources\" and \"Show\" at the right edge",
+    "[phone-light] [S139-2] the closed row is at least 44 px tall under a 1 px line rule, in Meta mono",
+    "[phone-light] [S139-2] between Ask Why? and the schedule",
+    "[phone-light] [S139-2] its computed transition is 200 ms ease-out (height and opacity)",
+    "[phone-light] [S139-2] no related card's answer appears in the review",
+    "[phone-light] [S139-2] opening it by tap lists RELATED rows first, then resources, each with its mono kind label",
+    "[phone-light] [S139-2] \"Show\" reads \"Hide\" while open",
+    "[phone-light] [S139-2] rows divided by 1 px line rules, 12 px above and below, no box-shadow and no background fill",
+    "[phone-light] [S139-2] on phones the kind sits above the row's text",
+    "[phone-light] [S139-2] related links go to /library/items/{id}, named by the whole question",
+    "[phone-light] [S139-2] resource links have an http(s) URL, target=_blank and rel=\"noopener noreferrer nofollow\"",
+    "[phone-light] [S139-2] opening it never scrolls the page",
+    "[phone-light] [S139-2] it opens in height (mid-transition shorter than open)",
+    "[phone-light] [S139-2] the open list sits at the reading measure",
+    "[phone-light] [S139-2] open, nothing scrolls inside the review or sideways",
+    "[phone-light] [S139-2] pressing it again closes it",
+    "[phone-light] [S139-2] it is reached by Tab (right after Ask Why?)",
+    "[phone-light] [S139-2] Space opens it and never goes to Next card; focus stays on it",
+    "[phone-light] [S139-2] Enter toggles it closed",
+    "[phone-light] [S139-2] under emulated reduced motion it opens at once",
+    "[phone-light] [S139-2] Ask Why? on Incorrect ends in one \"Rebuild:\" sentence within 280 characters",
+    "[phone-light] [S139-2] an exact text still has no \"Ask Why?\"",
+    "[phone-light] [S139-2] the card's own page shows the same closed disclosure under the card's answer",
+    "[phone-light] [S139-2] the idea's page shows its own resources only, closed, under its summary",
+    "[phone-light] [S139-2] the browser sent no request to a resource's host",
+    "[phone-dark] [S139-2] api: a request in the old shape gets the same 201 response",
+    "[phone-dark] [S139-2] api: a javascript: url is refused with 422 naming the item and field",
+    "[phone-dark] [S139-2] api: an unknown kind is refused with 422",
+    "[phone-dark] [S139-2] api: an unknown field still gets 400",
+    "[phone-dark] [S139-2] api: the fixture with resources, ideaResources, relatedTags and relatedIdeas is added (201)",
+    "[phone-dark] [S139-2] api: refused requests added nothing",
+    "[phone-dark] [S139-2] while the card waits, its page text and markup hold no \"Related & resources\" and no resource title",
+    "[phone-dark] [S139-2] while the card waits, no related question appears outside the session's own scrollback and coming-up cues",
+    "[phone-dark] [S139-2] after a graded answer the disclosure is there, closed (no open)",
+    "[phone-dark] [S139-2] its summary names the counts: \"Related & resources \u00b7 3 cards \u00b7 3 resources\" and \"Show\" at the right edge",
+    "[phone-dark] [S139-2] the closed row is at least 44 px tall under a 1 px line rule, in Meta mono",
+    "[phone-dark] [S139-2] between Ask Why? and the schedule",
+    "[phone-dark] [S139-2] its computed transition is 200 ms ease-out (height and opacity)",
+    "[phone-dark] [S139-2] no related card's answer appears in the review",
+    "[phone-dark] [S139-2] opening it by tap lists RELATED rows first, then resources, each with its mono kind label",
+    "[phone-dark] [S139-2] \"Show\" reads \"Hide\" while open",
+    "[phone-dark] [S139-2] rows divided by 1 px line rules, 12 px above and below, no box-shadow and no background fill",
+    "[phone-dark] [S139-2] on phones the kind sits above the row's text",
+    "[phone-dark] [S139-2] related links go to /library/items/{id}, named by the whole question",
+    "[phone-dark] [S139-2] resource links have an http(s) URL, target=_blank and rel=\"noopener noreferrer nofollow\"",
+    "[phone-dark] [S139-2] opening it never scrolls the page",
+    "[phone-dark] [S139-2] it opens in height (mid-transition shorter than open)",
+    "[phone-dark] [S139-2] the open list sits at the reading measure",
+    "[phone-dark] [S139-2] open, nothing scrolls inside the review or sideways",
+    "[phone-dark] [S139-2] pressing it again closes it",
+    "[phone-dark] [S139-2] it is reached by Tab (right after Ask Why?)",
+    "[phone-dark] [S139-2] Space opens it and never goes to Next card; focus stays on it",
+    "[phone-dark] [S139-2] Enter toggles it closed",
+    "[phone-dark] [S139-2] under emulated reduced motion it opens at once",
+    "[phone-dark] [S139-2] Ask Why? on Incorrect ends in one \"Rebuild:\" sentence within 280 characters",
+    "[phone-dark] [S139-2] an exact text still has no \"Ask Why?\"",
+    "[phone-dark] [S139-2] the card's own page shows the same closed disclosure under the card's answer",
+    "[phone-dark] [S139-2] the idea's page shows its own resources only, closed, under its summary",
+    "[phone-dark] [S139-2] the browser sent no request to a resource's host"
+   ],
+   "evidence": [
+    {
+     "localPath": "media/s139-desktop-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s139-phone-light-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s139-phone-dark-walkthrough.mp4",
+     "mediaType": "video/mp4"
+    },
+    {
+     "localPath": "media/s139-desktop-light-long-waiting.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-light-related-open.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-light-ask-why.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-light-card-page-open.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-light-idea-page.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-long-waiting.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-related-open.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-ask-why.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-card-page-open.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-desktop-dark-idea-page.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-long-waiting.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-related-open.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-ask-why.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-card-page-open.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-light-idea-page.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-long-waiting.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-related-open.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-ask-why.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-card-page-open.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-phone-dark-idea-page.png",
+     "mediaType": "image/png"
+    },
+    {
+     "localPath": "media/s139-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/s139-negative-results.json",
+     "mediaType": "application/json"
+    },
+    {
+     "localPath": "media/evidence-card.html",
+     "mediaType": "text/html"
+    }
+   ],
+   "note": "Interpretation (NOTES.md): 'nothing of it while a card waits' is enforced for the disclosure, its label, resource titles/hosts and related questions anywhere outside the session's pre-existing scrollback and coming-up cues, which are unchanged ([S106-6]); a related card that is also in the same session can still be cued there by its question. TestSlice70 now checks the review outside the closed disclosure."
   }
  ]
 }
