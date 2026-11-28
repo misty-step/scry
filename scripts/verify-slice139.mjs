@@ -296,6 +296,14 @@ async function journey(c, port) {
     check(config, "[S139-2] api: an unknown field still gets 400", st === 400, String(st));
     [st, js] = await api("POST", "/api/v1/items", FIXTURE);
     check(config, "[S139-2] api: the fixture with resources, ideaResources, relatedTags and relatedIdeas is added (201)", st === 201 && js.added === FIXTURE.items.length, `${st} ${JSON.stringify(js)}`);
+    if (st === 400) {
+      // A build from before [S139-2] refuses the new fields: add the same
+      // cards without them, so the review itself is still checked (the
+      // negative control's [S139-1] and [S139-2] review checks).
+      const legacy = { ...FIXTURE, items: FIXTURE.items.map(({ resources, ideaResources, relatedTags, relatedIdeas, ...it }) => it) };
+      [st, js] = await api("POST", "/api/v1/items", legacy);
+      check(config, "fixture without the [S139-2] fields added instead (pre-change build)", st === 201, `${st} ${JSON.stringify(js)}`);
+    }
     [st, js] = await api("GET", "/api/v1/ideas");
     check(config, "[S139-2] api: refused requests added nothing", st === 200 && !js.ideas.some((i) => i.title === "X"), JSON.stringify(js.ideas?.map((i) => i.title)));
 
