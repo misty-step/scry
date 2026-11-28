@@ -121,6 +121,13 @@ function instrument(page, problems, hosts) {
 const initScript = () => {
   window.__csp = [];
   document.addEventListener("securitypolicyviolation", (e) => window.__csp.push(e.violatedDirective + " " + e.blockedURI));
+  // The recording never shows the API token (even a throwaway test one):
+  // Settings' token line and curl example are blurred on camera.
+  // (CSSOM, so the page's style-src 'self' policy is not touched.)
+  if (location.pathname.startsWith("/settings")) {
+    const blur = () => document.querySelectorAll(".token-value, .token-new pre").forEach((el) => { el.style.filter = "blur(7px)"; });
+    new MutationObserver(blur).observe(document, { childList: true, subtree: true });
+  }
 };
 
 async function pageHealth(page, config, label) {
